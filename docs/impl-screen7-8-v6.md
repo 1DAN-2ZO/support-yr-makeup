@@ -32,7 +32,7 @@ PartResult {
   diagnosis: string               // 한 줄 진단 (채점 엔진이 생성)
   metrics: { ... }                // 겹침률, 이탈 mm, 좌우 차, 톤 차이 등 (화면 5·6에서 쓰던 값 그대로)
   lrIndex: { left: number, right: number } | null   // 좌우 지수 (있는 부위만)
-  toneDelta: number | null        // 피부 대비 톤 차이 (볼·쉐딩만)
+  toneDelta: number | null        // 피부 대비 톤 차이 (쉐딩·하이라이트, 확인만 부위라 점수엔 미사용)
   updatedAt: timestamp
   attempts: number                // 확인받기 횟수
 }
