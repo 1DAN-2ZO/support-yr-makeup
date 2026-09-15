@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>당화응 POC</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <header>
+    <div class="title">당화응 POC · 아이라이너 가이드 &amp; 전후 채점</div>
+    <div class="row">
+      <button id="modePhoto" class="toggle active">사진 모드</button>
+      <button id="modeCam" class="toggle">카메라 모드</button>
+    </div>
+    <div id="status" class="status">모델 로딩 중…</div>
+  </header>
+
+  <main>
+    <section class="stage" id="camStage" hidden>
+      <div class="panel">
+        <div class="panelhead"><span>카메라 (거울 반전)</span><span id="camInfo" class="muted small">—</span></div>
+        <div class="videowrap">
+          <video id="video" playsinline muted></video>
+          <canvas id="overlay"></canvas>
+        </div>
+        <div class="row">
+          <button id="btnBase" class="primary">1. 맨얼굴 기준 저장</button>
+          <button id="btnCheck" class="primary" disabled>2. 화장 후 확인</button>
+        </div>
+        <div class="hint">5프레임 평균으로 저장. 기준 저장 → 한쪽 눈에 그림 → 확인. 카메라·조명·자리 유지.</div>
+      </div>
+    </section>
+
+    <section class="stage" id="photoStage">
+      <div class="panel">
+        <div class="panelhead">
+          <span>1. 맨얼굴 사진 (기준)</span>
+          <label class="file">사진 선택 <input id="fileBase" type="file" accept="image/*"></label>
+        </div>
+        <canvas id="cvBase" class="photo"></canvas>
+        <div id="infoBase" class="muted small">—</div>
+      </div>
+      <div class="panel">
+        <div class="panelhead">
+          <span>2. 화장 후 사진 (확인)</span>
+          <label class="file">사진 선택 <input id="fileCheck" type="file" accept="image/*"></label>
+        </div>
+        <canvas id="cvCheck" class="photo"></canvas>
+        <div id="infoCheck" class="muted small">—</div>
+      </div>
+    </section>
+
+    <section class="stage2">
+      <div class="zoomwrap">
+        <div class="zoomhead">
+          <span id="zoomLabel">확대: 오른쪽 눈 · 화장 후 사진</span>
+          <span id="scaleLabel" class="muted">척도: —</span>
+        </div>
+        <canvas id="zoom" width="520" height="340"></canvas>
+        <div class="hint">점선·띠: 가이드 밴드. 검정 점: 밴드 안에서 변화 감지. 빨강 점: 밴드 밖 변화(이탈).</div>
+      </div>
+
+      <div class="controls">
+        <div class="group">
+          <div class="label">확인할 눈</div>
+          <div class="row">
+            <button id="eyeR" class="toggle active">오른쪽 눈</button>
+            <button id="eyeL" class="toggle">왼쪽 눈</button>
+          </div>
+          <div class="hint">피험자 기준. 사진에서는 화면 왼쪽에 보이는 눈이 오른쪽 눈.</div>
+        </div>
+        <div class="group">
+          <div class="label">가이드 (바꾸면 즉시 재채점)</div>
+          <label>꼬리 각도 <span id="angleVal">15</span>° <input id="angle" type="range" min="0" max="35" value="15"></label>
+          <label>꼬리 길이 <span id="wingVal">25</span>% (눈 너비 대비) <input id="wing" type="range" min="0" max="50" value="25"></label>
+          <label>선 두께 <span id="thickVal">1.2</span>mm <input id="thick" type="range" min="0.6" max="3.0" step="0.1" value="1.2"></label>
+          <label>판정 임계 ΔE <span id="threshVal">12</span> <input id="thresh" type="range" min="4" max="30" value="12"></label>
+          <div class="row"><button id="btnReset" class="ghost">초기화</button></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="results" id="results" hidden>
+      <div class="card">
+        <div class="cardhead">
+          <div class="big"><span id="score">—</span><span class="muted"> / 100</span></div>
+          <div id="verdict" class="pill">—</div>
+        </div>
+        <div class="rows">
+          <div class="r"><span>가이드 안 채움 (coverage)</span><b id="coverage">—</b></div>
+          <div class="r"><span>선 두께 (중앙값)</span><b id="thickness">—</b></div>
+          <div class="r"><span>꼬리 길이 (가이드 대비)</span><b id="wingDelta">—</b></div>
+          <div class="r"><span>밴드 밖 이탈</span><b id="overflow">—</b></div>
+          <div class="r"><span>좌우 지수 (오늘 기준 0~100)</span><b id="lrIndex">—</b></div>
+        </div>
+        <div id="diag" class="diag">—</div>
+      </div>
+
+      <div class="card">
+        <div class="cardhead"><div class="label">볼 영역 (쉐딩·블러셔)</div></div>
+        <div class="rows">
+          <div class="r"><span>발림 지수 왼쪽 / 오른쪽</span><b id="cheekIdx">—</b></div>
+          <div class="r"><span>피부(이마) 대비 밝기 차 ΔL*</span><b id="cheekTone">—</b></div>
+          <div class="r"><span>판정</span><b id="cheekVerdict">—</b></div>
+        </div>
+        <div class="hint">톤 환산은 가정값(1톤 ≈ ΔL* 4). 목표 밴드 1~2톤은 검증 전 임시값.</div>
+      </div>
+
+      <div class="card">
+        <div class="cardhead"><div class="label">조명·품질</div></div>
+        <div class="rows">
+          <div class="r"><span>이마 밝기 변화 (기준 → 확인)</span><b id="lightShift">—</b></div>
+          <div class="r"><span>홍채 지름 → mm/px (기준 / 확인)</span><b id="mmpx">—</b></div>
+          <div class="r"><span>두 사진 눈 너비 비율</span><b id="poseDiff">—</b></div>
+        </div>
+        <div class="hint">눈 너비 비율이 1에서 많이 벗어나면 거리·각도가 달라 샘플링이 어긋난 것.</div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="muted">
+    MediaPipe Face Landmarker(468점 + 홍채)로 랜드마크만 사용. 3D 메시·FLAME 없음. 색 비교는 Lab ΔE, 척도는 홍채 지름 11.7mm 가정. 사진은 브라우저 밖으로 나가지 않음.
+  </footer>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>당화응 POC — 전체 리뷰·기록</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header>
+  <h1>당화응 POC · 화면 7 전체 리뷰 / 화면 8 기록</h1>
+  <nav>
+    <button id="tabReview" class="tab active">7. 전체 리뷰</button>
+    <button id="tabHistory" class="tab">8. 기록</button>
+    <button id="tabVerify" class="tab">검증</button>
+  </nav>
+</header>
+
+<!-- ===================== 화면 7 ===================== -->
+<main id="viewReview" class="view">
+  <section class="col">
+    <h2>부위 결과 입력 (채점 엔진 출력 대신)</h2>
+    <p class="hint">부위별 상태·점수·좌우값·진단 코드를 바꾸면 합산이 즉시 다시 계산됩니다. 룩 템플릿의 조화 범위와 가중치도 바꿀 수 있습니다.</p>
+    <div id="partEditor"></div>
+    <div class="row">
+      <label>조화 범위 (ΔAb 최대) <input id="harmMax" type="number" value="12" min="0" step="1" /></label>
+      <label><input id="harmOff" type="checkbox" /> 조화 범위 없음</label>
+      <label>볼 가중치 <input id="wCheek" type="number" value="0.7" min="0" max="1" step="0.1" /></label>
+    </div>
+    <div class="row">
+      <button id="btnPreset1">예시: 스모키 세션</button>
+      <button id="btnPreset2">예시: 확인만 1개</button>
+      <button id="btnPreset3">예시: 전부 확인만</button>
+      <button id="btnRecheck">눈썹 재확인 (점수 +10)</button>
+    </div>
+  </section>
+
+  <section class="col">
+    <h2>화면 7 · 전체 리뷰</h2>
+    <div class="scorecard">
+      <div class="big"><span id="total">—</span><small>/ 100</small></div>
+      <div class="sub" id="basis">—</div>
+      <div class="sub" id="penalty">—</div>
+      <div class="sub muted" id="calcTime"></div>
+    </div>
+    <div id="bars"></div>
+    <div id="toast" class="toast" hidden></div>
+
+    <h3>얹어보기 vs 실제</h3>
+    <p class="hint">두 사진을 넣으면 랜드마크로 같은 크롭(눈썹 위 15% ~ 턱 아래 10%)을 잘라 나란히 놓고, 눈 중심 정렬 오차를 이미지 폭 % 로 표시합니다.</p>
+    <div class="row">
+      <label>얹어보기 <input id="imgPreview" type="file" accept="image/*" /></label>
+      <label>실제 <input id="imgActual" type="file" accept="image/*" /></label>
+    </div>
+    <div class="compare">
+      <div><canvas id="cvPreview" width="300" height="360"></canvas><div class="cap">얹어보기</div></div>
+      <div><canvas id="cvActual" width="300" height="360"></canvas><div class="cap">실제</div></div>
+    </div>
+    <div id="alignInfo" class="sub">—</div>
+    <div class="row">
+      <label>룩 이름 <input id="lookName" value="스모키" /></label>
+      <label>이마 L* (조명 참조) <input id="foreheadL" type="number" value="62" /></label>
+      <button id="btnSave" class="primary">기록에 저장</button>
+    </div>
+  </section>
+</main>
+
+<!-- ===================== 화면 8 ===================== -->
+<main id="viewHistory" class="view" hidden>
+  <section class="col">
+    <h2>화면 8 · 기록</h2>
+    <div class="row">
+      <label>룩 필터 <select id="lookFilter"><option value="">전체</option></select></label>
+      <label>보관 상한 <input id="cap" type="number" value="100" min="1" /></label>
+      <button id="btnSample">예시 기록 10회 생성</button>
+      <button id="btnClear" class="danger">전체 삭제</button>
+    </div>
+    <h3>추이 (합산)</h3>
+    <canvas id="trend" width="640" height="200"></canvas>
+    <h3>자주 틀리는 부위 (최근 5회)</h3>
+    <div id="misses"></div>
+    <h3>회차 목록</h3>
+    <div id="records"></div>
+    <p class="hint">날짜 간 강도 비교는 조명이 달라 참고용 · 모든 기록은 이 브라우저(localStorage)에만 저장 · 네트워크 요청 없음</p>
+  </section>
+  <section class="col">
+    <h2>회차 상세</h2>
+    <div id="detail" class="detail"><p class="hint">목록에서 회차를 누르세요.</p></div>
+  </section>
+</main>
+
+<!-- ===================== 검증 ===================== -->
+<main id="viewVerify" class="view" hidden>
+  <section class="col wide">
+    <h2>자동 검증 (브라우저에서 실행)</h2>
+    <p class="hint">node tests.mjs 와 같은 18개 케이스를 브라우저에서 다시 돌립니다. 추가로 저장→새로고침 복원, 용량, 지연을 측정합니다.</p>
+    <div class="row">
+      <button id="btnRunTests" class="primary">테스트 실행</button>
+      <button id="btnPersist">저장→복원 검사 (localStorage)</button>
+      <button id="btnCapTest">보관 상한 101회 검사</button>
+      <button id="btnPerf">합산 1,000회 지연 측정</button>
+    </div>
+    <pre id="testOut" class="out">—</pre>
+  </section>
+</main>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
