@@ -12,7 +12,7 @@
 
 ## 실행
 ```
-cd poc/review
+cd poc/screen6
 node tests.mjs                 # 자동 검증 24개
 python -m http.server 8000     # → http://localhost:8000
 ```
@@ -25,7 +25,7 @@ python -m http.server 8000     # → http://localhost:8000
 | `tests.mjs` | Node 검증 24개 (A 합산 8, B 보정·멱등 3, V v6 규칙 6, C 기록 로드맵 7) |
 | `tests-browser.js` | 같은 케이스의 브라우저 러너 (검증 탭) |
 | `index.html` / `app.js` / `style.css` | 폰 목업(화면 6·끝난 화면) + 시연 패널(부위 결과 입력 / 사진 / 검증) |
-| `screenshots/` | 헤드리스 크롬 캡처 (스모키 세션 / 확인만 2개 / 측정 0개 / 끝난 화면) |
+| `screenshots/` | 헤드리스 크롬 캡처 (스모키 세션 / 확인만 2개 / 측정 0개 / 끝난 화면 / 검증 탭) |
 
 ## 검증표 대응 (impl-screen6-review-v6.md A-5)
 | 문서 검증 항목 | POC에서 |

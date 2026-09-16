@@ -4,7 +4,7 @@
 
 > **v6 반영 사항 (사용자 확정)**
 > - 화면 3은 **부위 완성본**(전체 완성 예상 렌더링을 이 부위로 줌한 정지 이미지) + 근거 + 필요한 제품 + "그리러 가기". 화면 4가 **실시간 테두리**(아래 3-1의 요소 3-3~3-9). 재시도는 화면 3으로.
-> - 화면 5·5-b 결과는 **점수 + 가이드 테두리 겹침 + 한 줄 평만** 표시. 아래 5-1의 지표 4줄·좌우 차 숫자, 5b-1의 좌우 지수 막대·톤 차이 숫자는 **화면에 표시하지 않고** 내부 계산·진단 코드 생성에만 쓴다.
+> - 화면 5·5-b 결과는 **점수 + 가이드 테두리 겹침 + 한 줄 평만** 표시. 아래 5-1의 지표 4줄·좌우 차 숫자, 5b-3·5b-5의 좌우 지수·톤 차이 숫자는 **화면에 표시하지 않고** 내부 계산·진단 코드 생성에만 쓴다.
 > - 화면 5-b(쉐딩·하이라이트 결과) 목업은 나중에. 쉐딩·하이라이트는 항상 "확인만", 섀도우·볼터치는 점수.
 > - 서버 처리 동의를 거부하면 이용 불가. 폰 전용 모드 없음. 서버로는 정면·좌·우 3장 전송.
 > 모든 좌표는 랜드마크 기준(화면 방향 무관). 사진은 서버 처리 후 즉시 삭제. 채점은 "확인받기" 버튼을 눌렀을 때만.
@@ -25,7 +25,7 @@ Session {
   partOrder: PartId[]                // 화면 2 확정 시
   parts: PartResult[]                // 화면 5·5-b에서 갱신 (화면 6 문서와 같은 구조)
   currentPart: PartId | null
-  consent: { serverProcessing: true, at: timestamp }   // false 면 세션 생성 안 됨
+  consent: { serverProcessing: true, at: timestamp }   // false면 세션 생성 안 됨
 }
 ```
 
@@ -72,7 +72,7 @@ Baseline {
   lighting: { foreheadL: number, scleraWhite: {L,a,b} }     // 조명 참조
   skinRef: { [partId]: {L,a,b} }      // 부위 인접 비화장 피부 Lab (frontOpen)
   bareTexture: { [partId]: LabMap }   // 부위별 맨얼굴 Lab 맵 (랜드마크 정렬)
-  lidPoints: Landmark[]               // frontClosed 에서 눈꺼풀 기준점
+  lidPoints: Landmark[]               // frontClosed에서 눈꺼풀 기준점
   sideRefs: { left: {cheekLine, jawLine}, right: {...} }    // 측면 45°에서 옆 볼·턱선 랜드마크
   exposureLocked: boolean
 }
@@ -83,7 +83,7 @@ Baseline {
 
 | 입력 | 계산 | 출력 |
 |---|---|---|
-| frontOpen 랜드마크 | 가로세로비(얼굴 높이/광대 폭), 광대 폭 대비 턱 폭, 턱 각도, 이마 폭 대비 광대 폭 | `FaceShapeResult { label: 'oval'|'round'|'square'|'heart'|'oblong', ratios{...}, confidence, userOverride: label|null }` |
+| frontOpen 랜드마크 | 가로세로비(얼굴 높이/광대 폭), 광대 폭 대비 턱 폭, 턱 각도, 이마 폭 대비 광대 폭 | `FaceShapeResult { label: 'oval'\|'round'\|'square'\|'heart'\|'oblong', ratios{...}, confidence, userOverride: label\|null }` |
 
 규칙 임계는 규칙 DB에서 받는다. 결과는 쉐딩·하이라이트 가이드(3-2)와 그 완성본 멘트에서만 참조한다.
 
@@ -122,7 +122,7 @@ capture: idle → consent → (거부: blocked) / (동의) step0 → step1 → s
 ```
 LookTemplate {
   id, name, referenceImage(uri, 서버만)
-  parts: { [partId]: { mask: 규칙 마스크 정의, guideParams: {...} } }   // brow·liner·shadow·lip·cheek 만. contour(쉐딩·하이라이트)는 룩에 없음
+  parts: { [partId]: { mask: 규칙 마스크 정의, guideParams: {...} } }   // brow·liner·shadow·lip·cheek만. contour(쉐딩·하이라이트)는 룩에 없음
   products: [{ partId, type: '파우더 블러셔', colorFamily: '핑크', finish: '매트', tool: '블러셔 브러시', order: 3 }]
   guideParams: { wingAngleDeg, wingLenMm, browTailY, ... }   // 룩 고정값, 얼굴형 조정 없음
   harmonyRange: { maxDeltaAb } | null
@@ -158,7 +158,7 @@ LookSelection { lookId, selectedAt, previewImage(uri), fullRender(uri) }
 | # | 요소 | 내용 | 데이터 |
 |---|---|---|---|
 | 3-1 | 진행 칩 6개 (룩 5부위 + 쉐딩·하이라이트) | 부위명 + 상태(미시작/진행 중/완료/확인만/건너뜀) + 최신 점수. 진행 중 칩 강조. 탭 → 그 단계로 | `parts[]`, `currentPart` |
-| 3-2 | 방향 안내 | 눈·눈썹 단계(완성본·실시간·결과 모두 가로) 진입 시 "폰을 가로로 돌리세요", 세로 부위(입술·볼·쉐딩)로 돌아올 때 "폰을 세로로 돌리세요". 진행 칩 이동 포함 | `orientationHint` (부위별 `orientation: 'landscape'|'portrait'`) |
+| 3-2 | 방향 안내 | 눈·눈썹 단계(완성본·실시간·결과 모두 가로) 진입 시 "폰을 가로로 돌리세요", 세로 부위(입술·볼·쉐딩)로 돌아올 때 "폰을 세로로 돌리세요". 진행 칩 이동 포함 | `orientationHint` (부위별 `orientation: 'landscape'\|'portrait'`) |
 | 3-2b | 완성본 범위 | `fullRender`를 이 부위 크롭 박스로 줌. 다른 부위도 화장된 채. 쉐딩·하이라이트만 규칙 합성 | `LookSelection.fullRender` + `CropSpec` |
 | 3-3 | 확대 프리뷰 | 눈 단계: 양쪽 눈 끝에서 끝 + 여백 15%(가로). 입술·볼: 그 부위 2~3배(세로). 떨림 제거, 거울 모드 | `CropSpec`, 프레임 랜드마크 |
 | 3-4 | 가이드 오버레이 | 부위별 테두리(점선)·꼬리 선·방향 화살표. 선만, 면 채우기·숫자 라벨 없음 | `GuideSet` |
@@ -194,7 +194,7 @@ GuideSet { partId, polylines: [{pts(mm 좌표, 랜드마크 기준), style}], re
 | 부위 가시성 | 눈 단계: 양쪽 눈 랜드마크 신뢰도 / 입술·볼: 해당 랜드마크 |
 | 손 없음 | 손 박스가 부위 크롭과 겹치지 않음 |
 | 선명 | 라플라시안 분산 ≥ 임계 |
-| 밝기 | 이마 L* 가 `Baseline.lighting.foreheadL ± 12` |
+| 밝기 | 이마 L*가 `Baseline.lighting.foreheadL ± 12` |
 | 안정 | 연속 5프레임 |
 
 미충족 시 한 줄 안내(가장 먼저 걸린 조건 하나만). 버튼 비활성.
@@ -262,9 +262,9 @@ diagnosisCodes: 규칙 DB 코드표에서 임계 초과 항목 매핑 (예 LINER
 | 5b-3 | 좌우 지수 (내부) | 세션 내 지수 0~100, 화면 표시 없음. 한 줄 평 방향에만 사용 | `lrIndex` |
 | 5b-4 | 이전 대비 (내부) | 진행 칩으로 다시 와서 확인받았을 때 증감, 한 줄 평("아까보다 진해졌어요")에만 사용 | `attempts` 이력 |
 | 5b-5 | 톤 차이 (쉐딩·하이라이트, 내부 계산만) | 화면 표시 없음. 좌우 비교 한 줄 평 생성에만 사용 | `toneDelta`, `targetBand` |
-| 5b-6 | 판정 문구 | 섀도우·볼터치: 초과 "조금 진해요" / 미달 "조금 더 진하게" / 안 "적당해요". 쉐딩·하이라이트: 판정 없이 "확인하고 넘어가세요" | `toneVerdict` |
+| 5b-6 | 판정 문구 | 섀도우·볼터치: 초과 "조금 진해요" / 미달 "조금 더 진하게" / 밴드 안 "적당해요". 쉐딩·하이라이트: 판정 없이 "확인하고 넘어가세요" | `toneVerdict` |
 | 5b-7 | 방향(섀도우) | "방향 일치 / 불일치" | `metrics.directionOk` |
-| 5b-8 | 점수 또는 확인만 | 섀도우·볼터치: 밴드 있으면 점수, 없으면 "확인만". **쉐딩·하이라이트: 항상 "확인만"** | `score | null` |
+| 5b-8 | 점수 또는 확인만 | 섀도우·볼터치: 밴드 있으면 점수, 없으면 "확인만". **쉐딩·하이라이트: 항상 "확인만"** | `score \| null` |
 | 5b-9 | 버튼 | 다음 / 건너뛰기 (화면 5와 동일, 재시도 없음) | — |
 
 ## 5b-2. 산출 정의
@@ -290,7 +290,7 @@ diagnosisCodes: 규칙 DB 코드표에서 임계 초과 항목 매핑 (예 LINER
 | 칩 탭 (뒤 부위, 앞 단계 미완료) | 이동 허용 + "눈썹을 아직 안 했어요" 한 줄 |
 | 다음 | `status=passed`(점수 낮아도), 다음 미완료 부위로. 자동 통과 판정 없음 |
 | 건너뛰기 | `status=skipped`, 다음으로. 버튼은 결과 화면(5)에만. 결과 없이 건너뛰려면 진행 칩으로 다음 부위 이동 |
-| 모든 부위가 passed/check_only/skipped | 화면 6로 |
+| 모든 부위가 passed/check_only/skipped | 화면 6으로 |
 
 ---
 

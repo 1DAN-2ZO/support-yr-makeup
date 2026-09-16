@@ -212,9 +212,9 @@ function render() {
   $("coverage").textContent = `${Math.round(e.coverage * 100)}%`;
   $("thickness").textContent = `${e.thicknessMm.toFixed(1)}mm (가이드 ${state.thick.toFixed(1)})`;
   const wd = r.wingDelta;
-  $("wingDelta").textContent = `${wd >= 0 ? "+" : ""}${wd.toFixed(1)}mm (그림 ${e.wingDrawnMm.toFixed(1)} / 가이드 ${e.wingGuideMm.toFixed(1)})`;
+  $("wingDelta").textContent = `${wd >= 0 ? "+" : ""}${wd.toFixed(1)}mm (그린 ${e.wingDrawnMm.toFixed(1)} / 가이드 ${e.wingGuideMm.toFixed(1)})`;
   $("overflow").textContent = `${Math.round(e.overflow * 100)}%`;
-  $("lrIndex").textContent = `오른쪽 ${Math.round(r.perEye.R.index)} / 왼쪽 ${Math.round(r.perEye.L.index)}`;
+  $("lrIndex").textContent = `왼쪽 ${Math.round(r.perEye.L.index)} / 오른쪽 ${Math.round(r.perEye.R.index)}`;
   const msgs = [];
   if (e.coverage < 0.6) msgs.push("가이드 밴드가 절반 이상 비어 있어요. 눈꺼풀 라인을 따라 끊기지 않게 그리세요.");
   if (e.overflow > 0.25) msgs.push("밴드 바깥으로 번진 부분이 있어요. 경계를 정리하세요.");
@@ -351,7 +351,7 @@ function rescorePhotos() {
 async function startCamera() {
   const cam = state.cam;
   if (cam.started) return;
-  if (!navigator.mediaDevices?.getUserMedia) { setStatus("이 주소에서는 카메라 API를 쓸 수 없습니다. http://localhost:8000 으로 여세요", "err"); return; }
+  if (!navigator.mediaDevices?.getUserMedia) { setStatus("이 주소에서는 카메라 API를 쓸 수 없습니다. http://localhost:8000으로 여세요", "err"); return; }
   const attempts = [
     { video: { width: { ideal: 1280 }, height: { ideal: 960 }, facingMode: "user" }, audio: false },
     { video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },

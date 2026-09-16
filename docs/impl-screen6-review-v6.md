@@ -3,7 +3,7 @@
 > 2026-09-16 정리 · 담당 모듈: 채점(C, 합산 계산) + 앱·운영(F, 화면·저장). 서버 없음. 모든 계산·저장은 클라이언트(모바일 웹) 안.
 
 > **v6 (2026-09-15) 반영 사항**
-> - **Part B(기록 화면)는 MVP에서 삭제.** 로드맵 R-02로 이동. 아래 내용과 `poc/review`의 기록 탭은 로드맵용 설계·POC로만 남긴다.
+> - **Part B(기록 화면)는 MVP에서 삭제.** 로드맵 R-02로 이동. 아래 내용과 `poc/screen6`의 기록 탭은 로드맵용 설계·POC로만 남긴다.
 > - Part A 6-4 비교는 "얹어보기 vs 실제"가 아니라 **"쌩얼(촬영 1 정면 눈 뜸) vs 내 화장"**. 쌩얼 사진은 세션 끝까지 폰에 보관 후 삭제.
 > - Part A 6-3 부위 막대의 한 줄 진단은 숫자 없이 방향 표현("오른쪽 꼬리가 조금 위로"). 합산·보정 계산은 그대로.
 > - "기록에 저장" 버튼은 "끝내기"로. 누르면 세션 데이터(사진·결과) 삭제. "결과 저장"은 비교 이미지 갤러리 저장(선택).
@@ -29,7 +29,7 @@
 PartResult {
   partId: 'brow' | 'liner' | 'shadow' | 'lip' | 'cheek' | 'contour'   // contour = 쉐딩·하이라이트, 항상 check_only
   status: 'not_started' | 'in_progress' | 'check_only' | 'passed' | 'skipped'
-  score: number | null            // 0~100, check_only·skipped·not_started 는 null
+  score: number | null            // 0~100, check_only·skipped·not_started는 null
   diagnosis: string               // 한 줄 진단 (채점 엔진이 생성)
   metrics: { ... }                // 겹침률, 이탈 mm, 좌우 차, 톤 차이 등 (화면 5·6에서 쓰던 값 그대로)
   lrIndex: { left: number, right: number } | null   // 좌우 지수 (있는 부위만)
@@ -44,7 +44,7 @@ SessionSummary {
   partCount: number               // 룩 부위 수 (기본 5, contour 제외)
   symmetryPenalty: number         // 0 ~ -5
   harmonyPenalty: number          // 0 ~ -5
-  weights: { brow:1.0, liner:1.0, shadow:1.0, lip:1.0, cheek:0.7 }   // contour 는 합산에 없음
+  weights: { brow:1.0, liner:1.0, shadow:1.0, lip:1.0, cheek:0.7 }   // contour는 합산에 없음
   computedAt: timestamp
 }
 ```
@@ -58,7 +58,7 @@ if measured.length == 0: total = null, 화면엔 "측정된 부위가 없어요"
 base = Σ(weight[p] * score[p]) / Σ(weight[p])      // 측정 부위만
 total = clamp(round(base + symmetryPenalty + harmonyPenalty), 0, 100)
 ```
-- `passed`만 넣는다. `check_only`(측정 불가, contour 는 항상)와 `skipped`는 제외하고 `measuredCount`에서 뺀다. 화면에는 합산 숫자만(기준·보정 표기 없음).
+- `passed`만 넣는다. `check_only`(측정 불가, contour는 항상)와 `skipped`는 제외하고 `measuredCount`에서 뺀다. 화면에는 합산 숫자만(기준·보정 표기 없음).
 - 부위를 다시 확인받으면 `PartResult`를 덮어쓰고 합산을 다시 계산한다(멱등).
 
 ### 대칭 보정 (0 ~ −5)
@@ -109,12 +109,12 @@ total = clamp(round(base + symmetryPenalty + harmonyPenalty), 0, 100)
 
 | # | 요소 | 내용 | 데이터 출처 |
 |---|---|---|---|
-| 8-1 | 추이 그래프 | 최근 5~10회 합산 점수 꺾은선, 점 탭하면 그 회차로 | `SessionRecord[].total` |
-| 8-2 | 자주 틀리는 부위 | 상위 2줄: "아이라이너 꼬리 각도 · 5회 중 4회" | 회차별 `PartResult.diagnosisCode` 집계 |
-| 8-3 | 회차 목록 | 날짜 · 룩 이름 · 합산 · 부위 미니 아이콘 5개 | `SessionRecord[]` |
-| 8-4 | 회차 상세 (탭) | 그 회차의 화면 6과 같은 구성(합산, 막대, 비교 이미지) | `SessionRecord` |
-| 8-5 | 안내 | "날짜 간 강도 비교는 조명이 달라 참고용 · 모든 기록은 이 기기에만 저장" | 고정 문구 |
-| 8-6 | 관리 | 회차 삭제, 전체 삭제 | — |
+| B-1 | 추이 그래프 | 최근 5~10회 합산 점수 꺾은선, 점 탭하면 그 회차로 | `SessionRecord[].total` |
+| B-2 | 자주 틀리는 부위 | 상위 2줄: "아이라이너 꼬리 각도 · 5회 중 4회" | 회차별 `PartResult.diagnosisCode` 집계 |
+| B-3 | 회차 목록 | 날짜 · 룩 이름 · 합산 · 부위 미니 아이콘 5개 | `SessionRecord[]` |
+| B-4 | 회차 상세 (탭) | 그 회차의 화면 6과 같은 구성(합산, 막대, 비교 이미지) | `SessionRecord` |
+| B-5 | 안내 | "날짜 간 강도 비교는 조명이 달라 참고용 · 모든 기록은 이 기기에만 저장" | 고정 문구 |
+| B-6 | 관리 | 회차 삭제, 전체 삭제 | — |
 
 ## B-2. 데이터 구조·저장
 
@@ -185,7 +185,7 @@ SessionRecord {
 | 상황 | 처리 |
 |---|---|
 | 측정 부위 0개 | 합산 null, "측정된 부위가 없어요. 부위를 눌러 다시 확인받을 수 있어요" |
-| 실제 이미지 없음 (리뷰 진입 시 품질 게이트 실패) | 비교 칸에 "정면을 보면 실제 사진을 찍어요" + 재시도 |
+| 내 화장 이미지 없음 (리뷰 진입 시 품질 게이트 실패) | 비교 칸에 "정면을 보면 내 화장 사진을 찍어요" + 재시도 |
 | 룩 템플릿에 조화 범위 없음 | 조화 보정 0 (표시 없음) |
 | 결과 저장 실패(권한·용량) | 토스트 + 재시도, 세션은 유지 |
 

@@ -40,7 +40,8 @@
 
 ```
 docs/   서비스 정의, 기능 정의서, 화면 브리프, 구현 요소 정의, 데이터셋 목록, 다이어그램 4장
-poc/    브라우저 POC — 아이라이너·볼터치 채점 (poc/), 화면 6 전체 리뷰 폰 목업·합산·결과 저장 (poc/review/)
+poc/    브라우저 POC — 화면별 폴더. 아이라이너·볼터치 채점 (poc/), 화면 6 전체 리뷰 (poc/screen6/)
+danghaeung_phone_portraits_20_v2/  촬영 세트 샘플 20장 (5명 × 정면 눈 뜸·감음·좌45·우45, 168×364)
 ```
 
 문서 색인과 확정 사항은 [`docs/README.md`](docs/README.md)에서 시작하세요. 화면별 결정 이력은 [`docs/service-definition-v6.md`](docs/service-definition-v6.md) 부록에 있습니다.
@@ -49,10 +50,10 @@ poc/    브라우저 POC — 아이라이너·볼터치 채점 (poc/), 화면 6 
 
 ```bash
 # 아이라이너·볼터치 채점 POC (카메라 또는 사진 2장)
-cd poc && python -m http.server 8000      # → http://localhost:8000
+cd poc && python -m http.server 8000      # → http://localhost:8000  (저장소 루트 기준)
 
 # 화면 6 전체 리뷰 POC + 자동 검증 24개
-cd poc/review && node tests.mjs
+cd poc/screen6 && node tests.mjs          # (저장소 루트 기준)
 python -m http.server 8000                # → http://localhost:8000
 ```
 

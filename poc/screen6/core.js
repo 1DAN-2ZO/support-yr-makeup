@@ -1,7 +1,7 @@
 // 화면 6(전체 리뷰) 핵심 계산 모듈 (순수 함수). 브라우저·Node 공용 ESM. v6 규칙.
 // - 룩 5부위(brow·liner·shadow·lip·cheek)만 합산. contour(쉐딩·하이라이트)는 항상 check_only, 합산 제외.
-// - 상태: not_started | in_progress | check_only | passed | skipped. passed 만 점수 반영.
-// - HistoryStore·topMisses·trendSeries 는 로드맵(기록 화면)용으로만 남김.
+// - 상태: not_started | in_progress | check_only | passed | skipped. passed만 점수 반영.
+// - HistoryStore·topMisses·trendSeries는 로드맵(기록 화면)용으로만 남김.
 
 export const LOOK_PART_IDS = ['brow', 'liner', 'shadow', 'lip', 'cheek'];   // 룩 템플릿 부위 (합산 대상)
 export const CONTOUR_ID = 'contour';                                         // 쉐딩·하이라이트 (항상 확인만)
@@ -10,9 +10,9 @@ export const PART_NAME = { brow: '눈썹', liner: '아이라이너', shadow: '�
 export const STATUS_LABEL = { not_started: '미시작', in_progress: '진행 중', check_only: '확인만', passed: '완료', skipped: '건너뜀' };
 
 export const DEFAULT_TEMPLATE = {
-  partIds: LOOK_PART_IDS,                 // 합산 대상 = 룩 5부위. contour 는 넣어도 무시
+  partIds: LOOK_PART_IDS,                 // 합산 대상 = 룩 5부위. contour는 넣어도 무시
   weights: { brow: 1.0, liner: 1.0, shadow: 1.0, lip: 1.0, cheek: 0.7 },
-  // 볼·입술 색 조화 허용 범위 (Lab a*,b* 거리). null 이면 조화 보정 미적용
+  // 볼·입술 색 조화 허용 범위 (Lab a*,b* 거리). null이면 조화 보정 미적용
   harmonyRange: { maxDeltaAb: 12 },
 };
 
@@ -87,7 +87,7 @@ export function harmonyPenalty(parts, template) {
   return { penalty: round1(-clamp(5 * over, 0, 5)), applied: true, dist };
 }
 
-/** 합산 (F-10). 룩 부위 중 passed 만 가중 평균 + 보정(내부). contour·check_only·skipped·in_progress 제외. 측정 0개면 total=null */
+/** 합산 (F-10). 룩 부위 중 passed만 가중 평균 + 보정(내부). contour·check_only·skipped·in_progress 제외. 측정 0개면 total=null */
 export function computeSummary(parts, template = DEFAULT_TEMPLATE) {
   const weights = template.weights || DEFAULT_TEMPLATE.weights;
   const partIds = (template.partIds || LOOK_PART_IDS).filter((id) => id !== CONTOUR_ID);
@@ -114,7 +114,7 @@ export function computeSummary(parts, template = DEFAULT_TEMPLATE) {
   };
 }
 
-/** 부위 결과 덮어쓰기 (재확인). 같은 partId 는 교체, attempts 증가 */
+/** 부위 결과 덮어쓰기 (재확인). 같은 partId는 교체, attempts 증가 */
 export function upsertPart(parts, next) {
   const idx = parts.findIndex((p) => p.partId === next.partId);
   const prevAttempts = idx >= 0 ? (parts[idx].attempts || 0) : 0;
@@ -157,7 +157,7 @@ export function lightingDiffers(a, b, threshold = 8) {
   return Math.abs(a.foreheadL - b.foreheadL) >= threshold;
 }
 
-/** 추이 데이터. total null 은 y=null 로 유지(빈칸) */
+/** 추이 데이터. total null은 y=null로 유지(빈칸) */
 export function trendSeries(records, lookId = null) {
   return records
     .filter((r) => !lookId || r.lookId === lookId)
@@ -176,7 +176,7 @@ export class HistoryStore {
     const removed = [];
     while (arr.length > this.cap) removed.push(arr.shift());
     this.adapter.save(arr);
-    return { saved: record, removed }; // removed 의 이미지 파일은 호출측에서 삭제
+    return { saved: record, removed }; // removed의 이미지 파일은 호출측에서 삭제
   }
   delete(id) {
     const arr = this.list();
