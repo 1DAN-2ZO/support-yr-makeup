@@ -126,6 +126,25 @@ def render_label(size, sample: dict) -> Image.Image:
     return img
 
 
+def face_box(lm, w: int, h: int, margin: float = 0.18) -> tuple[int, int, int, int]:
+    """랜드마크를 감싸는 정사각 영역. 얼굴 밖 배경을 잘라내 클래스 불균형을 줄인다."""
+    xs = [p[0] for p in lm[:468]]
+    ys = [p[1] for p in lm[:468]]
+    cx, cy = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
+    side = max(max(xs) - min(xs), max(ys) - min(ys)) * (1 + margin * 2)
+    half = side / 2
+    x0, y0 = int(round(cx - half)), int(round(cy - half))
+    return x0, y0, x0 + int(round(side)), y0 + int(round(side))
+
+
+def crop_resize(img: Image.Image, box, size: int, nearest: bool) -> Image.Image:
+    """사진은 부드럽게, 라벨은 NEAREST로. 라벨에 보간이 들어가면 정수가 깨진다."""
+    # 얼굴이 사진 가장자리에 걸치면 box가 화면 밖으로 나간다. 검정으로 채워 잘라낸다.
+    out = Image.new(img.mode, (box[2] - box[0], box[3] - box[1]), 0)
+    out.paste(img.crop(box), (0, 0))
+    return out.resize((size, size), Image.NEAREST if nearest else Image.LANCZOS)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="합성 학습 데이터 대량 생성")
     ap.add_argument("--photo", required=True, type=Path, help="맨얼굴 사진")
@@ -133,6 +152,9 @@ def main() -> int:
     ap.add_argument("--n", type=int, default=20, help="생성할 장수")
     ap.add_argument("--seed", type=int, default=0, help="시작 시드")
     ap.add_argument("--out", type=Path, default=Path("out"), help="출력 폴더")
+    ap.add_argument("--crop", choices=["none", "face"], default="none",
+                    help="face면 얼굴 영역만 잘라 정사각으로 만든다 (클래스 불균형 완화)")
+    ap.add_argument("--size", type=int, default=256, help="--crop face일 때 출력 한 변 픽셀")
     args = ap.parse_args()
 
     if not args.photo.exists():
@@ -159,6 +181,10 @@ def main() -> int:
         sample = build_sample(lm, random_params(seed))
         photo = render_photo(base, lm, sample)
         label = render_label(base.size, sample)
+        if args.crop == "face":
+            box = face_box(lm, base.width, base.height)
+            photo = crop_resize(photo, box, args.size, nearest=False)
+            label = crop_resize(label, box, args.size, nearest=True)
 
         photo.save(args.out / f"photo_{i:04d}.png")
         label.save(args.out / f"label_{i:04d}.png")
@@ -180,7 +206,9 @@ def main() -> int:
     manifest = {
         "generator": "danghaeung poc/synth (generate.py)",
         "source": str(args.photo),
-        "image": {"w": base.width, "h": base.height},
+        "image": ({"w": args.size, "h": args.size} if args.crop == "face"
+                  else {"w": base.width, "h": base.height}),
+        "crop": args.crop,
         "irisPx": iris,
         "labels": PART_LABEL,
         "note": "라벨 PNG의 픽셀값이 곧 클래스 번호다. 배경 0, 부위 1~5.",
