@@ -85,13 +85,17 @@ test('C1 랜드마크를 전부 담거나, 못 담으면 clamped 로 보고한�
 });
 test('C2 liner 폭이 눈 끝 폭의 1.3배다 (양쪽 15%)', () => {
   const lm = fakeFace();
-  const b = boundsOf(partLandmarks(lm, IMG, 'liner'));
   const c = cropSpec(lm, IMG, 'liner');
-  assert.ok(Math.abs(c.w - b.w * (1 + 2 * SIDE_MARGIN)) < 1, `w=${c.w} b.w=${b.w}`);
+  // fakeFace()의 눈 x좌표 범위: 0.22~0.44(오른쪽 눈), 0.56~0.78(왼쪽 눈)
+  // 전체 범위 0.22~0.78, 폭 = (0.78-0.22)*1080 = 604.8px
+  // SIDE_MARGIN=0.15이므로 1.3배 = 604.8 * 1.3 = 786.24px
+  const wantWidth = 786.24;
+  assert.ok(Math.abs(c.w - wantWidth) < 1, `w=${c.w} want=${wantWidth}`);
 });
 test('C3 orientation 이 부위 정의와 일치한다', () => {
   const lm = fakeFace();
-  for (const id of PART_IDS) assert.equal(cropSpec(lm, IMG, id).orientation, ORIENTATION[id], id);
+  const WANT = { brow: 'landscape', liner: 'landscape', shadow: 'landscape', lip: 'portrait', cheek: 'portrait', contour: 'portrait' };
+  for (const id of PART_IDS) assert.equal(cropSpec(lm, IMG, id).orientation, WANT[id], id);
 });
 test('C4 박스 종횡비가 목표와 1% 이내로 같다', () => {
   const lm = fakeFace();
@@ -125,5 +129,11 @@ test('C7 알 수 없는 partId 는 예외', () => {
 test('C8 세로 부위 기본 zoomRatio 가 2.5다', () => {
   const c = cropSpec(fakeFace(), IMG, 'lip');
   assert.ok(!c.clamped, '이 케이스에서 축소가 일어나면 안 됨');
-  assert.ok(Math.abs(c.zoomRatio - PORTRAIT_ZOOM) < 0.01, `zoom=${c.zoomRatio}`);
+  // PORTRAIT_ZOOM=2.5이므로 w = 1080/2.5 = 432px, h = 432*(9/19.5) = 936px, zoomRatio = 2.5
+  const wantWidth = 432;
+  const wantHeight = 936;
+  const wantZoomRatio = 2.5;
+  assert.ok(Math.abs(c.w - wantWidth) < 1, `w=${c.w} want=${wantWidth}`);
+  assert.ok(Math.abs(c.h - wantHeight) < 1, `h=${c.h} want=${wantHeight}`);
+  assert.ok(Math.abs(c.zoomRatio - wantZoomRatio) < 0.01, `zoom=${c.zoomRatio} want=${wantZoomRatio}`);
 });
