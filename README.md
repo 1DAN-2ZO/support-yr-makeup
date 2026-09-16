@@ -40,7 +40,7 @@
 
 ```
 docs/   서비스 정의, 기능 정의서, 화면 브리프, 구현 요소 정의, 데이터셋 목록, 다이어그램 4장
-poc/    브라우저 POC — 화면별 폴더. 아이라이너·볼터치 채점 (poc/), 화면 6 전체 리뷰 (poc/screen6/)
+poc/    브라우저 POC — 아이라이너·볼터치 채점. 화면별 POC는 브랜치로 분리 (화면 6: `poc/screen6` 브랜치)
 danghaeung_poc_3x4_20/  촬영 세트 샘플 20장 (5명 × 정면 눈 뜸·감음·좌45·우45, 셀카 3:4 1080×1440, Real-ESRGAN 4배 초해상도) + 원본 시트
 ```
 
@@ -52,8 +52,8 @@ danghaeung_poc_3x4_20/  촬영 세트 샘플 20장 (5명 × 정면 눈 뜸·감�
 # 아이라이너·볼터치 채점 POC (카메라 또는 사진 2장)
 cd poc && python -m http.server 8000      # → http://localhost:8000  (저장소 루트 기준)
 
-# 화면 6 전체 리뷰 POC + 자동 검증 24개
-cd poc/screen6 && node tests.mjs          # (저장소 루트 기준)
+# 화면 6 전체 리뷰 POC + 자동 검증 24개 → 브랜치 poc/screen6
+git checkout poc/screen6 && cd poc/screen6 && node tests.mjs
 python -m http.server 8000                # → http://localhost:8000
 ```
 
