@@ -13,3 +13,14 @@ __pycache__/
 # 데이터·모델은 저장소 밖 (DHE_DATA_DIR)
 dist/
 client/node_modules/
+
+# ML model weights / cloned benchmark repos (server-bench POC) — too large for git
+poc/look-tryon/server-bench/stable_makeup/
+poc/look-tryon/server-bench/shmt/
+*.ckpt
+*.safetensors
+*.bin
+*.pth
+
+# Playwright MCP debug artifacts (screenshots/console logs from ad-hoc testing)
+.playwright-mcp/
