@@ -191,4 +191,11 @@ test('N5 shading·highlight 가 비어 있지 않고 source 가 landmark_only �
       assert.ok(REGION_NAMES.includes(region), `${f}: REGION_BUILDERS 에 없는 region 이름 "${region}"`);
     }
   }
+  // 라벨 앵커 분리: 쉐딩과 하이라이트 라벨이 구분되도록 최소 거리 유지
+  for (const f of FACE_SHAPES) {
+    const o = contourOutline(lm, IMG, f);
+    const [a, b] = o.labels.map((l) => l.anchor);
+    const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+    assert.ok(d >= IMG.h * 0.06, `${f}: 라벨 앵커가 너무 가깝다 (${d.toFixed(0)}px)`);
+  }
 });

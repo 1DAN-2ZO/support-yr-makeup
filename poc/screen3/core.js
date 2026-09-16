@@ -145,6 +145,18 @@ const midOf = (pts) => {
   return [pts.reduce((a, p) => a + p[0], 0) / n, pts.reduce((a, p) => a + p[1], 0) / n];
 };
 
+/** 폴리곤 배열에서 바운딩 박스가 가장 큰 것의 중심 */
+function anchorOf(polys) {
+  if (!polys.length) return [0, 0];
+  let best = polys[0], bestArea = -1;
+  for (const p of polys) {
+    const b = boundsOf(p);
+    const area = b.w * b.h;
+    if (area > bestArea) { bestArea = area; best = p; }
+  }
+  return midOf(best);
+}
+
 /** 링 랜드마크를 중심 기준 위/아래로 갈라 폴리라인으로 만든다 (인덱스 추측 없이) */
 const halfRing = (pts, which) => {
   const cy = midOf(pts)[1];
@@ -215,11 +227,29 @@ export function contourOutline(landmarks, imgSize, faceShape = 'oval') {
   });
   const shading = build(rule.shading);
   const highlight = build(rule.highlight);
+
+  // 라벨 앵커: 각 그룹에서 가장 큰 폴리곤의 중심
+  const shadingAnchor = anchorOf(shading);
+  const highlightAnchor = anchorOf(highlight);
+
+  // 두 앵커가 너무 가까우면 y 방향으로 벌린다
+  const minDist = imgSize.h * 0.06;
+  const sx = shadingAnchor[0], sy = shadingAnchor[1];
+  const hx = highlightAnchor[0], hy = highlightAnchor[1];
+  const dist = Math.hypot(sx - hx, sy - hy);
+
+  if (dist < minDist) {
+    const half = minDist / 2;
+    // 쉐딩을 아래로, 하이라이트를 위로 민다
+    shadingAnchor[1] = clampNum(sy + half, 0, imgSize.h);
+    highlightAnchor[1] = clampNum(hy - half, 0, imgSize.h);
+  }
+
   return {
     shading, highlight,
     labels: [
-      { text: '쉐딩', anchor: midOf(shading.flat()) },
-      { text: '하이라이트', anchor: midOf(highlight.flat()) },
+      { text: '쉐딩', anchor: shadingAnchor },
+      { text: '하이라이트', anchor: highlightAnchor },
     ],
     source: 'landmark_only',
   };
