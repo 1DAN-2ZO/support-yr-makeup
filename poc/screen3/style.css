@@ -21,7 +21,7 @@ main { display:grid; grid-template-columns: 900px 1fr; gap:20px; padding:16px 20
 .body { flex:1; display:flex; gap:10px; padding:0 10px 10px; min-height:0; }
 .phone.portrait .body { flex-direction:column; }
 .shot { flex:1; border-radius:12px; overflow:hidden; background:#e9e5de; position:relative; min-height:0; }
-.shot canvas { width:100%; height:100%; display:block; object-fit:cover; }
+.shot canvas { width:100%; height:100%; display:block; object-fit:contain; }
 .tag { position:absolute; top:8px; left:8px; background:var(--gray-bg); color:var(--gray); font-size:11px; padding:2px 8px; border-radius:10px; }
 .card { background:var(--card); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:8px; }
 .phone.landscape .card { width:280px; }

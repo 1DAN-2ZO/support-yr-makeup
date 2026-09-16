@@ -1,9 +1,7 @@
 // 화면 3 POC — 데이터. 로직 없음.
 // 부위 id·이름은 poc/screen6/core.js 와 철자까지 같게 유지한다.
 
-export const LOOK_PART_IDS = ['brow', 'liner', 'shadow', 'lip', 'cheek'];
-export const CONTOUR_ID = 'contour';
-export const PART_IDS = [...LOOK_PART_IDS, CONTOUR_ID];
+export const PART_IDS = ['brow', 'liner', 'shadow', 'lip', 'cheek', 'contour'];
 
 export const PART_NAME = {
   brow: '눈썹', liner: '아이라이너', shadow: '섀도우',
@@ -22,6 +20,9 @@ export const ORIENTATION = {
 };
 
 // 폰 화면 비율. 세로 9:19.5, 가로 19.5:9.
+// ⚠️ 이건 "폰 화면 전체" 비율이다. 실제 사진이 보이는 영역(.shot)은 진행 칩과
+// 카드를 뺀 일부라 이보다 좁다 — 목표 종횡비가 사진 영역 실제 비율과 다르다는
+// 뜻이고, 이게 모델링 한계다(README "범위 한계" 참고).
 export const ASPECT = { landscape: 19.5 / 9, portrait: 9 / 19.5 };
 
 // 가정값. 실측으로 고친다 (스펙 13절).

@@ -2,8 +2,7 @@
 // DOM·캔버스·MediaPipe를 쓰지 않는다. 랜드마크 숫자만 다룬다.
 // 얼굴형 판정은 하지 않는다 — label 을 입력으로 받는다 (파트 1 F-02 담당).
 
-import { SMOKY, CONTOUR_RULES } from './rules.js';
-import { ORIENTATION, ASPECT, SIDE_MARGIN, PORTRAIT_ZOOM } from './rules.js';
+import { SMOKY, CONTOUR_RULES, ORIENTATION, ASPECT, SIDE_MARGIN, PORTRAIT_ZOOM } from './rules.js';
 
 /** 부위 근거 한 줄. contour 는 얼굴형별 멘트. 숫자를 넣지 않는다. */
 export function rationale(partId, faceShape = 'oval') {
@@ -145,16 +144,51 @@ const midOf = (pts) => {
   return [pts.reduce((a, p) => a + p[0], 0) / n, pts.reduce((a, p) => a + p[1], 0) / n];
 };
 
-/** 폴리곤 배열에서 바운딩 박스가 가장 큰 것의 중심 */
-function anchorOf(polys) {
-  if (!polys.length) return [0, 0];
-  let best = polys[0], bestArea = -1;
-  for (const p of polys) {
-    const b = boundsOf(p);
-    const area = b.w * b.h;
-    if (area > bestArea) { bestArea = area; best = p; }
+const lineLength = (pts) => {
+  let len = 0;
+  for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+  return len;
+};
+
+/** 폴리라인 위에서 호 길이 기준 t(0~1) 위치의 점을 보간한다. */
+function pointAtArcFraction(pts, t) {
+  if (pts.length === 1) return pts[0].slice();
+  let total = 0;
+  const segs = [];
+  for (let i = 1; i < pts.length; i++) {
+    const d = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+    segs.push(d); total += d;
   }
-  return midOf(best);
+  if (total === 0) return pts[0].slice();
+  let target = total * t;
+  for (let i = 0; i < segs.length; i++) {
+    if (target <= segs[i] || i === segs.length - 1) {
+      const frac = segs[i] > 0 ? clampNum(target / segs[i], 0, 1) : 0;
+      const a = pts[i], b = pts[i + 1];
+      return [a[0] + (b[0] - a[0]) * frac, a[1] + (b[1] - a[1]) * frac];
+    }
+    target -= segs[i];
+  }
+  return pts[pts.length - 1].slice();
+}
+
+/**
+ * 라벨 앵커: 밴드 폴리곤(법선으로 벌린 뒤)의 무게중심이 아니라,
+ * 원본 폴리라인(벌리기 전) 중 가장 긴 것의 중간 점.
+ * jawline 처럼 U자로 휜 밴드는 폴리곤 점들의 산술 평균이 밴드 안이 아니라
+ * 얼굴 한가운데 빈 피부 위에 떨어질 수 있어서, 밴드가 지나는 실제 점을 쓴다.
+ * 호 길이 기준 중간점을 쓴다(끝점 2개짜리 직선 region — foreheadTop·chinTip
+ * 등 — 에서는 배열 인덱스 기준 중간이 밴드 사각형의 모서리로 떨어져 경계
+ * 판정이 불안정해지므로, 인덱스가 아니라 실제 중점을 보간한다).
+ */
+function anchorFromLines(lines) {
+  if (!lines.length) return [0, 0];
+  let best = lines[0], bestLen = -1;
+  for (const line of lines) {
+    const len = lineLength(line);
+    if (len > bestLen) { bestLen = len; best = line; }
+  }
+  return pointAtArcFraction(best, 0.5);
 }
 
 /** 링 랜드마크를 중심 기준 위/아래로 갈라 폴리라인으로 만든다 (인덱스 추측 없이) */
@@ -223,14 +257,17 @@ export function contourOutline(landmarks, imgSize, faceShape = 'oval') {
   const mm = mmPerPx(landmarks, imgSize);
   const build = (specs) => specs.flatMap(({ region, widthMm }) => {
     const lines = (REGION_BUILDERS[region] || (() => []))(landmarks, imgSize);
-    return lines.map((line) => bandFromPolyline(line, widthMm / mm)).filter((p) => p.length >= 4);
-  });
-  const shading = build(rule.shading);
-  const highlight = build(rule.highlight);
+    return lines.map((line) => ({ line, band: bandFromPolyline(line, widthMm / mm) }));
+  }).filter((part) => part.band.length >= 4);
 
-  // 라벨 앵커: 각 그룹에서 가장 큰 폴리곤의 중심
-  const shadingAnchor = anchorOf(shading);
-  const highlightAnchor = anchorOf(highlight);
+  const shadingParts = build(rule.shading);
+  const highlightParts = build(rule.highlight);
+  const shading = shadingParts.map((part) => part.band);
+  const highlight = highlightParts.map((part) => part.band);
+
+  // 라벨 앵커: 밴드 폴리곤 중심이 아니라 원본 폴리라인(가장 긴 것)의 중간 점
+  const shadingAnchor = anchorFromLines(shadingParts.map((part) => part.line));
+  const highlightAnchor = anchorFromLines(highlightParts.map((part) => part.line));
 
   // 두 앵커가 너무 가까우면 y 방향으로 벌린다
   const minDist = imgSize.h * 0.06;
