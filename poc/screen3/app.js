@@ -139,6 +139,10 @@ function render() {
     const crop = drawCrop($('cvShot'), shot, state.partId);
     if (state.partId === 'contour') drawContour($('cvShot'), shot, crop, state.faceShape);
   }
+
+  // 칩 6개가 좁은 폰 화면에 다 안 들어갈 수 있으므로, 현재 부위 칩을 가로 스크롤 안으로 들여온다.
+  // block:'nearest' 는 .chips(overflow-x:auto) 안에서만 스크롤시키고 페이지 전체는 움직이지 않는다.
+  phone.querySelector('.chip.current')?.scrollIntoView({ block: 'nearest', inline: 'center' });
 }
 
 function toast(msg) {
