@@ -240,9 +240,11 @@ export function contourOutline(landmarks, imgSize, faceShape = 'oval') {
 
   if (dist < minDist) {
     const half = minDist / 2;
-    // 쉐딩을 아래로, 하이라이트를 위로 민다
-    shadingAnchor[1] = clampNum(sy + half, 0, imgSize.h);
-    highlightAnchor[1] = clampNum(hy - half, 0, imgSize.h);
+    // 중점을 기준으로 정확히 minDist 거리 유지하게 배치
+    const mid = (sy + hy) / 2;
+    const clampedMid = clampNum(mid, half, imgSize.h - half);
+    highlightAnchor[1] = clampedMid - half;
+    shadingAnchor[1] = clampedMid + half;
   }
 
   return {
