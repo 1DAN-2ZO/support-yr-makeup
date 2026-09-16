@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>당화응 POC — 화면 5 부위 결과</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header>
+  <h1>당화응 POC · 화면 5·5-b 부위 결과 (v6)</h1>
+  <div class="hint">왼쪽은 실제 화면 목업(점수 + 내 화장 위 가이드 테두리 + 한 줄 평, 버튼 다음·건너뛰기), 오른쪽은 시연·검증 패널. 숫자(mm·각도·%)는 화면에 없고 "내부 지표" 탭에만. 쉐딩·하이라이트는 항상 "확인만".</div>
+</header>
+
+<main>
+  <section class="phone-wrap">
+    <div class="phone landscape" id="phone">
+      <div class="photo"><canvas id="view"></canvas><div class="chips" id="chips"></div></div>
+      <div class="card">
+        <div class="scorebox" id="scorebox"><span class="big" id="score">—</span><small>/ 100</small></div>
+        <div class="checkchip" id="checkchip" hidden>확인만</div>
+        <div class="line" id="line">—</div>
+        <div class="btns"><button id="btnNext" class="primary">다음</button><button id="btnSkip" class="ghost">건너뛰기</button></div>
+      </div>
+      <div class="toast" id="toast" hidden></div>
+      <div class="loading" id="loading">모델 로딩 중…</div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <nav>
+      <button class="tab active" data-tab="input">입력</button>
+      <button class="tab" data-tab="metrics">내부 지표</button>
+      <button class="tab" data-tab="verify">검증</button>
+    </nav>
+
+    <div id="tabInput" class="tabpane">
+      <div class="row"><b>부위</b><span id="partBtns"></span></div>
+      <div class="row">
+        <b>쌩얼</b>
+        <label>샘플 <select id="srcSample"></select></label>
+        <label>또는 파일 <input id="fileBare" type="file" accept="image/*" /></label>
+      </div>
+      <div class="row">
+        <b>내 화장</b>
+        <label><input type="radio" name="mk" value="synth" checked /> 가상 화장(편차를 알고 넣음)</label>
+        <label><input type="radio" name="mk" value="file" /> 사진 파일 <input id="fileMakeup" type="file" accept="image/*" /></label>
+      </div>
+      <div class="row" id="presetRow"><b>프리셋</b><span id="presets"></span></div>
+      <div class="row" id="paramRow"></div>
+      <div class="row"><label><input id="dbgToggle" type="checkbox" /> 감지 샘플 표시(내부용, 화면에는 없음)</label><button id="btnRun" class="primary">다시 채점</button><button id="btnReset">세션 초기화</button></div>
+      <p class="hint">가상 화장은 쌩얼 랜드마크에 맞춰 화장을 그린다. 채점 때는 내 화장 사진에서 랜드마크를 다시 검출하되 화장 부위 점은 쓰지 않고, 안정 점(눈 끝·콧대·얼굴 옆·턱)으로 유사변환을 구해 쌩얼 랜드마크를 현재 프레임으로 옮긴다(화장으로 인한 랜드마크 편향 차단). 두 사진을 같은 mm 격자로 샘플링해 ΔE를 비교하므로 픽셀 정합이 필요 없다.</p>
+    </div>
+
+    <div id="tabMetrics" class="tabpane" hidden>
+      <pre id="metricsOut" class="out">—</pre>
+    </div>
+
+    <div id="tabVerify" class="tabpane" hidden>
+      <div class="row">
+        <button id="btnRunTests" class="primary">테스트 실행</button>
+        <button id="btnSweep">프리셋 스윕 (전 부위 × 프리셋, 기대 코드 대조)</button>
+        <button id="btnRepeat">반복 채점 편차 (같은 입력 5회)</button>
+      </div>
+      <pre id="testOut" class="out">—</pre>
+    </div>
+  </section>
+</main>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
