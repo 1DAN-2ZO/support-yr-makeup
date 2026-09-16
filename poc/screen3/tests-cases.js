@@ -1,8 +1,8 @@
 // 검증 케이스. Node 러너(tests.mjs)와 브라우저 러너(tests-browser.js)가 함께 쓴다.
-import { rationale, products } from './core.js';
-import { PART_IDS, FACE_SHAPES, CONTOUR_RULES } from './rules.js';
-import { cropSpec, partLandmarks, boundsOf, IDX } from './core.js';
-import { ORIENTATION, ASPECT, SIDE_MARGIN, PORTRAIT_ZOOM } from './rules.js';
+import {
+  rationale, products, cropSpec, partLandmarks, boundsOf, IDX, contourOutline, REGION_NAMES,
+} from './core.js';
+import { PART_IDS, FACE_SHAPES, CONTOUR_RULES, ORIENTATION, ASPECT } from './rules.js';
 
 export const assert = {
   ok(v, m) { if (!v) throw new Error(m || 'assert.ok 실패'); },
@@ -42,6 +42,13 @@ export function fakeFace() {
     const t = idxs.length > 1 ? k / (idxs.length - 1) : 0;
     put(i, x0 + (x1 - x0) * t, (k % 2) ? y1 : y0);
   });
+  // spread() 의 y0/y1 지그재그는 링(ring) 점들용이다. noseBridge 처럼 원래 순서대로
+  // 죽 이어지는 단일 선분에 쓰면 위아래로 지그재그치는 자기교차 폴리라인이 돼
+  // bandFromPolyline 이 무너진다. 그런 선분은 이 선형 보간으로 놓는다.
+  const line = (idxs, x0, x1, y0, y1) => idxs.forEach((i, k) => {
+    const t = idxs.length > 1 ? k / (idxs.length - 1) : 0;
+    put(i, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t);
+  });
   // 눈: 바깥 끝 x 0.22 / 0.78, 높이 0.42~0.46
   spread(IDX.eyeRing.r, 0.22, 0.44, 0.42, 0.46);
   spread(IDX.eyeRing.l, 0.56, 0.78, 0.42, 0.46);
@@ -51,16 +58,17 @@ export function fakeFace() {
   spread(IDX.brow.l, 0.55, 0.77, 0.36, 0.40);
   // 입술
   spread(IDX.lipOuter, 0.40, 0.60, 0.70, 0.76);
-  // 볼
+  // 볼. cheek.r/l 은 8점(짝수)이라 spread()의 k%2 지그재그가 인덱스 순서를 그대로 따르면
+  // l 쪽이 r 쪽의 정확한 거울상이 되지 않는다(짝수 개일 때는 y0/y1 순서를 바꿔야 좌우가 맞음).
   spread(IDX.cheek.r, 0.22, 0.40, 0.52, 0.62);
-  spread(IDX.cheek.l, 0.60, 0.78, 0.52, 0.62);
+  spread(IDX.cheek.l, 0.60, 0.78, 0.62, 0.52);
   // 턱선·얼굴 가장자리·이마·코·눈 밑
   spread(IDX.jawline, 0.25, 0.75, 0.78, 0.88);
   put(IDX.faceEdge.r, 0.18, 0.55); put(IDX.faceEdge.l, 0.82, 0.55);
   put(IDX.foreheadTop, 0.50, 0.22);
   put(IDX.foreheadSide.r, 0.24, 0.28); put(IDX.foreheadSide.l, 0.76, 0.28);
   put(IDX.chinTip, 0.50, 0.90);
-  spread(IDX.noseBridge, 0.50, 0.50, 0.40, 0.62);
+  line(IDX.noseBridge, 0.50, 0.50, 0.40, 0.62);
   spread(IDX.underEye.r, 0.24, 0.42, 0.48, 0.50);
   spread(IDX.underEye.l, 0.58, 0.76, 0.48, 0.50);
   // 홍채: 지름이 이미지 폭의 약 6.5% 가 되게 (샘플과 비슷한 척도)
@@ -138,9 +146,19 @@ test('C8 세로 부위 기본 zoomRatio 가 2.5다', () => {
   assert.ok(Math.abs(c.zoomRatio - wantZoomRatio) < 0.01, `zoom=${c.zoomRatio} want=${wantZoomRatio}`);
 });
 
-import { contourOutline, REGION_NAMES } from './core.js';
-
 const polyPts = (polys) => polys.flat();
+
+/** 점-다각형 포함 판정 (레이 캐스팅). N5 라벨 앵커 검증용. */
+function pointInPolygon(pt, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    const intersect = (yi > pt[1]) !== (yj > pt[1]) &&
+      pt[0] < ((xj - xi) * (pt[1] - yi)) / (yj - yi) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
 
 // ---------- N. 윤곽선 ----------
 test('N1 얼굴형 5종이 서로 다른 폴리곤을 낸다', () => {
@@ -149,13 +167,18 @@ test('N1 얼굴형 5종이 서로 다른 폴리곤을 낸다', () => {
   assert.equal(new Set(sigs).size, FACE_SHAPES.length);
 });
 test('N2 정면 합성 얼굴에서 좌우 대칭이다', () => {
+  // x 평균만 보면 좌우를 통째로 맞바꿔도(예: IDX.cheek.r ↔ IDX.cheek.l) 평균은 그대로라
+  // 대칭 붕괴를 못 잡는다. 점집합 전체를 x -> IMG.w - x 로 미러링한 뒤, 원본의 각 점에
+  // 가까운 미러 점이 실제로 있는지(=점집합이 자기 자신의 거울상과 정합하는지)를 본다.
   const lm = fakeFace();
   for (const f of FACE_SHAPES) {
     const o = contourOutline(lm, IMG, f);
     for (const key of ['shading', 'highlight']) {
-      const xs = polyPts(o[key]).map((p) => p[0]);
-      const meanX = xs.reduce((a, b) => a + b, 0) / xs.length;
-      assert.ok(Math.abs(meanX - IMG.w / 2) < IMG.w * 0.02, `${f}.${key} meanX=${meanX}`);
+      const pts = polyPts(o[key]);
+      const mirrored = pts.map(([x, y]) => [IMG.w - x, y]);
+      const nearest = (p, set) => Math.min(...set.map((q) => Math.hypot(p[0] - q[0], p[1] - q[1])));
+      const maxGap = Math.max(...pts.map((p) => nearest(p, mirrored)));
+      assert.ok(maxGap < IMG.w * 0.01, `${f}.${key} 미러 점집합과 최대 ${maxGap.toFixed(1)}px 차이 (좌우 비대칭)`);
     }
   }
 });
@@ -197,5 +220,26 @@ test('N5 shading·highlight 가 비어 있지 않고 source 가 landmark_only �
     const [a, b] = o.labels.map((l) => l.anchor);
     const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
     assert.ok(d >= IMG.h * 0.06, `${f}: 라벨 앵커가 너무 가깝다 (${d.toFixed(0)}px)`);
+  }
+  // 라벨 앵커가 자기가 가리키는 밴드 폴리곤 중 하나 안에 있다 (얼굴형 5종 × 쉐딩/하이라이트).
+  // 분리 로직(위 최소 거리 유지)이 발동해 앵커가 옮겨진 경우는 밴드 밖으로 나갈 수 있으므로
+  // 이 단언에서 제외하되, 제외했다는 사실을 콘솔에 남긴다.
+  const minDist = IMG.h * 0.06;
+  for (const f of FACE_SHAPES) {
+    const o = contourOutline(lm, IMG, f);
+    const [shadingAnchor, highlightAnchor] = o.labels.map((l) => l.anchor);
+    const dist = Math.hypot(shadingAnchor[0] - highlightAnchor[0], shadingAnchor[1] - highlightAnchor[1]);
+    const separated = Math.abs(dist - minDist) < 0.5; // 분리 로직이 발동하면 거리가 정확히 minDist 가 된다
+    for (const [key, polys, anchor] of [
+      ['shading', o.shading, shadingAnchor],
+      ['highlight', o.highlight, highlightAnchor],
+    ]) {
+      const inside = polys.some((poly) => pointInPolygon(anchor, poly));
+      if (!inside && separated) {
+        console.log(`  (N5 참고) ${f}.${key}: 라벨 분리 로직이 발동해 밴드 밖으로 밀려나 단언에서 제외함`);
+        continue;
+      }
+      assert.ok(inside, `${f}.${key} 라벨 앵커(${anchor.map((n) => n.toFixed(0))})가 어떤 밴드 폴리곤 안에도 없음`);
+    }
   }
 });

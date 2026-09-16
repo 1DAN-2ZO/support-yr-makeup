@@ -1,7 +1,7 @@
 // 검증 탭 러너. tests.mjs 와 같은 케이스(tests-cases.js)를 브라우저에서 돌린다.
 import { CASES } from './tests-cases.js';
 
-export function runTests() {
+export function run() {
   const out = [];
   for (const [name, fn] of CASES) {
     try { fn(); out.push(`PASS  ${name}`); }
