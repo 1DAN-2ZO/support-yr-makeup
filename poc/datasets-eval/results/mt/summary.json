@@ -1,0 +1,68 @@
+{
+  "dataset": "mt",
+  "root": "D:\\danghaeung-datasets\\MT",
+  "n": 200,
+  "seed": 0,
+  "T1_detect_rate": 1.0,
+  "T1_ms_per_image": 13.5,
+  "T1_iris_px": {
+    "mean": 21.8795,
+    "median": 21.785,
+    "p10": 20.579,
+    "p90": 23.444,
+    "n": 200
+  },
+  "T1_iris_ge_25px_ratio": 0.005,
+  "T1_abs_yaw_deg": {
+    "mean": 10.904,
+    "median": 8.15,
+    "p10": 0.89,
+    "p90": 23.9,
+    "n": 200
+  },
+  "T1_yaw_over_30_ratio": 0.055,
+  "T2_landmark_iou": {},
+  "T2_lr_swapped_ratio": {},
+  "T3_model_iou": {},
+  "T3_model_false_positive_pixel_ratio": {
+    "liner": {
+      "mean": 0.0189,
+      "median": 0.0133,
+      "p10": 0.0045,
+      "p90": 0.0379,
+      "n": 200
+    },
+    "shadow": {
+      "mean": 0.0519,
+      "median": 0.0391,
+      "p10": 0.0102,
+      "p90": 0.1079,
+      "n": 200
+    },
+    "cheek": {
+      "mean": 0.0528,
+      "median": 0.036,
+      "p10": 0.0066,
+      "p90": 0.1374,
+      "n": 200
+    }
+  },
+  "T4_image_size": {
+    "w": {
+      "mean": 361.0,
+      "median": 361.0,
+      "p10": 361.0,
+      "p90": 361.0,
+      "n": 200
+    },
+    "h": {
+      "mean": 361.0,
+      "median": 361.0,
+      "p10": 361.0,
+      "p90": 361.0,
+      "n": 200
+    }
+  },
+  "T4_gt_pixel_ratio": {},
+  "T4_parts_available": []
+}
