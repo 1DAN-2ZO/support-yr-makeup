@@ -42,6 +42,12 @@
         <label>편차 <select id="synthPreset"></select></label>
         <span class="muted">카메라로 실제 화장을 채점하려면 끄기</span>
       </div>
+      <div class="row"><b>서버 룩</b>
+        <label>Gradio <input id="gradioUrl" type="text" value="http://127.0.0.1:7860" style="width:170px" /></label>
+        <label>참조 사진 <input id="refFile" type="file" accept="image/*" /></label>
+        <button id="btnServerLook">서버로 생성 (Stable-Makeup)</button>
+        <span class="muted" id="serverStatus">poc/screen2 의 server-bench app_demo.py 가 떠 있어야 함. 결과는 룩 목록에 "서버 생성 룩"으로 추가</span>
+      </div>
       <div class="row"><button id="btnReset">세션 초기화</button><span class="muted">세션 draft는 localStorage에 저장(이미지 제외). 끝내기에서 삭제</span></div>
     </div>
 

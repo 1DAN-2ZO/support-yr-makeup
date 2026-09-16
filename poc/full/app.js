@@ -1,7 +1,7 @@
 // 당화응 전체 POC — 화면 1(동의·촬영) → 2(룩) → 2-b → [3 완성본 → 4 실시간 테두리 → 5 결과] × 6부위 → 6 전체 리뷰
 import { FaceLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
 import { SCREENS, SCREEN_NAME, PART_ORDER, SHOTS, SERVER_SHOTS, shotGate, nextShot, createSession, setCurrentPart, applyResult, applySkip, nextPart, allDone, toReviewParts, stripImages } from './lib/flow.js';
-import { LOOKS, lookById, estimateFaceShape, CONTOUR_PRODUCTS, CONTOUR_RATIONALE, LOOK_PART_ORDER } from './lib/looks.js';
+import { LOOKS, lookById, estimateFaceShape, CONTOUR_PRODUCTS, LOOK_PART_ORDER } from './lib/looks.js';
 import { PART_NAME, PART_ORIENT, STATUS_LABEL, chipText, orientationHint, evaluateGate, GATE_LIMITS, StabilityCounter, PresenceTracker, Smoother, partVisible, anglesFromLandmarks, laplacianVar, rgbToL } from './lib/gate.js';
 import { LM, cropSpec } from './lib/landmarks.js';
 import { buildGuide, eyeClosed } from './lib/guides.js';
@@ -9,10 +9,19 @@ import { prepare, sampleAll } from './lib/sampling.js';
 import { synthesize, synthesizeLook, DEFAULTS, PRESETS } from './lib/synth.js';
 import { PARAMS as SP, compareLinerEye, linerResult, compareRegion, browResult, compareLip, intensityIndex, intensityResult, lightCorr, decide, oneLiner, alignToBaseline, makeupBiasPx, dE } from './lib/score.js';
 import { computeSummary, oneLiner as reviewLine } from './lib/review.js';
+import { contourOutline as s3Outline, cropSpec as s3Crop } from './lib/screen3-core.js';     // 브랜치 poc/screen3 (soyoon)
+import { CONTOUR_RULES, FACE_SHAPE_NAME } from './lib/screen3-rules.js';
+import { buildRegions, drawTryOn, generateViaGradio } from './lib/tryon.js';                  // 브랜치 poc/screen2 (firefox1234123)
+import { meanLabPoly } from './lib/sampling.js';
 
 const $ = (id) => document.getElementById(id);
 const KEY = 'dhe_full_session';
-const SAMPLE_DIR = '../../danghaeung_poc_3x4_20/';
+let SAMPLE_DIR = '../../danghaeung_poc_3x4_20/';
+/** 샘플 폴더: docs 브랜치(jeakeun)는 poc/samples/phone-portraits-20/, main 은 저장소 루트. 있는 쪽을 쓴다 */
+async function resolveSampleDir() {
+  for (const d of ['../samples/phone-portraits-20/', '../../danghaeung_poc_3x4_20/']) { try { const r = await fetch(d + 'person_1_front_open.jpg', { method: 'HEAD' }); if (r.ok) { SAMPLE_DIR = d; return d; } } catch {} }
+  return SAMPLE_DIR;
+}
 const hash = Object.fromEntries(location.hash.slice(1).split('&').filter(Boolean).map((kv) => { const [k, v] = kv.split('='); return [k, v == null ? true : decodeURIComponent(v)]; }));
 
 // ---------- 상태 ----------
@@ -75,7 +84,7 @@ $('srcCam').onclick = () => useCamera().catch((e) => toast('카메라 열기 실
 $('srcSample').onchange = (e) => e.target.value && useSample(Number(e.target.value));
 
 // ---------- 화면 전환 ----------
-function go(screen) { S.session.screen = screen; S.live.loopOn = false; save(); render(); renderPanel(); }
+function go(screen) { S.session.screen = screen; S.live.loopOn = false; S.tryOn = false; save(); render(); renderPanel(); }
 function currentPart() { return S.session.currentPart; }
 function chipsHtml() {
   return `<div class="chips">${S.session.parts.map((p) => `<span class="chip ${p.partId === currentPart() ? 'current' : ''} ${p.status === 'passed' ? 'done' : ''}" data-id="${p.partId}">${chipText(p)}</span>`).join('')}</div>`;
@@ -168,22 +177,52 @@ function rLooks(root) {
   renderLookGrid(); renderLookDetail();
   if (!Object.keys(S.thumbs).length) buildThumbs();
 }
+function allLooks() { return S.serverLook ? [...LOOKS, S.serverLook] : LOOKS; }
 function renderLookGrid() {
   const g = $('lookGrid'); if (!g) return; const sel = S.session.lookId;
-  g.innerHTML = LOOKS.map((l) => `<div class="look ${l.id === sel ? 'sel' : ''}" data-id="${l.id}">${S.thumbs[l.id] ? `<img src="${S.thumbs[l.id].toDataURL('image/jpeg', 0.75)}" alt="">` : '<div class="ld">로딩 중</div>'}<div class="nm">${l.name}</div></div>`).join('');
+  g.innerHTML = allLooks().map((l) => `<div class="look ${l.id === sel ? 'sel' : ''}" data-id="${l.id}">${S.thumbs[l.id] ? `<img src="${S.thumbs[l.id].toDataURL('image/jpeg', 0.75)}" alt="">` : '<div class="ld">로딩 중</div>'}<div class="nm">${l.name}</div></div>`).join('');
   g.querySelectorAll('.look').forEach((el) => (el.onclick = () => { if (!S.thumbs[el.dataset.id]) return; S.session.lookId = el.dataset.id; save(); renderLookGrid(); renderLookDetail(); }));
 }
 function renderLookDetail() {
-  const d = $('lookDetail'); if (!d) return; const look = S.session.lookId ? lookById(S.session.lookId) : null;
+  const d = $('lookDetail'); if (!d) return; const look = S.session.lookId ? (S.session.lookId === 'server' ? S.serverLook : lookById(S.session.lookId)) : null;
   if (!look) { d.innerHTML = `<div class="sub">룩을 누르면 미리보기와 쓰이는 제품이 보여요</div>`; return; }
-  d.innerHTML = `<div class="preview">${S.thumbs[look.id] ? `<img src="${S.thumbs[look.id].toDataURL('image/jpeg', 0.8)}" alt="">` : '<div class="ld">로딩 중</div>'}</div>
+  d.innerHTML = `<div class="preview">${S.src?.kind === 'cam' ? '<canvas id="tryon"></canvas>' : S.thumbs[look.id] ? `<img src="${S.thumbs[look.id].toDataURL('image/jpeg', 0.8)}" alt="">` : '<div class="ld">로딩 중</div>'}</div>
     <div class="card"><b>이 룩에 쓰인 것</b><ul class="products">${look.products.map((p) => `<li>${p}</li>`).join('')}</ul></div>
     <div class="btns"><button class="primary" id="startLook">이 룩으로 시작</button></div>`;
+  if (S.src?.kind === 'cam') startTryOn(look);
   $('startLook').onclick = () => {
-    S.look = look; const b = S.baseline;
-    S.fullRender = timed('fullRender', () => synthesizeLook(b.canvas, b.lm, look.parts, b.w, b.h, false));
+    S.tryOn = false; S.look = look; const b = S.baseline;
+    S.fullRender = look.id === 'server' ? look.render : timed('fullRender', () => synthesizeLook(b.canvas, b.lm, look.parts, b.w, b.h, false));
     S.contourRender = null; go('fullrender');
   };
+}
+/** 화면 2 실시간 미리보기(카메라일 때): 룩 렌더의 부위를 라이브 얼굴에 워핑 (poc/screen2 방식) */
+function startTryOn(look) {
+  const b = S.baseline; const render = look.id === 'server' ? look.render : synthesizeLook(b.canvas, b.lm, look.parts, b.w, b.h, false);
+  const lookImg = { img: render, regions: buildRegions(toNorm(look.id === 'server' ? look.lm : b.lm, render.width, render.height), render.width, render.height) };
+  S.tryOn = true; const video = S.src.el;
+  const loop = () => {
+    if (!S.tryOn || S.session.screen !== 'looks') return; requestAnimationFrame(loop);
+    const cv = $('tryon'); if (!cv || video.readyState < 2) return;
+    if (cv.width !== video.videoWidth) { cv.width = video.videoWidth; cv.height = video.videoHeight; }
+    const ctx = cv.getContext('2d'); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.drawImage(video, 0, 0);
+    const r = S.faceVid.detectForVideo(video, performance.now()); const lm = r.faceLandmarks[0]; if (lm) drawTryOn(ctx, lookImg, lm, cv.width, cv.height, 0.85);
+  };
+  requestAnimationFrame(loop);
+}
+/** 서버 화장 전이(Stable-Makeup Gradio). 참조 사진 1장으로 "서버 생성 룩"을 만들어 룩 목록에 추가 */
+async function generateServerLook() {
+  const b = S.baseline, ref = $('refFile').files[0], st = $('serverStatus'); if (!b || !ref) { st.textContent = '촬영(기준)과 참조 사진이 필요해요'; return; }
+  st.textContent = '서버에서 생성 중… (fp16 10 step, 약 3초)';
+  try {
+    const { img, info, ms } = await generateViaGradio(b.canvas, ref, { url: $('gradioUrl').value || undefined });
+    const render = document.createElement('canvas'); render.width = b.w; render.height = b.h; render.getContext('2d').drawImage(img, 0, 0, b.w, b.h);
+    const lm = detectImage(render, b.w, b.h); if (!lm) throw new Error('생성 이미지에서 얼굴을 찾지 못함');
+    S.perf.server_look = ms;
+    S.serverLook = { id: 'server', name: '서버 생성 룩', render, lm, parts: LOOKS[0].parts, products: ['참조 사진에서 서버가 만든 룩 (제품 목록 없음)'], rationale: LOOKS[0].rationale };
+    S.thumbs.server = render; S.session.lookId = 'server'; save(); st.textContent = `생성 완료 ${(ms / 1000).toFixed(1)}초 ${info || ''}`;
+    if (S.session.screen === 'looks') { renderLookGrid(); renderLookDetail(); }
+  } catch (e) { st.textContent = '생성 실패: ' + e.message + ' (Gradio 서버 확인)'; }
 }
 function rFullRender(root) {
   root.innerHTML = `<div class="pad"><div class="title">전체 완성 예상</div><div class="preview" id="fr"></div><div class="btns"><button class="primary" id="start">시작</button></div></div>`;
@@ -192,6 +231,29 @@ function rFullRender(root) {
 }
 
 // ---------- 공통: 사진 크롭 + 테두리 ----------
+const toNorm = (pts, w, h) => pts.map((p) => ({ x: p.x / w, y: p.y / h, z: p.z || 0 }));
+const polyObj = (poly) => poly.map(([x, y]) => ({ x, y }));
+/** 부위 가이드. 쉐딩·하이라이트는 화면 3 POC의 얼굴형 규칙 5종(contourOutline)으로, 나머지는 guides.js */
+function guideFor(part, pts, w, h) {
+  if (part !== 'contour') return buildGuide(part, pts);
+  const o = s3Outline(toNorm(pts, w, h), { w, h }, S.session.faceShape || 'oval');
+  return { partId: 'contour', polylines: [], labels: o.labels.map((l) => ({ text: l.text, anchor: { x: l.anchor[0], y: l.anchor[1] } })),
+    regions: [...o.shading.map((poly) => ({ pts: polyObj(poly), style: 'outline-only' })), ...o.highlight.map((poly) => ({ pts: polyObj(poly), style: 'outline-only', kind: 'highlight' }))] };
+}
+/** 쉐딩·하이라이트 강도 샘플: 규칙 폴리곤을 좌·우로 묶어 평균 Lab + 링 참조(1.8배 확대 폴리곤 근사) */
+function sampleContourS3(im) {
+  const g = guideFor('contour', im.lm, im.w, im.h), cx = (im.lm[LM.faceL].x + im.lm[LM.faceR].x) / 2;
+  const fore = meanLabPoly(im, [10, 103, 67, 109, 338, 297, 332].map((i) => im.lm[i]));
+  const out = { fore, R: { n: 0, part: [0, 0, 0], ring: [0, 0, 0] }, L: { n: 0, part: [0, 0, 0], ring: [0, 0, 0] } };
+  const scale = (poly, k) => { const c = poly.reduce((a, p) => ({ x: a.x + p.x / poly.length, y: a.y + p.y / poly.length }), { x: 0, y: 0 }); return poly.map((p) => ({ x: c.x + (p.x - c.x) * k, y: c.y + (p.y - c.y) * k })); };
+  for (const r of g.regions) {
+    if (r.kind === 'highlight' || r.pts.length < 3) continue;
+    const c = r.pts.reduce((a, p) => a + p.x, 0) / r.pts.length, side = c < cx ? 'R' : 'L', part = meanLabPoly(im, r.pts), ring = meanLabPoly(im, scale(r.pts, 1.8));
+    const o = out[side]; o.n++; for (let i = 0; i < 3; i++) { o.part[i] += part[i]; o.ring[i] += ring[i]; }
+  }
+  for (const k of ['R', 'L']) { const o = out[k]; if (o.n) { o.part = o.part.map((v) => v / o.n); o.ring = o.ring.map((v) => v / o.n); } else { o.part = fore; o.ring = fore; } }
+  return out;
+}
 const COLOR = { line: '#3FD1C4', hi: '#FFE27A', ref: 'rgba(255,255,255,.55)' };
 function fitCrop(part, pts, W, H, srcW, srcH) {
   let crop = cropSpec(part, pts, W / H); const asp = crop.w / crop.h, ccx = crop.x + crop.w / 2, ccy = crop.y + crop.h / 2;
@@ -217,7 +279,7 @@ function drawStillPart(cv, source, pts, part, { arrows, labels }) {
   cv.width = Math.round(box.width * dpr); cv.height = Math.round(box.height * dpr); const W = cv.width, H = cv.height, ctx = cv.getContext('2d');
   const crop = fitCrop(part, pts, W, H, source.width, source.height); const s = W / crop.w;
   ctx.drawImage(source, crop.x, crop.y, crop.w, crop.h, 0, 0, W, H);
-  drawGuideOn(ctx, buildGuide(part, pts), (p) => [(p.x - crop.x) * s, (p.y - crop.y) * s], dpr, { arrows, labels });
+  drawGuideOn(ctx, guideFor(part, pts, source.width, source.height), (p) => [(p.x - crop.x) * s, (p.y - crop.y) * s], dpr, { arrows, labels });
 }
 function drawStill(source, part) {
   const cv = $('view'); if (!cv || !source) return; const box = cv.parentElement.getBoundingClientRect(), dpr = Math.min(2, devicePixelRatio || 1);
@@ -229,14 +291,14 @@ function drawStill(source, part) {
 function rGuide(root) {
   const part = currentPart(), look = S.look, b = S.baseline, landscape = PART_ORIENT[part] === 'landscape';
   root.classList.toggle('split', landscape);
-  const rationale = part === 'contour' ? CONTOUR_RATIONALE[S.session.faceShape] || CONTOUR_RATIONALE.oval : look.rationale[part];
+  const rationale = part === 'contour' ? (CONTOUR_RULES[S.session.faceShape] || CONTOUR_RULES.oval).rationale : look.rationale[part];
+  try { S.lastCrop = s3Crop(toNorm(b.lm, b.w, b.h), { w: b.w, h: b.h }, part); } catch { S.lastCrop = null; }   // 화면 3 POC 크롭 진단(covered·clamped·zoom)
   const products = part === 'contour' ? CONTOUR_PRODUCTS : [look.products[LOOK_PART_ORDER.indexOf(part)]];
   root.innerHTML = `<div class="photo"><canvas id="view"></canvas>${chipsHtml()}</div>
     <div class="pad"><span class="tag">완성본</span><div class="title">${PART_NAME[part]}</div><div class="line">${rationale}</div>
     <div class="sub">지금 필요한 것: ${products.join(' + ')}</div><div class="spacer"></div><div class="btns"><button class="primary" id="draw">그리러 가기</button></div></div>`;
   wireChips(root);
-  const source = part === 'contour' ? S.fullRender : S.fullRender;   // 쉐딩은 렌더링에 없음 → 렌더링 위에 규칙 테두리만
-  drawStillPart($('view'), source, b.lm, part, { arrows: true, labels: part === 'contour' });
+  drawStillPart($('view'), S.fullRender, b.lm, part, { arrows: true, labels: part === 'contour' });   // 쉐딩은 렌더링에 없음 → 렌더링 위에 규칙 테두리만
   orientationCheck(part);
   $('draw').onclick = () => go('live');
 }
@@ -279,7 +341,7 @@ function startLoop(mode) {
       if (mode === 'live') {
         const part = currentPart(); crop = fitCrop(part, pts, W, H, sw, sh);
         Object.assign(m, { partId: part, visible: partVisible(part, pts, sw, sh), handOverlap: false, sharpness: sharpnessOf(S.src.el, crop), baselineL: S.baseline?.foreheadL ?? null });
-        g = buildGuide(part, pts);
+        g = guideFor(part, pts, sw, sh);
       } else {
         const faceCrop = { x: pts[LM.faceL].x - faceW * 0.2, y: pts[LM.forehead].y - faceW * 0.2, w: faceW * 1.4, h: faceW * 1.8 };
         m.sharpness = sharpnessOf(S.src.el, { x: Math.max(0, faceCrop.x), y: Math.max(0, faceCrop.y), w: Math.min(sw, faceCrop.w), h: Math.min(sh, faceCrop.h) });
@@ -336,7 +398,8 @@ function presetParams(part) {
 
 // ---------- 5. 결과 ----------
 function scorePart(part, bareIm, mkIm) {
-  const base = sampleAll(bareIm, part), cur = sampleAll(mkIm, part), corr = lightCorr(base.fore, cur.fore), lightShift = cur.fore[0] - base.fore[0];
+  const samp = part === 'contour' ? sampleContourS3 : (im) => sampleAll(im, part);
+  const base = samp(bareIm), cur = samp(mkIm), corr = lightCorr(base.fore, cur.fore), lightShift = cur.fore[0] - base.fore[0];
   let res;
   if (part === 'liner') res = linerResult({ R: compareLinerEye(base.R, cur.R, corr), L: compareLinerEye(base.L, cur.L, corr) });
   else if (part === 'brow') res = browResult(compareRegion(base.grid, cur.grid, corr, SP.dEThresh.brow));
@@ -427,7 +490,8 @@ function renderState() {
   $('stateOut').textContent = [
     `화면 ${SCREEN_NAME[S.session.screen]} · 소스 ${S.src ? S.src.kind + (S.src.sample ? ' person_' + S.src.sample : '') : '없음'} · 폰 ${S.orientation} · 룩 ${S.session.lookId ?? '—'} · 얼굴형 ${S.session.faceShape ?? '—'} · 부위 ${S.session.currentPart ?? '—'}`,
     `촬영: ${SHOTS.map((s) => `${s.name}=${S.session.shots[s.id] ? 'O' : '-'}`).join(' ')} · 서버 전송 ${SERVER_SHOTS.join(',')}`,
-    `기준: 이마 L* ${f(S.baseline?.foreheadL)} · px/mm ${f(S.baseline?.mm, 2)} · ${S.baseline ? S.baseline.w + '×' + S.baseline.h : '—'}`,
+    `기준: 이마 L* ${f(S.baseline?.foreheadL)} · px/mm ${f(S.baseline?.mm, 2)} · ${S.baseline ? S.baseline.w + '×' + S.baseline.h : '—'} · 얼굴형 ${S.session.faceShape ? FACE_SHAPE_NAME[S.session.faceShape] : '—'}`,
+    `화면 3 크롭(poc/screen3 cropSpec): ${S.lastCrop ? `${f(S.lastCrop.w, 0)}×${f(S.lastCrop.h, 0)} zoom ${f(S.lastCrop.zoomRatio, 2)} covered ${S.lastCrop.covered} clamped ${S.lastCrop.clamped}${S.lastCrop.clampedSides.length ? ' ' + S.lastCrop.clampedSides.join(',') : ''}` : '—'}`,
     `라이브: 얼굴 ${l.faceDetected ? 'O' : '-'} yaw ${f(l.yaw)} pitch ${f(l.pitch)} 눈감음 ${l.closedA}/${l.closedB} 얼굴비 ${f(l.faceRatio, 2)} 선명 ${f(l.sharpness)} L* ${f(l.foreheadL)} 안정 ${l.stableCount ?? 0} · 게이트 ${l.gate ? (l.gate.ok ? 'READY' : l.gate.firstFail) : '—'} "${l.gate?.text ?? ''}" · ${f(l.frameMs)}ms`,
     `결과: ${S.result ? `${S.result.part} ${S.result.decision.status} ${S.result.score ?? ''} [${(S.result.codes || []).join(',')}] 조명Δ ${f(S.result.lightShift)} 정렬 s ${f(S.result.fit?.s, 3)} 잔차 ${f(S.result.fit?.residual)}px 편향 ${f(S.result.bias)}px` : '—'}`,
     `세션: ${S.session.parts.map((p) => `${PART_NAME[p.partId]}=${p.status}${p.score != null ? ':' + p.score : ''}`).join(', ')}`,
@@ -442,6 +506,7 @@ document.querySelectorAll('nav .tab').forEach((b) => (b.onclick = () => { docume
 $('btnRunTests').onclick = async () => { $('testOut').textContent = '실행 중…'; const m = await import('./tests-browser.js'); $('testOut').textContent = m.run(); };
 $('btnPerf').onclick = () => ($('testOut').textContent = Object.entries(S.perf).map(([k, v]) => `${k.padEnd(22)} ${v.toFixed(0)} ms`).join('\n') || '아직 없음');
 $('btnAuto').onclick = () => autoTo('review');
+$('btnServerLook').onclick = generateServerLook;
 
 /** 샘플로 필요한 앞 단계를 자동으로 채워 그 화면까지 간다 (시연·헤드리스 캡처용) */
 async function autoTo(target) {
@@ -457,6 +522,7 @@ async function autoTo(target) {
     if (!S.fullRender) { S.look = lookById(S.session.lookId); S.fullRender = timed('fullRender', () => synthesizeLook(S.baseline.canvas, S.baseline.lm, S.look.parts, S.baseline.w, S.baseline.h, false)); }
     if (target === 'fullrender') { go('fullrender'); return; }
     if (!S.session.currentPart) S.session = setCurrentPart(S.session, PART_ORDER[0]);
+    if (hash.part && PART_ORDER.includes(hash.part)) S.session = setCurrentPart(S.session, hash.part);
     if (target === 'guide' || target === 'live') { go(target); return; }
     if (target === 'result') { if (!S.session.parts.find((p) => p.partId === S.session.currentPart).captured) { S.session.screen = 'live'; captureForResult(); } else go('result'); return; }
     // review: 남은 부위를 전부 자동으로 확인받기 → 다음
@@ -474,6 +540,7 @@ async function autoTo(target) {
   applyOrientation(); renderPanel();
   $('screen').innerHTML = '<div class="pad"><div class="spacer"></div><div class="sub" style="text-align:center">모델 로딩 중…</div><div class="spacer"></div></div>';
   try { await loadModels(); } catch (e) { $('screen').innerHTML = `<div class="pad">모델 로딩 실패: ${e.message}</div>`; return; }
+  await resolveSampleDir();
   if (hash.sample || hash.screen) { await useSample(Number(hash.sample) || 2); await autoTo(hash.screen || 'consent'); }
   else if (hash.cam) { await useCamera().catch(() => toast('카메라를 열 수 없어요')); render(); }
   else render();

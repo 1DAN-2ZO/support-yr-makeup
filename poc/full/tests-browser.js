@@ -10,6 +10,9 @@ import { computeSummary, oneLiner as reviewLine } from './lib/review.js';
 import { PARAMS as SCORE_PARAMS, DIAG_TEXT } from './lib/score.js';
 import { GATE_TEXT } from './lib/gate.js';
 import { LM } from './lib/landmarks.js';
+import { contourOutline, cropSpec as s3Crop, IDX } from './lib/screen3-core.js';
+import { CONTOUR_RULES, FACE_SHAPES } from './lib/screen3-rules.js';
+import { buildRegions, solveAffine, REGION_KEYS } from './lib/tryon.js';
 
 export function run() {
 const results = [];
@@ -91,6 +94,37 @@ test('L2 얼굴형 근사 5종 + 멘트', () => {
 test('X1 모듈 간 부위 이름·문구 일관: 화면 4 게이트 문구와 화면 5 코드 문구에 숫자 없음', () => {
   for (const t of Object.values(GATE_TEXT)) assert.ok(!/\d/.test(t)); for (const t of Object.values(DIAG_TEXT)) assert.ok(!/\d/.test(t));
   assert.equal(SCORE_PARAMS.dEMaxSession, 25); assert.ok(LM.lipsOuter.length === 20);
+});
+
+// ---------- 통합: 화면 3 POC(soyoon)·화면 2 POC(firefox1234123) 모듈 ----------
+function s3Face() {   // poc/screen3 tests-cases.js fakeFace() 축약 (같은 배치)
+  const lm = Array.from({ length: 478 }, () => ({ x: 0.5, y: 0.5, z: 0 })); const put = (i, x, y) => { lm[i] = { x, y, z: 0 }; };
+  const spread = (idxs, x0, x1, y0, y1) => idxs.forEach((i, k) => { const t = idxs.length > 1 ? k / (idxs.length - 1) : 0; put(i, x0 + (x1 - x0) * t, (k % 2) ? y1 : y0); });
+  const line = (idxs, x0, x1, y0, y1) => idxs.forEach((i, k) => { const t = idxs.length > 1 ? k / (idxs.length - 1) : 0; put(i, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t); });
+  spread(IDX.eyeRing.r, 0.22, 0.44, 0.42, 0.46); spread(IDX.eyeRing.l, 0.56, 0.78, 0.42, 0.46); put(IDX.eyeOuter.r, 0.22, 0.44); put(IDX.eyeOuter.l, 0.78, 0.44);
+  spread(IDX.brow.r, 0.23, 0.45, 0.36, 0.40); spread(IDX.brow.l, 0.55, 0.77, 0.36, 0.40); spread(IDX.lipOuter, 0.40, 0.60, 0.70, 0.76);
+  spread(IDX.cheek.r, 0.22, 0.40, 0.52, 0.62); spread(IDX.cheek.l, 0.60, 0.78, 0.62, 0.52); spread(IDX.jawline, 0.25, 0.75, 0.78, 0.88);
+  put(IDX.faceEdge.r, 0.18, 0.55); put(IDX.faceEdge.l, 0.82, 0.55); put(IDX.foreheadTop, 0.50, 0.22); put(IDX.foreheadSide.r, 0.24, 0.28); put(IDX.foreheadSide.l, 0.76, 0.28); put(IDX.chinTip, 0.50, 0.90);
+  line(IDX.noseBridge, 0.50, 0.50, 0.40, 0.62); spread(IDX.underEye.r, 0.24, 0.42, 0.48, 0.50); spread(IDX.underEye.l, 0.58, 0.76, 0.48, 0.50);
+  put(IDX.iris.r[0], 0.30, 0.41); put(IDX.iris.r[1], 0.33, 0.44); put(IDX.iris.r[2], 0.36, 0.47); put(IDX.iris.r[3], 0.33, 0.44);
+  put(IDX.iris.l[0], 0.64, 0.41); put(IDX.iris.l[1], 0.67, 0.44); put(IDX.iris.l[2], 0.70, 0.47); put(IDX.iris.l[3], 0.67, 0.44);
+  return lm;
+}
+test('I1 화면 3 모듈: 얼굴형 5종 규칙이 서로 다른 쉐딩·하이라이트 폴리곤을 내고, 멘트에 숫자 없음', () => {
+  const lm = s3Face(), size = { w: 1080, h: 1440 }; const outs = FACE_SHAPES.map((f) => contourOutline(lm, size, f));
+  for (const o of outs) { assert.ok(o.shading.length > 0 && o.highlight.length > 0); assert.equal(o.labels.length, 2); assert.equal(o.source, 'landmark_only'); }
+  assert.equal(new Set(outs.map((o) => JSON.stringify(o.shading))).size, 5);
+  for (const f of FACE_SHAPES) assert.ok(!/\d/.test(CONTOUR_RULES[f].rationale));
+});
+test('I2 화면 3 모듈: cropSpec 이 잘림을 covered/clamped 로 드러내고 종횡비를 지킨다', () => {
+  const c = s3Crop(s3Face(), { w: 1080, h: 1440 }, 'contour'); assert.ok(typeof c.covered === 'boolean' && typeof c.clamped === 'boolean');
+  const l = s3Crop(s3Face(), { w: 1080, h: 1440 }, 'liner'); assert.ok(Math.abs(l.w / l.h - 19.5 / 9) < 0.01); assert.equal(l.orientation, 'landscape');
+});
+test('I3 화면 2 모듈: 부위 폴리곤 7개, 아핀 해가 3점을 정확히 맞춘다', () => {
+  const lm = s3Face(); const r = buildRegions(lm, 640, 480); assert.deepEqual(Object.keys(r).sort(), [...REGION_KEYS].sort()); for (const k of REGION_KEYS) assert.ok(r[k].length >= 3);
+  const src = [[0, 0], [10, 0], [0, 10]], dst = [[5, 5], [25, 6], [4, 26]], m = solveAffine(src, dst);
+  const ap = ([x, y]) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
+  src.forEach((p, i) => { const q = ap(p); assert.ok(Math.abs(q[0] - dst[i][0]) < 1e-9 && Math.abs(q[1] - dst[i][1]) < 1e-9); });
 });
 
   const pass = results.filter((r) => r.ok).length;
