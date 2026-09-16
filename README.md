@@ -52,6 +52,12 @@ danghaeung_poc_3x4_20/  촬영 세트 샘플 20장 (5명 × 정면 눈 뜸·감�
 # 아이라이너·볼터치 채점 POC (카메라 또는 사진 2장)
 cd poc && python -m http.server 8000      # → http://localhost:8000  (저장소 루트 기준)
 
+# 화면 3 부위 완성본 POC + 자동 검증 16개
+cd poc/screen3 && node tests.mjs          # (저장소 루트 기준)
+node report.mjs                           # 샘플 20장 × 부위 6개 실측 표
+cd ../.. && python -m http.server 8000    # 서버는 반드시 저장소 루트에서 띄운다
+# → http://localhost:8000/poc/screen3/    (poc/screen3 에서 띄우면 샘플 이미지가 404)
+
 # 화면 6 전체 리뷰 POC + 자동 검증 24개
 cd poc/screen6 && node tests.mjs          # (저장소 루트 기준)
 python -m http.server 8000                # → http://localhost:8000
