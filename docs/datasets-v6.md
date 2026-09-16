@@ -15,7 +15,7 @@
 
 | 이름 | 규모 | 링크 | 라이선스 | 용도 |
 |---|---|---|---|---|
-| **FFHQ-Makeup** (CyberAgent, 2025) | 18,000명 × (맨얼굴 1 + 화장 5) = 108,000장, 512×512, **같은 얼굴의 맨얼굴·화장 쌍, 기하 정렬됨** | https://huggingface.co/datasets/cyberagent/FFHQ-Makeup · 논문 https://arxiv.org/abs/2508.03241 | CC-BY-NC-SA-4.0 (비상업) | **분할 모델 학습 1순위.** 맨얼굴-화장 차이가 곧 정답 마스크. 합성 데이터 생성 부담을 크게 줄임 |
+| **FFHQ-Makeup** (CyberAgent, 2025) | 18,000명 × (맨얼굴 1 + 화장 5) = 108,000장, 512×512, **같은 얼굴의 맨얼굴·화장 쌍, 기하 정렬됨** | https://huggingface.co/datasets/cyberagent/FFHQ-Makeup · 논문 https://arxiv.org/abs/2508.03241 | CC-BY-NC-SA-4.0 (비상업) | **평가·개발 참고 전용 (2026-09-16 변경).** 맨얼굴-화장 차이가 곧 정답 마스크라 품질은 최고지만, 비상업 조건이 학습한 가중치에 승계되므로 **학습에는 쓰지 않는다.** 학습은 자체 합성 100% (`tech-stack-v6.md` 8-4) |
 | MT (Makeup Transfer, BeautyGAN) | 3,834장 (맨얼굴 1,115 + 화장 2,719), 256×256, 68점 정렬 | Drive https://drive.google.com/file/d/18UlvYDL6UGZ2rs0yaDsSzoUlw8KI5ABY/view · 프로젝트 http://colalab.org/projects/BeautyGAN · 코드 https://github.com/wtjiang98/BeautyGAN_pytorch | 연구용 (명시 라이선스 없음) | 화장 전이 모델 참고·평가, 화장 분포 통계 |
 | BeautyFace (BeautyREC) | 3,000장, 512×512, 얼굴 파싱 맵 포함 | Drive https://drive.google.com/file/d/1mhoopmi7OlsClOuKocjldGbTYnyDzNMc/view · 코드 https://github.com/learningyan/BeautyREC | 연구용 (명시 라이선스 없음) | 파싱 맵이 있어 부위 마스크 학습·평가에 유용 |
 | CPM-Real / Synt-1 / Synt-2 / Stickers (VinAI) | 3,895 / 5,555 / 1,625쌍+1,115 / 577장 | https://public.vinai.io/CPM-datasets/CPM-Real.zip · https://public.vinai.io/CPM-datasets/CPM-Synt-1.zip · https://public.vinai.io/CPM-datasets/CPM-Synt-2.zip · https://public.vinai.io/CPM-datasets/Stickers.zip · 설명 https://github.com/VinAIResearch/CPM/blob/main/about-data.md | 연구·교육 전용, 재배포 금지, 인용 필수 | 실제 환경(in-the-wild) 화장 사진, 진한 화장 평가 |
@@ -79,7 +79,7 @@
 
 | 우리 작업 | 1순위 | 보조 |
 |---|---|---|
-| CV 화장 영역 시맨틱 분할 모델 학습 | FFHQ-Makeup (쌍 데이터로 정답 자동) + 자체 합성 | BeautyFace 파싱 맵, MT |
+| CV 화장 영역 시맨틱 분할 모델 학습 | **자체 합성 100%** (맨얼굴 = 팀원 촬영·샘플 20장) | FFHQ-Makeup·BeautyFace·MT는 **평가·개발 참고 전용** |
 | 분할 모델 평가 (실제 사진) | 자체 라벨 200~500장 | CPM-Real, Makeup-Wild |
 | **얼굴 파싱 모델 (서버, F-05)** | **CelebAMask-HQ** | LaPa, EasyPortrait |
 | **눈썹·섀도우 마스크 평가** | **Periorbital** (평가 전용, ND) | LaPa |
