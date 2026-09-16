@@ -137,3 +137,51 @@ test('C8 세로 부위 기본 zoomRatio 가 2.5다', () => {
   assert.ok(Math.abs(c.h - wantHeight) < 1, `h=${c.h} want=${wantHeight}`);
   assert.ok(Math.abs(c.zoomRatio - wantZoomRatio) < 0.01, `zoom=${c.zoomRatio} want=${wantZoomRatio}`);
 });
+
+import { contourOutline } from './core.js';
+
+const polyPts = (polys) => polys.flat();
+
+// ---------- N. 윤곽선 ----------
+test('N1 얼굴형 5종이 서로 다른 폴리곤을 낸다', () => {
+  const lm = fakeFace();
+  const sigs = FACE_SHAPES.map((f) => JSON.stringify(contourOutline(lm, IMG, f).shading));
+  assert.equal(new Set(sigs).size, FACE_SHAPES.length);
+});
+test('N2 정면 합성 얼굴에서 좌우 대칭이다', () => {
+  const lm = fakeFace();
+  for (const f of FACE_SHAPES) {
+    const o = contourOutline(lm, IMG, f);
+    for (const key of ['shading', 'highlight']) {
+      const xs = polyPts(o[key]).map((p) => p[0]);
+      const meanX = xs.reduce((a, b) => a + b, 0) / xs.length;
+      assert.ok(Math.abs(meanX - IMG.w / 2) < IMG.w * 0.02, `${f}.${key} meanX=${meanX}`);
+    }
+  }
+});
+test('N3 폴리곤이 얼굴 범위 안에 있다', () => {
+  const lm = fakeFace();
+  const face = boundsOf(partLandmarks(lm, IMG, 'contour'));
+  const pad = IMG.h * 0.35;   // 이마·콧대는 contour 바운딩보다 위에 있다
+  for (const f of FACE_SHAPES) {
+    const o = contourOutline(lm, IMG, f);
+    for (const p of polyPts([...o.shading, ...o.highlight])) {
+      assert.ok(p[0] >= -1 && p[0] <= IMG.w + 1, `${f} x=${p[0]}`);
+      assert.ok(p[1] >= face.y - pad && p[1] <= face.y + face.h + pad, `${f} y=${p[1]}`);
+    }
+  }
+});
+test('N4 모르는 label 은 oval 로 폴백한다', () => {
+  const lm = fakeFace();
+  assert.deepEqual(contourOutline(lm, IMG, 'wat'), contourOutline(lm, IMG, 'oval'));
+});
+test('N5 shading·highlight 가 비어 있지 않고 source 가 landmark_only 다', () => {
+  const lm = fakeFace();
+  for (const f of FACE_SHAPES) {
+    const o = contourOutline(lm, IMG, f);
+    assert.ok(o.shading.length > 0 && o.highlight.length > 0, f);
+    assert.ok(o.shading.every((p) => p.length >= 4), `${f} 폴리곤 점이 4개 미만`);
+    assert.equal(o.source, 'landmark_only');
+    assert.deepEqual(o.labels.map((l) => l.text), ['쉐딩', '하이라이트']);
+  }
+});

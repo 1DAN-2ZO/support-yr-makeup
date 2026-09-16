@@ -124,3 +124,101 @@ export function cropSpec(landmarks, imgSize, partId, opts = {}) {
   const covered = pts.every((p) => p[0] >= x - 0.5 && p[0] <= x + w + 0.5 && p[1] >= y - 0.5 && p[1] <= y + h + 0.5);
   return { x, y, w, h, orientation, aspect, zoomRatio: imgSize.w / w, covered, clamped, clampedSides };
 }
+
+const IRIS_MM = 11.7;
+
+/** 홍채 지름 11.7mm 로 px→mm 척도. poc/app.js 의 irisScale 과 같은 방식. */
+export function mmPerPx(landmarks, imgSize) {
+  const d = (side) => {
+    const p = toPx(landmarks, imgSize, IDX.iris[side]);
+    return Math.max(
+      Math.hypot(p[0][0] - p[2][0], p[0][1] - p[2][1]),
+      Math.hypot(p[1][0] - p[3][0], p[1][1] - p[3][1]),
+    );
+  };
+  const px = (d('r') + d('l')) / 2;
+  return px > 2 ? IRIS_MM / px : 0.1;
+}
+
+const midOf = (pts) => {
+  const n = pts.length || 1;
+  return [pts.reduce((a, p) => a + p[0], 0) / n, pts.reduce((a, p) => a + p[1], 0) / n];
+};
+
+/** 링 랜드마크를 중심 기준 위/아래로 갈라 폴리라인으로 만든다 (인덱스 추측 없이) */
+const halfRing = (pts, which) => {
+  const cy = midOf(pts)[1];
+  const half = pts.filter((p) => (which === 'upper' ? p[1] <= cy : p[1] >= cy));
+  return (half.length >= 2 ? half : pts).slice().sort((a, b) => a[0] - b[0]);
+};
+
+/** region 이름 → 폴리라인(픽셀) 배열. 좌우가 나뉘는 부위는 두 개를 돌려준다. */
+const REGION_BUILDERS = {
+  jawline: (lm, s) => [toPx(lm, s, IDX.jawline)],
+  jawCorner: (lm, s) => {
+    const j = toPx(lm, s, IDX.jawline);
+    const k = Math.max(2, Math.round(j.length / 3));
+    return [j.slice(0, k), j.slice(-k)];
+  },
+  underCheek: (lm, s) => [halfRing(toPx(lm, s, IDX.cheek.r), 'lower'), halfRing(toPx(lm, s, IDX.cheek.l), 'lower')],
+  cheekTop: (lm, s) => [halfRing(toPx(lm, s, IDX.cheek.r), 'upper'), halfRing(toPx(lm, s, IDX.cheek.l), 'upper')],
+  foreheadSide: (lm, s) => {
+    const [top] = toPx(lm, s, [IDX.foreheadTop]);
+    const [r] = toPx(lm, s, [IDX.foreheadSide.r]);
+    const [l] = toPx(lm, s, [IDX.foreheadSide.l]);
+    return [[r, [(r[0] + top[0]) / 2, top[1]]], [l, [(l[0] + top[0]) / 2, top[1]]]];
+  },
+  foreheadTop: (lm, s) => {
+    const [r] = toPx(lm, s, [IDX.foreheadSide.r]);
+    const [l] = toPx(lm, s, [IDX.foreheadSide.l]);
+    const [top] = toPx(lm, s, [IDX.foreheadTop]);
+    return [[[r[0], top[1]], [l[0], top[1]]]];
+  },
+  chinTip: (lm, s) => {
+    const [c] = toPx(lm, s, [IDX.chinTip]);
+    const d = s.w * 0.06;
+    return [[[c[0] - d, c[1]], [c[0] + d, c[1]]]];
+  },
+  noseBridge: (lm, s) => [toPx(lm, s, IDX.noseBridge)],
+  tZone: (lm, s) => [toPx(lm, s, [IDX.foreheadTop, ...IDX.noseBridge])],
+  underEye: (lm, s) => [toPx(lm, s, IDX.underEye.r), toPx(lm, s, IDX.underEye.l)],
+};
+
+/** 폴리라인을 법선 방향으로 ±half 밀어 닫힌 밴드 폴리곤으로 만든다. */
+function bandFromPolyline(pts, widthPx) {
+  if (pts.length < 2) return [];
+  const half = widthPx / 2, up = [], dn = [];
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+    let tx = b[0] - a[0], ty = b[1] - a[1];
+    const len = Math.hypot(tx, ty) || 1; tx /= len; ty /= len;
+    const nx = -ty, ny = tx;
+    up.push([pts[i][0] + nx * half, pts[i][1] + ny * half]);
+    dn.push([pts[i][0] - nx * half, pts[i][1] - ny * half]);
+  }
+  return [...up, ...dn.reverse()];
+}
+
+/**
+ * 얼굴형 규칙으로 쉐딩·하이라이트 자리를 만든다.
+ * 얼굴형 판정은 하지 않는다 — faceShape 는 파트 1(F-02)이 주는 label 이다.
+ * 법선 맵이 없으므로 source 는 항상 'landmark_only'.
+ */
+export function contourOutline(landmarks, imgSize, faceShape = 'oval') {
+  const rule = CONTOUR_RULES[faceShape] || CONTOUR_RULES.oval;
+  const mm = mmPerPx(landmarks, imgSize);
+  const build = (specs) => specs.flatMap(({ region, widthMm }) => {
+    const lines = (REGION_BUILDERS[region] || (() => []))(landmarks, imgSize);
+    return lines.map((line) => bandFromPolyline(line, widthMm / mm)).filter((p) => p.length >= 4);
+  });
+  const shading = build(rule.shading);
+  const highlight = build(rule.highlight);
+  return {
+    shading, highlight,
+    labels: [
+      { text: '쉐딩', anchor: midOf(shading.flat()) },
+      { text: '하이라이트', anchor: midOf(highlight.flat()) },
+    ],
+    source: 'landmark_only',
+  };
+}
