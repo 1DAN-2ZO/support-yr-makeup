@@ -16,7 +16,7 @@
 | `system-architecture-v6.png` | 시스템 아키텍처 (클라이언트 / 백엔드 / 학습·운영) | v6 |
 | `flowchart-v6.png` | 사용자 흐름 플로우차트 | v6 |
 
-POC: `../poc/` (아이라이너·볼터치 채점 브라우저 POC), `../poc/screen6/` (화면 6 전체 리뷰 POC, v6 폰 목업·검증 24개).
+POC: `../poc/` (아이라이너·볼터치 채점 브라우저 POC), `../poc/screen6/` (화면 6 전체 리뷰 POC, v6 폰 목업·검증 24개), `../poc/synth/` (합성 학습 데이터 생성기, 검증 27개 — `tech-stack-v6.md` 8-4의 대체안 실증).
 
 ## 확정 화면 흐름 (v6)
 

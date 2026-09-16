@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>당화응 POC — 합성 학습 데이터 생성기</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header>
+  <h1>당화응 POC · 합성 학습 데이터 생성기</h1>
+  <p class="sub">맨얼굴에 랜드마크로 화장을 그린다. 그린 폴리곤이 곧 정답 마스크라 사람이 라벨을 달 필요가 없다.</p>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>1. 맨얼굴 고르기</h2>
+    <div class="row">
+      <label>샘플
+        <select id="sampleSel"></select>
+      </label>
+      <label>내 사진
+        <input type="file" id="fileIn" accept="image/*" />
+      </label>
+    </div>
+    <div id="quality" class="note" hidden></div>
+  </section>
+
+  <section class="panel">
+    <h2>2. 한 장 만들기</h2>
+    <div class="row">
+      <label>시드 <input type="number" id="seed" value="1" min="0" step="1" /></label>
+      <button id="reroll" class="primary">다른 화장으로</button>
+      <button id="dlPair">이 장 내려받기 (사진 + 마스크)</button>
+    </div>
+    <div class="stage">
+      <figure><figcaption>합성 결과</figcaption><canvas id="outCv"></canvas></figure>
+      <figure><figcaption>정답 마스크</figcaption><canvas id="maskCv"></canvas></figure>
+    </div>
+    <div id="legend" class="legend"></div>
+    <table id="stats" class="stats"></table>
+  </section>
+
+  <section class="panel">
+    <h2>3. 여러 장 한 번에</h2>
+    <div class="row">
+      <label>장수 <input type="number" id="batchN" value="12" min="1" max="60" /></label>
+      <label>시작 시드 <input type="number" id="batchSeed" value="100" min="0" /></label>
+      <button id="batchRun" class="primary">생성</button>
+      <button id="dlSheet" disabled>시트 2장 내려받기</button>
+    </div>
+    <div id="batchGrid" class="grid"></div>
+  </section>
+
+  <section class="panel">
+    <h2>검증</h2>
+    <p class="note">순수 계산은 <code>core.js</code>에 있고 <code>node tests.mjs</code>로 27개를 자동 검증한다.
+    브라우저 없이 돌아가므로 학습 파이프라인에 그대로 옮길 수 있다.</p>
+  </section>
+</main>
+
+<div id="status" class="status">모델 로딩 중…</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
