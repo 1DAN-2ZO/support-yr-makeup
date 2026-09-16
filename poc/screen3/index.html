@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>당화응 POC — 화면 3 부위 완성본</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header>
+  <h1>당화응 POC · 화면 3 부위 완성본 (v6)</h1>
+  <div class="hint">왼쪽은 실제 화면 목업(눈 단계는 가로로 돕니다), 오른쪽은 시연용 패널. 얼굴형 판정은 하지 않고 파트 1이 주는 label 을 받습니다.</div>
+</header>
+<main>
+  <section class="phone-wrap"><div class="phone portrait" id="phone"></div></section>
+  <section class="panel">
+    <nav>
+      <button class="tab active" data-tab="photo">사진</button>
+      <button class="tab" data-tab="part">부위·상태</button>
+      <button class="tab" data-tab="verify">검증</button>
+    </nav>
+    <div id="tabPhoto" class="tabpane">
+      <div class="row"><select id="sampleList"></select><label>업로드 <input id="fileUp" type="file" accept="image/*" /></label></div>
+      <div id="photoInfo" class="muted">—</div>
+      <canvas id="cvIndex" class="idxcheck" width="540" height="720"></canvas>
+      <div class="hint">랜드마크 인덱스 확인용. 부위별 색으로 점을 찍습니다. 틀린 점이 보이면 <code>core.js</code>의 <code>IDX</code>를 고칩니다.</div>
+    </div>
+    <div id="tabPart" class="tabpane" hidden>
+      <div id="partButtons" class="row"></div>
+      <div class="row"><label>얼굴형 (파트 1 주입) <select id="faceShape"></select></label></div>
+      <div id="statusEditor"></div>
+    </div>
+    <div id="tabVerify" class="tabpane" hidden>
+      <div class="row">
+        <button id="btnRunTests" class="primary">테스트 실행</button>
+        <button id="btnBatch">샘플 20장 일괄 계산</button>
+        <button id="btnFixtures">fixtures.json 만들기</button>
+      </div>
+      <pre id="testOut" class="out">—</pre>
+      <div id="batchTable"></div>
+    </div>
+  </section>
+</main>
+<script type="module" src="app.js"></script>
+</body>
+</html>
