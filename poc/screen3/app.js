@@ -71,6 +71,35 @@ function drawCrop(canvas, shot, partId) {
   return c;
 }
 
+/** 원본 픽셀 폴리곤을 크롭 박스 좌표로 옮겨 점선 테두리만 그린다. 면 채우기 없음. */
+function drawContour(canvas, shot, crop, faceShape) {
+  const ctx = canvas.getContext('2d');
+  const o = contourOutline(shot.landmarks, shot.size, faceShape);
+  const sx = canvas.width / crop.w, sy = canvas.height / crop.h;
+  const toLocal = (p) => [(p[0] - crop.x) * sx, (p[1] - crop.y) * sy];
+
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 5]);
+  for (const [polys, color] of [[o.shading, '#2A8C85'], [o.highlight, '#7FC3BD']]) {
+    ctx.strokeStyle = color;
+    for (const poly of polys) {
+      ctx.beginPath();
+      poly.map(toLocal).forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
+      ctx.closePath(); ctx.stroke();
+    }
+  }
+  ctx.setLineDash([]);
+  ctx.font = '600 13px system-ui'; ctx.textAlign = 'center';
+  for (const l of o.labels) {
+    const [x, y] = toLocal(l.anchor);
+    const w = ctx.measureText(l.text).width + 10;
+    ctx.fillStyle = 'rgba(255,255,255,.85)';
+    ctx.fillRect(x - w / 2, y - 9, w, 18);
+    ctx.fillStyle = '#2B2B2B';
+    ctx.fillText(l.text, x, y + 4);
+  }
+}
+
 function chipHtml() {
   return PART_IDS.map((id) => {
     const st = state.statuses[id] || 'not_started';
@@ -105,7 +134,10 @@ function render() {
   $('need').textContent = products(state.partId);
   $('btnGo').onclick = () => toast('화면 4(실시간 테두리)는 별도 POC입니다');
 
-  if (shot && shot.landmarks) drawCrop($('cvShot'), shot, state.partId);
+  if (shot && shot.landmarks) {
+    const crop = drawCrop($('cvShot'), shot, state.partId);
+    if (state.partId === 'contour') drawContour($('cvShot'), shot, crop, state.faceShape);
+  }
 }
 
 function toast(msg) {
