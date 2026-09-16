@@ -1,6 +1,7 @@
 // 화면 5·5-b 부위 결과 — 순수 로직 (브라우저·Node 공용)
 // 입력은 sampling.js가 뽑은 Lab 샘플(기준 쌩얼 vs 내 화장). 여기서 ΔE → 지표 → 점수 → 진단 코드 → 한 줄 평 → 상태.
-// 화면에는 점수(또는 "확인만")와 한 줄 평만. mm·각도·%는 내부용.
+// 화면에는 점수(또는 "확인만")와 한 줄 평만. 거리·각도·%는 내부용.
+// 단위: 절대 단위 없음. 눈 부위 거리는 눈 폭 대비, 입술은 입술 폭 대비 비율. (2026-09-16 결정, 이전 mm 값은 눈 폭 27mm·입술 폭 50mm 기준으로 환산)
 
 export const PART_IDS = ['brow', 'liner', 'shadow', 'lip', 'cheek', 'contour'];
 export const PART_NAME = { brow: '눈썹', liner: '아이라이너', shadow: '섀도우', lip: '입술', cheek: '볼터치', contour: '쉐딩·하이라이트' };
@@ -14,7 +15,8 @@ export const PARAMS = {
   tPresent: { shadow: 3.5, cheek: 4, contour: 4 },  // 강도 부위 유무 임계 (부위 ΔE − 참조 ΔE)
   dEMaxSession: 25, toneDiv: 4, lightTol: 12,
   band: { cheek: [25, 60], shadow: [20, 65] },     // 목표 지수 밴드 (룩 템플릿 값, 없으면 확인만)
-  guide: { liner: { thickMm: 1.2, wingMm: 4 }, brow: { tailMm: 3 }, lip: { offsetMm: 0.5 } },
+  guide: { liner: { thick: 0.045, wing: 0.15 }, brow: { tail: 0.11 }, lip: { offset: 0.01 } },   // 눈 폭·입술 폭 비율
+  tol: { band: 0.011, out: 0.022, wingDev: 0.022, wingShort: 0.055, thickOver: 0.015, thickUnder: 0.022, lrDiff: 0.045, lipIn: 0.006, lipOut: 0.012, wingMin: 0.015 },   // (≈ 0.3·0.6·0.6·1.5·0.4·0.6·1.2 mm / 0.3·0.6 mm)
 };
 
 export const DIAG_TEXT = {
@@ -55,8 +57,8 @@ export function scoreForm({ coverage, overflow, wingDeltaMm = 0, thickDeltaMm = 
   let s = 100;
   s -= (1 - coverage) * 50;
   s -= clamp(overflow * 60, 0, 30);
-  s -= clamp(Math.abs(wingDeltaMm) * 8, 0, 20);
-  s -= clamp(Math.abs(thickDeltaMm) * 5, 0, 10);
+  s -= clamp(Math.abs(wingDeltaMm) / 0.037 * 8, 0, 20);   // 눈 폭 비율 → 옛 mm 계수 유지 (1mm ≈ 0.037)
+  s -= clamp(Math.abs(thickDeltaMm) / 0.037 * 5, 0, 10);
   return Math.round(clamp(s, 0, 100));
 }
 
@@ -65,22 +67,22 @@ export function scoreForm({ coverage, overflow, wingDeltaMm = 0, thickDeltaMm = 
  * 눈별 지표: coverage(밴드 안 감지율), overflow(밴드 밖 감지율), thicknessMm, wingDrawnMm, wingDevMm(+위/−아래), gapRatio
  */
 export function compareLinerEye(base, cur, corr, p = PARAMS) {
-  const { offsMm, isWing, tFromCornerMm, wingLenMm } = cur.meta, half = p.guide.liner.thickMm / 2, N = Math.min(base.lab.length, cur.lab.length), M = offsMm.length;
-  const step = M > 1 ? offsMm[1] - offsMm[0] : 0.25;
+  const { offsMm, isWing, tFromCornerMm, wingLenMm } = cur.meta, half = p.guide.liner.thick / 2, N = Math.min(base.lab.length, cur.lab.length), M = offsMm.length;   // offsMm·*Mm 이름은 유지, 값은 눈 폭 비율
+  const step = M > 1 ? offsMm[1] - offsMm[0] : 0.0092;
   let rowsN = 0, rowsCovered = 0, outN = 0, outHit = 0, wingDrawn = 0, lidRows = 0, lidHitRows = 0;
   const thick = [], devs = [];
   for (let i = 0; i < N; i++) {
     let drawnW = 0, hitOffs = [], bandHit = false;
     for (let j = 0; j < M; j++) {
       const d = dE(base.lab[i][j], corr(cur.lab[i][j])), hit = d >= p.dEThresh.liner, o = offsMm[j];
-      if (Math.abs(o) <= half + 0.3) { if (hit) bandHit = true; }           // 가이드 밴드(두께 + 허용 0.3mm) 안에 감지가 있으면 그 행은 덮임
-      else if (Math.abs(o) > half + 0.6) { outN++; if (hit) outHit++; }   // 밴드 밖 번짐
+      if (Math.abs(o) <= half + p.tol.band) { if (hit) bandHit = true; }           // 가이드 밴드(두께 + 허용) 안에 감지가 있으면 그 행은 덮임
+      else if (Math.abs(o) > half + p.tol.out) { outN++; if (hit) outHit++; }     // 밴드 밖 번짐
       if (hit) { drawnW += step; hitOffs.push(o); }
     }
     rowsN++; if (bandHit) rowsCovered++;
     if (drawnW > 0) { thick.push(drawnW); if (isWing[i] && tFromCornerMm[i] > wingLenMm * 0.5) devs.push(median(hitOffs)); }   // 꼬리 바깥쪽 절반의 중심 오프셋
     if (!isWing[i]) { lidRows++; if (drawnW > 0) lidHitRows++; }
-    if (isWing[i] && drawnW >= 0.4) wingDrawn = Math.max(wingDrawn, tFromCornerMm[i]);
+    if (isWing[i] && drawnW >= p.tol.wingMin) wingDrawn = Math.max(wingDrawn, tFromCornerMm[i]);   // 꼬리 행에 최소 폭 이상 감지되면 그 길이까지 그린 것
   }
   const wingRows = devs;   // 꼬리 끝 쪽 행들의 감지 중심 오프셋(mm, + = 위)
   return {
@@ -96,17 +98,17 @@ export function linerResult(perEye, baseAsymMm = 0, p = PARAMS) {
   if (!present) return { present, score: null, codes, metrics: { perEye } };
   for (const [k, e] of [['R', R], ['L', L]]) {
     if (!e.present) { codes.push(`LINER_GAP_${k}`); continue; }
-    if (e.wingDevMm > 0.6) codes.push(`LINER_WING_HIGH_${k}`); else if (e.wingDevMm < -0.6) codes.push(`LINER_WING_LOW_${k}`);
-    if (e.wingDrawnMm < e.wingGuideMm - 1.5) codes.push(`LINER_WING_SHORT_${k}`);
+    if (e.wingDevMm > p.tol.wingDev) codes.push(`LINER_WING_HIGH_${k}`); else if (e.wingDevMm < -p.tol.wingDev) codes.push(`LINER_WING_LOW_${k}`);
+    if (e.wingDrawnMm < e.wingGuideMm - p.tol.wingShort) codes.push(`LINER_WING_SHORT_${k}`);
     if (e.gapRatio > 0.25) codes.push(`LINER_GAP_${k}`);
     if (e.overflow > 0.35) codes.push(`LINER_OUT_${k}`);
   }
   const thickAvg = (R.thicknessMm + L.thicknessMm) / 2;
-  if (thickAvg > p.guide.liner.thickMm + 0.4) codes.push('LINER_THICK'); else if (thickAvg < p.guide.liner.thickMm - 0.6 && thickAvg > 0) codes.push('LINER_THIN');
+  if (thickAvg > p.guide.liner.thick + p.tol.thickOver) codes.push('LINER_THICK'); else if (thickAvg < p.guide.liner.thick - p.tol.thickUnder && thickAvg > 0) codes.push('LINER_THIN');
   const lrDiffMm = Math.abs((R.wingDevMm - L.wingDevMm) - baseAsymMm);
-  if (lrDiffMm > 1.2) codes.push('LINER_LR_DIFF');
+  if (lrDiffMm > p.tol.lrDiff) codes.push('LINER_LR_DIFF');
   const avg = (a, b) => (a + b) / 2;
-  const score = scoreForm({ coverage: avg(R.coverage, L.coverage), overflow: avg(R.overflow, L.overflow), wingDeltaMm: avg(R.wingDrawnMm - R.wingGuideMm, L.wingDrawnMm - L.wingGuideMm), thickDeltaMm: thickAvg - p.guide.liner.thickMm });
+  const score = scoreForm({ coverage: avg(R.coverage, L.coverage), overflow: avg(R.overflow, L.overflow), wingDeltaMm: avg(R.wingDrawnMm - R.wingGuideMm, L.wingDrawnMm - L.wingGuideMm), thickDeltaMm: thickAvg - p.guide.liner.thick });
   return { present, score, codes, metrics: { perEye, lrDiffMm, thicknessMm: thickAvg } };
 }
 
@@ -134,13 +136,13 @@ export function browResult(per, p = PARAMS) {
 
 /** 입술 경계 스트립: strip = { lab:[N][M], meta:{ offsMm[M] (−안쪽 … +바깥쪽), half[N]: 'upper'|'lower', side[N] } } */
 export function compareLip(base, cur, corr, p = PARAMS) {
-  const { offsMm, half, side } = cur.meta, N = Math.min(base.lab.length, cur.lab.length), M = offsMm.length, off = p.guide.lip.offsetMm;
+  const { offsMm, half, side } = cur.meta, N = Math.min(base.lab.length, cur.lab.length), M = offsMm.length, off = p.guide.lip.offset;
   const acc = { upper: { outN: 0, outHit: 0 }, lower: { outN: 0, outHit: 0 } }; let inN = 0, inHit = 0, rowsHit = 0; const sideHit = { R: [0, 0], L: [0, 0] };
   for (let i = 0; i < N; i++) {
     let any = false;
     for (let j = 0; j < M; j++) {
       const hit = dE(base.lab[i][j], corr(cur.lab[i][j])) >= p.dEThresh.lip, o = offsMm[j];
-      if (o <= off + 0.3) { inN++; if (hit) inHit++; } else if (o > off + 0.6) { acc[half[i]].outN++; if (hit) acc[half[i]].outHit++; }
+      if (o <= off + p.tol.lipIn) { inN++; if (hit) inHit++; } else if (o > off + p.tol.lipOut) { acc[half[i]].outN++; if (hit) acc[half[i]].outHit++; }
       if (hit) any = true;
     }
     if (any) rowsHit++; sideHit[side[i]][0]++; if (any) sideHit[side[i]][1]++;

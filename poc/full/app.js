@@ -145,8 +145,8 @@ async function rProcessing(root) {
   const lm = timed('baseline_landmarks', () => detectImage(bare, w, h));
   if (!lm) { $('procMsg').textContent = '정면 사진에서 얼굴을 찾지 못했어요. 정면 사진만 다시 찍어 주세요'; delete S.session.shots.front_open; await sleep(1200); go('capture'); return; }
   const im = prepare(bare, lm.map((p) => ({ x: p.x / w, y: p.y / h, z: p.z })), w, h);
-  S.baseline = { canvas: bare, lm: im.lm, im, mm: im.mm, w, h, foreheadL: foreheadLOfCanvas(bare, im.lm) };
-  S.session.baseline = { foreheadL: S.baseline.foreheadL, mm: S.baseline.mm }; S.session.faceShape = estimateFaceShape(im.lm).label;
+  S.baseline = { canvas: bare, lm: im.lm, im, unit: im.unit, w, h, foreheadL: foreheadLOfCanvas(bare, im.lm) };
+  S.session.baseline = { foreheadL: S.baseline.foreheadL, unit: S.baseline.unit }; S.session.faceShape = estimateFaceShape(im.lm).label;
   S.thumbs = {}; S.fullRender = null;
   await sleep(S.auto ? 50 : 900);
   go('looks'); buildThumbs();
@@ -421,7 +421,7 @@ function rResult(root) {
     const w = cap.width, h = cap.height; const raw = timed('result_landmarks', () => detectImage(cap, w, h));
     if (!raw) r = { part, captured: cap, decision: { status: 'check_only', reason: '얼굴을 찾지 못해 재지 못했어요. 직접 보고 넘어가세요' }, codes: [], oneLiner: '얼굴을 찾지 못해 재지 못했어요. 직접 보고 넘어가세요', score: null, metrics: {}, pts: b.lm };
     else {
-      const { lm, fit } = alignToBaseline(b.lm, raw); const mkIm = prepare(cap, lm.map((p) => ({ x: p.x / w, y: p.y / h, z: p.z })), w, h); mkIm.lm = lm; mkIm.mm = b.mm * fit.s;
+      const { lm, fit } = alignToBaseline(b.lm, raw); const mkIm = prepare(cap, lm.map((p) => ({ x: p.x / w, y: p.y / h, z: p.z })), w, h); mkIm.lm = lm;   // 기준 길이는 정렬된 랜드마크에서 다시 계산
       r = { part, captured: cap, pts: lm, fit, bias: makeupBiasPx(lm, raw, [...LM.lipsOuter, ...LM.eyeA.upper, ...LM.eyeB.upper]), ...timed('score_' + part, () => scorePart(part, b.im, mkIm)) };
     }
     S.result = r;
@@ -490,10 +490,11 @@ function renderState() {
   $('stateOut').textContent = [
     `화면 ${SCREEN_NAME[S.session.screen]} · 소스 ${S.src ? S.src.kind + (S.src.sample ? ' person_' + S.src.sample : '') : '없음'} · 폰 ${S.orientation} · 룩 ${S.session.lookId ?? '—'} · 얼굴형 ${S.session.faceShape ?? '—'} · 부위 ${S.session.currentPart ?? '—'}`,
     `촬영: ${SHOTS.map((s) => `${s.name}=${S.session.shots[s.id] ? 'O' : '-'}`).join(' ')} · 서버 전송 ${SERVER_SHOTS.join(',')}`,
-    `기준: 이마 L* ${f(S.baseline?.foreheadL)} · px/mm ${f(S.baseline?.mm, 2)} · ${S.baseline ? S.baseline.w + '×' + S.baseline.h : '—'} · 얼굴형 ${S.session.faceShape ? FACE_SHAPE_NAME[S.session.faceShape] : '—'}`,
+    `기준: 이마 L* ${f(S.baseline?.foreheadL)} · 눈 폭 ${f(S.baseline?.unit?.eye, 0)}px 입술 폭 ${f(S.baseline?.unit?.lip, 0)}px 얼굴 폭 ${f(S.baseline?.unit?.face, 0)}px · ${S.baseline ? S.baseline.w + '×' + S.baseline.h : '—'} · 얼굴형 ${S.session.faceShape ? FACE_SHAPE_NAME[S.session.faceShape] : '—'}`,
     `화면 3 크롭(poc/screen3 cropSpec): ${S.lastCrop ? `${f(S.lastCrop.w, 0)}×${f(S.lastCrop.h, 0)} zoom ${f(S.lastCrop.zoomRatio, 2)} covered ${S.lastCrop.covered} clamped ${S.lastCrop.clamped}${S.lastCrop.clampedSides.length ? ' ' + S.lastCrop.clampedSides.join(',') : ''}` : '—'}`,
     `라이브: 얼굴 ${l.faceDetected ? 'O' : '-'} yaw ${f(l.yaw)} pitch ${f(l.pitch)} 눈감음 ${l.closedA}/${l.closedB} 얼굴비 ${f(l.faceRatio, 2)} 선명 ${f(l.sharpness)} L* ${f(l.foreheadL)} 안정 ${l.stableCount ?? 0} · 게이트 ${l.gate ? (l.gate.ok ? 'READY' : l.gate.firstFail) : '—'} "${l.gate?.text ?? ''}" · ${f(l.frameMs)}ms`,
     `결과: ${S.result ? `${S.result.part} ${S.result.decision.status} ${S.result.score ?? ''} [${(S.result.codes || []).join(',')}] 조명Δ ${f(S.result.lightShift)} 정렬 s ${f(S.result.fit?.s, 3)} 잔차 ${f(S.result.fit?.residual)}px 편향 ${f(S.result.bias)}px` : '—'}`,
+    `결과 지표(내부): ${S.result?.metrics ? JSON.stringify(S.result.metrics, (k, v) => (typeof v === 'number' ? +v.toFixed(3) : v)).slice(0, 600) : '—'}`,
     `세션: ${S.session.parts.map((p) => `${PART_NAME[p.partId]}=${p.status}${p.score != null ? ':' + p.score : ''}`).join(', ')}`,
     `처리 시간(ms): ${Object.entries(S.perf).map(([k, v]) => `${k} ${v.toFixed(0)}`).join(' · ') || '—'}`,
   ].join('\n');

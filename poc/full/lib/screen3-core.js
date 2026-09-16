@@ -124,19 +124,10 @@ export function cropSpec(landmarks, imgSize, partId, opts = {}) {
   return { x, y, w, h, orientation, aspect, zoomRatio: imgSize.w / w, covered, clamped, clampedSides };
 }
 
-const IRIS_MM = 11.7;
-
-/** 홍채 지름 11.7mm 로 px→mm 척도. poc/app.js 의 irisScale 과 같은 방식. */
-export function mmPerPx(landmarks, imgSize) {
-  const d = (side) => {
-    const p = toPx(landmarks, imgSize, IDX.iris[side]);
-    return Math.max(
-      Math.hypot(p[0][0] - p[2][0], p[0][1] - p[2][1]),
-      Math.hypot(p[1][0] - p[3][0], p[1][1] - p[3][1]),
-    );
-  };
-  const px = (d('r') + d('l')) / 2;
-  return px > 2 ? IRIS_MM / px : 0.1;
+/** 얼굴 폭(px). 쉐딩·하이라이트 밴드 폭은 이 비율로 정의한다 (mm 척도 대신, 2026-09-16 결정) */
+export function faceWidthPx(landmarks, imgSize) {
+  const [r, l] = toPx(landmarks, imgSize, [IDX.faceEdge.r, IDX.faceEdge.l]);
+  return Math.max(1, Math.hypot(r[0] - l[0], r[1] - l[1]));
 }
 
 const midOf = (pts) => {
@@ -250,14 +241,14 @@ function bandFromPolyline(pts, widthPx) {
 /**
  * 얼굴형 규칙으로 쉐딩·하이라이트 자리를 만든다.
  * 얼굴형 판정은 하지 않는다 — faceShape 는 파트 1(F-02)이 주는 label 이다.
- * 법선 맵이 없으므로 source 는 항상 'landmark_only'.
+ * 법선 맵이 없으므로 source 는 항상 'landmark_only'. 밴드 폭은 얼굴 폭 비율(rules.width).
  */
 export function contourOutline(landmarks, imgSize, faceShape = 'oval') {
   const rule = CONTOUR_RULES[faceShape] || CONTOUR_RULES.oval;
-  const mm = mmPerPx(landmarks, imgSize);
-  const build = (specs) => specs.flatMap(({ region, widthMm }) => {
+  const fw = faceWidthPx(landmarks, imgSize);
+  const build = (specs) => specs.flatMap(({ region, width }) => {
     const lines = (REGION_BUILDERS[region] || (() => []))(landmarks, imgSize);
-    return lines.map((line) => ({ line, band: bandFromPolyline(line, widthMm / mm) }));
+    return lines.map((line) => ({ line, band: bandFromPolyline(line, width * fw) }));
   }).filter((part) => part.band.length >= 4);
 
   const shadingParts = build(rule.shading);

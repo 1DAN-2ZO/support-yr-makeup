@@ -1,16 +1,16 @@
 // 부위별 GuideSet 생성 — 선만(면 채우기 없음), 숫자 라벨 없음. 좌표는 프레임 픽셀.
-// 템플릿 값(각도·mm)은 룩 템플릿 고정값이고, 위치·크기만 내 랜드마크에 맞춘다.
+// 템플릿 값은 룩 템플릿 고정값이고, 위치·크기만 내 랜드마크에 맞춘다.
+// 단위: 절대 단위(mm) 없음. 눈 부위는 눈 폭(안쪽 끝~바깥쪽 끝), 입술은 입술 폭, 볼·쉐딩은 얼굴 폭에 대한 비율. (2026-09-16 결정)
 import { LM } from './landmarks.js';
 
 export const TEMPLATE = {
-  liner: { wingAngle: 30, wingMm: 4, thickMm: 1.2 },
-  brow: { archRatio: 0.65, tailMm: 3 },
+  liner: { wingAngle: 30, wing: 0.15, thick: 0.045 },   // 눈 폭 대비 (4mm·1.2mm 를 눈 폭 27mm 기준으로 환산)
+  brow: { archRatio: 0.65, tail: 0.11 },               // 눈 폭 대비 (3mm)
   shadow: { rangeRatio: 0.55 },
-  lip: { offsetMm: 0.5 },
+  lip: { offset: 0.01 },                               // 입술 폭 대비 (0.5mm / 50mm)
   cheek: { rx: 0.11, ry: 0.07, tilt: -25 },
   contour: { faceShape: 'round' },
 };
-const IRIS_MM = 11.7;
 const sub = (a, b) => ({ x: a.x - b.x, y: a.y - b.y });
 const add = (a, b) => ({ x: a.x + b.x, y: a.y + b.y });
 const mul = (a, k) => ({ x: a.x * k, y: a.y * k });
@@ -18,11 +18,10 @@ const len = (a) => Math.hypot(a.x, a.y);
 const norm = (a) => { const l = len(a) || 1; return { x: a.x / l, y: a.y / l }; };
 const mix = (a, b, t) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
 
-/** 홍채 지름(px) → px/mm */
-export function pxPerMm(pts) {
-  const dA = Math.hypot(pts[469].x - pts[471].x, pts[469].y - pts[471].y);
-  const dB = Math.hypot(pts[474].x - pts[476].x, pts[474].y - pts[476].y);
-  return ((dA + dB) / 2) / IRIS_MM;
+/** 기준 길이(px): 눈 폭(양쪽 평균), 입술 폭, 얼굴 폭. 모든 템플릿·임계값은 이 비율로 정의한다 */
+export function unitScale(pts) {
+  const d = (a, b) => Math.hypot(pts[a].x - pts[b].x, pts[a].y - pts[b].y);
+  return { eye: (d(LM.eyeA.outer, LM.eyeA.inner) + d(LM.eyeB.outer, LM.eyeB.inner)) / 2, lip: d(61, 291), face: d(LM.faceL, LM.faceR) };
 }
 /** EAR: 눈 감김 판정 */
 export function eyeClosed(pts, eye) {
@@ -38,7 +37,7 @@ function ellipse(c, rx, ry, deg, n = 28) {
 
 /** @returns {{polylines:[{pts,style}], regions:[{pts,style:'outline-only'}], labels:[{text,anchor}], closed:{A,B}}} */
 export function buildGuide(partId, pts, tpl = TEMPLATE) {
-  const P = (i) => pts[i], mm = pxPerMm(pts);
+  const P = (i) => pts[i], u = unitScale(pts);
   const g = { partId, polylines: [], regions: [], labels: [], closed: { A: eyeClosed(pts, 'A'), B: eyeClosed(pts, 'B') } };
   const faceW = len(sub(P(LM.faceR), P(LM.faceL)));
   if (partId === 'liner') {
@@ -48,7 +47,7 @@ export function buildGuide(partId, pts, tpl = TEMPLATE) {
       const outer = P(eye.outer), inner = P(eye.inner);
       const v = norm(sub(outer, inner)), a = tpl.liner.wingAngle * Math.PI / 180;
       const dir = norm(add(mul(v, Math.cos(a)), { x: 0, y: -Math.sin(a) }));
-      g.polylines.push({ pts: [outer, add(outer, mul(dir, tpl.liner.wingMm * mm))], style: 'solid' });   // 꼬리 선
+      g.polylines.push({ pts: [outer, add(outer, mul(dir, tpl.liner.wing * u.eye))], style: 'solid' });   // 꼬리 선 (눈 폭 비율)
     }
     g.polylines.push({ pts: [P(LM.eyeA.outer), P(LM.eyeB.outer)], style: 'ref' });                      // 두 눈 사이 수평 기준선
   } else if (partId === 'brow') {
@@ -59,7 +58,7 @@ export function buildGuide(partId, pts, tpl = TEMPLATE) {
       const archI = Math.round((up.length - 1) * (1 - tpl.brow.archRatio));
       g.polylines.push({ pts: [start], style: 'dot' }); g.polylines.push({ pts: [up[archI]], style: 'dot' });
       const tailDir = norm(sub(tail, up[1]));
-      g.polylines.push({ pts: [tail, add(tail, mul(tailDir, tpl.brow.tailMm * mm))], style: 'solid' });   // 꼬리 연장
+      g.polylines.push({ pts: [tail, add(tail, mul(tailDir, tpl.brow.tail * u.eye))], style: 'solid' });   // 꼬리 연장
     }
     const yA = Math.min(...LM.browA.upper.map((i) => P(i).y)), yB = Math.min(...LM.browB.upper.map((i) => P(i).y));
     g.polylines.push({ pts: [{ x: P(LM.browA.upper[0]).x, y: yA }, { x: P(LM.browB.upper[0]).x, y: yB }], style: 'ref' });   // 좌우 높이 기준선
@@ -74,7 +73,7 @@ export function buildGuide(partId, pts, tpl = TEMPLATE) {
     }
   } else if (partId === 'lip') {
     const lip = LM.lipsOuter.map(P), c = lip.reduce((a, p) => add(a, mul(p, 1 / lip.length)), { x: 0, y: 0 });
-    const off = tpl.lip.offsetMm * mm;
+    const off = tpl.lip.offset * u.lip;
     g.regions.push({ pts: lip.map((p) => add(p, mul(norm(sub(p, c)), off))), style: 'outline-only' });   // 경계선 (오버 오프셋)
   } else if (partId === 'cheek') {
     for (const [cheek, side, sign] of [[LM.cheekA, LM.faceL, -1], [LM.cheekB, LM.faceR, 1]]) {

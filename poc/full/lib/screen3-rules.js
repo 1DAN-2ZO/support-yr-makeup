@@ -58,31 +58,31 @@ export const FACE_SHAPE_NAME = {
 
 // ⚠️ 전문가 검증 전 가정값이다.
 // docs/README.md "이후 확정할 것"의 "얼굴형별 쉐딩·하이라이트 규칙 5종"에 대한 초안.
-// region 이름은 core.js 의 REGION_BUILDERS 키다. widthMm 은 밴드 폭.
+// region 이름은 core.js 의 REGION_BUILDERS 키다. width 는 밴드 폭(얼굴 폭 대비 비율, 2026-09-16 mm → 비율 환산: 얼굴 폭 140mm 기준).
 export const CONTOUR_RULES = {
   oval: {
-    shading: [{ region: 'underCheek', widthMm: 10 }],
-    highlight: [{ region: 'cheekTop', widthMm: 10 }, { region: 'noseBridge', widthMm: 7 }],
+    shading: [{ region: 'underCheek', width: 0.07 }],
+    highlight: [{ region: 'cheekTop', width: 0.07 }, { region: 'noseBridge', width: 0.05 }],
     rationale: '계란형이라 광대 아래만 얕게 쉐딩하고, 광대 위에 하이라이트를 넣었어요',
   },
   round: {
-    shading: [{ region: 'jawline', widthMm: 12 }, { region: 'underCheek', widthMm: 14 }],
-    highlight: [{ region: 'cheekTop', widthMm: 10 }, { region: 'tZone', widthMm: 9 }],
+    shading: [{ region: 'jawline', width: 0.085 }, { region: 'underCheek', width: 0.1 }],
+    highlight: [{ region: 'cheekTop', width: 0.07 }, { region: 'tZone', width: 0.064 }],
     rationale: '둥근 얼굴형이라 턱선과 광대 아래에 쉐딩을, 광대 위에 하이라이트를 넣었어요',
   },
   square: {
-    shading: [{ region: 'jawCorner', widthMm: 13 }, { region: 'foreheadSide', widthMm: 11 }],
-    highlight: [{ region: 'cheekTop', widthMm: 10 }, { region: 'chinTip', widthMm: 8 }],
+    shading: [{ region: 'jawCorner', width: 0.093 }, { region: 'foreheadSide', width: 0.079 }],
+    highlight: [{ region: 'cheekTop', width: 0.07 }, { region: 'chinTip', width: 0.057 }],
     rationale: '각진 얼굴형이라 턱 모서리와 이마 양옆에 쉐딩을, 광대 위와 턱 가운데에 하이라이트를 넣었어요',
   },
   oblong: {
-    shading: [{ region: 'foreheadTop', widthMm: 12 }, { region: 'chinTip', widthMm: 12 }],
-    highlight: [{ region: 'cheekTop', widthMm: 14 }],
+    shading: [{ region: 'foreheadTop', width: 0.085 }, { region: 'chinTip', width: 0.085 }],
+    highlight: [{ region: 'cheekTop', width: 0.1 }],
     rationale: '긴 얼굴형이라 이마 위와 턱 끝에 쉐딩을, 광대 위에 가로로 넓게 하이라이트를 넣었어요',
   },
   heart: {
-    shading: [{ region: 'foreheadSide', widthMm: 12 }, { region: 'chinTip', widthMm: 10 }],
-    highlight: [{ region: 'cheekTop', widthMm: 10 }, { region: 'underEye', widthMm: 8 }],
+    shading: [{ region: 'foreheadSide', width: 0.085 }, { region: 'chinTip', width: 0.07 }],
+    highlight: [{ region: 'cheekTop', width: 0.07 }, { region: 'underEye', width: 0.057 }],
     rationale: '하트형이라 이마 양옆과 턱 끝에 쉐딩을, 광대 위와 눈 밑에 하이라이트를 넣었어요',
   },
 };

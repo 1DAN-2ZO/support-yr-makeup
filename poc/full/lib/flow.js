@@ -70,4 +70,4 @@ export function toReviewParts(s) {
   return s.parts.map((p) => ({ partId: p.partId, status: p.status, score: p.score, diagnosis: p.diagnosis, diagnosisCodes: p.diagnosisCodes, checkReason: p.checkReason, lrIndex: p.lrIndex, metrics: p.metrics, attempts: p.attempts }));
 }
 /** 세션 draft 저장용 (이미지는 뺀다) */
-export function stripImages(s) { return { ...s, shots: Object.fromEntries(Object.entries(s.shots).map(([k, v]) => [k, !!v])), baseline: s.baseline ? { foreheadL: s.baseline.foreheadL, mm: s.baseline.mm } : null, parts: s.parts.map((p) => ({ ...p, captured: !!p.captured })) }; }
+export function stripImages(s) { return { ...s, shots: Object.fromEntries(Object.entries(s.shots).map(([k, v]) => [k, !!v])), baseline: s.baseline ? { foreheadL: s.baseline.foreheadL, unit: s.baseline.unit } : null, parts: s.parts.map((p) => ({ ...p, captured: !!p.captured })) }; }

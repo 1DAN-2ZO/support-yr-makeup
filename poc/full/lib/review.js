@@ -58,7 +58,7 @@ export function symmetryPenalty(parts) {
   for (const p of parts) {
     if (p.status !== 'passed' || p.partId === CONTOUR_ID) continue;
     if (p.metrics && typeof p.metrics.lrDiffMm === 'number') {
-      vals.push(clamp(Math.abs(p.metrics.lrDiffMm) / 3, 0, 1));
+      vals.push(clamp(Math.abs(p.metrics.lrDiffMm) / 0.11, 0, 1));   // 눈 폭 비율 0.11 (≈3mm) = 1
     } else if (p.lrIndex && typeof p.lrIndex.left === 'number' && typeof p.lrIndex.right === 'number') {
       vals.push(clamp(Math.abs(p.lrIndex.left - p.lrIndex.right) / 30, 0, 1));
     }

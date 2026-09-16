@@ -1,9 +1,11 @@
-// 이미지에서 Lab 샘플 뽑기 (브라우저 전용). 기준 쌩얼과 내 화장을 각자의 랜드마크 위치에서 같은 mm 격자로 샘플링하므로 픽셀 정합이 필요 없다.
+// 이미지에서 Lab 샘플 뽑기 (브라우저 전용). 기준 쌩얼과 내 화장을 각자의 랜드마크 위치에서 같은 비율 격자(눈 폭·입술 폭 기준)로 샘플링하므로 픽셀 정합이 필요 없다.
 import { LM } from './landmarks.js';
-import { buildGuide, pxPerMm } from './guides.js';
+import { buildGuide, unitScale } from './guides.js';
 
-const OFF_RANGE = 3.0, OFF_STEP = 0.25;
-export const OFFS = []; for (let d = -OFF_RANGE; d <= OFF_RANGE + 1e-6; d += OFF_STEP) OFFS.push(+d.toFixed(3));
+// 법선 방향 샘플 오프셋 (25개). 라이너는 눈 폭 대비 ±0.11 (≈ ±3mm), 입술은 입술 폭 대비 ±0.06 (≈ ±3mm)
+const mkOffs = (range) => Array.from({ length: 25 }, (_, i) => +(-range + (2 * range * i) / 24).toFixed(5));
+export const LINER_OFFS = mkOffs(0.11), LIP_OFFS = mkOffs(0.06);
+export const OFFS = LINER_OFFS;
 
 export function rgb2lab(r, g, b) {
   const f = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
@@ -20,7 +22,7 @@ export function prepare(source, landmarksNorm, w, h) {
   const ctx = cv.getContext('2d', { willReadFrequently: true }); ctx.drawImage(source, 0, 0, w, h);
   const data = ctx.getImageData(0, 0, w, h).data;
   const lm = landmarksNorm.map((p) => ({ x: p.x * w, y: p.y * h, z: p.z }));
-  return { data, w, h, lm, mm: pxPerMm(lm), canvas: cv };
+  return { data, w, h, lm, unit: unitScale(lm), canvas: cv };
 }
 export function labAt(im, x, y) {
   const xi = Math.max(0, Math.min(im.w - 1, Math.round(x))), yi = Math.max(0, Math.min(im.h - 1, Math.round(y))), i = (yi * im.w + xi) * 4;
@@ -62,11 +64,12 @@ export function sampleLiner(im, eyeKey) {
   const irisC = P(eye.iris[0]); const { pts } = resample(poly, 80, irisC);
   const centerShift = 0; const lab = [], isWing = [], tFromCornerMm = [], pos = [];
   for (const s of pts) {
-    pos.push(OFFS.map((o) => ({ x: s.p.x + s.n.x * o * im.mm, y: s.p.y + s.n.y * o * im.mm })));
-    lab.push(OFFS.map((o) => labAt(im, s.p.x + s.n.x * (o * im.mm + centerShift), s.p.y + s.n.y * (o * im.mm + centerShift))));
-    isWing.push(s.t > lidLen); tFromCornerMm.push((s.t - lidLen) / im.mm);
+    const ue = im.unit.eye;
+    pos.push(LINER_OFFS.map((o) => ({ x: s.p.x + s.n.x * o * ue, y: s.p.y + s.n.y * o * ue })));
+    lab.push(LINER_OFFS.map((o) => labAt(im, s.p.x + s.n.x * (o * ue + centerShift), s.p.y + s.n.y * (o * ue + centerShift))));
+    isWing.push(s.t > lidLen); tFromCornerMm.push((s.t - lidLen) / ue);
   }
-  return { lab, pos, meta: { offsMm: OFFS, isWing, tFromCornerMm, wingLenMm: dist(wing[0], wing[1]) / im.mm } };
+  return { lab, pos, meta: { offsMm: LINER_OFFS, isWing, tFromCornerMm, wingLenMm: dist(wing[0], wing[1]) / im.unit.eye } };   // 이름은 유지, 값은 눈 폭 비율
 }
 
 /** 눈썹 격자: (u 24 × v 10) 매개변수 격자. u=0 바깥 꼬리 → 1 안쪽, v 0~1 영역 안, v<0·v>1 은 바깥 띠. 두 이미지에서 같은 K */
@@ -85,17 +88,18 @@ export function sampleBrow(im) {
   return { lab, pos, meta: { inside, tail, side } };
 }
 
-/** 입술 경계 스트립: 바깥 윤곽 20점을 따라 안쪽(−) … 바깥쪽(+) 3mm */
+/** 입술 경계 스트립: 바깥 윤곽 20점을 따라 안쪽(−) … 바깥쪽(+) 입술 폭 6% */
 export function sampleLip(im) {
   const P = (i) => im.lm[i], lip = LM.lipsOuter.map(P), c = lip.reduce((a, p) => add(a, mul(p, 1 / lip.length)), { x: 0, y: 0 });
   const { pts } = resample([...lip, lip[0]], 60, null); const lab = [], half = [], side = [], pos = [];
   for (const s of pts) {
     let n = norm(sub(s.p, c));                       // 법선 = 입술 중심에서 바깥
-    pos.push(OFFS.map((o) => ({ x: s.p.x + n.x * o * im.mm, y: s.p.y + n.y * o * im.mm })));
-    lab.push(OFFS.map((o) => labAt(im, s.p.x + n.x * o * im.mm, s.p.y + n.y * o * im.mm)));
+    const ul = im.unit.lip;
+    pos.push(LIP_OFFS.map((o) => ({ x: s.p.x + n.x * o * ul, y: s.p.y + n.y * o * ul })));
+    lab.push(LIP_OFFS.map((o) => labAt(im, s.p.x + n.x * o * ul, s.p.y + n.y * o * ul)));
     half.push(s.p.y < c.y ? 'upper' : 'lower'); side.push(s.p.x < c.x ? 'R' : 'L');
   }
-  return { lab, pos, meta: { offsMm: OFFS, half, side } };
+  return { lab, pos, meta: { offsMm: LIP_OFFS, half, side } };
 }
 
 /** 다각형 안 평균 Lab (2px 간격) */

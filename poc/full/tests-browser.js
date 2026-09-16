@@ -10,7 +10,9 @@ import { computeSummary, oneLiner as reviewLine } from './lib/review.js';
 import { PARAMS as SCORE_PARAMS, DIAG_TEXT } from './lib/score.js';
 import { GATE_TEXT } from './lib/gate.js';
 import { LM } from './lib/landmarks.js';
-import { contourOutline, cropSpec as s3Crop, IDX } from './lib/screen3-core.js';
+import { contourOutline, cropSpec as s3Crop, IDX, faceWidthPx } from './lib/screen3-core.js';
+import { unitScale, TEMPLATE } from './lib/guides.js';
+import { PARAMS as SP2 } from './lib/score.js';
 import { CONTOUR_RULES, FACE_SHAPES } from './lib/screen3-rules.js';
 import { buildRegions, solveAffine, REGION_KEYS } from './lib/tryon.js';
 
@@ -69,8 +71,8 @@ test('P2 재확인: 덮어쓰기 + attempts 증가', () => {
   s = applyResult(s, 'brow', { decision: { status: 'scored' }, score: 90, codes: [], oneLiner: '', metrics: {} }); assert.equal(s.parts[0].attempts, 2); assert.equal(s.parts[0].score, 90);
 });
 test('P3 draft 저장 형식: 이미지 제외, JSON 왕복', () => {
-  let s = createSession(); s.shots.front_open = { canvas: {} }; s.baseline = { foreheadL: 66, mm: 4.7, im: {} }; s.parts[0].captured = { canvas: {} };
-  const d = JSON.parse(JSON.stringify(stripImages(s))); assert.equal(d.shots.front_open, true); assert.equal(d.baseline.foreheadL, 66); assert.equal(d.baseline.im, undefined); assert.equal(d.parts[0].captured, true);
+  let s = createSession(); s.shots.front_open = { canvas: {} }; s.baseline = { foreheadL: 66, unit: { eye: 130, lip: 220, face: 620 }, im: {} }; s.parts[0].captured = { canvas: {} };
+  const d = JSON.parse(JSON.stringify(stripImages(s))); assert.equal(d.shots.front_open, true); assert.equal(d.baseline.foreheadL, 66); assert.equal(d.baseline.unit.eye, 130); assert.equal(d.baseline.im, undefined); assert.equal(d.parts[0].captured, true);
 });
 
 test('L1 룩 10개, 각 룩은 5부위 파라미터·제품 5줄·근거 5줄(숫자 없음), 쉐딩 없음', () => {
@@ -125,6 +127,14 @@ test('I3 화면 2 모듈: 부위 폴리곤 7개, 아핀 해가 3점을 정확히
   const src = [[0, 0], [10, 0], [0, 10]], dst = [[5, 5], [25, 6], [4, 26]], m = solveAffine(src, dst);
   const ap = ([x, y]) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
   src.forEach((p, i) => { const q = ap(p); assert.ok(Math.abs(q[0] - dst[i][0]) < 1e-9 && Math.abs(q[1] - dst[i][1]) < 1e-9); });
+});
+
+test('U1 단위: 템플릿·임계에 mm 없음, 기준 길이는 눈 폭·입술 폭·얼굴 폭', () => {
+  assert.equal(JSON.stringify(TEMPLATE).includes('Mm'), false); assert.equal(JSON.stringify(SP2.guide).includes('Mm'), false);
+  assert.ok(TEMPLATE.liner.wing > 0 && TEMPLATE.liner.wing < 1 && SP2.tol.wingDev < 0.1);
+  const lm = s3Face().map((p) => ({ x: p.x * 1080, y: p.y * 1440 })); const u = unitScale(lm);
+  assert.ok(u.eye > 0 && u.lip > 0 && u.face > 0); assert.ok(Math.abs(faceWidthPx(s3Face(), { w: 1080, h: 1440 }) - u.face) < 1e-6);
+  const big = s3Face().map((p) => ({ x: p.x * 2160, y: p.y * 2880 })); const u2 = unitScale(big); assert.ok(Math.abs(u2.eye / u.eye - 2) < 1e-9);   // 해상도 2배 → 기준 길이 2배 (비율 불변)
 });
 
   const pass = results.filter((r) => r.ok).length;
