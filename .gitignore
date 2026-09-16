@@ -2,3 +2,14 @@ node_modules/
 .DS_Store
 Thumbs.db
 *.log
+
+# ML model weights / cloned benchmark repos (server-bench POC) — too large for git
+poc/look-tryon/server-bench/stable_makeup/
+poc/look-tryon/server-bench/shmt/
+*.ckpt
+*.safetensors
+*.bin
+*.pth
+
+# Playwright MCP debug artifacts (screenshots/console logs from ad-hoc testing)
+.playwright-mcp/

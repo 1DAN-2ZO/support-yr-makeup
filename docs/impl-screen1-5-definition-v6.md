@@ -7,6 +7,7 @@
 > - 화면 5·5-b 결과는 **점수 + 가이드 테두리 겹침 + 한 줄 평만** 표시. 아래 5-1의 지표 4줄·좌우 차 숫자, 5b-1의 좌우 지수 막대·톤 차이 숫자는 **화면에 표시하지 않고** 내부 계산·진단 코드 생성에만 쓴다.
 > - 화면 5-b(쉐딩·하이라이트 결과) 목업은 나중에. 쉐딩·하이라이트는 항상 "확인만", 섀도우·볼터치는 점수.
 > - 서버 처리 동의를 거부하면 이용 불가. 폰 전용 모드 없음. 서버로는 정면·좌·우 3장 전송.
+> - **POC 검증 (2026-09-16, `poc/look-tryon/`)**: 서버 화장 전이 모델 = Stable-Makeup(SD1.5+ControlNet, Apache-2.0), fp16·DDIM 10 step 설정으로 RTX 3060에서 추론 3.15초·VRAM 5.3GB — "왕복 목표 3초" 달성 확인(`poc/look-tryon/server-bench/README.md`). 화면 2 `LookLayer`는 당초 구상한 468점 UV 메시 텍스처 굽기 대신, **부위별 랜드마크 폴리곤을 가운데점 팬 삼각분할한 3점 아핀 워핑**(정식 삼각형 메시보다 가벼운 절충안)으로 실시간 재투영하는 방식이 동작함을 확인 — 2-1·2-2 갱신.
 > 모든 좌표는 랜드마크 기준(화면 방향 무관). 사진은 서버 처리 후 즉시 삭제. 채점은 "확인받기" 버튼을 눌렀을 때만.
 
 ---
@@ -94,7 +95,7 @@ POST /jobs { type:'session_assets', images: { frontOpen, left45, right45 }(jpeg)
 → { jobId }  ;  GET /jobs/{jobId} → { status, result: ServerAssets }
 ServerAssets { normalMap(uri), partMasks{ [partId]: mask }, lookLayers{ [lookId]: layerUri }, expiresAt }
 ```
-왕복 목표 3초. 거부 시 세션 생성 안 됨(이용 불가 안내). 서버 장애 시 "잠시 후 다시 시도" 안내.
+왕복 목표 3초 — **POC 검증됨**: Stable-Makeup fp16·10 step 기준 룩 1개당 추론 3.15초(RTX 3060, 모델 상주 기준. 최초 로드 별도 약 17초는 서버 기동 1회성 비용). 거부 시 세션 생성 안 됨(이용 불가 안내). 서버 장애 시 "잠시 후 다시 시도" 안내.
 
 ## 1-6. 상태
 
@@ -111,7 +112,7 @@ capture: idle → consent → (거부: blocked) / (동의) step0 → step1 → s
 
 | # | 요소 | 내용 | 데이터 |
 |---|---|---|---|
-| 2-1 | 실시간 프리뷰 + 룩 레이어 | 카메라 프리뷰에 선택 룩의 화장 레이어를 매 프레임 워핑 합성, "LIVE" 칩 | `LookLayer`, 프레임 랜드마크 |
+| 2-1 | 실시간 프리뷰 + 룩 레이어 | 카메라 프리뷰에 선택 룩의 화장 레이어를 매 프레임 부위별(눈썹·눈섀도우·입술·볼터치) 랜드마크 폴리곤 워핑으로 합성, "LIVE" 칩. 알고리즘은 2-2b 참고 | `LookLayer`, 프레임 랜드마크 |
 | 2-2 | 룩 썸네일 가로 스크롤 (10개) | 서버 생성 전 룩은 스피너 + "로딩 중", 끝난 룩부터 활성. 선택 표시 | `LookTemplate[]`, `lookLayers` |
 | 2-3 | 제품 목록 카드 | "이 룩에 쓰인 것" 부위별 제품 종류·색 계열·질감·도구. 전부 펼침, 접기 없음 | `LookTemplate.products[]` |
 | 2-4 | 버튼 | "이 룩으로 시작" → 화면 2-b | — |
@@ -130,15 +131,27 @@ LookTemplate {
   requiredParts: PartId[]            // 룩 부위. 세션 partOrder = requiredParts + ['contour'] (얼굴형 규칙 단계, 항상 마지막)
 }
 
-LookLayer {                              // 서버 결과에서 폰이 만든 실시간 트래킹용 레이어
+LookLayer {                              // fullRender에서 폰이 만든 실시간 트래킹용 레이어
   lookId
-  meshUV: Float32Array                   // 468점 UV 좌표(고정)
-  layer: { [partId]: { deltaLab: LabMap, alpha: AlphaMap } }   // 메시 텍스처 공간
-  builtFrom: 'server'                    // 서버 결과만 (폰 전용 대체 없음)
+  sourceImage: uri                       // fullRender 그대로 참조(별도 텍스처 굽기 없음)
+  regions: { [partId]: { landmarkIdx: number[], sourcePts: [x,y][] } }  // 부위별 랜드마크 폴리곤 + fullRender 위 좌표(고정)
+  builtFrom: 'server'                    // 서버 결과(fullRender)만 (폰 전용 대체 없음)
 }
 
 LookSelection { lookId, selectedAt, previewImage(uri), fullRender(uri) }
 ```
+
+## 2-2b. 실시간 워핑 알고리즘 (POC 검증, `poc/look-tryon/client/`)
+
+당초 구상한 468점 UV 메시 텍스처 굽기(부위별 deltaLab·alpha 맵) 대신, 훨씬 가벼운 절충안으로 동작을 확인했다:
+
+1. `fullRender` 생성 직후(1회) 랜드마크를 검출해 부위별 폴리곤(`LookLayer.regions[partId].sourcePts`)을 뽑아 고정해 둔다. 부위는 눈썹(좌우 10점 링), 눈섀도우(눈꺼풀 선 9점 + 눈썹 쪽으로 45% 지점까지 올린 대응점, 밴드 형태), 입술(외곽 20점), 볼터치(좌우 8점 폴리곤) — 룩 5부위 중 라이너는 별도 부위로 분리하지 않고 눈섀도우 폴리곤에 포함(향후 필요시 눈꺼풀 선만 따로 얇은 밴드로 분리 가능).
+2. 매 라이브 프레임: 같은 부위 폴리곤을 현재 랜드마크로 다시 계산(`sourcePts`와 동일한 랜드마크 인덱스, 좌표만 새로).
+3. 각 폴리곤을 폴리곤 중심점 기준 팬(fan) 삼각분할 — `[중심, p[i], p[i+1]]` 삼각형 N개.
+4. 삼각형마다 `fullRender` 좌표계의 3점 → 라이브 프레임 3점을 잇는 2×3 아핀 행렬을 3점 대응 선형계(Cramer 공식)로 직접 풀고, 그 삼각형으로 클리핑한 뒤 `fullRender`를 그 변환으로 그려 알파 블렌딩.
+5. 부위 밖은 전혀 합성하지 않음 — 이전 시도(부위 구분 없이 얼굴 전체를 통째로 아핀 변형 1번)는 배경·피부톤까지 섞여 "화장이 전체적으로 진하게 뜨는" 문제가 있어서 폐기.
+
+**한계**: 표정 변화 시 부위 내부의 국소 왜곡은 반영 안 됨(부위 자체는 랜드마크를 따라가지만 부위 내부는 강체 근사). 조명 보정 없음. 정식 스펙의 deltaLab 방식(피부 위에 "색차"만 얹어 원래 피부 텍스처 유지)이 아니라 `fullRender`의 픽셀을 그대로 이식하는 방식이라, 원본과 라이브 프레임의 피부 톤·조명이 크게 다르면 경계가 두드러질 수 있음 — 다음 라운드 과제.
 
 ## 2-3. 서버 장애 시
 - 폰 전용 모드는 없다. 룩 생성이 실패하면 썸네일이 "로딩 중"에서 "다시 시도"로 바뀌고, 전부 실패하면 "잠시 후 다시 시도해 주세요" 안내.
