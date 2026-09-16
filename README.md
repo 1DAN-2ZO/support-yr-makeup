@@ -40,7 +40,7 @@
 
 ```
 docs/   서비스 정의, 기능 정의서, 화면 브리프, 구현 요소 정의, 데이터셋 목록, 다이어그램 4장
-poc/    브라우저 POC — 아이라이너·볼터치 채점 (poc/), 전체 리뷰 합산·비교 (poc/review/)
+poc/    브라우저 POC — 아이라이너·볼터치 채점 (poc/), 화면 6 전체 리뷰 폰 목업·합산·결과 저장 (poc/review/)
 ```
 
 문서 색인과 확정 사항은 [`docs/README.md`](docs/README.md)에서 시작하세요. 화면별 결정 이력은 [`docs/service-definition-v6.md`](docs/service-definition-v6.md) 부록에 있습니다.
@@ -51,7 +51,7 @@ poc/    브라우저 POC — 아이라이너·볼터치 채점 (poc/), 전체 �
 # 아이라이너·볼터치 채점 POC (카메라 또는 사진 2장)
 cd poc && python -m http.server 8000      # → http://localhost:8000
 
-# 전체 리뷰 합산·비교 POC + 자동 검증 18개
+# 화면 6 전체 리뷰 POC + 자동 검증 24개
 cd poc/review && node tests.mjs
 python -m http.server 8000                # → http://localhost:8000
 ```
@@ -69,5 +69,5 @@ python -m http.server 8000                # → http://localhost:8000
 
 ## 상태
 
-- 화면 1~6 기능·목업 브리프 확정 (2026-09-16). 남은 일: 화면 6 POC v6 갱신(이후), 화면 1~5 구현 방법·검증 문서(보류)
+- 화면 1~6 기능·목업 브리프 확정 (2026-09-16). 화면 6 POC v6 완료 (2026-09-16). 남은 일: 화면 1~5 구현 방법·검증 문서(보류)
 - 라이선스: MIT (`LICENSE`). 사용하는 공개 데이터셋·모델 중 비상업 라이선스(FFHQ-Makeup, 법선 추정 모델 등)는 연구·발표 용도로만 씁니다.

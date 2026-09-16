@@ -1,10 +1,16 @@
-// 화면 7·8 핵심 계산 모듈 (순수 함수). 브라우저·Node 공용 ESM.
+// 화면 6(전체 리뷰) 핵심 계산 모듈 (순수 함수). 브라우저·Node 공용 ESM. v6 규칙.
+// - 룩 5부위(brow·liner·shadow·lip·cheek)만 합산. contour(쉐딩·하이라이트)는 항상 check_only, 합산 제외.
+// - 상태: not_started | in_progress | check_only | passed | skipped. passed 만 점수 반영.
+// - HistoryStore·topMisses·trendSeries 는 로드맵(기록 화면)용으로만 남김.
 
-export const PART_IDS = ['brow', 'liner', 'shadow', 'lip', 'cheek'];
-export const PART_NAME = { brow: '눈썹', liner: '아이라이너', shadow: '섀도우', lip: '입술', cheek: '볼·쉐딩' };
+export const LOOK_PART_IDS = ['brow', 'liner', 'shadow', 'lip', 'cheek'];   // 룩 템플릿 부위 (합산 대상)
+export const CONTOUR_ID = 'contour';                                         // 쉐딩·하이라이트 (항상 확인만)
+export const PART_IDS = [...LOOK_PART_IDS, CONTOUR_ID];                       // 세션 부위 순서 (진행 칩 6개)
+export const PART_NAME = { brow: '눈썹', liner: '아이라이너', shadow: '섀도우', lip: '입술', cheek: '볼터치', contour: '쉐딩·하이라이트' };
+export const STATUS_LABEL = { not_started: '미시작', in_progress: '진행 중', check_only: '확인만', passed: '완료', skipped: '건너뜀' };
 
 export const DEFAULT_TEMPLATE = {
-  partIds: PART_IDS,
+  partIds: LOOK_PART_IDS,                 // 합산 대상 = 룩 5부위. contour 는 넣어도 무시
   weights: { brow: 1.0, liner: 1.0, shadow: 1.0, lip: 1.0, cheek: 0.7 },
   // 볼·입술 색 조화 허용 범위 (Lab a*,b* 거리). null 이면 조화 보정 미적용
   harmonyRange: { maxDeltaAb: 12 },
@@ -19,9 +25,26 @@ export const DIAG_TEXT = {
   BROW_LR_DIFF: '눈썹 좌우 높이 차이',
   SHADOW_DIR: '섀도우 방향 불일치',
   LIP_OUT_LOWER: '입술 아래 경계 밖',
-  CHEEK_LR_DIFF: '볼 쉐딩 좌우 차이',
+  CHEEK_LR_DIFF: '볼터치 좌우 차이',
+  CONTOUR_LR_R: '쉐딩 오른쪽이 조금 진함',
+  CONTOUR_LR_L: '쉐딩 왼쪽이 조금 진함',
   CONTOUR_TOO_DARK: '쉐딩 너무 어두움',
 };
+
+/** 화면 5·6 한 줄 평. 숫자 없이 방향 표현만. 확인만 부위는 이유 문장. */
+export function oneLiner(p) {
+  if (p.partId === CONTOUR_ID) {
+    const lr = p.lrIndex && typeof p.lrIndex.left === 'number' && typeof p.lrIndex.right === 'number' ? p.lrIndex.right - p.lrIndex.left : 0;
+    const side = Math.abs(lr) >= 10 ? (lr > 0 ? ' 오른쪽이 조금 진해요' : ' 왼쪽이 조금 진해요') : '';
+    return '확인하고 넘어가세요.' + side;
+  }
+  if (p.status === 'check_only') return p.checkReason || '색이 옅어서 재지 못했어요. 직접 보고 넘어가세요';
+  if (p.status === 'skipped') return '건너뛴 부위예요';
+  if (p.status !== 'passed') return '';
+  if (p.diagnosis) return p.diagnosis;
+  const codes = (p.diagnosisCodes || []).map((c) => DIAG_TEXT[c]).filter(Boolean);
+  return codes.length ? codes.join(', ') : '잘 됐어요';
+}
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const round1 = (v) => Math.round(v * 10) / 10;
@@ -33,7 +56,7 @@ const round1 = (v) => Math.round(v * 10) / 10;
 export function symmetryPenalty(parts) {
   const vals = [];
   for (const p of parts) {
-    if (p.status !== 'passed') continue;
+    if (p.status !== 'passed' || p.partId === CONTOUR_ID) continue;
     if (p.metrics && typeof p.metrics.lrDiffMm === 'number') {
       vals.push(clamp(Math.abs(p.metrics.lrDiffMm) / 3, 0, 1));
     } else if (p.lrIndex && typeof p.lrIndex.left === 'number' && typeof p.lrIndex.right === 'number') {
@@ -42,7 +65,7 @@ export function symmetryPenalty(parts) {
   }
   if (!vals.length) return 0;
   const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
-  return round1(-5 * avg);
+  return round1(-5 * avg) || 0; // -0 방지
 }
 
 /**
@@ -64,10 +87,10 @@ export function harmonyPenalty(parts, template) {
   return { penalty: round1(-clamp(5 * over, 0, 5)), applied: true, dist };
 }
 
-/** 합산 (F-10). 통과 부위만 가중 평균 + 보정. 측정 0개면 total=null */
+/** 합산 (F-10). 룩 부위 중 passed 만 가중 평균 + 보정(내부). contour·check_only·skipped·in_progress 제외. 측정 0개면 total=null */
 export function computeSummary(parts, template = DEFAULT_TEMPLATE) {
   const weights = template.weights || DEFAULT_TEMPLATE.weights;
-  const partIds = template.partIds || PART_IDS;
+  const partIds = (template.partIds || LOOK_PART_IDS).filter((id) => id !== CONTOUR_ID);
   const measured = parts.filter((p) => partIds.includes(p.partId) && p.status === 'passed' && typeof p.score === 'number');
   const sym = symmetryPenalty(parts);
   const harm = harmonyPenalty(parts, template);
@@ -95,7 +118,9 @@ export function computeSummary(parts, template = DEFAULT_TEMPLATE) {
 export function upsertPart(parts, next) {
   const idx = parts.findIndex((p) => p.partId === next.partId);
   const prevAttempts = idx >= 0 ? (parts[idx].attempts || 0) : 0;
-  const rec = { ...next, attempts: prevAttempts + 1, updatedAt: Date.now() };
+  // contour(쉐딩·하이라이트)는 항상 확인만: 점수가 와도 버린다
+  const norm = next.partId === CONTOUR_ID && next.status === 'passed' ? { ...next, status: 'check_only', score: null } : next;
+  const rec = { ...norm, attempts: prevAttempts + 1, updatedAt: Date.now() };
   const out = parts.slice();
   if (idx >= 0) out[idx] = rec; else out.push(rec);
   return out;
