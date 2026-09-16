@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>당화응 POC — 화면 4 실시간 테두리</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header>
+  <h1>당화응 POC · 화면 4 실시간 테두리 (v6)</h1>
+  <div class="hint">왼쪽은 실제 화면 목업(라이브 프리뷰가 전체를 채움), 오른쪽은 시연·검증 패널. 화면에는 진행 칩·게이트 한 줄·구석 "확인받기"만 있고, 테두리는 선만·숫자 없음. 폰에서 직접 보려면 주소 뒤에 <code>#device</code>.</div>
+</header>
+
+<main>
+  <section class="phone-wrap">
+    <div class="phone portrait" id="phone">
+      <canvas id="view"></canvas>
+      <div class="chips" id="chips"></div>
+      <div class="gate" id="gate"></div>
+      <div class="zoomlow" id="zoomLow" hidden>확대 낮음</div>
+      <button id="btnCheck" class="check" disabled>확인받기</button>
+      <div class="hintcard" id="orientHint" hidden></div>
+      <div class="flash" id="flash" hidden></div>
+      <div class="toast" id="toast" hidden></div>
+      <div class="loading" id="loading">모델 로딩 중…</div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <nav>
+      <button class="tab active" data-tab="input">입력</button>
+      <button class="tab" data-tab="state">내부 상태</button>
+      <button class="tab" data-tab="verify">검증</button>
+    </nav>
+
+    <div id="tabInput" class="tabpane">
+      <div class="row">
+        <b>소스</b>
+        <button id="srcCam">카메라</button>
+        <label>사진 파일 <input id="srcFile" type="file" accept="image/*,video/*" /></label>
+        <label>샘플 <select id="srcSample"><option value="">— 촬영 세트 샘플 —</option></select></label>
+      </div>
+      <div class="row">
+        <b>폰 방향</b>
+        <button id="orientPortrait" class="on">세로</button>
+        <button id="orientLandscape">가로</button>
+        <span class="muted">눈·눈썹 단계는 가로. 실기기(#device)에서는 실제 방향을 따른다.</span>
+      </div>
+      <div class="row">
+        <b>부위</b>
+        <span id="partBtns"></span>
+        <span class="muted">= 진행 칩 탭과 같음</span>
+      </div>
+      <div class="row">
+        <b>게이트</b>
+        <label>흔들림 임계 <input id="sharpMin" type="number" value="30" step="5" style="width:64px" /></label>
+        <label>밝기 허용 ±<input id="brightTol" type="number" value="12" step="1" style="width:56px" /></label>
+        <label><input id="handOn" type="checkbox" checked /> 손 감지</label>
+        <button id="btnBaseline">지금 밝기를 기준으로</button>
+        <button id="btnReset">세션 초기화</button>
+      </div>
+      <p class="hint">거울 모드는 카메라에서만. 사진·샘플은 그대로 보인다. "확인받기"를 누르면 즉시 그 프레임을 찍고(내부 상태 탭에 저장) 완료 처리한다 — 화면 5(결과)는 이 POC 범위 밖.</p>
+    </div>
+
+    <div id="tabState" class="tabpane" hidden>
+      <pre id="stateOut" class="out">—</pre>
+      <div class="row"><b>확인받기로 찍힌 프레임</b></div>
+      <div id="captures" class="captures"></div>
+    </div>
+
+    <div id="tabVerify" class="tabpane" hidden>
+      <div class="row">
+        <button id="btnRunTests" class="primary">테스트 실행 (26)</button>
+        <button id="btnPerf">한 프레임 처리 시간</button>
+        <button id="btnGateLog">게이트 이력 (최근 100프레임)</button>
+      </div>
+      <pre id="testOut" class="out">—</pre>
+    </div>
+  </section>
+</main>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
