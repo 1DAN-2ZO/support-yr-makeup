@@ -6,7 +6,7 @@
 
 | 이름 | 규모 | 링크 | 라이선스 | 용도 |
 |---|---|---|---|---|
-| Face Shape Dataset (Kaggle, niten19) | 5,000장, 5분류(Heart·Oblong·Oval·Round·Square) 각 1,000장, train 800/test 200, 여성 연예인 | https://www.kaggle.com/datasets/niten19/face-shape-dataset | 페이지에서 확인 (이전 조사 CC0로 기록, 재확인 필요) | 얼굴형 규칙 검증용 분류 모델 |
+| Face Shape Dataset (Kaggle, niten19) | 5,000장, 5분류(Heart·Oblong·Oval·Round·Square) 각 1,000장, train 800/test 200, 여성 연예인 | https://www.kaggle.com/datasets/niten19/face-shape-dataset | 페이지에서 확인 (이전 조사 CC0로 기록, 재확인 필요) | 얼굴형 규칙(쉐딩·하이라이트용) 판정 일치율 확인. 별도 분류 모델은 두지 않음 |
 | Face Shape Preprocessed (Kaggle, zeyadkhalid) | 위 데이터 전처리본 | https://www.kaggle.com/datasets/zeyadkhalid/faceshape-processed | 페이지에서 확인 | 같은 용도, 정렬·크롭 완료 |
 | Face Shape Oval/Round/Square (Kaggle, attanmhd) | 3분류 | https://www.kaggle.com/datasets/attanmhd/face-shape-oval-round-square/data | 페이지에서 확인 | 보조 |
 
@@ -35,6 +35,7 @@
 | 분할 모델 평가 (실제 사진) | 자체 라벨 200~500장 | CPM-Real, Makeup-Wild |
 | 화장 전이(얹어보기) 모델 참고·평가 | MT, BeautyFace | CPM, LADN |
 | ΔE 기준선·조명 검증 | 팀원 자가 촬영 | Makeup Detection (같은 사람 전/후) |
+| 얼굴형 규칙 일치율 (쉐딩·하이라이트) | Face Shape Dataset | Preprocessed 판 |
 
 ## 주의
 - FFHQ-Makeup·CPM은 비상업·연구 전용. 발표와 과제는 가능하나 사업화 시 학습 데이터 교체 또는 자체 데이터로 재학습 필요.
