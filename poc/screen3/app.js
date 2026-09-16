@@ -1,6 +1,7 @@
 import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
 import { IDX, partLandmarks, cropSpec, contourOutline, rationale, products } from './core.js';
 import { PART_IDS, PART_NAME, ORIENTATION, FACE_SHAPES, FACE_SHAPE_NAME, STATUS_LABEL } from './rules.js';
+import { runTests } from './tests-browser.js';
 
 const $ = (id) => document.getElementById(id);
 const SAMPLES = '../../danghaeung_poc_3x4_20/';
@@ -199,7 +200,26 @@ function initUI() {
     };
   });
   $('btnFixtures').onclick = buildFixtures;
+  $('btnRunTests').onclick = () => { $('testOut').textContent = runTests(); };
+  $('btnBatch').onclick = runBatch;
   buildPartButtons();
+}
+
+async function runBatch() {
+  const rows = [];
+  for (const f of SAMPLE_FILES) {
+    const shot = await loadImage(SAMPLES + f, f);
+    if (!shot.landmarks) continue;
+    for (const id of PART_IDS) rows.push({ f, id, c: cropSpec(shot.landmarks, shot.size, id) });
+  }
+  const cov = rows.filter((r) => r.c.covered).length, cla = rows.filter((r) => r.c.clamped).length;
+  $('batchTable').innerHTML =
+    `<table class="batch"><tr><th>사진</th><th>부위</th><th>확대율</th><th>박스</th><th>covered</th><th>clamped</th></tr>` +
+    rows.map((r) => `<tr><td>${r.f}</td><td>${PART_NAME[r.id]}</td><td>${r.c.zoomRatio.toFixed(2)}</td>` +
+      `<td>${Math.round(r.c.w)}×${Math.round(r.c.h)}</td>` +
+      `<td class="${r.c.covered ? '' : 'bad'}">${r.c.covered}</td>` +
+      `<td class="${r.c.clamped ? 'bad' : ''}">${r.c.clamped}${r.c.clampedSides.length ? ' (' + r.c.clampedSides.join(',') + ')' : ''}</td></tr>`).join('') +
+    `</table><div class="muted">covered ${cov}/${rows.length} · clamped ${cla}/${rows.length}</div>`;
 }
 
 async function buildFixtures() {
