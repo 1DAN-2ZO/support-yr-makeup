@@ -22,7 +22,10 @@
       <label>내 사진
         <input type="file" id="fileIn" accept="image/*" />
       </label>
+      <button id="dlLm">랜드마크 내려받기</button>
     </div>
+    <p class="note">랜드마크 JSON을 받아 두면 <code>generate.py</code>로 대량 생성할 때
+    mediapipe 설치 없이 쓸 수 있습니다.</p>
     <div id="quality" class="note" hidden></div>
   </section>
 
@@ -31,13 +34,15 @@
     <div class="row">
       <label>시드 <input type="number" id="seed" value="1" min="0" step="1" /></label>
       <button id="reroll" class="primary">다른 화장으로</button>
-      <button id="dlPair">이 장 내려받기 (사진 + 마스크)</button>
+      <button id="dlPair">이 장 내려받기 (사진 + 라벨 + JSON)</button>
     </div>
     <div class="stage">
       <figure><figcaption>합성 결과</figcaption><canvas id="outCv"></canvas></figure>
-      <figure><figcaption>정답 마스크</figcaption><canvas id="maskCv"></canvas></figure>
+      <figure><figcaption>정답 마스크 (보기용)</figcaption><canvas id="maskCv"></canvas></figure>
+      <figure><figcaption>정수 라벨 (학습용)</figcaption><canvas id="labelCv"></canvas></figure>
     </div>
     <div id="legend" class="legend"></div>
+    <div id="labelInfo" class="note"></div>
     <table id="stats" class="stats"></table>
   </section>
 
@@ -47,7 +52,7 @@
       <label>장수 <input type="number" id="batchN" value="12" min="1" max="60" /></label>
       <label>시작 시드 <input type="number" id="batchSeed" value="100" min="0" /></label>
       <button id="batchRun" class="primary">생성</button>
-      <button id="dlSheet" disabled>시트 2장 내려받기</button>
+      <button id="dlSheet" disabled>시트 내려받기 (사진 + 라벨 + manifest)</button>
     </div>
     <div id="batchGrid" class="grid"></div>
   </section>

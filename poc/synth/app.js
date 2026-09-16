@@ -3,7 +3,7 @@
 
 import { buildSample, randomParams, sampleStats, PART_LABEL, faceWidth } from './core.js';
 
-const SAMPLE_DIR = '../../danghaeung_phone_portraits_20_v2';
+const SAMPLE_DIR = '../samples/phone-portraits-20';
 const SAMPLES = Array.from({ length: 5 }, (_, i) => `person_${i + 1}_front_open.jpg`);
 
 // 마스크 라벨 색. 사람이 눈으로 구분하기 위한 것이고, 학습 시에는 PART_LABEL 정수를 쓴다.
@@ -130,6 +130,49 @@ function renderMask(cv, face, sample) {
   }
 }
 
+/**
+ * 학습용 정수 라벨 맵. 픽셀값 = PART_LABEL(1~5), 배경 0.
+ *
+ * 캔버스 fill은 항상 안티앨리어싱이 걸려 경계에 중간값이 생긴다. 라벨 이미지에
+ * 3.7 같은 값이 섞이면 학습이 깨지므로, 부위마다 흰색으로 따로 찍고 알파 128을
+ * 기준으로 잘라 정수만 남긴다. 나중에 그린 부위가 앞선 부위를 덮는다(그리는 순서와 동일).
+ */
+function buildLabelMap(face, sample) {
+  const { w, h } = face;
+  const out = new Uint8Array(w * h);
+  const tmp = document.createElement('canvas');
+  tmp.width = w; tmp.height = h;
+  const tc = tmp.getContext('2d', { willReadFrequently: true });
+  for (const part of sample.parts) {
+    tc.clearRect(0, 0, w, h);
+    tc.fillStyle = '#fff';
+    for (const poly of part.polys) { tracePoly(tc, poly); tc.fill(); }
+    const d = tc.getImageData(0, 0, w, h).data;
+    const v = PART_LABEL[part.id];
+    for (let i = 0, p = 3; i < out.length; i++, p += 4) if (d[p] >= 128) out[i] = v;
+  }
+  return out;
+}
+
+function renderLabelMask(cv, face, map) {
+  const { w, h } = face;
+  cv.width = w; cv.height = h;
+  const ctx = cv.getContext('2d');
+  const img = ctx.createImageData(w, h);
+  for (let i = 0, p = 0; i < map.length; i++, p += 4) {
+    img.data[p] = img.data[p + 1] = img.data[p + 2] = map[i];
+    img.data[p + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+/** 라벨별 픽셀 수. 라벨 PNG가 제대로 만들어졌는지 확인하는 용도. */
+function labelPixels(map) {
+  const counts = {};
+  for (let i = 0; i < map.length; i++) counts[map[i]] = (counts[map[i]] || 0) + 1;
+  return counts;
+}
+
 function renderStats(sample) {
   const stats = sampleStats(sample);
   const p = sample.params;
@@ -153,18 +196,33 @@ function renderLegend() {
     `<span class="chip"><span class="sw" style="background:${c}"></span>${PART_NAME[id]} = ${PART_LABEL[id]}</span>`).join('');
 }
 
+let one = null;   // 지금 화면에 있는 한 장 { sample, map }
+
 function drawOne() {
   if (!current) return;
   const seed = Number($('seed').value) || 0;
   const sample = buildSample(current.lm, randomParams(seed));
+  const map = buildLabelMap(current, sample);
+  one = { sample, map };
+
   renderPhoto($('outCv'), current, sample);
   renderMask($('maskCv'), current, sample);
+  renderLabelMask($('labelCv'), current, map);
   renderStats(sample);
+
+  const counts = labelPixels(map);
+  const bad = Object.keys(counts).map(Number).filter((v) => v !== 0 && !Object.values(PART_LABEL).includes(v));
+  $('labelInfo').className = `note ${bad.length ? 'warn' : 'ok'}`;
+  $('labelInfo').innerHTML = bad.length
+    ? `⚠️ 라벨에 정의되지 않은 값이 섞였습니다: ${bad.join(', ')}`
+    : `라벨 픽셀 수 — 배경 ${counts[0] || 0} · ` +
+      Object.entries(PART_LABEL).map(([id, v]) => `${PART_NAME[id]}(${v}) ${counts[v] || 0}`).join(' · ') +
+      `<br>정수 라벨 PNG는 값이 1~5라 눈으로는 거의 검게 보입니다. 학습 코드가 읽는 값은 정상입니다.`;
 }
 
 // ---------------- 배치 ----------------
 
-let sheet = null;   // { photo: canvas, mask: canvas }
+let sheet = null;   // { photo, label, manifest }
 
 function runBatch() {
   if (!current) return;
@@ -179,46 +237,82 @@ function runBatch() {
     c.width = cols * w; c.height = rows * h;
     return c;
   };
-  const photoSheet = mk(), maskSheet = mk();
-  const pctx = photoSheet.getContext('2d'), mctx = maskSheet.getContext('2d');
+  const photoSheet = mk(), labelSheet = mk();
+  const pctx = photoSheet.getContext('2d');
+  const lctx = labelSheet.getContext('2d');
+  // 라벨 시트는 정수값을 그대로 옮겨야 하므로 drawImage(보간 발생) 대신 픽셀을 직접 쓴다
+  const lsheetImg = lctx.createImageData(labelSheet.width, labelSheet.height);
+  for (let p = 3; p < lsheetImg.data.length; p += 4) lsheetImg.data[p] = 255;
+
   const grid = $('batchGrid');
   grid.innerHTML = '';
-
-  const one = document.createElement('canvas');
-  const oneMask = document.createElement('canvas');
+  const cell1 = document.createElement('canvas');
+  const entries = [];
 
   for (let i = 0; i < n; i++) {
-    const sample = buildSample(current.lm, randomParams(start + i));
-    renderPhoto(one, current, sample);
-    renderMask(oneMask, current, sample);
+    const seed = start + i;
+    const sample = buildSample(current.lm, randomParams(seed));
+    const map = buildLabelMap(current, sample);
     const x = (i % cols) * w, y = Math.floor(i / cols) * h;
-    pctx.drawImage(one, x, y);
-    mctx.drawImage(oneMask, x, y);
 
-    const cell = document.createElement('div');
-    cell.className = 'cell';
+    renderPhoto(cell1, current, sample);
+    pctx.drawImage(cell1, x, y);
+
+    for (let yy = 0; yy < h; yy++) {
+      for (let xx = 0; xx < w; xx++) {
+        const v = map[yy * w + xx];
+        const p = (((y + yy) * labelSheet.width) + (x + xx)) * 4;
+        lsheetImg.data[p] = lsheetImg.data[p + 1] = lsheetImg.data[p + 2] = v;
+      }
+    }
+
+    entries.push({
+      seed,
+      cell: { x, y, w, h },
+      params: sample.params,
+      areas: sampleStats(sample),
+      labelPixels: labelPixels(map),
+    });
+
+    const cellEl = document.createElement('div');
+    cellEl.className = 'cell';
     const img = new Image();
-    img.src = one.toDataURL();
-    cell.appendChild(img);
+    img.src = cell1.toDataURL();
+    cellEl.appendChild(img);
     const cap = document.createElement('span');
-    cap.textContent = `시드 ${start + i}`;
-    cell.appendChild(cap);
-    grid.appendChild(cell);
+    cap.textContent = `시드 ${seed}`;
+    cellEl.appendChild(cap);
+    grid.appendChild(cellEl);
   }
-  sheet = { photo: photoSheet, mask: maskSheet };
+  lctx.putImageData(lsheetImg, 0, 0);
+
+  sheet = {
+    photo: photoSheet,
+    label: labelSheet,
+    manifest: {
+      generator: 'danghaeung poc/synth',
+      createdAt: new Date().toISOString(),
+      source: $('sampleSel').value,
+      image: { w, h, cols, rows },
+      labels: PART_LABEL,
+      note: '라벨 PNG의 픽셀값이 곧 클래스 번호다. 배경 0, 부위 1~5.',
+      samples: entries,
+    },
+  };
   $('dlSheet').disabled = false;
   setStatus(`${n}장 생성 완료 · 시드 ${start}~${start + n - 1}`, 'ok');
 }
 
-function download(canvas, name) {
-  canvas.toBlob((blob) => {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = name;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  }, 'image/png');
+function saveBlob(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
+const download = (canvas, name) => canvas.toBlob((b) => saveBlob(b, name), 'image/png');
+const downloadJson = (obj, name) =>
+  saveBlob(new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' }), name);
 
 // ---------------- 시작 ----------------
 
@@ -244,12 +338,32 @@ async function main() {
     setStatus('얼굴 찾는 중…');
     if (await detect(await createImageBitmap(file))) drawOne();
   };
+  $('dlLm').onclick = () => {
+    if (!current) return;
+    downloadJson({
+      source: $('sampleSel').value,
+      image: { w: current.w, h: current.h },
+      note: '픽셀 좌표. generate.py --landmarks 로 넘긴다.',
+      landmarks: current.lm.map((p) => [p.x, p.y]),
+    }, 'landmarks.json');
+  };
   $('reroll').onclick = () => { $('seed').value = Math.floor(Math.random() * 100000); drawOne(); };
   $('seed').oninput = drawOne;
   $('dlPair').onclick = () => {
+    if (!one) return;
     const s = $('seed').value;
     download($('outCv'), `synth_${s}_photo.png`);
-    download($('maskCv'), `synth_${s}_mask.png`);
+    download($('labelCv'), `synth_${s}_label.png`);
+    downloadJson({
+      generator: 'danghaeung poc/synth',
+      source: $('sampleSel').value,
+      image: { w: current.w, h: current.h },
+      labels: PART_LABEL,
+      seed: Number(s),
+      params: one.sample.params,
+      areas: sampleStats(one.sample),
+      labelPixels: labelPixels(one.map),
+    }, `synth_${s}_meta.json`);
   };
   $('batchRun').onclick = runBatch;
   // ?batch=12 로 열면 바로 생성한다 (스크린샷·시연용)
@@ -257,8 +371,9 @@ async function main() {
   if (auto) { $('batchN').value = auto; runBatch(); }
   $('dlSheet').onclick = () => {
     if (!sheet) return;
-    download(sheet.photo, `synth_sheet_photo.png`);
-    download(sheet.mask, `synth_sheet_mask.png`);
+    download(sheet.photo, 'synth_sheet_photo.png');
+    download(sheet.label, 'synth_sheet_label.png');
+    downloadJson(sheet.manifest, 'synth_sheet_manifest.json');
   };
 }
 

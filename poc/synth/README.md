@@ -11,16 +11,37 @@ FFHQ-Makeup(CC-BY-NC-SA) 대신 **자체 합성 100%**로 만들 수 있는지 �
 
 ## 실행
 
-```
-cd poc/synth && node tests.mjs    # 자동 검증 27개 (브라우저 불필요)
+**브라우저 데모** — 눈으로 확인하고 파라미터를 감 잡는 용도
 
-# 웹 서버는 반드시 저장소 루트에서 띄운다 (샘플 사진이 루트에 있다)
-cd ../.. && python -m http.server 8000
-#   → http://localhost:8000/poc/synth/
-#   → http://localhost:8000/poc/synth/?batch=12   여러 장 생성까지 자동
+```
+cd poc && python -m http.server 8000
+#   → http://localhost:8000/synth/
+#   → http://localhost:8000/synth/?batch=12   여러 장 생성까지 자동
 ```
 
 랜드마크 검출만 MediaPipe를 CDN에서 받으므로 인터넷이 필요하다. 계산은 전부 오프라인.
+
+**대량 생성** — 실제 학습 데이터를 뽑는 용도
+
+```
+cd poc/synth
+
+# 1) 브라우저에서 "랜드마크 내려받기"로 JSON을 받아 쓴다 (mediapipe 불필요)
+python generate.py --photo ../samples/phone-portraits-20/person_1_front_open.jpg \
+                   --landmarks landmarks.json --n 100 --out out/
+
+# 2) mediapipe가 깔려 있으면 사진만 주면 된다
+python generate.py --photo ../samples/phone-portraits-20/person_1_front_open.jpg --n 100 --out out/
+```
+
+**검증**
+
+```
+cd poc/synth
+node tests.mjs        # 자동 검증 27개 (브라우저 불필요)
+python parity.py      # core.py가 core.js와 같은 결과를 내는지 시드 50개 대조
+python parity.py 500  # 더 촘촘히
+```
 
 ## 무엇을 만드나
 
@@ -39,9 +60,15 @@ cd ../.. && python -m http.server 8000
 
 ## 출력
 
-- **합성 사진**: 원본 위에 부위를 반투명 합성. 어두운 색은 곱하기, 볼터치·섀도우는 그냥 얹기. 부위마다 번짐 정도가 다르다.
-- **정답 마스크**: 부위별 라벨 색으로 채운 이미지. 번짐 없음 — 경계가 곧 정답이다. 학습 시에는 `PART_LABEL`의 정수(1~5)를 쓴다.
-- 한 장씩 또는 격자 시트 2장(사진·마스크)으로 내려받는다.
+| | 내용 |
+|---|---|
+| `photo_XXXX.png` | 합성 사진. 어두운 색(눈썹·라이너·입술)은 곱하기, 섀도우·볼터치는 그냥 얹기. 부위마다 번짐이 다르다 |
+| `label_XXXX.png` | **정수 라벨 마스크.** 픽셀값이 곧 클래스 번호 (배경 0, 부위 1~5). 눈으로는 거의 검게 보이지만 학습 코드가 읽는 값은 정상 |
+| `manifest.json` | 시드·파라미터·부위 면적·라벨 픽셀 수 |
+
+**라벨에 중간값이 섞이지 않게 하는 것이 핵심이다.** 경계에 3.7 같은 값이 생기면 학습이 깨진다.
+Pillow의 `polygon`은 안티앨리어싱이 없어 그대로 정수가 나오고, 브라우저 쪽은 부위마다 흰색으로 따로 찍어
+알파 128로 잘라 같은 결과를 만든다. 두 경로 모두 라벨 픽셀 수의 합이 이미지 넓이와 정확히 일치한다.
 
 시드를 고정하면 같은 결과가 나온다. 학습 데이터를 다시 만들 때 재현이 된다.
 
@@ -49,23 +76,28 @@ cd ../.. && python -m http.server 8000
 
 | 파일 | 내용 |
 |---|---|
-| `core.js` | 순수 함수. 랜드마크 인덱스, 시드 난수, `randomParams`, 부위별 폴리곤, `buildSample`, 면적 계산 |
+| `core.js` | 순수 함수. 랜드마크 인덱스, 시드 난수, `randomParams`, 부위별 폴리곤, `buildSample`, 면적 |
+| `core.py` | 위의 파이썬 이식본. **`parity.py`가 둘이 같은 결과를 내는지 검증한다** |
+| `fixture.mjs` / `fixture.py` | 검증용 가짜 대칭 얼굴. 두 언어가 같은 값을 만든다 |
 | `tests.mjs` | Node 검증 27개 (A 폴리곤 5, B 재현성 4, C 범위 2, D 단조성 6, E 대칭 4, F 구성 6) |
-| `index.html` / `app.js` / `style.css` | 브라우저 UI. 랜드마크 검출과 캔버스 렌더링만 담당 |
+| `parity.mjs` / `parity.py` | JS↔Python 대조 검증. 파라미터·부위 순서·면적·폴리곤 점 개수·양 끝점 좌표 |
+| `generate.py` | 대량 생성 CLI (Pillow만 필요) |
+| `index.html` / `app.js` / `style.css` | 브라우저 UI. 랜드마크 검출과 렌더링만 담당 |
 | `screenshots/` | 헤드리스 크롬 캡처 |
 
-`core.js`는 DOM을 쓰지 않으므로 **학습 파이프라인(Node 또는 Python 이식)에 그대로 옮길 수 있다.**
+`core.js`/`core.py` 모두 DOM·이미지 라이브러리를 쓰지 않으므로 학습 파이프라인에 그대로 넣을 수 있다.
 
 ## 알게 된 것
 
 1. **검증이 버그를 잡았다.** 회전 부호가 좌우 같아서 **왼쪽 눈 꼬리가 아래로 뻗고 있었다.** 대칭 얼굴에서 좌우 면적을 비교하는 테스트(E1)가 2.66% 차이로 걸러냈다. 눈으로는 알아채기 어려웠다.
 2. **볼터치 위치는 눈-입 중간이 아니다.** 반으로 나누면 코 옆에 붙어 다크서클처럼 보인다. 얼굴 중심 반대쪽으로 얼굴 너비의 12%를 밀어야 광대 위에 온다 (F6).
-3. **샘플 20장은 해상도가 부족하다.** `danghaeung_phone_portraits_20_v2/`는 168×364라 홍채 지름이 **12px**인데, 기능 정의서 기준은 **25px 이상**이다. 데모는 되지만 학습 데이터로는 못 쓴다. UI가 이 경고를 띄운다.
+3. **샘플 20장은 해상도가 부족하다.** `poc/samples/phone-portraits-20/`은 168×364라 홍채 지름이 **12px**인데, 기능 정의서 기준은 **25px 이상**이다. 데모는 되지만 학습 데이터로는 못 쓴다. 브라우저·CLI 모두 이 경고를 띄운다.
+4. **한글 윈도우 콘솔은 CP949라 일부 문자에서 죽는다.** `generate.py`가 em dash 하나 때문에 `UnicodeEncodeError`로 멈췄다. 두 스크립트 모두 stdout을 UTF-8로 고정해 두었다.
 
 ## 다음
 
 - [ ] **학습용 맨얼굴 확보** — 홍채 25px 이상. 팀원 촬영이 1순위 (라이선스·초상권이 깨끗하다)
 - [ ] 조명·그림자 변형 추가 (지금은 화장만 바뀌고 조명은 고정)
-- [ ] 마스크를 정수 라벨 PNG로 내보내기 (지금은 사람이 보는 색)
-- [ ] `core.js`를 Python으로 이식해 대량 생성
 - [ ] 합성 100장 → 분할 모델 0차 학습 (1주차 실기기 검증 7)
+- [x] ~~마스크를 정수 라벨 PNG로 내보내기~~
+- [x] ~~`core.js`를 Python으로 이식해 대량 생성~~

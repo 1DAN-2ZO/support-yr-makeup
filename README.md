@@ -41,8 +41,7 @@
 ```
 docs/   서비스 정의, 기능 정의서, 화면 브리프, 구현 요소 정의, 필요 기술 목록, 데이터셋 목록, 다이어그램 4장
 poc/    브라우저 POC — 아이라이너·볼터치 채점 (poc/), 화면 6 전체 리뷰 (poc/screen6/),
-        합성 학습 데이터 생성기 (poc/synth/)
-danghaeung_phone_portraits_20_v2/  촬영 세트 샘플 20장 (5명 × 정면 눈 뜸·감음·좌45·우45, 168×364)
+        합성 학습 데이터 생성기 (poc/synth/), 촬영 세트 샘플 20장 (poc/samples/)
 ```
 
 문서 색인과 확정 사항은 [`docs/README.md`](docs/README.md)에서 시작하세요. 화면별 결정 이력은 [`docs/service-definition-v6.md`](docs/service-definition-v6.md) 부록에 있습니다.
@@ -59,8 +58,8 @@ python -m http.server 8000                # → http://localhost:8000
 
 # 합성 학습 데이터 생성기 POC + 자동 검증 27개
 cd poc/synth && node tests.mjs            # (저장소 루트 기준)
-cd ../.. && python -m http.server 8000    # 샘플 사진을 쓰므로 반드시 저장소 루트에서
-                                          # → http://localhost:8000/poc/synth/
+cd .. && python -m http.server 8000       # 샘플 사진을 쓰므로 poc/ 에서 띄운다
+                                          # → http://localhost:8000/synth/
 ```
 
 랜드마크 검출은 브라우저에서 MediaPipe를 CDN으로 받아 돌리므로 인터넷이 필요합니다. 카메라 모드는 HTTPS 또는 localhost에서만 열립니다.
