@@ -40,7 +40,7 @@
 
 ```
 docs/   서비스 정의, 기능 정의서, 화면 브리프, 구현 요소 정의, 데이터셋 목록, 다이어그램 4장
-poc/    브라우저 POC — 아이라이너·볼터치 채점. 화면별 POC는 브랜치로 분리 (화면 4: `poc/screen4`, 화면 5: `poc/screen5`, 화면 6: `poc/screen6` 브랜치)
+poc/    브라우저 POC — 아이라이너·볼터치 채점. 화면별 POC는 브랜치로 분리 (화면 4: `poc/screen4`, 화면 5: `poc/screen5`, 화면 6: `poc/screen6`). 전체 흐름 POC는 `poc/full` 브랜치의 `poc/full/`
 danghaeung_poc_3x4_20/  촬영 세트 샘플 20장 (5명 × 정면 눈 뜸·감음·좌45·우45, 셀카 3:4 1080×1440, Real-ESRGAN 4배 초해상도) + 원본 시트
 ```
 
