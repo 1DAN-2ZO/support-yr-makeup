@@ -146,7 +146,7 @@ LookSelection { lookId, selectedAt, previewImage(uri), fullRender(uri) }
 ## 2-4. 룩 확정 시 생성
 - `LookSelection.fullRender` = 서버 화장 전이 결과(정면, 룩 전체). 화면 2-b에 표시하고, 화면 3 부위 완성본은 이 이미지를 해당 부위 크롭 박스로 줌해서 쓴다(다른 부위도 화장된 채, 별도 합성 없음). 세션 끝까지 보관 후 삭제.
 - `partOrder = template.requiredParts`(눈썹→라이너→섀도우→입술→볼터치) + `contour`(쉐딩·하이라이트, 얼굴형 규칙, 룩과 무관). 사용자 변경 가능.
-- `contour` 완성본은 `fullRender`에 없으므로 규칙 마스크(F-05) × 기본 색으로 폰에서 합성(`ContourPreview`).
+- `contour` 완성본은 `fullRender`에 없으므로 `fullRender`(얼굴 아래쪽 줌) 위에 규칙 마스크(F-05)의 윤곽선만 그린다(`ContourOutline`, 색 면 없음, 라벨 "쉐딩"·"하이라이트").
 - `parts[]`를 `not_started`로 초기화.
 
 ---
