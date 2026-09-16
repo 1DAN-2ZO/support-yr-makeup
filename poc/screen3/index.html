@@ -25,6 +25,13 @@
       <label class="check"><input type="checkbox" id="forceFlip" /> 방향 강제로 뒤집기 (안내 화면 확인)</label>
       <label class="check"><input type="checkbox" id="showBox" /> 크롭 박스 보기</label>
     </div>
+    <div class="row" style="margin-top:10px">
+      <span class="rowlabel">확인받기 흉내</span>
+      <button id="doPass">이 부위 통과 (점수 랜덤)</button>
+      <button id="doSkip">건너뛰기</button>
+      <button id="doNext">다음 부위</button>
+      <button id="doReset">세션 초기화</button>
+    </div>
     <div id="info" class="note"></div>
   </section>
 
@@ -39,6 +46,7 @@
         <img id="render" alt="완성본" />
         <div id="boxline" class="boxline" hidden></div>
         <span class="tag">완성본</span>
+        <p id="hint" class="hint" hidden></p>
       </div>
 
       <!-- 카드 -->

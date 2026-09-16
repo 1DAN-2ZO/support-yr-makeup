@@ -2,20 +2,17 @@
 // 크롭 계산은 전부 crop.js(순수 함수). 여기서는 배치와 표시만 한다.
 
 import { cropSpec, PART_IDS, PART_ORIENTATION, upscaleFactor } from './crop.js';
+import {
+  PART_NAME as NAME, createSession, goTo, recordResult, skipPart,
+  chips as chipView, hintFor, nextPart, isComplete,
+  saveSession, loadSession, clearSession,
+} from './session.js';
 
 const SAMPLES = Array.from({ length: 5 }, (_, i) => `person_${i + 1}_front_open.jpg`);
 const PHOTO_DIR = '../samples/phone-portraits-20';
 
-const NAME = {
-  brow: '눈썹', liner: '아이라이너', shadow: '섀도우',
-  lip: '입술', cheek: '볼터치', contour: '쉐딩·하이라이트',
-};
-
-// 진행 칩용 짧은 이름. 세로(393px)에서 6개가 다 들어가야 한다.
-// 긴 이름을 그대로 쓰면 마지막 칩이 화면 밖으로 나간다.
-const SHORT = { ...NAME, liner: '라이너', contour: '쉐딩' };
-
 // 룩 템플릿 콘텐츠가 정해지기 전까지 쓰는 더미. 문장은 화면 브리프의 예시를 그대로 썼다.
+// 실제로는 LookTemplate에 사람이 적어 둔 고정 문장이 온다 (docs/screen3-tech-v6.md 5장).
 const DUMMY = {
   brow:    { why: '앞머리는 흐리게, 산은 눈동자 바깥에 두고 꼬리를 살짝 내려 그리세요.',
              need: '브라운 아이브로 펜슬 + 스크루 브러시' },
@@ -31,24 +28,22 @@ const DUMMY = {
              need: '컨투어 파우더 + 하이라이터 + 브러시' },
 };
 
-// 진행 칩 상태 더미. 다음 단계(진행 칩)에서 실제 세션 상태로 바꾼다.
-const STATE = {
-  brow:   { state: 'done',  score: 88 },
-  liner:  { state: 'todo',  score: null },
-  shadow: { state: 'todo',  score: null },
-  lip:    { state: 'todo',  score: null },
-  cheek:  { state: 'todo',  score: null },
-  contour:{ state: 'todo',  score: null },
-};
-const STATE_LABEL = { done: '완료', todo: '미시작', check: '확인만', skip: '건너뜀' };
-
 const $ = (id) => document.getElementById(id);
 const setStatus = (t, cls = '') => { $('status').textContent = t; $('status').className = `status ${cls}`; };
 
 let landmarker = null;
 let photo = null;      // { url, w, h, lm }
-let part = 'liner';
 let flip = false;      // 방향을 일부러 뒤집어 안내 화면을 확인
+let session = null;    // 진행 칩의 근거. session.js가 관리한다
+
+const part = () => session.currentPart;
+
+/** 세션이 바뀔 때마다 저장한다 (F-07: 앱이 꺼져도 복원). */
+function update(next) {
+  session = next;
+  saveSession(session, window.localStorage);
+  render();
+}
 
 // ---------------- 랜드마크 ----------------
 
@@ -86,14 +81,13 @@ async function loadPhoto(file) {
 // ---------------- 렌더 ----------------
 
 function renderChips() {
-  $('chips').innerHTML = PART_IDS.map((p) => {
-    const s = STATE[p];
-    const score = s.state === 'done' ? `<span class="score">${s.score}</span>` : '';
-    return `<button class="chip ${p === part ? 'active' : ''}" data-part="${p}" data-state="${s.state}"
-              title="${NAME[p]} · ${STATE_LABEL[s.state]}"><span class="dot"></span>${SHORT[p]}${score}</button>`;
+  $('chips').innerHTML = chipView(session).map((c) => {
+    const score = c.score !== null ? `<span class="score">${c.score}</span>` : '';
+    return `<button class="chip ${c.active ? 'active' : ''}" data-part="${c.partId}" data-status="${c.status}"
+              title="${c.name} · ${c.label}"><span class="dot"></span>${c.short}${score}</button>`;
   }).join('');
   for (const el of $('chips').querySelectorAll('.chip')) {
-    el.onclick = () => { part = el.dataset.part; $('partSel').value = part; render(); };
+    el.onclick = () => update(goTo(session, el.dataset.part));   // F-04: 어느 단계로든 이동
   }
   // 칩이 넘치면 지금 부위가 안 보일 수 있다. 항상 보이게 끌어온다
   $('chips').querySelector('.chip.active')
@@ -101,12 +95,12 @@ function renderChips() {
 }
 
 /** 표시 영역의 실제 종횡비를 crop.js에 넘기고, 받은 박스대로 이미지를 배치한다. */
-function placeImage() {
+function placeImage(partId = part()) {
   const vp = $('viewport');
   const vw = vp.clientWidth, vh = vp.clientHeight;
   if (!vw || !vh || !photo) return null;
 
-  const spec = cropSpec(photo.lm, part, {
+  const spec = cropSpec(photo.lm, partId, {
     imageW: photo.w, imageH: photo.h,
     aspect: vw / vh,                    // ← 가정값이 아니라 실제 레이아웃 값
   });
@@ -130,27 +124,34 @@ function placeImage() {
 }
 
 function render() {
-  if (!photo) return;
-  const want = PART_ORIENTATION[part];
+  if (!photo || !session) return;
+  const cur = part();
+  $('partSel').value = cur;
+  const want = PART_ORIENTATION[cur];
   const shown = flip ? (want === 'landscape' ? 'portrait' : 'landscape') : want;
   $('phone').dataset.orientation = shown;
 
   renderChips();
-  $('title').textContent = `${NAME[part]} · 완성본`;
-  $('rationale').textContent = DUMMY[part].why;
-  $('need').textContent = DUMMY[part].need;
+  $('title').textContent = `${NAME[cur]} · 완성본`;
+  $('rationale').textContent = DUMMY[cur].why;
+  $('need').textContent = DUMMY[cur].need;
 
   // 방향이 안 맞으면 안내를 띄운다 (실제 앱에서는 기기 방향으로 판단)
   const bad = shown !== want;
   $('rotate').hidden = !bad;
   $('rotatetext').textContent = want === 'landscape' ? '폰을 가로로 돌리세요' : '폰을 세로로 돌리세요';
 
-  const r = placeImage();
+  // 앞 단계를 건너뛰고 왔으면 한 줄만 알려 준다. 이동을 막지는 않는다 (F-04)
+  const hint = hintFor(session, cur);
+  $('hint').hidden = !hint;
+  if (hint) $('hint').textContent = hint;
+
+  const r = placeImage(cur);
   if (!r) return;
   const { spec, vw } = r;
   const up = upscaleFactor(spec, vw * (window.devicePixelRatio || 1));
   $('info').innerHTML =
-    `<b>${NAME[part]}</b> · ${want === 'landscape' ? '가로' : '세로'} · ` +
+    `<b>${NAME[cur]}</b> · ${want === 'landscape' ? '가로' : '세로'} · ` +
     `표시 영역 ${vw}×${r.vh} (종횡비 ${(vw / r.vh).toFixed(2)}) · ` +
     `크롭 ${spec.box.w.toFixed(0)}×${spec.box.h.toFixed(0)}px · ` +
     `얼굴 대비 <b>${spec.zoom.toFixed(2)}배</b> · ` +
@@ -164,7 +165,9 @@ function render() {
 async function main() {
   $('sampleSel').innerHTML = SAMPLES.map((f, i) => `<option value="${f}">${i + 1}번</option>`).join('');
   $('partSel').innerHTML = PART_IDS.map((p) => `<option value="${p}">${NAME[p]}</option>`).join('');
-  $('partSel').value = part;
+
+  // 저장된 세션이 있으면 이어서 (F-07). 없으면 새로 시작
+  session = loadSession(window.localStorage) || createSession();
 
   try { await initLandmarker(); }
   catch (e) { setStatus(`모델을 불러오지 못했습니다: ${e.message}`, 'bad'); return; }
@@ -172,15 +175,36 @@ async function main() {
   await loadPhoto(SAMPLES[0]);
 
   $('sampleSel').onchange = (e) => loadPhoto(e.target.value);
-  $('partSel').onchange = (e) => { part = e.target.value; render(); };
+  $('partSel').onchange = (e) => update(goTo(session, e.target.value));
   $('forceFlip').onchange = (e) => { flip = e.target.checked; render(); };
   $('showBox').onchange = render;
   $('go').onclick = () => setStatus('화면 4(실시간 테두리)로 이동 — 아직 미구현', 'ok');
+
+  // 화면 4·5가 아직 없으므로 확인받기 결과를 여기서 흉내낸다
+  $('doPass').onclick = () => {
+    const score = 60 + Math.floor(Math.random() * 40);
+    update(recordResult(session, part(), { score }));
+    setStatus(`${NAME[part()]} 결과 기록 · ${score}점`, 'ok');
+  };
+  $('doSkip').onclick = () => {
+    update(skipPart(session, part()));
+    setStatus(`${NAME[part()]} 건너뜀`, 'ok');
+  };
+  $('doNext').onclick = () => {
+    const n = nextPart(session);
+    if (!n) { setStatus(isComplete(session) ? '모든 부위 완료 → 화면 6 전체 리뷰' : '마지막 부위입니다', 'ok'); return; }
+    update(goTo(session, n));
+  };
+  $('doReset').onclick = () => {
+    clearSession(window.localStorage);
+    update(createSession());
+    setStatus('세션을 새로 시작했습니다', 'ok');
+  };
   new ResizeObserver(() => placeImage()).observe($('viewport'));
 
   const q = new URLSearchParams(location.search);
   const auto = q.get('part');
-  if (auto && PART_IDS.includes(auto)) { part = auto; $('partSel').value = auto; render(); }
+  if (auto && PART_IDS.includes(auto)) update(goTo(session, auto));
   if (q.get('bare')) document.body.classList.add('bare');   // 폰만 남긴다
 
 }

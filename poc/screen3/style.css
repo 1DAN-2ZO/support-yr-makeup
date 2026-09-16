@@ -36,6 +36,12 @@ main { max-width: 1000px; margin: 0 auto; }
 }
 .panel h3 { font-size: 14px; margin: 0 0 8px; }
 .row { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+.rowlabel { color: var(--muted); }
+.row button {
+  font: inherit; padding: 6px 12px; border: 1px solid var(--line);
+  border-radius: 6px; background: #fff; color: var(--ink); cursor: pointer;
+}
+.row button:hover { border-color: var(--teal); color: var(--teal); }
 label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
 label.check { gap: 5px; }
 select { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
@@ -103,6 +109,15 @@ code { background: #f1eeea; padding: 1px 5px; border-radius: 4px; }
   background: rgba(0, 0, 0, .55); color: #fff; font-size: 11px;
   padding: 3px 9px; border-radius: 999px; backdrop-filter: blur(4px);
 }
+.hint {
+  position: absolute; left: 0; right: 0; top: 0; z-index: 4; margin: 0;
+  padding: 6px 12px; background: rgba(194, 115, 31, .94); color: #fff;
+  font-size: 12px; text-align: center;
+}
+
+/* 안내 줄이 떠 있으면 "완성본" 칩을 그 아래로 내린다 */
+.viewport:has(.hint:not([hidden])) .tag { top: 40px; }
+
 .boxline {
   position: absolute; z-index: 3; border: 2px dashed var(--teal);
   pointer-events: none;
