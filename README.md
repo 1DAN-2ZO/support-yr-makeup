@@ -41,7 +41,7 @@
 ```
 docs/   서비스 정의, 기능 정의서, 화면 브리프, 구현 요소 정의, 데이터셋 목록, 다이어그램 4장
 poc/    브라우저 POC — 화면별 폴더. 아이라이너·볼터치 채점 (poc/), 화면 6 전체 리뷰 (poc/screen6/)
-danghaeung_phone_portraits_20_v2/  촬영 세트 샘플 20장 (5명 × 정면 눈 뜸·감음·좌45·우45, 168×364)
+danghaeung_poc_3x4_20/  촬영 세트 샘플 20장 (5명 × 정면 눈 뜸·감음·좌45·우45, 셀카 3:4 1080×1440) + 원본 시트
 ```
 
 문서 색인과 확정 사항은 [`docs/README.md`](docs/README.md)에서 시작하세요. 화면별 결정 이력은 [`docs/service-definition-v6.md`](docs/service-definition-v6.md) 부록에 있습니다.
