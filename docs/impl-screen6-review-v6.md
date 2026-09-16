@@ -31,7 +31,7 @@ PartResult {
   status: 'not_started' | 'in_progress' | 'check_only' | 'passed' | 'skipped'
   score: number | null            // 0~100, check_only·skipped·not_started는 null
   diagnosis: string               // 한 줄 진단 (채점 엔진이 생성)
-  metrics: { ... }                // 겹침률, 이탈 mm, 좌우 차, 톤 차이 등 (화면 5·6에서 쓰던 값 그대로)
+  metrics: { ... }                // 겹침률, 이탈(눈 폭 대비 비율), 좌우 차, 톤 차이 등 (화면 5·6에서 쓰던 값 그대로)
   lrIndex: { left: number, right: number } | null   // 좌우 지수 (있는 부위만)
   toneDelta: number | null        // 피부 대비 톤 차이 (쉐딩·하이라이트, 확인만 부위라 점수엔 미사용)
   updatedAt: timestamp
@@ -62,8 +62,8 @@ total = clamp(round(base + symmetryPenalty + harmonyPenalty), 0, 100)
 - 부위를 다시 확인받으면 `PartResult`를 덮어쓰고 합산을 다시 계산한다(멱등).
 
 ### 대칭 보정 (0 ~ −5)
-- 입력: 눈썹·아이라이너·볼터치의 좌우 차. 형태 부위는 이탈 mm 좌우 차, 강도 부위는 좌우 지수 차.
-- 규칙(초안): 부위별 좌우 차를 0~1로 정규화(형태: 3mm=1, 지수: 30=1) → 평균 → `−5 × 평균`. 맨얼굴 자연 비대칭은 채점 단계에서 이미 뺀 값을 쓴다.
+- 입력: 눈썹·아이라이너·볼터치의 좌우 차. 형태 부위는 이탈 좌우 차(눈 폭 대비 비율), 강도 부위는 좌우 지수 차.
+- 규칙(초안): 부위별 좌우 차를 0~1로 정규화(형태: 눈 폭의 0.11(≈3mm)=1, 지수: 30=1) → 평균 → `−5 × 평균`. 맨얼굴 자연 비대칭은 채점 단계에서 이미 뺀 값을 쓴다.
 
 ### 조화 보정 (0 ~ −5)
 - 입력: 볼터치와 입술의 색상(Lab a*, b*) 거리, 룩 템플릿에 적힌 허용 범위.
