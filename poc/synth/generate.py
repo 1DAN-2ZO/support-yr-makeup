@@ -32,7 +32,8 @@ try:
 except ImportError:
     sys.exit("Pillow가 필요합니다:  pip install pillow")
 
-from core import PART_LABEL, build_sample, face_width, random_params, sample_stats
+from core import (COLOR_FAMILY, PART_IDS, PART_LABEL, build_sample, face_width,
+                  random_params, sample_stats)
 
 # 한글 윈도우 콘솔은 기본이 CP949라 일부 문자에서 죽는다. UTF-8로 고정한다.
 for _s in (sys.stdout, sys.stderr):
@@ -168,6 +169,8 @@ def main() -> int:
             "photo": f"photo_{i:04d}.png",
             "label": f"label_{i:04d}.png",
             "params": sample["params"],
+            # 색 계열 이름 (F-04 제품 목록과 같은 어휘). 데이터 분포 확인용
+            "colorFamily": {p: COLOR_FAMILY[sample["params"][p]["color"]] for p in PART_IDS},
             "areas": sample_stats(sample),
             "labelPixels": {str(k): v for k, v in sorted(counts.items())},
         })
