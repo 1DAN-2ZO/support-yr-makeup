@@ -30,9 +30,12 @@ cd poc/synth
 python generate.py --photo ../samples/phone-portraits-20/person_1_front_open.jpg \
                    --landmarks landmarks.json --n 100 --out out/
 
-# 2) mediapipe가 깔려 있으면 사진만 주면 된다
+# 2) mediapipe가 깔려 있으면 사진만 주면 된다 (pip install mediapipe)
 python generate.py --photo ../samples/phone-portraits-20/person_1_front_open.jpg --n 100 --out out/
 ```
+
+2번은 첫 실행 때 랜드마크 모델(`face_landmarker.task`, 3.6MB)을 한 번 내려받는다.
+브라우저가 CDN에서 받는 것과 같은 파일이다. `.gitignore`에 넣어 두었다.
 
 **검증**
 
@@ -93,6 +96,23 @@ Pillow의 `polygon`은 안티앨리어싱이 없어 그대로 정수가 나오�
 2. **볼터치 위치는 눈-입 중간이 아니다.** 반으로 나누면 코 옆에 붙어 다크서클처럼 보인다. 얼굴 중심 반대쪽으로 얼굴 너비의 12%를 밀어야 광대 위에 온다 (F6).
 3. **샘플 20장은 해상도가 부족하다.** `poc/samples/phone-portraits-20/`은 168×364라 홍채 지름이 **12px**인데, 기능 정의서 기준은 **25px 이상**이다. 데모는 되지만 학습 데이터로는 못 쓴다. 브라우저·CLI 모두 이 경고를 띄운다.
 4. **한글 윈도우 콘솔은 CP949라 일부 문자에서 죽는다.** `generate.py`가 em dash 하나 때문에 `UnicodeEncodeError`로 멈췄다. 두 스크립트 모두 stdout을 UTF-8로 고정해 두었다.
+5. **mediapipe 1.0에서 옛 `solutions` API가 사라졌다.** `mp.solutions.face_mesh`는 이제 없고 Tasks API(`mediapipe.tasks.python.vision.FaceLandmarker`)를 써야 한다. 브라우저가 쓰는 `tasks-vision`과 같은 API·같은 모델이라 오히려 두 경로가 맞춰졌다.
+6. **브라우저와 파이썬의 랜드마크가 완전히 같지는 않다.** 아래 참조.
+
+## 브라우저 경로 vs 파이썬 경로
+
+같은 사진·같은 시드로 양쪽을 돌려 비교한 결과다 (샘플 1번).
+
+| | 값 |
+|---|---|
+| 랜드마크 478점 평균 거리차 | **0.21 px** (중앙값 0.17, 최대 0.70) |
+| 부위 면적 차이 | **1.0 ~ 3.0%** (입술이 가장 큼) |
+
+**원인은 우리 코드가 아니다.** `core.py`와 `core.js`는 같은 랜드마크를 주면 시드 500개에서 소수점까지 똑같다(`parity.py`).
+차이는 전부 검출기에서 온다 — 브라우저는 GPU(float16), 파이썬은 CPU(XNNPACK)로 같은 모델을 돌리므로 연산 정밀도가 다르다.
+
+**학습에는 문제없다.** 1~3%는 우리가 일부러 넣는 좌우 비대칭(±18%)보다 훨씬 작다.
+다만 **두 경로를 섞어 만든 데이터는 픽셀 단위로 동일하지 않다.** 재현이 중요한 실험은 한쪽 경로로 통일할 것.
 
 ## 다음
 

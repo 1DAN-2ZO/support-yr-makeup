@@ -51,9 +51,29 @@ def load_landmarks(path: Path) -> list[tuple[float, float]]:
             else (float(p["x"]), float(p["y"])) for p in pts]
 
 
+MODEL_URL = ("https://storage.googleapis.com/mediapipe-models/face_landmarker/"
+             "face_landmarker/float16/1/face_landmarker.task")
+MODEL_FILE = Path(__file__).parent / "face_landmarker.task"
+
+
+def _ensure_model() -> Path:
+    """브라우저가 CDN에서 받는 것과 같은 모델 파일을 한 번만 내려받는다."""
+    if MODEL_FILE.exists() and MODEL_FILE.stat().st_size > 1_000_000:
+        return MODEL_FILE
+    import urllib.request
+    print(f"랜드마크 모델을 내려받는 중… ({MODEL_URL.rsplit('/', 1)[-1]})")
+    urllib.request.urlretrieve(MODEL_URL, MODEL_FILE)
+    print(f"  저장: {MODEL_FILE.name} ({MODEL_FILE.stat().st_size // 1024} KB)")
+    return MODEL_FILE
+
+
 def detect_landmarks(photo: Path) -> list[tuple[float, float]]:
+    """mediapipe Tasks API로 478점을 뽑는다. 브라우저 데모와 같은 모델·같은 API다."""
     try:
         import mediapipe as mp
+        from mediapipe.tasks.python import BaseOptions
+        from mediapipe.tasks.python.vision import (FaceLandmarker, FaceLandmarkerOptions,
+                                                   RunningMode)
     except ImportError:
         sys.exit(
             "mediapipe가 없습니다. 둘 중 하나로 하세요:\n"
@@ -62,14 +82,18 @@ def detect_landmarks(photo: Path) -> list[tuple[float, float]]:
         )
     import numpy as np  # mediapipe가 있으면 numpy도 있다
 
-    img = np.array(Image.open(photo).convert("RGB"))
-    h, w = img.shape[:2]
-    with mp.solutions.face_mesh.FaceMesh(static_image_mode=True, refine_landmarks=True,
-                                         max_num_faces=1) as fm:
-        res = fm.process(img)
-    if not res.multi_face_landmarks:
+    rgb = np.array(Image.open(photo).convert("RGB"))
+    h, w = rgb.shape[:2]
+    opts = FaceLandmarkerOptions(
+        base_options=BaseOptions(model_asset_path=str(_ensure_model())),
+        running_mode=RunningMode.IMAGE,
+        num_faces=1,
+    )
+    with FaceLandmarker.create_from_options(opts) as lmk:
+        res = lmk.detect(mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb))
+    if not res.face_landmarks:
         sys.exit(f"{photo}에서 얼굴을 찾지 못했습니다.")
-    return [(p.x * w, p.y * h) for p in res.multi_face_landmarks[0].landmark]
+    return [(p.x * w, p.y * h) for p in res.face_landmarks[0]]
 
 
 def render_photo(base: Image.Image, lm, sample: dict) -> Image.Image:
