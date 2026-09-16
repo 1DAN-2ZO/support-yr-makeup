@@ -57,7 +57,89 @@ async function selectShot(name) {
   render();
 }
 
-function render() { /* Task 5 에서 채운다 */ }
+const ROTATE_MSG = {
+  landscape: '눈 단계는 양쪽 눈을 같이 봐요.\n폰을 가로로 돌리세요',
+  portrait: '이제 폰을 세로로 돌리세요',
+};
+let rotateTimer = null;
+
+function drawCrop(canvas, shot, partId) {
+  const ctx = canvas.getContext('2d');
+  const c = cropSpec(shot.landmarks, shot.size, partId);
+  canvas.width = Math.round(c.w); canvas.height = Math.round(c.h);
+  ctx.drawImage(shot.img, c.x, c.y, c.w, c.h, 0, 0, canvas.width, canvas.height);
+  return c;
+}
+
+function chipHtml() {
+  return PART_IDS.map((id) => {
+    const st = state.statuses[id] || 'not_started';
+    const cur = id === state.partId ? ' current' : '';
+    const label = id === state.partId ? PART_NAME[id] : `${PART_NAME[id]} · ${STATUS_LABEL[st]}`;
+    return `<div class="chip ${st}${cur}" data-part="${id}">${label}</div>`;
+  }).join('');
+}
+
+function render() {
+  const phone = $('phone');
+  const shot = state.current;
+  const orientation = ORIENTATION[state.partId];
+  phone.className = `phone ${orientation}`;
+  phone.innerHTML = `
+    <div class="stage">
+      <div class="chips">${chipHtml()}</div>
+      <div class="body">
+        <div class="shot"><canvas id="cvShot"></canvas><div class="tag">완성본</div></div>
+        <div class="card">
+          <div class="why" id="why"></div>
+          <div class="need" id="need"></div>
+          <button class="primary" id="btnGo">그리러 가기</button>
+        </div>
+      </div>
+    </div>
+    <div class="rotate" id="rotate" hidden></div>
+    <div class="toast" id="toast" hidden></div>`;
+
+  phone.querySelectorAll('.chip').forEach((el) => { el.onclick = () => setPart(el.dataset.part); });
+  $('why').textContent = rationale(state.partId, state.faceShape);
+  $('need').textContent = products(state.partId);
+  $('btnGo').onclick = () => toast('화면 4(실시간 테두리)는 별도 POC입니다');
+
+  if (shot && shot.landmarks) drawCrop($('cvShot'), shot, state.partId);
+}
+
+function toast(msg) {
+  const t = $('toast'); if (!t) return;
+  t.textContent = msg; t.hidden = false;
+  setTimeout(() => { t.hidden = true; }, 1800);
+}
+
+function setPart(partId) {
+  const before = ORIENTATION[state.partId];
+  state.partId = partId;
+  const after = ORIENTATION[partId];
+  render();
+  if (before !== after) {
+    const r = $('rotate');
+    r.textContent = ROTATE_MSG[after];
+    r.hidden = false;
+    clearTimeout(rotateTimer);
+    rotateTimer = setTimeout(() => { r.hidden = true; }, 1600);
+  }
+}
+
+function buildPartButtons() {
+  $('partButtons').innerHTML = PART_IDS.map((id) => `<button data-part="${id}">${PART_NAME[id]}</button>`).join('');
+  $('partButtons').querySelectorAll('button').forEach((b) => { b.onclick = () => setPart(b.dataset.part); });
+  $('statusEditor').innerHTML = PART_IDS.map((id) => `
+    <label>${PART_NAME[id]}
+      <select data-status="${id}">${Object.entries(STATUS_LABEL).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>
+    </label>`).join('');
+  $('statusEditor').querySelectorAll('select').forEach((s) => {
+    s.value = state.statuses[s.dataset.status] || 'not_started';
+    s.onchange = () => { state.statuses[s.dataset.status] = s.value; render(); };
+  });
+}
 
 function initUI() {
   const sel = $('sampleList');
@@ -85,6 +167,7 @@ function initUI() {
     };
   });
   $('btnFixtures').onclick = buildFixtures;
+  buildPartButtons();
 }
 
 async function buildFixtures() {
