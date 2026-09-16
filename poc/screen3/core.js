@@ -184,6 +184,8 @@ const REGION_BUILDERS = {
   underEye: (lm, s) => [toPx(lm, s, IDX.underEye.r), toPx(lm, s, IDX.underEye.l)],
 };
 
+export const REGION_NAMES = Object.keys(REGION_BUILDERS);
+
 /** 폴리라인을 법선 방향으로 ±half 밀어 닫힌 밴드 폴리곤으로 만든다. */
 function bandFromPolyline(pts, widthPx) {
   if (pts.length < 2) return [];

@@ -138,7 +138,7 @@ test('C8 세로 부위 기본 zoomRatio 가 2.5다', () => {
   assert.ok(Math.abs(c.zoomRatio - wantZoomRatio) < 0.01, `zoom=${c.zoomRatio} want=${wantZoomRatio}`);
 });
 
-import { contourOutline } from './core.js';
+import { contourOutline, REGION_NAMES } from './core.js';
 
 const polyPts = (polys) => polys.flat();
 
@@ -183,5 +183,12 @@ test('N5 shading·highlight 가 비어 있지 않고 source 가 landmark_only �
     assert.ok(o.shading.every((p) => p.length >= 4), `${f} 폴리곤 점이 4개 미만`);
     assert.equal(o.source, 'landmark_only');
     assert.deepEqual(o.labels.map((l) => l.text), ['쉐딩', '하이라이트']);
+  }
+  // region 이름 검증: CONTOUR_RULES 에 쓰인 모든 region 이 REGION_BUILDERS 에 있어야 한다
+  for (const f of FACE_SHAPES) {
+    const rule = CONTOUR_RULES[f];
+    for (const { region } of [...rule.shading, ...rule.highlight]) {
+      assert.ok(REGION_NAMES.includes(region), `${f}: REGION_BUILDERS 에 없는 region 이름 "${region}"`);
+    }
   }
 });
