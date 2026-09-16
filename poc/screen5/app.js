@@ -151,6 +151,8 @@ $('btnNext').onclick = () => {
   if (nx) { setPart(nx); }
   else renderChips();
 };
+// 다시 확인받기 → 화면 4(실시간 테두리)로 돌아가 다시 촬영. POC에서는 가상 화장을 다시 만들어 재채점(attempts+1로 덮어쓰기)
+$('btnRetry').onclick = () => { S.session = { ...S.session, parts: S.session.parts.map((p) => p.partId === S.part ? { ...p, attempts: (p.attempts || 0) + 1 } : p) }; run(); toast('화면 4로 돌아가 다시 촬영 → 새 결과로 덮어쓰기'); };
 $('btnSkip').onclick = () => {
   S.session = applySkip(S.session, S.part); const nx = nextPartId(S.session, S.part);
   toast(nx ? `건너뜀 (합산 제외) → 다음: ${PART_NAME[nx]}` : '건너뜀 → 화면 6 전체 리뷰');

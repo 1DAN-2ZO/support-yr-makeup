@@ -27,11 +27,13 @@ main { display:grid; grid-template-columns: auto 1fr; gap:20px; padding:16px 20p
 .checkchip { display:inline-block; align-self:flex-start; font-size:14px; padding:6px 14px; border-radius:16px; background:var(--gray-bg); color:var(--gray); font-weight:700; }
 .line { font-size:14px; line-height:1.45; min-height:40px; }
 .btns { display:flex; flex-direction:column; gap:8px; margin-top:6px; }
-.portrait .btns { flex-direction:row; }
-.portrait .btns button { flex:1; }
+.portrait .btns { flex-direction:row; flex-wrap:wrap; }
+.portrait .btns button { flex:1 1 45%; }
+.portrait .btns .ghost { flex-basis:100%; }
 button { padding:10px 14px; border:1px solid #d9d4ca; border-radius:12px; background:#fff; cursor:pointer; font-size:14px; }
 button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
 button.ghost { background:transparent; color:var(--muted); border-color:transparent; }
+button.secondary { background:#fff; color:var(--txt); border-color:#d9d4ca; }
 button.on { background:#2B2B2B; color:#fff; border-color:#2B2B2B; }
 .toast { position:absolute; bottom:18px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,.75); color:#fff; padding:8px 14px; border-radius:20px; font-size:13px; white-space:nowrap; z-index:6; }
 .loading { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#ccc; background:rgba(17,17,17,.85); font-size:14px; z-index:5; }

@@ -9,7 +9,7 @@
 <body>
 <header>
   <h1>당화응 POC · 화면 5·5-b 부위 결과 (v6)</h1>
-  <div class="hint">왼쪽은 실제 화면 목업(점수 + 내 화장 위 가이드 테두리 + 한 줄 평, 버튼 다음·건너뛰기), 오른쪽은 시연·검증 패널. 숫자(mm·각도·%)는 화면에 없고 "내부 지표" 탭에만. 쉐딩·하이라이트는 항상 "확인만".</div>
+  <div class="hint">왼쪽은 실제 화면 목업(점수 + 내 화장 위 가이드 테두리 + 한 줄 평, 버튼 다음(마지막은 결과 보러 가기)·다시 확인받기·건너뛰기), 오른쪽은 시연·검증 패널. 숫자(mm·각도·%)는 화면에 없고 "내부 지표" 탭에만. 쉐딩·하이라이트는 항상 "확인만".</div>
 </header>
 
 <main>
@@ -20,7 +20,7 @@
         <div class="scorebox" id="scorebox"><span class="big" id="score">—</span><small>/ 100</small></div>
         <div class="checkchip" id="checkchip" hidden>확인만</div>
         <div class="line" id="line">—</div>
-        <div class="btns"><button id="btnNext" class="primary">다음</button><button id="btnSkip" class="ghost">건너뛰기</button></div>
+        <div class="btns"><button id="btnNext" class="primary">다음</button><button id="btnRetry" class="secondary">다시 확인받기</button><button id="btnSkip" class="ghost">건너뛰기</button></div>
       </div>
       <div class="toast" id="toast" hidden></div>
       <div class="loading" id="loading">모델 로딩 중…</div>
