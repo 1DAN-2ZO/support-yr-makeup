@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>당화응 전체 POC</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header>
+  <h1>당화응 전체 POC · 화면 1 → 6 (v6)</h1>
+  <div class="hint">동의 → 촬영 4장 → 서버 처리 → 룩 10개 → 전체 완성 예상 → (완성본 → 실시간 테두리 → 결과) × 6부위 → 전체 리뷰. 왼쪽이 실제 화면 목업, 오른쪽이 시연·검증 패널. 폰에서 직접 보려면 주소 뒤에 <code>#device</code>.</div>
+</header>
+
+<main>
+  <section class="phone-wrap">
+    <div class="phone portrait" id="phone">
+      <div id="screen" class="screen"></div>
+      <div class="toast" id="toast" hidden></div>
+      <div class="hintcard" id="orientHint" hidden></div>
+      <div class="flash" id="flash" hidden></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <nav>
+      <button class="tab active" data-tab="input">입력</button>
+      <button class="tab" data-tab="state">내부 상태</button>
+      <button class="tab" data-tab="verify">검증</button>
+    </nav>
+
+    <div id="tabInput" class="tabpane">
+      <div class="row"><b>소스</b>
+        <button id="srcCam">카메라</button>
+        <label>샘플 <select id="srcSample"><option value="">— 촬영 세트 샘플 —</option></select></label>
+        <span class="muted" id="srcInfo">샘플이면 촬영 4장을 그 세트로 바로 채운다</span>
+      </div>
+      <div class="row"><b>폰 방향</b><button id="orientPortrait" class="on">세로</button><button id="orientLandscape">가로</button><span class="muted">눈·눈썹 단계는 가로. #device 는 실제 방향</span></div>
+      <div class="row"><b>화면 이동</b><span id="jump"></span></div>
+      <div class="row"><b>가상 화장</b>
+        <label><input id="synthOn" type="checkbox" checked /> 확인받기 때 내 화장을 가상으로 얹기(샘플·카메라 공통)</label>
+        <label>편차 <select id="synthPreset"></select></label>
+        <span class="muted">카메라로 실제 화장을 채점하려면 끄기</span>
+      </div>
+      <div class="row"><button id="btnReset">세션 초기화</button><span class="muted">세션 draft는 localStorage에 저장(이미지 제외). 끝내기에서 삭제</span></div>
+    </div>
+
+    <div id="tabState" class="tabpane" hidden>
+      <pre id="stateOut" class="out">—</pre>
+    </div>
+
+    <div id="tabVerify" class="tabpane" hidden>
+      <div class="row">
+        <button id="btnRunTests" class="primary">테스트 실행 (Node와 같은 12개)</button>
+        <button id="btnAuto">자동 진행 (샘플로 끝까지)</button>
+        <button id="btnPerf">단계별 처리 시간</button>
+      </div>
+      <pre id="testOut" class="out">—</pre>
+    </div>
+  </section>
+</main>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
