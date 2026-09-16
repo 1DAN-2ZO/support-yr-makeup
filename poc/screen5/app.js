@@ -111,6 +111,7 @@ function render() {
   $('scorebox').hidden = !scored; $('checkchip').hidden = !!scored;
   $('score').textContent = scored ? r.score : '—';
   $('line').textContent = r ? r.oneLiner : '—';
+  $('btnNext').textContent = nextPartId(S.session, part) ? '다음' : '결과 보러 가기';   // 마지막 부위 → 화면 6
   renderChips(); renderMetrics();
 }
 function drawDbg(ctx, M, dpr) {
@@ -123,7 +124,9 @@ function drawDbg(ctx, M, dpr) {
 }
 function renderChips() {
   const st = { not_started: '미시작', in_progress: '진행 중', passed: '완료', check_only: '확인만', skipped: '건너뜀' };
-  $('chips').innerHTML = S.session.parts.map((p) => `<span class="chip ${p.partId === S.part ? 'current' : ''}">${PART_NAME[p.partId]} · ${p.partId === S.part && p.status === 'not_started' ? '진행 중' : st[p.status]}${p.score != null ? ' ' + p.score : ''}</span>`).join('');
+  $('chips').innerHTML = S.session.parts.map((p) => `<span class="chip ${p.partId === S.part ? 'current' : ''}" data-id="${p.partId}">${PART_NAME[p.partId]} · ${p.partId === S.part && p.status === 'not_started' ? '진행 중' : st[p.status]}${p.score != null ? ' ' + p.score : ''}</span>`).join('');
+  // 진행 칩 탭 → 그 부위로 (실제 앱은 화면 3 완성본부터, POC는 바로 재채점). 재시도 버튼은 없다
+  $('chips').querySelectorAll('.chip').forEach((el) => (el.onclick = () => { if (el.dataset.id === S.part) return; setPart(el.dataset.id); toast(`${PART_NAME[el.dataset.id]} 다시 (화면 3 완성본부터)`); }));
 }
 function renderMetrics() {
   const r = S.result; if (!r) { $('metricsOut').textContent = '—'; return; }
@@ -144,13 +147,13 @@ $('btnNext').onclick = () => {
   const r = S.result; if (!r) return;
   S.session = applyNext(S.session, S.part, { status: r.decision.status, score: r.score, codes: r.codes, oneLiner: r.oneLiner, reason: r.decision.reason });
   const nx = nextPartId(S.session, S.part);
-  toast(nx ? `${r.decision.status === 'check_only' ? '확인만' : '이 점수로 확정'} → 다음: ${PART_NAME[nx]}` : '모든 부위 끝 → 화면 6 전체 리뷰');
+  toast(nx ? `${r.decision.status === 'check_only' ? '확인만' : '이 점수로 확정'} → 다음: ${PART_NAME[nx]}` : '결과 보러 가기 → 화면 6 전체 리뷰');
   if (nx) { setPart(nx); }
   else renderChips();
 };
 $('btnSkip').onclick = () => {
   S.session = applySkip(S.session, S.part); const nx = nextPartId(S.session, S.part);
-  toast(nx ? `건너뜀 (합산 제외) → 다음: ${PART_NAME[nx]}` : '모든 부위 끝 → 화면 6 전체 리뷰');
+  toast(nx ? `건너뜀 (합산 제외) → 다음: ${PART_NAME[nx]}` : '건너뜀 → 화면 6 전체 리뷰');
   if (nx) setPart(nx); else renderChips();
 };
 
