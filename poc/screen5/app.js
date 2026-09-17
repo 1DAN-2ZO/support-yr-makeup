@@ -10,6 +10,7 @@ import { prepare, sampleAll } from './sampling.js';
 import { synthesize, DEFAULTS, PRESETS } from './synth.js';
 
 const $ = (id) => document.getElementById(id);
+const ALIGN_RESIDUAL_MAX = 0.05;   // 기준 얼굴 정합 잔차 허용치: 눈 사이 거리의 5%. 넘으면 자세·표정 차이라 점수 대신 확인만 (poc/full 3c0a8bc 와 동일, 실기기에서 정할 가정값)
 const SAMPLE_DIR = '../../danghaeung_poc_3x4_20/';
 const SAMPLES = [1, 2, 3, 4, 5].flatMap((n) => ['front_open', 'front_closed'].map((s) => `person_${n}_${s}.jpg`));
 const hash = Object.fromEntries(location.hash.slice(1).split('&').filter(Boolean).map((kv) => { const [k, v] = kv.split('='); return [k, v == null ? true : decodeURIComponent(v)]; }));
@@ -74,6 +75,13 @@ function run() {
   if (!S.bare.im) { S.result = { decision: { status: 'check_only', reason: '얼굴을 찾지 못해 재지 못했어요. 직접 보고 넘어가세요' }, codes: [], oneLiner: '얼굴을 찾지 못해 재지 못했어요. 직접 보고 넘어가세요', score: null }; S.makeup = null; render(); return; }
   S.makeup = buildMakeup();
   if (!S.makeup.im) { S.result = { decision: { status: 'check_only', reason: '얼굴을 찾지 못해 재지 못했어요. 직접 보고 넘어가세요' }, codes: [], oneLiner: '얼굴을 찾지 못해 재지 못했어요. 직접 보고 넘어가세요', score: null }; render(); return; }
+  { // 유사변환이 기준 얼굴을 이 사진에 못 맞춤(자세·표정 차) → 거짓 점수 금지, 확인만
+    const lm = S.makeup.im.lm, eyeW = Math.hypot(lm[LM.eyeB.outer].x - lm[LM.eyeA.outer].x, lm[LM.eyeB.outer].y - lm[LM.eyeA.outer].y);
+    if (S.makeup.fit && S.makeup.fit.residual > eyeW * ALIGN_RESIDUAL_MAX) {
+      const reason = '맨얼굴 사진과 자세가 달라 재지 못했어요. 직접 보고 넘어가세요';
+      S.result = { decision: { status: 'check_only', reason }, codes: [], oneLiner: reason, score: null }; render(); return;
+    }
+  }
   const t0 = performance.now(); S.result = scorePart(S.part, S.bare.im, S.makeup.im); S.result.ms = performance.now() - t0;
   render();
 }

@@ -211,7 +211,9 @@ export function hasDigit(s) { return /\d/.test(s); }
 
 // ---------- 랜드마크 정렬 (문서 5-2: 각 프레임을 Baseline 좌표계로) ----------
 /** 화장에 영향받지 않는 안정 점: 눈 안팎 끝, 콧대, 얼굴 옆, 턱, 이마 */
-export const STABLE_IDS = [33, 133, 362, 263, 168, 6, 197, 195, 5, 4, 234, 454, 152, 10, 127, 356];
+/** 화장·입·턱에 영향받지 않는 안정 점: 눈 안팎 끝, 콧대·코끝, 이마, 광대.
+ * 얼굴 옆(234·454·127·356)과 턱(152)은 입을 벌리면 메시가 같이 벌어져 유사변환을 흔든다 — poc/full 실기기에서 확인, 제외 (3c0a8bc 와 동일) */
+export const STABLE_IDS = [33, 133, 362, 263, 168, 6, 197, 195, 5, 4, 10, 50, 280];
 /** 2D 유사변환(크기·회전·이동) 최소제곱: src → dst. 반환 { s, deg, apply(p), residual } */
 export function similarityFit(src, dst) {
   const n = Math.min(src.length, dst.length); let mx = 0, my = 0, ux = 0, uy = 0;
