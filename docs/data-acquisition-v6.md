@@ -2,6 +2,7 @@
 
 > 2026-09-16 · `data-needs-v6.md`에서 "받아오거나 신청할 것"으로 분류한 항목만. 우리가 직접 찍는 것(A-2~A-5)은 촬영 프로토콜 문서로 따로.
 > 순서 = 지금 바로 할 것 → 신청해 두고 기다릴 것 → 평가·참고용. 각 항목에 **1순위 → 차선책** 순서로 적었다.
+> 2026-09-17: jeakeun 순위표(`datasets-ranked-v6.md`) 정정 반영 — Periorbital 은 CC BY 4.0, Helen 은 라이선스 불명, CPM 링크 사망, CelebAMask-HQ 는 HF 미러, Face Shape 은 참고만, AI Hub 피부색 2종 추가, EasyPortrait 는 평가뿐 아니라 파싱 뼈대 학습에도.
 
 ## 한눈에 — 무슨 데이터, 무슨 용도
 
@@ -11,14 +12,18 @@
 | SFHQ-T2I (차선) | 텍스트→이미지 합성 얼굴 12.3만 장 1024² | 같음. StyleGAN2 이슈 회피 | O | O |
 | FairFace (차선) | 실사 10.8만 장, 7인종 균형, CC BY 4.0, 정렬 크롭(저해상도) | 피부톤·조명 분포 통계, 저해상도 보강 | O | △(실존 인물) |
 | Generated Photos (차선, 유료) | AI 생성 인물, 상업 라이선스 | 화장 없는 얼굴 골라 구매 → 밑그림 + **룩 참조 이미지(D-1)** 겸용 | O | O |
-| **Face Shape Dataset** | 연예인 5,000장, 5분류 라벨 | **얼굴형 규칙(F-02) 일치율** 측정 | 평가 | X |
+| Face Shape Dataset (참고) | 서양 연예인 5,000장, 5분류 라벨(근거 불명) | 얼굴형 규칙 참고. **1순위는 팀원·지인 셀피 50장 자체 라벨** | 참고 | X |
+| **Periorbital** | 눈 크롭 2,842장, 홍채·흰자·눈꺼풀·눈썹 5종 사람 라벨, **CC BY 4.0** | 눈썹·눈꺼풀 마스크 평가, 척도 검증(홍채 12% 오차 실측) | 평가 | X |
+| **AI Hub 글로벌 다인종 피부색** | 2,525명 × 조명 4종 + 이마·볼·목 측색기 Lab | ΔE 산식·조명 보정 검증 | O(학습만) | X |
+| AI Hub 한국인 피부상태 측정 | 1.4만 장, 스마트폰 포함 3기기, 부위 박스 | ΔE 기준선, 부위별 피부색 | O(학습만) | X |
 | **AI Hub 한국인 안면 이미지** | 1,000명 × 3만 장, 각도 20·조도 30·가림 6종 | **조명 30종에서 ΔE·밝기 게이트 검증**, 각도 판정·추적 검증, 한국인 얼굴형 보정 | O(학습만) | X |
-| **EasyPortrait** | 2만 장 FullHD, 좌/우 눈썹·눈·입술 9클래스 | 부위 마스크(F-05·F-08) **평가** | SA 조건 확인 | X |
+| **EasyPortrait** | 폰 셀피 FullHD, 좌/우 눈썹·눈·입술 9클래스, 실측 홍채 25px 스펙 93% | 부위 파싱 **뼈대 학습**(SegFormer-B0 또는 TinyUNet) + 평가 | O(SA 조건) | X |
 | LaPa (차선) | 2.2만 장, 11클래스 + 106점, 비상업 | 같음 | X | X |
 | CelebAMask-HQ (차선) | 3만 장 512², 19클래스, 비상업 | 같음 | X | X |
-| Helen (차선) | 2,330장, 부위 윤곽, 제약 없음 | 사업화 때 파싱 모델 재학습용 확보 | O | △ |
+| Helen (차선) | 2,330장 380px, 부위 윤곽, **라이선스 문구 없음(불명)** | 소규모 평가 | ? | X |
 | **FFHQ-Makeup** | 같은 얼굴 맨얼굴·화장 쌍 10.8만 장, 비상업 | ΔE 분포·화장 영역 통계 **참고**, 분할 모델 실제 화장 평가 | X | X |
-| MT · BeautyFace · CPM · Makeup-Wild | 화장 전/후·실제 환경 화장 사진, 연구용 | 화장 전이 모델·채점 평가 참고 | X | X |
+| MT · BeautyFace · Makeup-Wild | 화장 전/후·실제 환경 화장 사진, 연구용 | 화장 전이 모델 비교 발표용 참고 | X | X |
+| CPM · LFW-Part | — | **링크 사망** (2026-09-16 확인) | — | — |
 
 ## 0. 공통 준비 (한 번만)
 
@@ -72,7 +77,9 @@ hf download HuggingFaceM4/FairFace --repo-type dataset --local-dir C:\data\dangh
 
 ### 1-2. 얼굴형 규칙 검증 (C-4)
 
-**1순위: Face Shape Dataset** (Kaggle niten19, 5분류 × 1,000장)
+**1순위: 자체 라벨** — 팀원·지인 셀피 50장에 얼굴형 5종(계란·둥근·각진·긴·하트)을 팀원 2명이 표시. 공개 셋은 전부 서양 연예인 스크랩이고 라벨 근거가 없다(순위표 F). A-2 촬영 사진을 그대로 쓴다.
+
+**참고: Face Shape Dataset** (Kaggle niten19, 5분류 × 1,000장)
 - https://www.kaggle.com/datasets/niten19/face-shape-dataset
 ```
 kaggle datasets download -d niten19/face-shape-dataset -p C:\data\danghwaeung\faceshape --unzip
@@ -95,13 +102,19 @@ kaggle datasets download -d niten19/face-shape-dataset -p C:\data\danghwaeung\fa
 
 **차선**: 「마스크 착용 한국인 안면 이미지」 https://aihub.or.kr/aihubdata/data/view.do?dataSetSn=469 (가림 상황), 그리고 승인이 늦으면 A-3·A-4는 **자체 촬영**으로만 간다(원래 계획).
 
+### 2-2. AI Hub 피부톤 2종 (G-1·G-2, 2026-09-17 추가) — 같은 절차로 같이 신청
+
+- 「글로벌 다인종 피부색」: 2,525명 × 조명 4종, 이마·볼·목의 **측색기 Lab 값** + Monk·Fitzpatrick 등급. 우리 ΔE 산식이 기계값과 맞는지 검증. AI Hub 검색에서 이름으로 찾기.
+- 「한국인 피부상태 측정」: 1.4만 장, **스마트폰 포함 3기기**, 이마·볼·입술 부위 박스 + 수분·색소 등급. ΔE 기준선·부위별 피부색.
+- 둘 다 영리 R&D 허용, 승인제. 링크와 규모 확인은 `datasets-ranked-v6.md` 2장.
+
 ---
 
 ## 3. 평가·참고용 (학습에는 안 넣음)
 
 ### 3-1. 얼굴 파싱 평가 라벨 (C-3) — 좌우 눈썹·눈·윗입술·아랫입술 분리
 
-**1순위: EasyPortrait** (2만 장 FullHD, 9클래스, **CC BY-SA 4.0 변형** — SA 조건 확인)
+**1순위: EasyPortrait** (폰 전면카메라 셀피, FullHD, 9클래스, **CC BY-SA 4.0 변형** — 상업 가능 계열. 2026-09-17: 평가만이 아니라 **부위 파싱 뼈대 학습**에도 쓴다. 실측 200장: 검출 100%, 홍채 25px 스펙 93% 충족)
 - https://huggingface.co/datasets/gofixyourself/EasyPortrait · https://github.com/hukenovs/easyportrait
 ```
 hf download gofixyourself/EasyPortrait --repo-type dataset --local-dir C:\data\danghwaeung\easyportrait
@@ -109,16 +122,18 @@ hf download gofixyourself/EasyPortrait --repo-type dataset --local-dir C:\data\d
 
 **차선 1: LaPa** (2.2만 장, 11클래스 + 106점 랜드마크, **비상업**) — https://github.com/JDAI-CV/lapa-dataset (README의 Drive 링크, `gdown`)
 
-**차선 2: CelebAMask-HQ** (3만 장, 19클래스, **비상업**) — https://github.com/switchablenorms/CelebAMask-HQ (README의 Google Drive) · Kaggle 미러 https://www.kaggle.com/datasets/ipythonx/celebamaskhq
+**차선 2: CelebAMask-HQ** (3만 장, 19클래스, **비상업**) — https://github.com/switchablenorms/CelebAMask-HQ (Google Drive 는 **쿼터 초과로 막힘** → HF 미러 사용) · Kaggle 미러 https://www.kaggle.com/datasets/ipythonx/celebamaskhq
 ```
 kaggle datasets download -d ipythonx/celebamaskhq -p C:\data\danghwaeung\celebamask --unzip
 ```
 
-**차선 3: Helen** (2,330장, 부위 라벨, 제약 없음) — http://www.ifp.illinois.edu/~vuongle2/helen/ · 사업화 대비 재학습용으로 확보해 둘 가치.
+**차선 3: Helen** (2,330장 380px, 부위 라벨) — http://www.ifp.illinois.edu/~vuongle2/helen/ · **라이선스 문구가 없어 불명**(2026-09-17 정정). 소규모 평가만.
+
+**추가: Periorbital** (눈 크롭 2,842장, 홍채·흰자·눈꺼풀·누구·눈썹 5종 사람 라벨, **CC BY 4.0**) — Zenodo + GitHub `periorbital-dataset` · 눈썹·눈꺼풀 마스크 평가. 이걸로 MediaPipe 홍채가 사람 라벨보다 12% 작게 잡힌다는 것을 확인했다(`poc/datasets-eval/probe_iris.py`).
 
 ### 3-2. 화장 전/후 쌍 (B-4, 채점 참고) — 전부 비상업
 - FFHQ-Makeup: https://huggingface.co/datasets/cyberagent/FFHQ-Makeup (`hf download cyberagent/FFHQ-Makeup --repo-type dataset`)
-- 나머지(MT, BeautyFace, CPM, LADN, Makeup-Wild)는 `datasets-v6.md` 표의 링크.
+- MT·BeautyFace·LADN·Makeup-Wild 는 `datasets-v6.md` 표의 링크. **CPM 은 링크 사망.** 전부 학습 제외, 화장 전이 비교 발표용.
 
 ---
 
@@ -130,6 +145,6 @@ kaggle datasets download -d ipythonx/celebamaskhq -p C:\data\danghwaeung\celebam
 
 | 용도 | 가능 | 불가 |
 |---|---|---|
-| 학습(가중치에 승계) | SFHQ, SFHQ-T2I, FairFace(CC BY), 자체 촬영, Generated Photos(구매) | FFHQ, CelebA-HQ, LaPa, FaceSynthetics, FFHQ-Makeup, AI Hub(학습은 가능하나 재배포·게시 불가) |
+| 학습(가중치에 승계) | SFHQ, SFHQ-T2I, FairFace(CC BY), EasyPortrait(SA), **자체 촬영 실사진 라벨**, Generated Photos(구매), AI Hub(학습만) | FFHQ, CelebA-HQ, LaPa, FaceSynthetics, FFHQ-Makeup, MT, Helen(불명) |
 | 앱 화면 게시 | 자체 촬영(동의서), 생성 이미지, Generated Photos(구매) | 위 전부(연구·비상업), Pexels/Unsplash 실존 인물(모델 릴리스 미검증) |
 | 평가·참고 | 전부 가능(인용 조건 준수) | — |
