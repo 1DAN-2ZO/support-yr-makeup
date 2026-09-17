@@ -9,27 +9,9 @@ import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@m
 import { Client } from "https://esm.sh/@gradio/client@2.6.0";
 import { solveAffine } from "./lib/affine.js";
 import { LandmarkSmoother } from "./lib/smoothing.js";
+import { REGION_KEYS, TRACKED_IDX, buildRegions, centroid } from "./lib/regions.js";
 
 const GRADIO_URL = "http://127.0.0.1:7860";
-
-// 랜드마크 인덱스 (poc/app.js와 동일 관례 재사용: EYES.upper, CHEEK)
-const EYES = {
-  R: { upper: [133, 173, 157, 158, 159, 160, 161, 246, 33] },
-  L: { upper: [362, 398, 384, 385, 386, 387, 388, 466, 263] },
-};
-const BROW = {
-  R: [70, 63, 105, 66, 107, 55, 65, 52, 53, 46],
-  L: [300, 293, 334, 296, 336, 285, 295, 282, 283, 276],
-};
-const CHEEK = {
-  R: [116, 117, 118, 101, 36, 205, 187, 123],
-  L: [345, 346, 347, 330, 266, 425, 411, 352],
-};
-const LIPS = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146];
-const EYESHADOW_REACH = 0.45; // 눈꺼풀 선 -> 눈썹 쪽으로 이 비율만큼 올려서 섀도우 밴드 상단 경계
-
-// 라이브 워핑에 실제 쓰는 랜드마크 인덱스만 스무딩 대상으로 삼는다 (478개 전부는 불필요)
-const TRACKED_IDX = [...new Set([...BROW.R, ...BROW.L, ...EYES.R.upper, ...EYES.L.upper, ...LIPS, ...CHEEK.R, ...CHEEK.L])];
 
 const $ = (id) => document.getElementById(id);
 const statusEl = $("status");
@@ -98,30 +80,6 @@ function onRefChange(e) {
 function canvasToBlob(cv) {
   return new Promise((res) => cv.toBlob(res, "image/jpeg", 0.95));
 }
-function landmarkPx(landmarks, idx, w, h) {
-  const p = landmarks[idx];
-  return [p.x * w, p.y * h];
-}
-function centroid(pts) {
-  const n = pts.length;
-  return [pts.reduce((s, p) => s + p[0], 0) / n, pts.reduce((s, p) => s + p[1], 0) / n];
-}
-function lerp(a, b, t) { return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]; }
-
-// 부위별 폴리곤: 눈썹은 랜드마크 그대로, 눈은 눈꺼풀 선~눈썹 쪽으로 올린 밴드, 입술·볼은 랜드마크 그대로
-function buildRegions(lm, w, h) {
-  const P = (i) => landmarkPx(lm, i, w, h);
-  const browR = BROW.R.map(P), browL = BROW.L.map(P);
-  const browRC = centroid(browR), browLC = centroid(browL);
-  const lidR = EYES.R.upper.map(P), lidL = EYES.L.upper.map(P);
-  const eyeR = [...lidR, ...lidR.map((p) => lerp(p, browRC, EYESHADOW_REACH)).reverse()];
-  const eyeL = [...lidL, ...lidL.map((p) => lerp(p, browLC, EYESHADOW_REACH)).reverse()];
-  return {
-    browR, browL, eyeR, eyeL,
-    lips: LIPS.map(P),
-    cheekR: CHEEK.R.map(P), cheekL: CHEEK.L.map(P),
-  };
-}
 
 // ---------- 서버 생성 ----------
 async function generateLook() {
@@ -181,8 +139,6 @@ function warpPolygon(ctx, srcPts, dstPts, srcImg, alpha) {
     ctx.restore();
   }
 }
-
-const REGION_KEYS = ["browR", "browL", "eyeR", "eyeL", "lips", "cheekR", "cheekL"];
 
 // ---------- 스무딩 (One Euro Filter, lib/smoothing.js) ----------
 const smoother = new LandmarkSmoother(TRACKED_IDX);
