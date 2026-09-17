@@ -2,9 +2,13 @@
 // v2: 얼굴 전체 통째 아핀 1번(v1)이 배경·피부톤까지 섞여 "화장이 진하게 뜸" 문제가 있어서,
 // 눈썹/눈(섀도우 밴드)/입술/볼 부위별로 따로 워핑하도록 변경. 각 부위는 팬 삼각분할로 여러 개의
 // 3점 아핀 워핑(solveAffine, v1과 동일 수식)을 이어붙여 처리 — 부위 밖은 전혀 합성하지 않는다.
+// v3: 실사용 테스트에서 실시간 워핑이 흔들린다는 피드백 — 원인은 각도 추적 실패가 아니라 프레임 간
+// 랜드마크 노이즈. One Euro Filter로 라이브 랜드마크를 스무딩해서 완화(liveLoop 쪽 참고).
 
 import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
 import { Client } from "https://esm.sh/@gradio/client@2.6.0";
+import { solveAffine } from "./lib/affine.js";
+import { LandmarkSmoother } from "./lib/smoothing.js";
 
 const GRADIO_URL = "http://127.0.0.1:7860";
 
@@ -23,6 +27,9 @@ const CHEEK = {
 };
 const LIPS = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146];
 const EYESHADOW_REACH = 0.45; // 눈꺼풀 선 -> 눈썹 쪽으로 이 비율만큼 올려서 섀도우 밴드 상단 경계
+
+// 라이브 워핑에 실제 쓰는 랜드마크 인덱스만 스무딩 대상으로 삼는다 (478개 전부는 불필요)
+const TRACKED_IDX = [...new Set([...BROW.R, ...BROW.L, ...EYES.R.upper, ...EYES.L.upper, ...LIPS, ...CHEEK.R, ...CHEEK.L])];
 
 const $ = (id) => document.getElementById(id);
 const statusEl = $("status");
@@ -153,23 +160,6 @@ async function generateLook() {
 }
 
 // ---------- 아핀 변형 ----------
-// src 3점 -> dst 3점 을 만족하는 2x3 아핀 행렬 [a,b,c,d,e,f] (Canvas2D setTransform 순서)
-function solveAffine(src, dst) {
-  const [[x0, y0], [x1, y1], [x2, y2]] = src;
-  const [[u0, v0], [u1, v1], [u2, v2]] = dst;
-  const d = x0 * (y1 - y2) - x1 * (y0 - y2) + x2 * (y0 - y1);
-  if (Math.abs(d) < 1e-6) return null;
-  const solveRow = (p0, p1, p2) => {
-    const a = (p0 * (y1 - y2) - p1 * (y0 - y2) + p2 * (y0 - y1)) / d;
-    const b = (x0 * (p1 - p2) - x1 * (p0 - p2) + x2 * (p0 - p1)) / d;
-    const c = (x0 * (y1 * p2 - y2 * p1) - x1 * (y0 * p2 - y2 * p0) + x2 * (y0 * p1 - y1 * p0)) / d;
-    return [a, b, c];
-  };
-  const [a, c, e] = solveRow(u0, u1, u2);
-  const [b, dd, f] = solveRow(v0, v1, v2);
-  return [a, b, c, dd, e, f];
-}
-
 // 폴리곤(가운데점 팬 삼각분할) 단위로 src 영역을 dst 영역에 워핑해서 그린다.
 function warpPolygon(ctx, srcPts, dstPts, srcImg, alpha) {
   const srcC = centroid(srcPts), dstC = centroid(dstPts);
@@ -194,6 +184,16 @@ function warpPolygon(ctx, srcPts, dstPts, srcImg, alpha) {
 
 const REGION_KEYS = ["browR", "browL", "eyeR", "eyeL", "lips", "cheekR", "cheekL"];
 
+// ---------- 스무딩 (One Euro Filter, lib/smoothing.js) ----------
+const smoother = new LandmarkSmoother(TRACKED_IDX);
+function updateSmoothingParams() {
+  const minCutoff = parseFloat($("minCutoff").value);
+  const beta = parseFloat($("beta").value);
+  smoother.setParams(minCutoff, beta);
+  $("minCutoffVal").textContent = minCutoff.toFixed(1);
+  $("betaVal").textContent = beta.toFixed(2);
+}
+
 // ---------- 실시간 루프 ----------
 let lastT = -1;
 function liveLoop() {
@@ -204,7 +204,7 @@ function liveLoop() {
     if (now !== lastT) {
       lastT = now;
       const res = state.videoLandmarker.detectForVideo(video, now);
-      const lm = res.faceLandmarks && res.faceLandmarks[0];
+      const lm = smoother.smooth(res.faceLandmarks && res.faceLandmarks[0], now);
       ctx.clearRect(0, 0, cv.width, cv.height);
       ctx.drawImage(video, 0, 0, cv.width, cv.height);
       if (lm && state.lookResult) {
@@ -239,12 +239,15 @@ function reset() {
 
 // ---------- 초기화 ----------
 $("btnCapture").onclick = captureFrame;
+$("minCutoff").oninput = updateSmoothingParams;
+$("beta").oninput = updateSmoothingParams;
+updateSmoothingParams();
 $("refFile").onchange = onRefChange;
 $("btnGenerate").onclick = generateLook;
 $("btnLive").onclick = goLive;
 $("btnReset").onclick = reset;
 
-window.__poc = { buildRegions, solveAffine, warpPolygon, state }; // 브라우저 콘솔/자동화 테스트용
+window.__poc = { buildRegions, solveAffine, warpPolygon, state, smoother }; // 브라우저 콘솔/자동화 테스트용
 
 (async () => {
   try {
