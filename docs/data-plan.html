@@ -69,8 +69,9 @@ tr:last-child td { border-bottom:none; }
 <div class="wrap">
   <header class="top">
     <h1>당화응 데이터 계획</h1>
-    <p>1부는 서비스를 만드는 데 필요한 데이터 전부(무엇이 왜 필요한지, 지금 상태). 2부는 그중 받아올 수 있는 것의 받는 법과 차선책. 1부 표의 "어디서"를 누르면 2부의 카드로 내려간다. 2026-09-17 기준 — jeakeun의 데이터셋 순위표(6종 × 200장 실측)와 기능 정의서 정정을 반영. 최종 판단은 <code>docs/datasets-ranked-v6.md</code>가 우선.</p>
-    <div class="eli5"><b>쉽게 말하면</b> 당화응은 "네 맨얼굴 사진을 기준으로, 네가 그린 화장이 가이드랑 얼마나 맞는지" 봐 주는 앱이다. 그러려면 세 종류의 재료가 필요하다. ① <b>연습 문제</b>: 컴퓨터에게 "이건 화장이고 이건 피부야"를 가르칠 사진(학습). ② <b>시험지</b>: 우리가 만든 게 진짜 얼굴에서도 맞는지 확인할 사진(검증·평가). ③ <b>화면에 보여줄 것</b>: 룩 사진·문구·제품 목록(콘텐츠). 남의 사진은 대부분 "연구용으로만"이라, 앱 화면에 띄우거나 학습에 쓰려면 우리가 직접 찍거나 합성 얼굴을 써야 한다.</div>
+    <p>1부는 서비스를 만드는 데 필요한 데이터 전부(무엇이 왜 필요한지, 지금 상태). 2부는 그중 받아올 수 있는 것의 받는 법과 차선책. 1부 표의 "어디서"를 누르면 2부의 카드로 내려간다. 2026-09-17 4차 — <b>전제 변경</b>: 채점의 정답은 우리가 그려 주는 개인화 가이드 자체이므로 정답 데이터셋이 필요 없고, 화장 영역 분할 모델은 MVP에서 뺀다. 자체 학습 모델은 <b>얼굴형 분류기</b>, 선택으로 <b>화장 전이 LoRA</b>. 실측 근거는 <code>docs/datasets-ranked-v6.md</code>.</p>
+    <div class="eli5"><b>쉽게 말하면</b> 당화응은 "네 맨얼굴 사진을 기준으로, 네가 그린 화장이 가이드랑 얼마나 맞는지" 봐 주는 앱이다. <b>가이드는 우리가 네 얼굴에 맞춰 그려 주니까 정답은 이미 우리 손에 있다.</b> 그래서 재료는 세 종류다. ① <b>시험지</b>: 우리가 만든 게 진짜 얼굴에서도 맞는지 확인할 사진(검증·평가). 가장 급함. ② <b>연습 문제</b>: 얼굴형 모델을 가르칠 사진(학습). 많지 않다. ③ <b>화면에 보여줄 것</b>: 룩 사진·문구·제품 목록(콘텐츠). 룩 사진은 얹어보기 AI의 재료이기도 하다. 남의 사진은 대부분 "연구용으로만"이라, 앱 화면에 띄우거나 학습에 쓰려면 우리가 직접 찍거나 합성 얼굴을 써야 한다.</div>
+    <div class="eli5"><b>발표에 나가야 할 숫자 3개</b> — 이 계획의 목적. ① 실사진 200장에서 채점기 판정과 사람 판정의 일치율(A-2) ② 얼굴형 규칙 정확도 → 모델 정확도, 라벨러 간 일치율(B-1) ③ 화장 전이 1장 시간·정체성 유지·룩 색 반영도(C-1).</div>
   </header>
 
   <nav class="side" aria-label="목차">
@@ -86,8 +87,8 @@ tr:last-child td { border-bottom:none; }
     <span class="lbl">2부 · 받는 법</span>
     <a href="#tools">도구 설치</a>
     <span class="lbl">지금 받을 것</span>
-    <a href="#sfhq">SFHQ 맨얼굴 원본</a>
     <a href="#faceshape">Face Shape 얼굴형</a>
+    <a href="#sfhq">SFHQ (확장 단계)</a>
     <span class="lbl">신청 후 대기</span>
     <a href="#aihub">AI Hub 한국인 안면</a>
     <a href="#skin">AI Hub 피부톤 2종</a>
@@ -101,45 +102,44 @@ tr:last-child td { border-bottom:none; }
 
   <main>
     <section id="needs" class="part">
-      <h2>1부 · 필요한 데이터 <span>보류·안 함 제외 25항목</span></h2>
+      <h2>1부 · 필요한 데이터 <span>2026-09-17 4차 · 전제 변경 반영</span></h2>
       <div class="summary">
-        <div class="s"><b>있음</b><span>촬영 세트 샘플 20장(AI 생성) · 합성 학습 생성기 · 촬영·게이트 안내 문구</span></div>
-        <div class="s"><b>우리가 직접 (자체)</b><span>맨얼굴+화장 후 쌍, 조명·각도·가림 세트, 실제 화장 라벨, 설문·사용자 실험</span></div>
-        <div class="s"><b>받아올 것 (후보)</b><span>맨얼굴 원본, 파싱 라벨(EasyPortrait), 한국인 안면·피부톤 3종(AI Hub 신청), 홍채·눈 라벨, 화장 쌍 참고 → 2부</span></div>
-        <div class="s"><b>결정할 것 (미정)</b><span>룩 참조 이미지 10장 방법, 쉐딩·하이라이트 규칙 출처</span></div>
+        <div class="s"><b>있음</b><span>촬영 세트 샘플 20장(AI 생성) · 촬영·게이트 안내 문구 · (보류분) 합성 학습 생성기</span></div>
+        <div class="s"><b>우리가 직접 (자체)</b><span>맨얼굴+화장 후 쌍(+부위별 사람 판정), 얼굴형 자체 라벨 50~100명, 조명·각도·가림 세트, 설문·사용자 실험</span></div>
+        <div class="s"><b>받아올 것 (후보)</b><span>Face Shape(얼굴형 1차 학습), 파싱 라벨(EasyPortrait, 평가), 한국인 안면·피부톤 3종(AI Hub 신청), 홍채·눈 라벨, 화장 쌍 참고 → 2부</span></div>
+        <div class="s"><b>결정할 것 (미정)</b><span>룩 참조 이미지 10장 방법(전이 평가·LoRA의 출발점), 쉐딩·하이라이트 규칙 출처</span></div>
       </div>
       <p class="note">상태: <span class="st have">있음</span> <span class="st self">자체</span> 우리가 찍거나 만든다 · <span class="st cand">후보</span> 받아올 데이터가 있다(2부) · <span class="st none">미정</span> 출처 없음 · <span class="st hold">보류</span> 나중에 우리가 정함</p>
 
       <h3 id="need-a">A. 개발·검증용 사진 — 촬영·정렬·채점이 실제 얼굴로 되는지</h3>
-      <div class="eli5"><b>쉽게 말하면</b> 지금 POC는 "컴퓨터가 그린 가짜 화장"으로만 시험을 봤다. 진짜 사람이 진짜로 그린 화장 사진이 있어야 채점기가 실제로 맞는지 안다. 그리고 집 조명·고개 각도·손이 가리는 상황에서도 버티는지 봐야 한다.</div>
+      <div class="eli5"><b>쉽게 말하면</b> 지금 POC는 "컴퓨터가 그린 가짜 화장"으로만 시험을 봤다. 진짜 사람이 진짜로 그린 화장 사진이 있어야 채점기가 실제로 맞는지 안다. 정답은 우리가 그려 준 가이드라서 사진에 정답을 칠할 필요는 없고, 사람이 "잘 그렸다/조금 벗어났다/많이 벗어났다"만 적으면 된다. 집 조명·고개 각도·손이 가리는 상황에서도 버티는지도 봐야 한다.</div>
       <div class="tbl needs"><table>
         <tr><th>#</th><th>데이터</th><th>무엇 · 얼마나</th><th>쓰는 기능</th><th>상태</th><th>어디서</th></tr>
         <tr><td>A-1</td><td>촬영 세트 샘플</td><td>정면 눈 뜸·감음·좌45·우45, 5명 × 4장, 3:4 셀카 1080×1440</td><td>촬영(F-01), 화면 3 크롭, 화면 4 추적</td><td><span class="st have">있음</span></td><td>AI 생성 20장. 실촬영으로 보강</td></tr>
-        <tr><td>A-2 ★</td><td>같은 사람 맨얼굴 + 화장 후 쌍</td><td><b>20명 × 10장</b>(1차 200장, 2차 500장). 폰 전면카메라, 얼굴이 화면 폭 60% 이상, 조명 3종(창가·실내등·어두움), 각도 정면·±15°·±30°. 같은 자리에서 <b>맨얼굴 → 눈썹 → 라이너 → 섀도우 → 립 → 볼터치 단계별 6장</b></td><td>채점 전체(F-08·F-09), 화면 5 실제 입력, B-3 라벨 원본. 단계별로 찍으면 한 단계 전후 색 차이가 곧 그 부위 마스크 초안</td><td><span class="st self">자체</span></td><td>촬영 세션 (동의서 필요)</td></tr>
+        <tr><td>A-2 ★</td><td>같은 사람 맨얼굴 + 화장 후 쌍</td><td><b>20명 × 10장</b>(1차 200장이면 충분). 폰 전면카메라, 얼굴이 화면 폭 60% 이상, 조명 3종(창가·실내등·어두움), 각도 정면·±15°·±30°. 같은 자리에서 <b>맨얼굴 → 눈썹 → 라이너 → 섀도우 → 립 → 볼터치 단계별 6장</b>, 일부러 벗어나게 그린 장 포함</td><td>채점 전체(F-08·F-09), 화면 5 실제 입력, <b>채점 정확도 시험지</b>(부위별 사람 판정 3단계, 장당 1분), 얼굴형 자체 라벨 원본(B-1), 전이 평가 맨얼굴(C-1). 픽셀 라벨은 안 붙인다</td><td><span class="st self">자체</span></td><td>촬영 세션 (동의서 필요)</td></tr>
         <tr><td>A-3 ★</td><td>조명 변화 세트</td><td>3명 × 조명 3종(형광등·창가·백열) × 맨얼굴/화장</td><td>밝기 게이트, 조명 보정, ΔE 기준선 — 최대 리스크</td><td><span class="st self">자체</span> + <span class="st cand">후보</span></td><td>촬영 세션 · <a href="#aihub">AI Hub 조도 30종</a></td></tr>
         <tr><td>A-4</td><td>각도 변화 세트</td><td>3명 × 정면·±15°·±30°·±45°</td><td>45° 촬영 판정, 정면 게이트, 화면 4 추적 유지</td><td><span class="st self">자체</span> + <span class="st cand">후보</span></td><td>촬영 세션 · <a href="#aihub">AI Hub 각도 20종</a></td></tr>
         <tr><td>A-5</td><td>손·머리카락 가림 세트</td><td>3명 × 가림 5상황</td><td>손 가림 판정(F-07), 품질 게이트</td><td><span class="st self">자체</span> + <span class="st cand">후보</span></td><td>촬영 세션 · <a href="#parsing">EasyPortrait</a> · AI Hub 마스크</td></tr>
         <tr><td>A-6</td><td>화장 후 랜드마크 이동 측정</td><td>A-2에 진한 아이라인·오버립 케이스 포함</td><td>화면 5 정렬 검증. POC 실측 3.4px</td><td><span class="st self">자체</span></td><td>A-2와 같이</td></tr>
       </table></div>
 
-      <h3 id="need-b">B. 학습 데이터 — 직접 학습하는 유일한 모델(화장 영역 분할)</h3>
-      <div class="eli5"><b>쉽게 말하면</b> 우리가 가르치는 모델은 딱 하나, "사진에서 화장 발린 곳만 오려내기"다. 가르치려면 "정답이 표시된 사진"이 수천 장 필요한데, 사람이 일일이 칠하는 대신 <b>컴퓨터가 맨얼굴 위에 화장을 그려 넣으면서 정답도 같이 만드는 생성기</b>(B-1)가 이미 있다. 이제 그 생성기에 넣을 <b>깨끗한 맨얼굴 사진</b>(B-2)만 있으면 된다.</div>
+      <h3 id="need-b">B. 학습 데이터 — 자체 학습 모델은 얼굴형 분류기, 나머지는 선택·보류 (4차 재편)</h3>
+      <div class="eli5"><b>쉽게 말하면</b> 우리가 가르치는 모델은 "얼굴형 판단" 하나다. 서양 연예인 사진 5,000장으로 먼저 배우게 하고, 우리가 찍은 한국인 사진 50~100장으로 다듬어서 규칙보다 얼마나 나아지는지 본다. 화장 얹어보기 모델을 우리 룩 전용으로 더 가르치는 건 룩 사진이 생기면 하는 선택 과제. "화장 발린 곳 오려내기" 모델은 첫 버전에서 뺐고, 재료(생성기·가짜 맨얼굴)는 나중을 위해 남겨 둔다.</div>
       <div class="tbl needs"><table>
         <tr><th>#</th><th>데이터</th><th>무엇 · 얼마나</th><th>쓰는 기능</th><th>상태</th><th>어디서</th></tr>
-        <tr><td>B-1</td><td>합성 학습 데이터 생성기</td><td>맨얼굴 + 절차적 화장 + 정답 마스크(6클래스). 시드 재현, JS·Python 동일, 0차 학습 mIoU 0.899</td><td>분할 모델 학습(F-08). 생성기이지 데이터가 아님 → B-2 필요</td><td><span class="st have">있음</span></td><td>jeakeun 브랜치 poc/synth</td></tr>
-        <tr><td>B-2 ★</td><td>맨얼굴 원본</td><td>화장 안 한 정면 얼굴, 눈 폭 80px 이상, 수백~수천 장, 학습·화면 모두 가능한 라이선스</td><td>B-1의 밑그림. 지금 샘플 20장은 해상도 부족</td><td><span class="st cand">후보</span></td><td><a href="#sfhq">SFHQ</a> → 차선 SFHQ-T2I·FairFace·Generated Photos</td></tr>
-        <tr><td>B-3 ★</td><td>실제 화장 사진 라벨</td><td>A-2 사진에 부위 마스크 1차 200장, 2차 500장. 클래스 배경·눈썹·라이너·섀도우·입술·볼터치</td><td><b>학습(파인튜닝) + 평가.</b> 합성만으로 학습하면 실사진 눈썹 IoU 0.06~0.11 → 실사진 라벨 필수(9/17 정정). 합성:실사진 1:1로 섞어 낮은 학습률로</td><td><span class="st self">자체</span></td><td>반자동 라벨: 랜드마크 다각형 ∩ 단계별 ΔE 초안 → CVAT에서 브러시 수정(장당 5분). 10%는 2인 라벨로 Dice ≥ 0.80</td></tr>
-        <tr><td>B-4</td><td>공개 화장 쌍 데이터</td><td>맨얼굴·화장 쌍(FFHQ-Makeup 등), 전부 비상업</td><td>학습 대신 참고·평가</td><td><span class="st cand">후보</span></td><td><a href="#makeup">FFHQ-Makeup</a></td></tr>
+        <tr><td>B-1 ★</td><td>얼굴형 분류기 학습·평가 데이터</td><td>① 1차 학습: Kaggle Face Shape 5,000장(5분류) ② 한국인 파인튜닝·최종 평가: <b>자체 라벨 50~100명</b>, 팀원 2명 독립 라벨 → 불일치는 3인 판정, 라벨러 일치율(κ) 기록 ③ 분포 보강: AI Hub 한국인 안면</td><td>얼굴형 5분류(F-02) → 쉐딩·하이라이트 규칙 선택. <b>우리가 학습하는 유일한 필수 모델.</b> 배치는 규칙 유지, 모델은 분류만. 발표 숫자: 규칙(논문 36~65%) vs 모델 vs 라벨러 일치율</td><td><span class="st cand">후보</span> + <span class="st self">자체</span></td><td><a href="#faceshape">Face Shape</a>(1차만, 라이선스 불명) · A-2 사진 재사용 · <a href="#aihub">AI Hub</a></td></tr>
+        <tr><td>B-2</td><td>화장 전이 LoRA 학습 데이터 (선택)</td><td>룩 참조 10장(D-1) + 룩당 5~20장 변형(같은 화장을 다른 얼굴에)</td><td>공개 Stable-Makeup을 <b>우리 룩 10개 전용으로 추가 학습</b>(F-03·F-04). 순서: 평가(C-1) → 서빙 최적화 → LoRA. GPU 시간·과적합 위험</td><td><span class="st none">미정</span></td><td>D-1 결정 뒤</td></tr>
+        <tr><td>B-3</td><td>화장 영역 분할 모델 학습 데이터 (확장, MVP 제외)</td><td>합성 생성기(jeakeun poc/synth) + 맨얼굴 원본(SFHQ) + A-2 실사진 픽셀 라벨 200~500장</td><td>ΔE + 랜드마크 영역 채점이 실사진에서 부족할 때만 꺼낸다. 합성만 학습하면 실사진 눈썹 IoU 0.06~0.11이라 실사진 라벨 필수</td><td><span class="st hold">보류</span></td><td><a href="#sfhq">SFHQ</a> (지금은 안 받음)</td></tr>
       </table></div>
 
       <h3 id="need-c">C. 모델 평가 — 공개 모델이 우리 조건에서 되는지</h3>
-      <div class="eli5"><b>쉽게 말하면</b> 얼굴 부위 나누기, 화장 얹어보기, 얼굴형 판단은 남이 만든 모델이나 우리 규칙을 쓴다. "우리 사진에서도 잘 되나"를 재려면 정답이 붙은 사진이 필요하다. 이건 남의 데이터를 써도 된다. 시험지로만 쓰지 가르치는 데 안 쓰기 때문이다.</div>
+      <div class="eli5"><b>쉽게 말하면</b> 얼굴 점 찍기, 화장 얹어보기는 남이 만든 모델을 쓰고, 부위 영역은 우리가 점으로 잡는다. "우리 사진에서도 잘 되나"를 재려면 정답이 붙은 사진이 필요하다. 시험지로만 쓰지 가르치는 데 안 쓰므로 남의 데이터를 써도 된다. 얹어보기는 "얼굴이 그 사람 그대로인가", "룩 색이 옮겨졌나"를 숫자로 잰다.</div>
       <div class="tbl needs"><table>
         <tr><th>#</th><th>데이터</th><th>무엇 · 얼마나</th><th>쓰는 기능</th><th>상태</th><th>어디서</th></tr>
-        <tr><td>C-1 ★</td><td>화장 전이 입력 쌍</td><td>우리 맨얼굴 5명 × 룩 참조 사진 10장</td><td>룩 10개·전체 완성 예상(F-03·F-04). 서버 벤치는 번들 샘플로만 함</td><td><span class="st none">미정</span></td><td>D-1이 정해지면</td></tr>
+        <tr><td>C-1 ★</td><td>화장 전이 <b>평가</b> 쌍</td><td>A-2 맨얼굴 20명 × 룩 참조 10장 = 결과 200장</td><td>룩 10개·전체 완성 예상(F-03·F-04). 서버 벤치는 번들 샘플로만(fp16 10스텝 3초). 지표: <b>정체성 유지</b>(ArcFace 코사인), <b>룩 색 반영도</b>(부위별 ΔE, 채점기 재활용), 실패 사례(안경·진한 화장·저조도·측면). B-2 전/후 비교에도</td><td><span class="st none">미정</span></td><td>D-1이 정해지면</td></tr>
         <tr><td>C-2</td><td>법선 추정 입력</td><td>정면·좌·우 3장</td><td>쉐딩 위치·얼굴형(F-02). 모델 후보 미검증</td><td><span class="st have">있음</span></td><td>A-1·A-4로 충분</td></tr>
-        <tr><td>C-3</td><td>얼굴 파싱 라벨</td><td>좌우 눈썹·눈·입술 픽셀 라벨, 폰 셀피</td><td>부위 파싱 <b>뼈대 학습</b> + 평가(F-05·F-08). EasyPortrait 실측: 검출 100%, 해상도 스펙 93% 충족</td><td><span class="st cand">후보</span></td><td><a href="#parsing">EasyPortrait</a> 1순위 확정 → LaPa·CelebAMask-HQ(평가만)</td></tr>
-        <tr><td>C-4</td><td>얼굴형 규칙 일치율</td><td><b>팀원·지인 셀피 50장에 얼굴형 5종 자체 라벨</b></td><td>얼굴형 규칙(F-02) 정답률. Kaggle 셋은 서양 연예인 스크랩에 라벨 근거 없음(논문상 규칙 정확도 36~65%) → 참고만</td><td><span class="st self">자체</span></td><td>A-2 사진 재사용 · <a href="#faceshape">Face Shape (참고)</a></td></tr>
+        <tr><td>C-3</td><td>얼굴 파싱 라벨</td><td>좌우 눈썹·눈·입술 픽셀 라벨, 폰 셀피</td><td><b>랜드마크로 잡은 부위 영역이 실제 부위와 얼마나 겹치는지 평가</b>(F-05·F-08 채점 영역). 4차: 학습 안 함. EasyPortrait 실측: 검출 100%, 해상도 스펙 93%</td><td><span class="st cand">후보</span></td><td><a href="#parsing">EasyPortrait</a> → LaPa·CelebAMask-HQ(평가만)</td></tr>
+        <tr><td>C-4</td><td>얼굴형 <b>규칙 기준선</b></td><td>B-1 자체 라벨 50~100명을 그대로</td><td>모델 학습 <b>전에</b> 현행 규칙(F-02)의 정확도를 먼저 재 둔다(논문상 36~65%). B-1 모델과 비교할 기준선</td><td><span class="st self">자체</span></td><td>A-2 사진 재사용</td></tr>
         <tr><td>C-5</td><td>홍채·눈 세부 라벨</td><td>눈 크롭 2,842장, 홍채·흰자·눈꺼풀·눈썹 5종 사람 라벨</td><td>눈썹·눈꺼풀 마스크 평가, 척도 검증. <b>MediaPipe 홍채가 사람 라벨보다 12% 작게 잡힘</b>(0.45 vs 0.51) → mm 척도를 뺀 결정의 근거</td><td><span class="st cand">후보</span></td><td><a href="#parsing">Periorbital (CC BY 4.0)</a></td></tr>
       </table></div>
 
@@ -147,8 +147,8 @@ tr:last-child td { border-bottom:none; }
       <div class="eli5"><b>쉽게 말하면</b> 앱에 실제로 뜨는 룩 사진·문구·제품 이름이다. 특히 룩 사진 10장은 <b>사용자 눈에 보이는 얼굴</b>이라 연구용 사진은 절대 못 쓰고, 우리가 찍거나 만들어야 한다.</div>
       <div class="tbl needs"><table>
         <tr><th>#</th><th>데이터</th><th>무엇 · 얼마나</th><th>쓰는 기능</th><th>상태</th><th>어디서</th></tr>
-        <tr><td>D-1 ★</td><td>룩 참조 이미지 10장</td><td>룩 10개 × 정면 참조 1장</td><td>화면 2 썸네일, 화장 전이 입력. 연구 데이터 불가, 스톡은 초상권 위험</td><td><span class="st none">미정</span></td><td>자체 촬영+동의서 / 생성 / <a href="#sfhq">Generated Photos 구매</a> 중 결정</td></tr>
-        <tr><td>D-2</td><td>룩 템플릿 값 + 제품 목록</td><td>룩 10 × 부위 5 파라미터·색·강도 밴드, 제품 5줄</td><td>화면 2·3 표시, 화면 5 채점 기준</td><td><span class="st hold">보류</span></td><td>우리가 직접 만들 예정. POC 초안 lib/looks.js</td></tr>
+        <tr><td>D-1 ★</td><td>룩 참조 이미지 10장</td><td>룩 10개 × 정면 참조 1장(LoRA까지 가면 룩당 5~20장)</td><td>화면 2 썸네일, 화장 전이 입력, <b>C-1 평가·B-2 LoRA의 출발점</b>. 연구 데이터 불가, 스톡은 초상권 위험</td><td><span class="st none">미정</span></td><td>자체 촬영+동의서 / 생성 / <a href="#sfhq">Generated Photos 구매</a> 중 결정</td></tr>
+        <tr><td>D-2</td><td>룩 템플릿 값 + 제품 목록</td><td>룩 10 × 부위 5 파라미터·색·강도 밴드, 제품 5줄</td><td>화면 2·3 표시, 화면 5 채점 기준 — <b>개인화 렌더의 원본 = 채점 정답</b></td><td><span class="st hold">보류</span></td><td>우리가 직접 만들 예정. POC 초안 lib/looks.js</td></tr>
         <tr><td>D-3</td><td>근거 한 줄 + 얼굴형 멘트</td><td>55문장 + 5문장, 숫자 없음</td><td>화면 3</td><td><span class="st hold">보류</span></td><td>D-2와 함께</td></tr>
         <tr><td>D-4</td><td>진단 코드표 + 한 줄 평</td><td>코드 ~40개</td><td>화면 5·6</td><td><span class="st have">있음</span> (초안)</td><td>POC score.js, 채점 담당과 확정</td></tr>
         <tr><td>D-5</td><td>촬영·게이트 안내 문구</td><td>~15문장</td><td>화면 1·4</td><td><span class="st have">있음</span></td><td>POC. 사용자 테스트로 확인</td></tr>
@@ -176,10 +176,11 @@ tr:last-child td { border-bottom:none; }
 
       <h3 id="todo">1주차에 시작할 것 (★)</h3>
       <div class="todo">
-        <div class="t"><b>1. 촬영 세션 한 번</b>A-2·A-3·B-3(+A-4·A-5·A-6·C-4)을 같이. 20명 × 10장, 같은 자리에서 맨얼굴 → 눈썹 → 라이너 → 섀도우 → 립 → 볼터치 단계별, 조명 3종·각도 3종. 촬영 프로토콜과 서면 동의서(촬영·라벨·앱 화면)를 먼저.</div>
-        <div class="t"><b>2. B-2·C-3 확보 + AI Hub 신청</b><a href="#sfhq">SFHQ</a> 파트 1 내려받아 화장 없는 얼굴 필터링, <a href="#parsing">EasyPortrait</a> 내려받기. <a href="#aihub">AI Hub</a> 3종(한국인 안면·글로벌 피부색·한국인 피부상태) 신청(승인 대기).</div>
-        <div class="t"><b>3. D-1 결정</b>룩 참조 이미지 10장을 자체 촬영 / 생성 / 구매 중 무엇으로 갈지.</div>
-        <div class="t"><b>4. C-1</b>참조 사진이 생기면 서버 화장 전이를 우리 맨얼굴로 돌려 정체성 유지 확인.</div>
+        <div class="t"><b>1. 촬영 세션 한 번</b>A-2·A-3(+A-4·A-5·A-6)을 같이. 20명 × 10장, 같은 자리에서 맨얼굴 → 눈썹 → 라이너 → 섀도우 → 립 → 볼터치 단계별, 일부러 벗어난 장 포함, 조명 3종·각도 3종. 서면 동의서 먼저. 찍은 뒤 <b>부위별 사람 판정(3단계)</b>과 <b>얼굴형 2인 라벨(B-1)</b>. 픽셀 라벨은 안 한다.</div>
+        <div class="t"><b>2. D-1 결정</b>룩 참조 이미지 10장을 자체 촬영 / 생성 / 구매 중 무엇으로 갈지. C-1 평가와 B-2 LoRA가 여기 걸려 있다.</div>
+        <div class="t"><b>3. B-1 얼굴형 분류기 시작</b><a href="#faceshape">Face Shape</a> 내려받아 1차 학습. 그 전에 C-4 규칙 정확도 기준선을 자체 라벨로 먼저 잰다.</div>
+        <div class="t"><b>4. AI Hub 신청 + EasyPortrait</b><a href="#aihub">AI Hub</a> 3종(한국인 안면·글로벌 피부색·한국인 피부상태) 신청. <a href="#parsing">EasyPortrait</a> 내려받아 C-3 영역 겹침 평가.</div>
+        <div class="t"><b>5. C-1</b>참조 사진이 생기면 서버 화장 전이를 A-2 맨얼굴 20명으로 돌려 정체성·색 반영도 측정. (SFHQ·합성 생성기는 B-3을 꺼낼 때로 미룬다.)</div>
       </div>
       <hr class="divider">
     </section>
@@ -187,9 +188,9 @@ tr:last-child td { border-bottom:none; }
     <section id="summary" class="part">
       <h2>2부 · 받아오는 법 <span>1순위 → 차선책 순서. 명령은 복사해서 바로 쓴다</span></h2>
       <div class="summary">
-        <div class="s"><b>지금 바로 받을 것 (2)</b><span>SFHQ 맨얼굴 원본 → 합성 학습 밑그림 · Face Shape → 얼굴형 규칙 검증</span></div>
-        <div class="s"><b>신청해 두고 기다릴 것 (1)</b><span>AI Hub 한국인 안면 이미지 → 조명·각도 검증, 한국인 보정. 승인 대기 있음</span></div>
-        <div class="s"><b>평가·참고용 (2군)</b><span>얼굴 파싱 라벨(EasyPortrait 등) → 부위 마스크 평가 · 화장 전/후 쌍(FFHQ-Makeup 등) → 채점 참고. 학습에는 안 넣음</span></div>
+        <div class="s"><b>지금 바로 받을 것 (1 + 보류 1)</b><span>Face Shape → 얼굴형 분류기 1차 학습 · SFHQ → 확장 단계(분할 모델)라 지금은 안 받음</span></div>
+        <div class="s"><b>신청해 두고 기다릴 것 (3)</b><span>AI Hub 한국인 안면 이미지 → 조명·각도 검증, 얼굴형 한국인 보강 · 피부톤 2종 → ΔE 기준선. 승인 대기 있음</span></div>
+        <div class="s"><b>평가·참고용 (2군)</b><span>얼굴 파싱 라벨(EasyPortrait 등) → 랜드마크 영역 겹침 평가 · 화장 전/후 쌍(FFHQ-Makeup 등) → 채점 참고. 학습에는 안 넣음</span></div>
       </div>
     </section>
 
@@ -209,15 +210,33 @@ tr:last-child td { border-bottom:none; }
       <h2>1. 지금 바로 받을 것</h2>
       <div class="cards">
 
+        <article class="card" id="faceshape">
+          <div class="head"><span class="rank">1순위 · B-1 1차 학습</span><h3>Face Shape Dataset (Kaggle, niten19)</h3></div>
+          <div class="chips"><span class="chip tag">얼굴형 분류기 1차 학습</span><span class="chip warn">라벨 근거·라이선스 불명 → 1차 학습까지만</span><span class="chip ok">최종은 자체 라벨 50~100명으로 다듬기</span></div>
+          <dl class="kv">
+            <dt>무엇</dt><dd>여성 연예인 얼굴 <b>5,000장을 5분류</b>(Heart·Oblong·Oval·Round·Square, 각 1,000장, train 800/test 200)로 라벨한 것.</dd>
+            <dt>용도</dt><dd class="use"><b>얼굴형 분류기(B-1)의 1차 학습 교재.</b> 우리가 학습하는 유일한 필수 모델이다. 학습 전에 현행 규칙(F-02, 랜드마크 비율)의 정확도를 자체 라벨로 먼저 재고(C-4 기준선), 이 데이터로 1차 학습한 뒤 <b>팀원·지인 50~100명 자체 라벨(2인 독립, 불일치는 3인 판정)</b>로 한국인 얼굴에 파인튜닝·최종 평가한다. 스크랩 사진이라 최종 가중치에는 남기지 않는 것을 원칙으로. 배치(쉐딩 위치)는 규칙 유지, 모델은 분류만.</dd>
+          </dl>
+          <div class="eli5"><b>쉽게 말하면</b> 사람이 "이 얼굴은 둥근형, 이건 계란형" 하고 적어 둔 연예인 사진 5,000장. 얼굴형 모델이 처음 배우는 교재다. 누가 어떻게 적었는지 몰라서 여기까지만 쓰고, <b>팀원 셀피 50~100장에 우리가 직접 얼굴형을 적어</b> 한국인 얼굴에 맞게 다듬고 최종 점수를 낸다. 두 사람이 따로 적어서 서로 얼마나 같은지도 기록한다.</div>
+          <pre>kaggle datasets download -d niten19/face-shape-dataset -p C:\data\danghwaeung\faceshape --unzip</pre>
+          <div class="links"><a href="https://www.kaggle.com/datasets/niten19/face-shape-dataset">Kaggle</a></div>
+          <div class="alts">
+            <span class="lbl">안 되면</span>
+            <div class="alt-row"><b>차선 1</b><span>같은 데이터의 정렬·크롭 전처리본 <a href="https://www.kaggle.com/datasets/zeyadkhalid/faceshape-processed">faceshape-processed</a></span></div>
+            <div class="alt-row"><b>차선 2</b><span>3분류(Oval·Round·Square)만 있는 <a href="https://www.kaggle.com/datasets/attanmhd/face-shape-oval-round-square/data">attanmhd</a> — 5종 중 3종만 검증 가능</span></div>
+            <div class="alt-row"><b>차선 3</b><span>AI Hub 한국인 안면 이미지(아래)로 한국인 얼굴형 분포를 보강한다. 라벨은 없어 우리가 소량 붙여야 함</span></div>
+          </div>
+        </article>
+      
         <article class="card" id="sfhq">
-          <div class="head"><span class="rank">1순위 · B-2</span><h3>SFHQ — Synthetic Faces High Quality</h3></div>
-          <div class="chips"><span class="chip tag">합성 학습 밑그림</span><span class="chip ok">학습 가능</span><span class="chip ok">화면 게시 가능(합성)</span><span class="chip warn">StyleGAN2 출력물 · 사업화 전 법적 확인</span></div>
+          <div class="head"><span class="rank">보류 · B-3 확장 단계</span><h3>SFHQ — Synthetic Faces High Quality (지금은 안 받음)</h3></div>
+          <div class="chips"><span class="chip tag">분할 모델 합성 밑그림 (MVP 제외)</span><span class="chip ok">학습 가능</span><span class="chip ok">화면 게시 가능(합성)</span><span class="chip warn">StyleGAN2 출력물 · 사업화 전 법적 확인</span></div>
           <dl class="kv">
             <dt>무엇</dt><dd>StyleGAN2로 만든 <b>합성 얼굴 약 425,000장, 1024×1024</b>. 실존 인물이 아니라 초상권 없음. 110점 랜드마크, BiSeNet 파싱 맵, CLIP 벡터가 같이 온다. 저장소 MIT.</dd>
-            <dt>용도</dt><dd class="use">합성 학습 데이터 생성기(B-1, jeakeun 브랜치 poc/synth)의 <b>맨얼굴 밑그림</b>. 화장 영역 분할 모델 학습용. 지금 샘플 20장은 해상도가 낮아 학습에 못 쓰므로 이걸로 교체.</dd>
+            <dt>용도</dt><dd class="use">합성 학습 데이터 생성기(jeakeun 브랜치 poc/synth)의 <b>맨얼굴 밑그림</b>. 화장 영역 분할 모델(B-3) 학습용인데, <b>4차에서 분할 모델을 MVP에서 뺐으므로 지금은 받지 않는다.</b> ΔE + 랜드마크 영역 채점이 실사진에서 부족하다고 판단될 때 꺼낸다.</dd>
             <dt>받은 뒤</dt><dd>CLIP 벡터로 "no makeup", "bare face" 검색 → 화장 없는 얼굴 수천 장만 고른다. 정면만 남기려면 POC의 <code>anglesFromLandmarks</code>로 yaw ±15° 필터.</dd>
           </dl>
-          <div class="eli5"><b>쉽게 말하면</b> 세상에 없는 사람 얼굴을 컴퓨터가 만든 사진 42만 장. 실존 인물이 아니라 초상권 걱정이 없고 크기도 크다. 우리 생성기에 넣을 "빈 도화지" 맨얼굴로 쓴다. 화장한 얼굴도 섞여 있으니 같이 딸려 오는 검색 벡터로 "화장 없음"만 골라낸다.</div>
+          <div class="eli5"><b>쉽게 말하면</b> 세상에 없는 사람 얼굴을 컴퓨터가 만든 사진 42만 장. 실존 인물이 아니라 초상권 걱정이 없고 크기도 크다. "화장 발린 곳 오려내기" 모델을 하게 되면 그때 생성기에 넣을 "빈 도화지"로 쓴다. 지금은 안 받는다.</div>
           <pre>kaggle datasets download -d selfishgene/synthetic-faces-high-quality-sfhq-part-1 -p C:\data\danghwaeung\sfhq --unzip</pre>
           <div class="links"><a href="https://github.com/SelfishGene/SFHQ-dataset">GitHub (설명·라이선스)</a><a href="https://www.kaggle.com/datasets/selfishgene/synthetic-faces-high-quality-sfhq-part-1">Kaggle part 1</a><a href="https://www.kaggle.com/datasets/selfishgene/synthetic-faces-high-quality-sfhq-part-2">part 2</a><a href="https://www.kaggle.com/datasets/selfishgene/synthetic-faces-high-quality-sfhq-part-3">part 3</a><a href="https://www.kaggle.com/datasets/selfishgene/synthetic-faces-high-quality-sfhq-part-4">part 4</a></div>
           <div class="alts">
@@ -228,24 +247,6 @@ tr:last-child td { border-bottom:none; }
             <div class="alt-row"><b>쓰면 안 됨</b><span>FFHQ(CC BY-NC-SA), CelebA-HQ(비상업), Microsoft FaceSynthetics(비상업). 학습에 넣으면 가중치에 비상업 조건이 승계된다. 평가·참고만.</span></div>
           </div>
         </article>
-
-        <article class="card" id="faceshape">
-          <div class="head"><span class="rank">참고 · C-4 (1순위는 자체 라벨)</span><h3>Face Shape Dataset (Kaggle, niten19)</h3></div>
-          <div class="chips"><span class="chip tag">얼굴형 규칙 검증</span><span class="chip warn">라벨 근거 불명 · 참고만</span><span class="chip warn">라이선스 페이지에서 재확인</span></div>
-          <dl class="kv">
-            <dt>무엇</dt><dd>여성 연예인 얼굴 <b>5,000장을 5분류</b>(Heart·Oblong·Oval·Round·Square, 각 1,000장, train 800/test 200)로 라벨한 것.</dd>
-            <dt>용도</dt><dd class="use">우리 <b>얼굴형 규칙(F-02, 2D 랜드마크 비율)</b>이 사람이 붙인 라벨과 얼마나 일치하는지 측정. 별도 분류 모델은 두지 않는다. 쉐딩·하이라이트 규칙 5종이 맞는 얼굴형에 붙는지 확인하는 근거.</dd>
-          </dl>
-          <div class="eli5"><b>쉽게 말하면</b> 사람이 "이 얼굴은 둥근형, 이건 계란형" 하고 적어 둔 연예인 사진 5,000장. 그런데 누가 어떻게 적었는지 몰라서(9/17 순위표) 시험지로는 못 믿는다. <b>1순위는 팀원·지인 셀피 50장에 우리가 직접 얼굴형을 적는 것</b>이고, 이 데이터는 참고만.</div>
-          <pre>kaggle datasets download -d niten19/face-shape-dataset -p C:\data\danghwaeung\faceshape --unzip</pre>
-          <div class="links"><a href="https://www.kaggle.com/datasets/niten19/face-shape-dataset">Kaggle</a></div>
-          <div class="alts">
-            <span class="lbl">안 되면</span>
-            <div class="alt-row"><b>차선 1</b><span>같은 데이터의 정렬·크롭 전처리본 <a href="https://www.kaggle.com/datasets/zeyadkhalid/faceshape-processed">faceshape-processed</a></span></div>
-            <div class="alt-row"><b>차선 2</b><span>3분류(Oval·Round·Square)만 있는 <a href="https://www.kaggle.com/datasets/attanmhd/face-shape-oval-round-square/data">attanmhd</a> — 5종 중 3종만 검증 가능</span></div>
-            <div class="alt-row"><b>차선 3</b><span>AI Hub 한국인 안면 이미지(아래)로 한국인 얼굴형 분포를 따로 본다. 라벨은 없어 우리가 소량 붙여야 함</span></div>
-          </div>
-        </article>
       </div>
     </section>
 
@@ -253,14 +254,14 @@ tr:last-child td { border-bottom:none; }
       <h2>2. 신청해 두고 기다릴 것</h2>
       <div class="cards">
         <article class="card" id="aihub">
-          <div class="head"><span class="rank">1순위 · A-3·A-4·C-4 보조</span><h3>AI Hub 「한국인 안면 이미지」</h3></div>
+          <div class="head"><span class="rank">1순위 · A-3·A-4 · B-1 한국인 보강</span><h3>AI Hub 「한국인 안면 이미지」</h3></div>
           <div class="chips"><span class="chip tag">조명·각도 검증</span><span class="chip ok">영리 이용 가능</span><span class="chip warn">학습 전용 · 화면 게시 불가 · 재배포 금지</span><span class="chip warn">내국인 신청 · 승인 대기</span></div>
           <dl class="kv">
             <dt>무엇</dt><dd><b>한국인 1,000명 × 약 3만 장 = 약 2,860만 장</b>. 각도 20종, 조도 30종, 가림 6종, 표정 3종, 해상도 3종으로 스튜디오 촬영. 현재 "일부 공개"(개인정보 동의 갱신에 따라).</dd>
-            <dt>용도</dt><dd class="use">① <b>조명 30종에서 Lab·ΔE 채점과 밝기 게이트가 버티는지</b>(우리 최대 리스크, 웹은 노출 고정 불가) ② 각도 20종으로 정면 ±15°·45° 촬영 판정과 화면 4 추적 유지 검증 ③ 한국인 얼굴형 비율로 규칙(F-02) 보정 ④ 합성 밑그림의 한국인 편향 보정.</dd>
+            <dt>용도</dt><dd class="use">① <b>조명 30종에서 Lab·ΔE 채점과 밝기 게이트가 버티는지</b>(우리 최대 리스크, 웹은 노출 고정 불가) ② 각도 20종으로 정면 ±15°·45° 촬영 판정과 화면 4 추적 유지 검증 ③ 얼굴형 분류기(B-1)의 한국인 분포 보강(소량 자체 라벨) ④ (보류) 합성 밑그림의 한국인 편향 보정.</dd>
             <dt>절차</dt><dd>회원가입(내국인 휴대폰 인증) → 데이터 페이지 "다운로드" → 사용 신청서 제출 → 승인 → 웹 또는 aihubshell. 전체는 수백 GB이므로 <b>파일키로 조도·각도 일부만</b> 받는다.</dd>
           </dl>
-          <div class="eli5"><b>쉽게 말하면</b> 정부가 스튜디오에서 한국인 1,000명을 조명 30가지, 고개 각도 20가지로 찍어 둔 사진. 우리가 집 조명 3가지밖에 못 찍을 때 "조명이 바뀌어도 채점이 흔들리지 않나"를 넓게 시험할 수 있다. 단, 학습에만 쓰고 앱에 띄우거나 남에게 넘기면 안 된다. 신청하고 승인을 기다려야 한다.</div>
+          <div class="eli5"><b>쉽게 말하면</b> 정부가 스튜디오에서 한국인 1,000명을 조명 30가지, 고개 각도 20가지로 찍어 둔 사진. 우리가 집 조명 3가지밖에 못 찍을 때 "조명이 바뀌어도 채점이 흔들리지 않나"를 넓게 시험할 수 있고, 얼굴형 모델의 한국인 얼굴 보강에도 쓴다. 단, 학습에만 쓰고 앱에 띄우거나 남에게 넘기면 안 된다. 신청하고 승인을 기다려야 한다.</div>
           <div class="links"><a href="https://www.aihub.or.kr/aihubdata/data/view.do?dataSetSn=83">데이터 페이지</a><a href="https://aihub.or.kr/web-nas/aihub21/files/public/FAQ%20%EC%8B%A0%EA%B7%9C%EB%93%B1%EB%A1%9D/%EC%9D%B8%EA%B3%B5%EC%A7%80%EB%8A%A5%20%ED%95%99%EC%8A%B5%EC%9A%A9%20%EB%8D%B0%EC%9D%B4%ED%84%B0%20%EC%82%AC%EC%9A%A9%EC%8B%A0%EC%B2%AD%EC%84%9C.docx">사용 신청서(docx)</a><a href="https://www.aihub.or.kr/intrcn/guid/usagepolicy.do?currMenu=151&topMenu=105">이용정책</a><a href="https://www.aihub.or.kr/devsport/apishell/list.do">aihubshell</a><span class="note">문의 safezone1@aihub.kr · 02-525-7708</span></div>
           <div class="alts">
             <span class="lbl">안 되면</span>
@@ -287,13 +288,13 @@ tr:last-child td { border-bottom:none; }
       <p class="lead">전부 연구·비상업 조건이거나 SA 조건이 붙는다. 우리 모델의 정확도를 재거나 채점 규칙을 참고할 때만 쓰고, 가중치에 들어가면 안 된다.</p>
       <div class="cards">
         <article class="card" id="parsing">
-          <div class="head"><span class="rank">1순위 확정 · C-3</span><h3>EasyPortrait — 얼굴 파싱 라벨</h3></div>
-          <div class="chips"><span class="chip tag">파싱 뼈대 학습 + 평가</span><span class="chip ok">상업 가능 계열 (CC BY-SA 4.0 변형)</span><span class="chip ok">실측: 검출 100% · 해상도 스펙 93%</span></div>
+          <div class="head"><span class="rank">1순위 · C-3 (평가만)</span><h3>EasyPortrait — 얼굴 파싱 라벨</h3></div>
+          <div class="chips"><span class="chip tag">랜드마크 영역 겹침 평가</span><span class="chip ok">상업 가능 계열 (CC BY-SA 4.0 변형)</span><span class="chip ok">실측: 검출 100% · 해상도 스펙 93%</span></div>
           <dl class="kv">
             <dt>무엇</dt><dd><b>20,000장</b>(대부분 FullHD), 9클래스 픽셀 라벨: 배경·사람·피부·<b>좌/우 눈썹·좌/우 눈</b>·입술·치아. 5,947명, 고개 각도·가림이 다양하도록 수집.</dd>
-            <dt>용도</dt><dd class="use">서버 얼굴 파싱(F-05)과 우리 <b>화장 영역 분할 모델(F-08)의 부위 경계 정확도 평가</b>. 눈썹·눈이 좌우로 나뉘어 있어 우리 부위 구분과 맞는다. ±30° 자세·손 가림 케이스 평가에도.</dd>
+            <dt>용도</dt><dd class="use">우리가 <b>랜드마크 468점으로 잡는 눈썹·눈·입술 영역이 사람 라벨과 얼마나 겹치는지(IoU) 평가</b>(F-05·F-08 채점 영역). 4차: 학습에는 안 쓴다. 분할 모델을 하게 되면(B-3) 뼈대 학습용으로 승격. 눈썹·눈이 좌우로 나뉘어 있어 우리 부위 구분과 맞는다. ±30° 자세·손 가림 케이스 평가에도.</dd>
           </dl>
-          <div class="eli5"><b>쉽게 말하면</b> 폰으로 찍은 셀피마다 "여기는 왼쪽 눈썹, 여기는 입술" 하고 색칠해 둔 정답지. 라이선스가 상업 가능 계열이라 우리 모델에게 "얼굴 부위 찾기" 기본기를 가르치는 데도 쓰고, 부위를 얼마나 정확히 오리는지 채점하는 데도 쓴다. 200장을 실제로 돌려 봤더니 우리 앱이 요구하는 해상도를 93%가 만족했다.</div>
+          <div class="eli5"><b>쉽게 말하면</b> 폰으로 찍은 셀피마다 "여기는 왼쪽 눈썹, 여기는 입술" 하고 색칠해 둔 정답지. 우리는 얼굴 점 468개로 눈썹·눈·입술 영역을 잡는데, 그 영역이 실제 부위와 얼마나 겹치는지 이 정답지로 시험한다. 가르치는 데는 안 쓴다. 200장을 실제로 돌려 봤더니 우리 앱이 요구하는 해상도를 93%가 만족했다.</div>
           <pre>hf download gofixyourself/EasyPortrait --repo-type dataset --local-dir C:\data\danghwaeung\easyportrait</pre>
           <div class="links"><a href="https://huggingface.co/datasets/gofixyourself/EasyPortrait">Hugging Face</a><a href="https://github.com/hukenovs/easyportrait">GitHub</a></div>
           <div class="alts">
@@ -306,11 +307,11 @@ tr:last-child td { border-bottom:none; }
         </article>
 
         <article class="card" id="makeup">
-          <div class="head"><span class="rank">참고 · B-4</span><h3>FFHQ-Makeup — 같은 얼굴의 맨얼굴·화장 쌍</h3></div>
+          <div class="head"><span class="rank">참고 · 채점 기준 초기값</span><h3>FFHQ-Makeup — 같은 얼굴의 맨얼굴·화장 쌍</h3></div>
           <div class="chips"><span class="chip tag">채점 규칙 참고</span><span class="chip no">CC BY-NC-SA · 학습 불가</span></div>
           <dl class="kv">
             <dt>무엇</dt><dd><b>18,000명 × (맨얼굴 1 + 화장 5) = 108,000장</b>, 512×512, 같은 얼굴의 맨얼굴·화장 쌍이 기하 정렬돼 있다(CyberAgent 2025).</dd>
-            <dt>용도</dt><dd class="use">맨얼굴 대비 <b>ΔE 분포·화장 영역 통계</b>를 참고해 우리 임계·밴드 초기값을 잡고, 분할 모델을 실제 화장에 평가. 비상업이라 학습·화면에는 못 쓴다. 우리 자체 촬영 쌍(A-2)이 생기기 전까지의 참고선.</dd>
+            <dt>용도</dt><dd class="use">맨얼굴 대비 <b>ΔE 분포·화장 영역 통계</b>를 참고해 우리 임계·밴드 초기값을 잡고, 화장 전이 모델 비교 발표에 참고. 비상업이라 학습·화면에는 못 쓴다. 우리 자체 촬영 쌍(A-2)이 생기기 전까지의 참고선.</dd>
           </dl>
           <div class="eli5"><b>쉽게 말하면</b> 같은 사람의 "화장 전"과 "화장 후"가 짝지어진 사진 10만 장. 화장하면 색이 보통 얼마나 변하는지 통계를 내서 우리 기준값의 출발점으로 삼는다. 연구용이라 참고만 한다.</div>
           <pre>hf download cyberagent/FFHQ-Makeup --repo-type dataset --local-dir C:\data\danghwaeung\ffhq-makeup</pre>
@@ -330,7 +331,7 @@ tr:last-child td { border-bottom:none; }
       <h2>라이선스 요약</h2>
       <div class="tbl"><table>
         <tr><th>용도</th><th>가능</th><th>불가</th></tr>
-        <tr><td>학습 (가중치에 조건 승계)</td><td>SFHQ, SFHQ-T2I, FairFace(CC BY), EasyPortrait(SA), <b>자체 촬영 실사진 라벨</b>, Generated Photos(구매), AI Hub(학습만)</td><td>FFHQ, CelebA-HQ, LaPa, FaceSynthetics, FFHQ-Makeup, MT, Helen(불명)</td></tr>
+        <tr><td>학습 (가중치에 조건 승계)</td><td><b>자체 촬영·자체 라벨(동의서)</b>, AI Hub(학습만), Generated Photos(구매), SFHQ, SFHQ-T2I, FairFace(CC BY), EasyPortrait(SA)</td><td>FFHQ, CelebA-HQ, LaPa, FaceSynthetics, FFHQ-Makeup, MT, Helen(불명). <b>Face Shape(불명)는 1차 학습·실험까지만</b></td></tr>
         <tr><td>앱 화면 게시</td><td>자체 촬영(동의서), 생성 이미지, Generated Photos(구매)</td><td>연구·비상업 전부, AI Hub, Pexels/Unsplash 실존 인물(모델 릴리스 미검증)</td></tr>
         <tr><td>평가·참고</td><td>전부 (인용 조건 준수)</td><td>—</td></tr>
       </table></div>
