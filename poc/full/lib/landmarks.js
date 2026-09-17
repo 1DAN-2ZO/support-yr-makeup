@@ -33,9 +33,9 @@ export function cropSpec(partId, pts, aspect) {
     h = w / aspect;
   } else if (partId === 'lip') {
     const xs = LM.lipsOuter.map((i) => P(i).x), ys = LM.lipsOuter.map((i) => P(i).y);
-    const lw = Math.max(...xs) - Math.min(...xs), lh = Math.max(...ys) - Math.min(...ys);
+    const lw = Math.max(...xs) - Math.min(...xs);
     cx = (Math.max(...xs) + Math.min(...xs)) / 2; cy = (Math.max(...ys) + Math.min(...ys)) / 2;
-    w = lw * 2.5; h = w / aspect; if (h < lh * 3) { h = lh * 3; w = h * aspect; }
+    w = lw * 2.5; h = w / aspect;   // 입 벌림(높이)으로 박스를 키우지 않는다 — 확인받기는 입 다문 상태가 전제
   } else if (partId === 'cheek') {
     w = faceW * 1.15; cx = (P(LM.faceL).x + P(LM.faceR).x) / 2; cy = (P(LM.cheekA).y + P(LM.cheekB).y) / 2; h = w / aspect;
   } else { // contour: 미간~턱 아래

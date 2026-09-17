@@ -33,7 +33,7 @@ const S = {
   look: null, fullRender: null, thumbs: {}, contourRender: null,
   captured: null, lastFrame: null, result: null,
   synthOn: true, synthPreset: 'good',
-  live: { smoother: new Smoother(0.5), stab: new StabilityCounter(), presence: new PresenceTracker(3000), last: {}, loopOn: false, cache: null },
+  live: { smoother: new Smoother(0.5), stab: new StabilityCounter(), presence: new PresenceTracker(3000), last: {}, loopOn: false, cache: null, hold: null },
   perf: {}, auto: false,
 };
 function save() { try { localStorage.setItem(KEY, JSON.stringify(stripImages(S.session))); } catch {} }
@@ -66,6 +66,7 @@ function detectImage(source, w, h) { const r = S.faceImg.detect(source); const l
 // ---------- 소스 ----------
 async function useCamera() {
   stopSource();
+  S.synthOn = false; $('synthOn').checked = false;   // 카메라 = 실제 화장 채점. 새로고침하면 기본값(켜짐)으로 돌아가므로 여기서 매번 끈다
   const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
   const v = document.createElement('video'); v.srcObject = stream; v.playsInline = true; v.muted = true; await v.play();
   S.src = { kind: 'cam', el: v, stream, mirror: true }; $('srcCam').classList.add('on'); $('srcSample').value = ''; resetTrack(); render();
@@ -74,11 +75,12 @@ function loadImage(url) { return new Promise((res, rej) => { const im = new Imag
 function toCanvas(img, maxW = 1080) { const w = Math.min(maxW, img.naturalWidth), h = Math.round(img.naturalHeight * w / img.naturalWidth); const cv = document.createElement('canvas'); cv.width = w; cv.height = h; cv.getContext('2d').drawImage(img, 0, 0, w, h); return cv; }
 async function useSample(n) {
   stopSource(); S.src = { kind: 'sample', sample: n, mirror: false, el: null }; $('srcSample').value = String(n);
+  S.synthOn = true; $('synthOn').checked = true;   // 샘플은 맨얼굴이라 가상 화장이 있어야 채점이 된다
   const shots = {}; for (const s of SHOTS) shots[s.id] = { canvas: toCanvas(await loadImage(`${SAMPLE_DIR}person_${n}_${s.id}.jpg`)) };
   S.src.shots = shots; S.src.el = shots.front_open.canvas; resetTrack(); render();
 }
 function stopSource() { if (S.src?.stream) S.src.stream.getTracks().forEach((t) => t.stop()); S.src = null; $('srcCam').classList.remove('on'); }
-function resetTrack() { S.live.smoother.reset(); S.live.stab.reset(); S.live.cache = null; }
+function resetTrack() { S.live.smoother.reset(); S.live.stab.reset(); S.live.cache = null; S.live.hold = null; }
 for (let n = 1; n <= 5; n++) { const o = document.createElement('option'); o.value = n; o.textContent = `person_${n} (4장)`; $('srcSample').appendChild(o); }
 $('srcCam').onclick = () => useCamera().catch((e) => toast('카메라 열기 실패: ' + e.message));
 $('srcSample').onchange = (e) => e.target.value && useSample(Number(e.target.value));
@@ -255,10 +257,42 @@ function sampleContourS3(im) {
   return out;
 }
 const COLOR = { line: '#3FD1C4', hi: '#FFE27A', ref: 'rgba(255,255,255,.55)' };
-function fitCrop(part, pts, W, H, srcW, srcH) {
-  let crop = cropSpec(part, pts, W / H); const asp = crop.w / crop.h, ccx = crop.x + crop.w / 2, ccy = crop.y + crop.h / 2;
-  if (crop.h > srcH) { crop.h = srcH; crop.w = crop.h * asp; } if (crop.w > srcW) { crop.w = srcW; crop.h = crop.w / asp; }
+function clampCrop(crop, srcW, srcH) {
+  // 소스를 넘는 축만 자른다. 비율은 깨질 수 있고, 그리기는 contain 이라 여백(검은 띠)으로 흡수된다.
+  // (웹캠은 가로 16:9 라 세로 부위 박스가 높이에 먼저 걸린다 — 폭까지 같이 줄이면 볼·쉐딩이 잘린다. 폰 세로 카메라에선 비율이 맞아 띠가 없다)
+  const ccx = crop.x + crop.w / 2, ccy = crop.y + crop.h / 2;
+  crop.clamped = crop.h > srcH || crop.w > srcW;   // 잘렸으면 비율이 깨진다 → 그리기에서 contain
+  if (crop.h > srcH) crop.h = srcH; if (crop.w > srcW) crop.w = srcW;
   crop.x = Math.min(Math.max(0, ccx - crop.w / 2), srcW - crop.w); crop.y = Math.min(Math.max(0, ccy - crop.h / 2), srcH - crop.h); return crop;
+}
+function fitCrop(part, pts, W, H, srcW, srcH) { return clampCrop(cropSpec(part, pts, W / H), srcW, srcH); }
+
+// 라이브 크롭 안정화 (문서 3-5 "확대 화면이 흔들림" 대응 — 가이드 기하는 한 번 만들고 프레임마다 강체 변환만).
+// 크기: 부위에 들어온 첫 프레임에 잠근다. 폰은 거울 앞에 놓여 있어 세션 중 거리가 거의 안 변한다. 눈 사이 거리가 목표값에서
+//       CROP_RESCALE 이상 벗어날 때(실제로 다가가거나 멀어짐)만 새 목표로 잡고 미끄러지며 갱신한다. 밴드가 목표를 따라 움직이므로
+//       래칫이 없고, 게이트 한계(±15°)의 원근 축소 3.4% 나 깜빡임·입·웃음의 변화는 밴드 안이라 확대율에 닿지 않는다.
+// 위치: 부위별 강체 점을 EMA 로 따라간다. 부위와 같이 움직이는 점이어야 고개를 돌려도 부위가 화면 가운데에 남는다.
+//       입술 = 입꼬리 중점(입을 벌려도 거의 안 움직임), 볼 = 광대 중점, 쉐딩 = 미간·광대·입꼬리 평균(턱 제외), 눈 단계 = cropSpec 중심(눈 끝).
+const CROP_POS_EMA = 0.25, CROP_RESCALE = 0.20, CROP_SLIDE = 0.15;
+function partAnchor(part, pts, raw) {
+  const mean = (ids) => ({ x: ids.reduce((a, i) => a + pts[i].x, 0) / ids.length, y: ids.reduce((a, i) => a + pts[i].y, 0) / ids.length });
+  if (part === 'lip') return mean([61, 291]);
+  if (part === 'cheek') return mean([LM.cheekA, LM.cheekB]);
+  if (part === 'contour') return mean([LM.glabella, LM.cheekA, LM.cheekB, 61, 291]);
+  return { x: raw.x + raw.w / 2, y: raw.y + raw.h / 2 };
+}
+function stabilizeCrop(part, raw, pts) {
+  const A = pts[LM.eyeA.outer], B = pts[LM.eyeB.outer], eyeD = Math.hypot(B.x - A.x, B.y - A.y);
+  const an = partAnchor(part, pts, raw), cx = raw.x + raw.w / 2, cy = raw.y + raw.h / 2, aspect = raw.w / raw.h, h = S.live.hold;
+  if (!h || h.part !== part || Math.abs(aspect - h.aspect) > 0.01) {
+    S.live.hold = { part, aspect, w0: raw.w, eyeD0: eyeD, targetEyeD: eyeD, curEyeD: eyeD, offX: cx - an.x, offY: cy - an.y, ax: an.x, ay: an.y };
+    return { ...raw };
+  }
+  if (Math.abs(eyeD / h.targetEyeD - 1) > CROP_RESCALE) h.targetEyeD = eyeD;             // 밴드 밖 → 새 목표 (밴드도 같이 이동)
+  h.curEyeD += (h.targetEyeD - h.curEyeD) * CROP_SLIDE;                                    // 목표까지 완전히 수렴 → 잔여 없음
+  h.ax += (an.x - h.ax) * CROP_POS_EMA; h.ay += (an.y - h.ay) * CROP_POS_EMA;
+  const k = h.curEyeD / h.eyeD0, w = h.w0 * k, hh = w / h.aspect;
+  return { x: h.ax + h.offX * k - w / 2, y: h.ay + h.offY * k - hh / 2, w, h: hh };
 }
 function drawGuideOn(ctx, g, M, dpr, { arrows = true, labels = true, mirrorW = null } = {}) {
   ctx.lineWidth = 2 * dpr; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
@@ -277,9 +311,11 @@ function drawGuideOn(ctx, g, M, dpr, { arrows = true, labels = true, mirrorW = n
 function drawStillPart(cv, source, pts, part, { arrows, labels }) {
   const box = cv.parentElement.getBoundingClientRect(), dpr = Math.min(2, devicePixelRatio || 1);
   cv.width = Math.round(box.width * dpr); cv.height = Math.round(box.height * dpr); const W = cv.width, H = cv.height, ctx = cv.getContext('2d');
-  const crop = fitCrop(part, pts, W, H, source.width, source.height); const s = W / crop.w;
-  ctx.drawImage(source, crop.x, crop.y, crop.w, crop.h, 0, 0, W, H);
-  drawGuideOn(ctx, guideFor(part, pts, source.width, source.height), (p) => [(p.x - crop.x) * s, (p.y - crop.y) * s], dpr, { arrows, labels });
+  const crop = fitCrop(part, pts, W, H, source.width, source.height);
+  const s = crop.clamped ? Math.min(W / crop.w, H / crop.h) : Math.max(W / crop.w, H / crop.h), ox = (W - crop.w * s) / 2, oy = (H - crop.h * s) / 2;
+  ctx.fillStyle = '#111'; ctx.fillRect(0, 0, W, H);
+  ctx.drawImage(source, crop.x, crop.y, crop.w, crop.h, ox, oy, crop.w * s, crop.h * s);
+  drawGuideOn(ctx, guideFor(part, pts, source.width, source.height), (p) => [ox + (p.x - crop.x) * s, oy + (p.y - crop.y) * s], dpr, { arrows, labels });
 }
 function drawStill(source, part) {
   const cv = $('view'); if (!cv || !source) return; const box = cv.parentElement.getBoundingClientRect(), dpr = Math.min(2, devicePixelRatio || 1);
@@ -306,7 +342,7 @@ function rGuide(root) {
 // ---------- 4. 실시간 테두리 ----------
 function rLive(root) {
   root.classList.add('dark'); const part = currentPart();
-  root.innerHTML = `<div class="live"><canvas id="view"></canvas>${chipsHtml()}<div class="gate" id="gate"></div><div class="zoomlow" id="zoomLow" hidden>확대 낮음</div><button id="btnCheck" class="check" disabled>확인받기</button></div>`;
+  root.innerHTML = `<div class="live"><canvas id="view"></canvas>${chipsHtml()}<div class="gate" id="gate"></div><div class="zoomlow" id="zoomLow" hidden>확대 낮음</div><div class="zoomlow" id="synthBadge" style="top:40px;background:rgba(194,115,31,.85)" hidden>가상 화장 켜짐 — 실제 화장이 아닌 합성을 채점합니다</div><button id="btnCheck" class="check" disabled>확인받기</button></div>`;
   wireChips(root); orientationCheck(part);
   $('btnCheck').onclick = captureForResult;
   startLoop('live');
@@ -339,7 +375,7 @@ function startLoop(mode) {
       const ang = anglesFromLandmarks(pts); const faceW = Math.hypot(pts[LM.faceR].x - pts[LM.faceL].x, pts[LM.faceR].y - pts[LM.faceL].y);
       Object.assign(m, { yaw: ang.yaw * (S.src.mirror ? -1 : 1), pitch: ang.pitch, closedA: eyeClosed(pts, 'A'), closedB: eyeClosed(pts, 'B'), faceRatio: faceW / sw, foreheadL: foreheadLOfCanvas(S.src.el, pts) });
       if (mode === 'live') {
-        const part = currentPart(); crop = fitCrop(part, pts, W, H, sw, sh);
+        const part = currentPart(); crop = clampCrop(stabilizeCrop(part, cropSpec(part, pts, W / H), pts), sw, sh);
         Object.assign(m, { partId: part, visible: partVisible(part, pts, sw, sh), handOverlap: false, sharpness: sharpnessOf(S.src.el, crop), baselineL: S.baseline?.foreheadL ?? null });
         g = guideFor(part, pts, sw, sh);
       } else {
@@ -349,7 +385,7 @@ function startLoop(mode) {
       }
     } else { S.live.smoother.reset(); S.live.stab.reset(); }
     // 그리기 (cover + 거울)
-    const s = Math.max(W / crop.w, H / crop.h), ox = (W - crop.w * s) / 2, oy = (H - crop.h * s) / 2;
+    const s = crop.clamped ? Math.min(W / crop.w, H / crop.h) : Math.max(W / crop.w, H / crop.h), ox = (W - crop.w * s) / 2, oy = (H - crop.h * s) / 2;   // 잘린 박스만 contain(띠), 그 외 cover
     ctx.fillStyle = '#111'; ctx.fillRect(0, 0, W, H); ctx.save(); if (S.src.mirror) { ctx.translate(W, 0); ctx.scale(-1, 1); } ctx.translate(ox, oy);
     ctx.drawImage(S.src.el, crop.x, crop.y, crop.w, crop.h, 0, 0, crop.w * s, crop.h * s);
     if (g) drawGuideOn(ctx, g, (p) => [(p.x - crop.x) * s, (p.y - crop.y) * s], dpr, { arrows: true, labels: false });
@@ -365,7 +401,7 @@ function startLoop(mode) {
     }
     S.live.last = { ...m, presence, gate, crop, frameMs: performance.now() - t0 };
     const gEl = $('gate'); if (gEl && !(mode === 'capture' && !nextShot(S.session.shots))) { gEl.textContent = gate.text; gEl.classList.toggle('ready', !!gate.ok); }
-    if (mode === 'live') { $('btnCheck').disabled = !gate.ok; $('zoomLow').hidden = !(PART_ORIENT[currentPart()] === 'landscape' && S.orientation === 'portrait'); }
+    if (mode === 'live') { $('btnCheck').disabled = !gate.ok; $('zoomLow').hidden = !(PART_ORIENT[currentPart()] === 'landscape' && S.orientation === 'portrait'); $('synthBadge').hidden = !(S.synthOn && S.src.kind === 'cam'); }
   };
   requestAnimationFrame(frame);
 }
