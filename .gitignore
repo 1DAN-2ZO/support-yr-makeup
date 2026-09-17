@@ -13,3 +13,5 @@ poc/look-tryon/server-bench/shmt/
 
 # Playwright MCP debug artifacts (screenshots/console logs from ad-hoc testing)
 .playwright-mcp/
+
+.superpowers/
