@@ -7,7 +7,7 @@
 </head>
 <body>
   <h1>얼굴 촬영 → 룩 생성(서버) → 실시간 얼굴 매핑</h1>
-  <p class="note">가장 단순한 버전: 결과 이미지를 눈 2점+턱 1점 기준 아핀 변형 1번으로 라이브 얼굴에 통째로 붙입니다. 부위별 정밀 워핑 아님.</p>
+  <p class="note">v2: 눈썹·눈섀도우·입술·볼 부위별 랜드마크 폴리곤 워핑 + One Euro Filter 스무딩으로 라이브 얼굴에 붙입니다.</p>
   <div id="status" class="status">초기화 중…</div>
 
   <video id="video" playsinline muted class="camPreview"></video>
@@ -35,6 +35,14 @@
     <h2>실시간 매핑 <span id="liveStatus"></span></h2>
     <canvas id="liveCanvas"></canvas>
     <label>합성 강도 <input type="range" id="alpha" min="0" max="1" step="0.05" value="0.85" /></label>
+    <label>반응성(beta) — 높을수록 얼굴에 딱 붙지만 떨림 더 남음
+      <input type="range" id="beta" min="0.01" max="0.3" step="0.01" value="0.08" />
+      <span id="betaVal"></span>
+    </label>
+    <label>기준 스무딩(minCutoff) — 높을수록 가만히 있을 때도 덜 부드러움(더 딱 붙음)
+      <input type="range" id="minCutoff" min="0.5" max="5" step="0.1" value="2.5" />
+      <span id="minCutoffVal"></span>
+    </label>
   </section>
 
   <button id="btnReset">초기화</button>
