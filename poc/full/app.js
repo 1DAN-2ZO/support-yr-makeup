@@ -147,7 +147,7 @@ async function rProcessing(root) {
   const lm = timed('baseline_landmarks', () => detectImage(bare, w, h));
   if (!lm) { $('procMsg').textContent = '정면 사진에서 얼굴을 찾지 못했어요. 정면 사진만 다시 찍어 주세요'; delete S.session.shots.front_open; await sleep(1200); go('capture'); return; }
   const im = prepare(bare, lm.map((p) => ({ x: p.x / w, y: p.y / h, z: p.z })), w, h);
-  S.baseline = { canvas: bare, lm: im.lm, im, unit: im.unit, w, h, foreheadL: foreheadLOfCanvas(bare, im.lm) };
+  S.baseline = { canvas: bare, lm: im.lm, im, unit: im.unit, w, h, foreheadL: foreheadLOfCanvas(bare, im.lm), pose: anglesFromLandmarks(im.lm) };   // pose: 확인받기 게이트의 각도 차 기준
   S.session.baseline = { foreheadL: S.baseline.foreheadL, unit: S.baseline.unit }; S.session.faceShape = estimateFaceShape(im.lm).label;
   S.thumbs = {}; S.fullRender = null;
   await sleep(S.auto ? 50 : 900);
@@ -274,6 +274,7 @@ function fitCrop(part, pts, W, H, srcW, srcH) { return clampCrop(cropSpec(part, 
 // 위치: 부위별 강체 점을 EMA 로 따라간다. 부위와 같이 움직이는 점이어야 고개를 돌려도 부위가 화면 가운데에 남는다.
 //       입술 = 입꼬리 중점(입을 벌려도 거의 안 움직임), 볼 = 광대 중점, 쉐딩 = 미간·광대·입꼬리 평균(턱 제외), 눈 단계 = cropSpec 중심(눈 끝).
 const CROP_POS_EMA = 0.25, CROP_RESCALE = 0.20, CROP_SLIDE = 0.15;
+const ALIGN_RESIDUAL_MAX = 0.05;   // 기준 얼굴 정합 잔차 허용치: 눈 사이 거리의 5% (실기기에서 정할 가정값)
 function partAnchor(part, pts, raw) {
   const mean = (ids) => ({ x: ids.reduce((a, i) => a + pts[i].x, 0) / ids.length, y: ids.reduce((a, i) => a + pts[i].y, 0) / ids.length });
   if (part === 'lip') return mean([61, 291]);
@@ -313,9 +314,13 @@ function drawStillPart(cv, source, pts, part, { arrows, labels }) {
   cv.width = Math.round(box.width * dpr); cv.height = Math.round(box.height * dpr); const W = cv.width, H = cv.height, ctx = cv.getContext('2d');
   const crop = fitCrop(part, pts, W, H, source.width, source.height);
   const s = crop.clamped ? Math.min(W / crop.w, H / crop.h) : Math.max(W / crop.w, H / crop.h), ox = (W - crop.w * s) / 2, oy = (H - crop.h * s) / 2;
-  ctx.fillStyle = '#111'; ctx.fillRect(0, 0, W, H);
-  ctx.drawImage(source, crop.x, crop.y, crop.w, crop.h, ox, oy, crop.w * s, crop.h * s);
-  drawGuideOn(ctx, guideFor(part, pts, source.width, source.height), (p) => [ox + (p.x - crop.x) * s, oy + (p.y - crop.y) * s], dpr, { arrows, labels });
+  // 카메라 소스면 라이브와 같은 거울 방향으로 그린다 (사진·테두리는 뒤집고, 라벨 글자는 바로 읽히게 따로)
+  const mirror = !!S.src?.mirror, g = guideFor(part, pts, source.width, source.height), M = (p) => [(p.x - crop.x) * s, (p.y - crop.y) * s];
+  ctx.fillStyle = '#111'; ctx.fillRect(0, 0, W, H); ctx.save(); if (mirror) { ctx.translate(W, 0); ctx.scale(-1, 1); } ctx.translate(ox, oy);
+  ctx.drawImage(source, crop.x, crop.y, crop.w, crop.h, 0, 0, crop.w * s, crop.h * s);
+  drawGuideOn(ctx, g, M, dpr, { arrows, labels: false });
+  ctx.restore();
+  if (labels && g.labels.length) { ctx.save(); ctx.translate(ox, oy); drawGuideOn(ctx, { regions: [], polylines: [], labels: g.labels }, M, dpr, { mirrorW: mirror ? crop.w * s : null }); ctx.restore(); }
 }
 function drawStill(source, part) {
   const cv = $('view'); if (!cv || !source) return; const box = cv.parentElement.getBoundingClientRect(), dpr = Math.min(2, devicePixelRatio || 1);
@@ -374,6 +379,7 @@ function startLoop(mode) {
       pts = S.live.smoother.smooth(raw.map((p) => ({ x: p.x * sw, y: p.y * sh, z: p.z })));
       const ang = anglesFromLandmarks(pts); const faceW = Math.hypot(pts[LM.faceR].x - pts[LM.faceL].x, pts[LM.faceR].y - pts[LM.faceL].y);
       Object.assign(m, { yaw: ang.yaw * (S.src.mirror ? -1 : 1), pitch: ang.pitch, closedA: eyeClosed(pts, 'A'), closedB: eyeClosed(pts, 'B'), faceRatio: faceW / sw, foreheadL: foreheadLOfCanvas(S.src.el, pts) });
+      if (S.baseline?.pose) Object.assign(m, { baseYaw: S.baseline.pose.yaw * (S.src.mirror ? -1 : 1), basePitch: S.baseline.pose.pitch });   // 같은 소스·같은 좌표계라 부호를 맞춰 비교
       if (mode === 'live') {
         const part = currentPart(); crop = clampCrop(stabilizeCrop(part, cropSpec(part, pts, W / H), pts), sw, sh);
         Object.assign(m, { partId: part, visible: partVisible(part, pts, sw, sh), handOverlap: false, sharpness: sharpnessOf(S.src.el, crop), baselineL: S.baseline?.foreheadL ?? null });
@@ -457,8 +463,15 @@ function rResult(root) {
     const w = cap.width, h = cap.height; const raw = timed('result_landmarks', () => detectImage(cap, w, h));
     if (!raw) r = { part, captured: cap, decision: { status: 'check_only', reason: '얼굴을 찾지 못해 재지 못했어요. 직접 보고 넘어가세요' }, codes: [], oneLiner: '얼굴을 찾지 못해 재지 못했어요. 직접 보고 넘어가세요', score: null, metrics: {}, pts: b.lm };
     else {
-      const { lm, fit } = alignToBaseline(b.lm, raw); const mkIm = prepare(cap, lm.map((p) => ({ x: p.x / w, y: p.y / h, z: p.z })), w, h); mkIm.lm = lm;   // 기준 길이는 정렬된 랜드마크에서 다시 계산
-      r = { part, captured: cap, pts: lm, fit, bias: makeupBiasPx(lm, raw, [...LM.lipsOuter, ...LM.eyeA.upper, ...LM.eyeB.upper]), ...timed('score_' + part, () => scorePart(part, b.im, mkIm)) };
+      const { lm, fit } = alignToBaseline(b.lm, raw);
+      const eyeW = Math.hypot(lm[LM.eyeB.outer].x - lm[LM.eyeA.outer].x, lm[LM.eyeB.outer].y - lm[LM.eyeA.outer].y);
+      if (fit.residual > eyeW * ALIGN_RESIDUAL_MAX) {   // 유사변환이 기준 얼굴을 이 프레임에 못 맞춤(자세·표정 차) → 거짓 점수 금지, 확인만
+        const reason = '처음 찍을 때와 자세가 달라 재지 못했어요. 직접 보고 넘어가세요';
+        r = { part, captured: cap, decision: { status: 'check_only', reason }, codes: [], oneLiner: reason, score: null, metrics: {}, pts: lm, fit };
+      } else {
+        const mkIm = prepare(cap, lm.map((p) => ({ x: p.x / w, y: p.y / h, z: p.z })), w, h); mkIm.lm = lm;   // 기준 길이는 정렬된 랜드마크에서 다시 계산
+        r = { part, captured: cap, pts: lm, fit, bias: makeupBiasPx(lm, raw, [...LM.lipsOuter, ...LM.eyeA.upper, ...LM.eyeB.upper]), ...timed('score_' + part, () => scorePart(part, b.im, mkIm)) };
+      }
     }
     S.result = r;
   }

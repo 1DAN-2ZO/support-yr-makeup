@@ -22,9 +22,10 @@ export const GATE_ORDER = ['frontal', 'visible', 'hand', 'sharp', 'bright', 'sta
 export const GATE_TEXT = {
   frontal: '조금만 정면으로', visible: '부위가 다 보이게 해 주세요', visible_eyes: '양쪽 눈이 보이게 해 주세요',
   hand: '손을 내려 주세요', sharp: '흔들려요. 잠시 멈춰 주세요', bright_low: '조금 더 밝은 곳으로', bright_high: '너무 밝아요. 조금 어두운 곳으로',
-  stable: '잠시만 그대로', ready: '확인받을 준비 됨', noface: '',   // 얼굴 없음: 화면에 문구 없음(테두리만 사라짐)
+  stable: '잠시만 그대로', ready: '확인받을 준비 됨', noface: '',
+  pose: '처음 찍을 때와 같은 각도로 봐 주세요',   // 기준 촬영과 yaw·pitch 차이 — 유사변환 정합이 감당하는 범위 안에서만 확인받기   // 얼굴 없음: 화면에 문구 없음(테두리만 사라짐)
 };
-export const GATE_LIMITS = { yaw: 15, pitch: 10, sharpMin: 30, brightTol: 12, stableFrames: 5 };
+export const GATE_LIMITS = { yaw: 15, pitch: 10, dYaw: 8, dPitch: 6, sharpMin: 30, brightTol: 12, stableFrames: 5 };
 
 /**
  * m = { faceDetected, yaw, pitch, visible, handOverlap, sharpness, foreheadL, baselineL(null이면 밝기 조건 생략), stableCount, partId }
@@ -33,6 +34,7 @@ export const GATE_LIMITS = { yaw: 15, pitch: 10, sharpMin: 30, brightTol: 12, st
 export function evaluateGate(m, limits = GATE_LIMITS) {
   if (!m.faceDetected) return { ok: false, firstFail: 'noface', text: GATE_TEXT.noface };
   if (Math.abs(m.yaw) > limits.yaw || Math.abs(m.pitch) > limits.pitch) return { ok: false, firstFail: 'frontal', text: GATE_TEXT.frontal };
+  if (typeof m.baseYaw === 'number' && (Math.abs(m.yaw - m.baseYaw) > limits.dYaw || Math.abs(m.pitch - m.basePitch) > limits.dPitch)) return { ok: false, firstFail: 'pose', text: GATE_TEXT.pose };
   if (!m.visible) return { ok: false, firstFail: 'visible', text: PART_ORIENT[m.partId] === 'landscape' ? GATE_TEXT.visible_eyes : GATE_TEXT.visible };
   if (m.handOverlap) return { ok: false, firstFail: 'hand', text: GATE_TEXT.hand };
   if (typeof m.sharpness === 'number' && m.sharpness < limits.sharpMin) return { ok: false, firstFail: 'sharp', text: GATE_TEXT.sharp };
