@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 GOLDEN = ROOT / "eval" / "golden" / "manifest.json"
-RESULTS = ROOT / "eval" / "results"
+RESULTS = Path(os.environ.get("DHE_EVAL_RESULTS", ROOT / "eval" / "results"))
 
 
 def git_short() -> str:

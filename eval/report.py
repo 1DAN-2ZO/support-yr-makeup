@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import csv
+import os
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -12,7 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from eval.common import RESULTS, ROOT  # noqa: E402
 
-OUT = ROOT / "docs" / "eval-results-v6.md"
+OUT = Path(os.environ.get("DHE_EVAL_OUT", ROOT / "docs" / "eval-results-v6.md"))
 HEAD = "| 평가 | 지표 | 기준선 | 현재 | 통과 기준 | n | 비고 | 파일 |\n|---|---|---|---|---|---|---|---|\n"
 
 
