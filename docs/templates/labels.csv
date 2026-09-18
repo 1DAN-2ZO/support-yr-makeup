@@ -1,0 +1,5 @@
+file,person_id,part,rater,app_judgement,app_score,agree,reason,face_shape
+person_01_02_liner.jpg,person_01,liner,rater_A,조금벗어남,82,동의,,계란형
+person_01_02_liner.jpg,person_01,liner,rater_B,조금벗어남,82,비동의,실제로는 거의 맞게 그렸는데 감점이 큼,계란형
+person_01_03_liner_wrong.jpg,person_01,liner,rater_A,많이벗어남,54,동의,,계란형
+person_01_03_liner_wrong.jpg,person_01,liner,rater_B,많이벗어남,54,동의,,계란형

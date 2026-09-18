@@ -1,0 +1,4 @@
+file,person_id,shot_no,stage,intended,light,angle,note
+person_01_01_bare.jpg,person_01,1,bare,기준,창가,정면,
+person_01_02_liner.jpg,person_01,2,liner,정상,창가,정면,
+person_01_03_liner_wrong.jpg,person_01,3,liner,의도적오류,창가,정면,한쪽 꼬리 위로

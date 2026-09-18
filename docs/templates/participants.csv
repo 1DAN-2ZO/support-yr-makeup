@@ -1,0 +1,7 @@
+person_id,name,consent_required,consent_train,consent_present,consent_app_ui,light,angle,shot_date,note
+person_01,,y,,,,창가,정면,2026-09-__,
+person_02,,y,,,,창가,정면,2026-09-__,
+person_03,,y,,,,실내등,정면,2026-09-__,
+person_04,,y,,,,실내등,정면,2026-09-__,
+person_05,,y,,,,어두움,정면,2026-09-__,
+person_06,,y,,,,실내등,15도,2026-09-__,
