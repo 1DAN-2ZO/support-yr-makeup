@@ -26,6 +26,55 @@
 
 ---
 
+## 0-1. 브랜치 규칙 (2026-09-18 사고 후 확정)
+
+**작업은 `<모듈>-<작업>` 브랜치에서 한다.** `main` 에서 따고, PR 로 올리고, 병합되면 지운다.
+
+```
+git checkout main && git pull
+git checkout -b score-frame-average      # <모듈>-<짧은 작업>
+... 작업 ...
+git push -u origin score-frame-average
+gh pr create --base main                 # 본문에 Closes #이슈번호
+```
+
+예: `capture-flow-ts` · `model-shoot-forms` · `app-log-sink` · `server-worker` · `guide-onebuk` · `score-color-ref`.
+하이픈인 이유는 `app` 같은 **모듈 브랜치가 이미 있어서** `app/...` 을 만들 수 없기 때문이다(git ref 충돌).
+
+**모듈 브랜치 6개(`capture` `guide` `score` `server` `model` `app`)는 소유 표시용으로만 둔다.**
+- 여기에 **커밋하지 않는다.** 작업은 위의 작업 브랜치에서.
+- 따라서 **main 과 동기화할 일도 없다.** 동기화가 없으면 덮어쓸 일도 없다.
+
+### 왜 이 규칙인가 — 2026-09-18 사고
+
+모듈 브랜치를 main 에 맞추려고 `git branch -f` + `git push -f` 를 돌렸고, 그 사이 올라온 팀원 커밋 두 건이 원격에서 사라졌다.
+
+| 시각(UTC) | 일어난 일 |
+|---|---|
+| 07:12 | jeakeun 이 `capture` 에 `31642ba` 푸시 |
+| 07:14 | `capture` 를 `b5bd307` 로 덮어씀 → `31642ba` 사라짐 |
+| 07:14 | `model` 을 덮어씀 → JW020799 의 `b5aa584` 사라짐 |
+| 07:28 | JW020799 가 `model` 에 `6aa8dc7` 푸시 |
+| 07:33 | `model`·`score`·`guide`·`server` 를 `ee53040` 으로 덮어씀 → `6aa8dc7` 사라짐. PR #92 가 변경 0건이 되며 닫힘 |
+
+확인 명령:
+
+```bash
+gh api "repos/1DAN-2ZO/support-yr-makeup/events?per_page=100"   --jq '.[]|select(.type=="PushEvent")|"\(.created_at) \(.actor.login) \(.payload.ref) \(.payload.before[0:7])→\(.payload.head[0:7])"'
+```
+
+`before` 가 새 `head` 의 조상이 아니면 덮어쓰기다.
+
+### 금지·의무
+
+| | |
+|---|---|
+| **금지** | 남이 쓸 수 있는 브랜치(`main`, 모듈 브랜치, 남의 작업 브랜치)에 **`push --force` / `push -f` / `branch -f`** |
+| **금지** | `main` 에 직접 push, `main` 기록 변경 |
+| 허용 | 자기 작업 브랜치에서 리베이스 후 `--force-with-lease` (자기 것만) |
+| 의무 | 내 작업 브랜치가 뒤처지면 **`git merge origin/main`** 으로 따라간다. 충돌하면 내가 푼다 |
+| 의무 | 남의 브랜치를 main 에 맞춰야 하면 **덮어쓰지 말고 담당자에게 알린다** |
+
 ## 1. 모듈 6개
 
 ### ① 촬영·기준 (클라이언트) — 브랜치 `capture`
