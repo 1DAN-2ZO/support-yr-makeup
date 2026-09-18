@@ -1,0 +1,323 @@
+/**
+ * 전체 흐름 — 순수 로직 (화면 순서, 촬영 4장 게이트, 세션, 화면 6 변환).
+ * poc/full/lib/flow.js 를 계약 타입(types.ts)에 맞춰 옮긴 것. DOM·카메라를 쓰지 않는다.
+ *
+ * 모듈 ① 촬영·기준이 주인이고 ②③⑥이 받아 쓴다 (work-split-modules-v6.md §2).
+ *  - shotGate(): 촬영 조건. 안 맞는 것 하나만 한 줄, 숫자 없음
+ *  - createSession() 이하: 세션 상태 전이. 전부 새 객체를 돌려준다 (불변)
+ *  - stripImages(): draft 저장용 (이미지 제외)
+ */
+
+import type { Baseline, FaceShape, GateFail, GateResult, PartId, PartResult, PartStatus } from "./types";
+import { LOOK_PART_IDS, PART_IDS } from "./types";
+
+// ---------- 화면 순서 ----------
+
+export const SCREENS = [
+  "consent",
+  "denied",
+  "capture",
+  "processing",
+  "looks",
+  "fullrender",
+  "guide",
+  "live",
+  "result",
+  "review",
+  "done",
+] as const;
+export type ScreenId = (typeof SCREENS)[number];
+
+export const SCREEN_NAME: Record<ScreenId, string> = {
+  consent: "1 동의",
+  denied: "이용 불가",
+  capture: "1 촬영",
+  processing: "서버 처리",
+  looks: "2 룩",
+  fullrender: "2-b 전체 완성 예상",
+  guide: "3 완성본",
+  live: "4 실시간 테두리",
+  result: "5 결과",
+  review: "6 전체 리뷰",
+  done: "끝",
+};
+
+/** 부위 순서 = 룩 5부위 + 쉐딩·하이라이트(고정 마지막) */
+export const PART_ORDER: readonly PartId[] = PART_IDS;
+
+// ---------- 화면 1: 촬영 4장 ----------
+
+export type ShotId = "front_open" | "front_closed" | "left_45" | "right_45";
+
+export interface ShotSpec {
+  id: ShotId;
+  name: string;
+  /** 허용 yaw 범위 (도). 화면 기준 왼쪽 회전이 음수 */
+  yaw: readonly [number, number];
+  eyes: "open" | "closed";
+}
+
+export const SHOTS: readonly ShotSpec[] = [
+  { id: "front_open", name: "정면 · 눈 뜸", yaw: [-10, 10], eyes: "open" },
+  { id: "front_closed", name: "정면 · 눈 감음", yaw: [-10, 10], eyes: "closed" },
+  { id: "left_45", name: "왼쪽 45°", yaw: [-60, -22], eyes: "open" },
+  { id: "right_45", name: "오른쪽 45°", yaw: [22, 60], eyes: "open" },
+];
+
+/** 서버(법선 정밀화)로 보내는 3장. 눈 감음 장은 폰에만 남는다 (F-01) */
+export const SERVER_SHOTS: readonly ShotId[] = ["front_open", "left_45", "right_45"];
+
+/** 촬영 조건 한계. 화면 4 게이트(gate.ts, 1-9)와 값을 맞춘다 */
+export interface CaptureLimits {
+  pitch: number;
+  sharpMin: number;
+  brightTol: number;
+  stableFrames: number;
+}
+export const CAPTURE_LIMITS: CaptureLimits = { pitch: 10, sharpMin: 30, brightTol: 12, stableFrames: 5 };
+
+/** 촬영 조건 문구. 숫자 없이 한 줄 (기능 정의서 F-01) */
+export const SHOT_TEXT = {
+  none: "",
+  front: "조금만 정면으로",
+  left: "고개를 왼쪽으로 조금 더",
+  right: "고개를 오른쪽으로 조금 더",
+  back: "너무 돌렸어요. 조금만 돌아오세요",
+  open: "눈을 떠 주세요",
+  close: "눈을 감아 주세요",
+  near: "조금 더 가까이",
+  far: "조금 멀리",
+  sharp: "흔들려요. 잠시 멈춰 주세요",
+  bright_low: "조금 더 밝은 곳으로",
+  bright_high: "너무 밝아요. 조금 어두운 곳으로",
+  stable: "잠시만 그대로",
+  ready: "찍을게요",
+} as const;
+type ShotTextKey = keyof typeof SHOT_TEXT;
+
+/** 프레임에서 잰 값. 없는 항목(undefined)은 그 조건을 건너뛴다 */
+export interface ShotMeasure {
+  faceDetected: boolean;
+  yaw: number;
+  pitch: number;
+  /** 왼눈·오른눈 감음 */
+  closedA: boolean;
+  closedB: boolean;
+  /** 얼굴 폭 / 프레임 폭 */
+  faceRatio?: number;
+  /** 라플라시안 분산 */
+  sharpness?: number;
+  /** 이마 L* (지금 프레임) */
+  foreheadL?: number;
+  /** 첫 장에서 잡은 이마 L*. 없으면 밝기 조건 생략 */
+  baselineL?: number;
+  stableCount?: number;
+}
+
+/** 얼굴 크기 허용 범위 (얼굴 폭 / 프레임 폭) */
+export const FACE_RATIO = { min: 0.28, max: 0.75 } as const;
+
+/**
+ * 촬영 조건: 안 맞는 것 하나만 한 줄.
+ * 순서: 얼굴 → 각도 → 눈 상태 → 얼굴 크기 → 선명 → 밝기 → 안정 (F-01 "촬영 조건 안내")
+ */
+export function shotGate(shotId: ShotId, m: ShotMeasure, limits: CaptureLimits = CAPTURE_LIMITS): GateResult {
+  const shot = SHOTS.find((s) => s.id === shotId);
+  if (!shot) throw new Error(`알 수 없는 촬영 장: ${shotId}`);
+  const stableCount = m.stableCount ?? 0;
+  const fail = (firstFail: GateFail, key: ShotTextKey): GateResult => ({ ok: false, firstFail, text: SHOT_TEXT[key], stableCount });
+
+  if (!m.faceDetected) return fail("face", "none");
+  if (m.yaw < shot.yaw[0] || m.yaw > shot.yaw[1]) {
+    if (shot.id.startsWith("front")) return fail("angle", "front");
+    if (shot.id === "left_45") return fail("angle", m.yaw > shot.yaw[1] ? "left" : "back");
+    return fail("angle", m.yaw < shot.yaw[0] ? "right" : "back");
+  }
+  if (Math.abs(m.pitch) > limits.pitch + 5) return fail("angle", "front");
+  const closed = m.closedA && m.closedB;
+  const open = !m.closedA && !m.closedB;
+  if (shot.eyes === "open" && !open) return fail("eyes", "open");
+  if (shot.eyes === "closed" && !closed) return fail("eyes", "close");
+  if (typeof m.faceRatio === "number") {
+    if (m.faceRatio < FACE_RATIO.min) return fail("size", "near");
+    if (m.faceRatio > FACE_RATIO.max) return fail("size", "far");
+  }
+  if (typeof m.sharpness === "number" && m.sharpness < limits.sharpMin) return fail("sharp", "sharp");
+  if (typeof m.baselineL === "number" && typeof m.foreheadL === "number") {
+    const d = m.foreheadL - m.baselineL;
+    if (d < -limits.brightTol) return fail("bright", "bright_low");
+    if (d > limits.brightTol) return fail("bright", "bright_high");
+  }
+  if (stableCount < limits.stableFrames) return fail("stable", "stable");
+  return { ok: true, firstFail: null, text: SHOT_TEXT.ready, stableCount };
+}
+
+/** 아직 안 찍은 첫 장. 틀린 장만 지우고 다시 부르면 그 장만 다시 찍는다 */
+export function nextShot(shots: Partial<Record<ShotId, unknown>>): ShotId | null {
+  return SHOTS.find((s) => !shots[s.id])?.id ?? null;
+}
+
+// ---------- 세션 ----------
+
+/** 세션 안의 부위 상태. 계약 PartResult + 확인받기 사진(captured) */
+export interface SessionPart extends PartResult {
+  /** 확인받기 순간 사진. draft 에는 저장하지 않는다 */
+  captured: unknown | null;
+}
+
+export interface Session {
+  screen: ScreenId;
+  consent: boolean;
+  /** 찍은 장. 값은 화면이 정한다(캔버스·비트맵). draft 에서는 true/false 로 줄어든다 */
+  shots: Partial<Record<ShotId, unknown>>;
+  baseline: Baseline | null;
+  faceShape: FaceShape | null;
+  lookId: string | null;
+  currentPart: PartId | null;
+  parts: SessionPart[];
+  startedAt: number;
+}
+
+const SETTLED: readonly PartStatus[] = ["passed", "check_only", "skipped"];
+
+export function createSession(now: () => number = Date.now): Session {
+  return {
+    screen: "consent",
+    consent: false,
+    shots: {},
+    baseline: null,
+    faceShape: null,
+    lookId: null,
+    currentPart: null,
+    parts: PART_ORDER.map((partId) => ({
+      partId,
+      status: "not_started",
+      score: null,
+      diagnosisCodes: [],
+      diagnosis: "",
+      checkReason: null,
+      lrIndex: null,
+      metrics: {},
+      attempts: 0,
+      updatedAt: 0,
+      captured: null,
+    })),
+    startedAt: now(),
+  };
+}
+
+export function setScreen(s: Session, screen: ScreenId): Session {
+  return { ...s, screen };
+}
+
+/**
+ * 진행 칩으로 부위 이동. 미시작이면 진행 중으로, 보던 부위를 결과 없이 떠나면 미시작으로.
+ * 이미 결과가 난 부위는 되돌리지 않는다 (칩에서 점수가 사라지면 안 된다)
+ */
+export function setCurrentPart(s: Session, partId: PartId): Session {
+  return {
+    ...s,
+    currentPart: partId,
+    parts: s.parts.map((p) => {
+      if (p.partId === partId) return p.status === "not_started" ? { ...p, status: "in_progress" } : p;
+      if (p.status === "in_progress") return { ...p, status: "not_started" };
+      return p;
+    }),
+  };
+}
+
+/** 채점(③)이 주는 결과. PartResult 에서 세션이 정하는 필드(status 일부·attempts·updatedAt)를 뺀 것 */
+export type ScoreOutcome = Pick<PartResult, "score" | "diagnosisCodes" | "diagnosis" | "checkReason" | "lrIndex" | "metrics"> & {
+  /** "scored" 면 점수 확정, "check_only" 면 점수 없이 확인만 */
+  decision: "scored" | "check_only";
+};
+
+/**
+ * 화면 5 "다음": 점수가 낮아도 passed. 확인만은 check_only. 쉐딩·하이라이트는 항상 확인만 (F-09).
+ * 결과는 최신으로 덮어쓰고 attempts 를 올린다 (재확인)
+ */
+export function applyResult(s: Session, partId: PartId, r: ScoreOutcome, now: () => number = Date.now): Session {
+  const status: PartStatus = partId === "contour" || r.decision === "check_only" ? "check_only" : "passed";
+  return {
+    ...s,
+    parts: s.parts.map((p) =>
+      p.partId === partId
+        ? {
+            ...p,
+            status,
+            score: status === "passed" ? r.score : null,
+            diagnosisCodes: r.diagnosisCodes,
+            diagnosis: r.diagnosis,
+            checkReason: r.checkReason,
+            lrIndex: r.lrIndex,
+            metrics: r.metrics,
+            attempts: p.attempts + 1,
+            updatedAt: now(),
+          }
+        : p,
+    ),
+  };
+}
+
+/** 화면 5 "건너뛰기": 점수 미반영, 합산 제외 */
+export function applySkip(s: Session, partId: PartId, now: () => number = Date.now): Session {
+  return {
+    ...s,
+    parts: s.parts.map((p) => (p.partId === partId ? { ...p, status: "skipped", score: null, updatedAt: now() } : p)),
+  };
+}
+
+/** after 다음으로 아직 안 끝난 부위. 없으면 null (→ 화면 6) */
+export function nextPart(s: Session, after: PartId | null = s.currentPart): PartId | null {
+  const i = after ? PART_ORDER.indexOf(after) : -1;
+  return PART_ORDER.slice(i + 1).find((id) => !SETTLED.includes(partStatus(s, id))) ?? null;
+}
+
+export function allDone(s: Session): boolean {
+  return s.parts.every((p) => SETTLED.includes(p.status));
+}
+
+function partStatus(s: Session, partId: PartId): PartStatus {
+  const p = s.parts.find((x) => x.partId === partId);
+  if (!p) throw new Error(`세션에 없는 부위: ${partId}`);
+  return p.status;
+}
+
+/** 화면 6 합산 입력 (계약 PartResult[]). 사진(captured)은 뺀다 */
+export function toReviewParts(s: Session): PartResult[] {
+  return s.parts.map(({ captured: _captured, ...rest }) => rest);
+}
+
+// ---------- draft 저장 ----------
+
+/** 세션 draft (이미지 제외). JSON 으로 그대로 저장·복원된다 */
+export interface SessionDraft {
+  screen: ScreenId;
+  consent: boolean;
+  shots: Partial<Record<ShotId, boolean>>;
+  baseline: { foreheadL: number; unit: Baseline["unit"]; scleraLab: Baseline["scleraLab"]; faceShape: FaceShape } | null;
+  faceShape: FaceShape | null;
+  lookId: string | null;
+  currentPart: PartId | null;
+  parts: (PartResult & { captured: boolean })[];
+  startedAt: number;
+}
+
+/** 세션 draft 저장용. 사진·랜드마크는 뺀다 (얼굴 데이터는 draft 에 남기지 않는다) */
+export function stripImages(s: Session): SessionDraft {
+  return {
+    screen: s.screen,
+    consent: s.consent,
+    shots: Object.fromEntries(Object.entries(s.shots).map(([k, v]) => [k, !!v])) as Partial<Record<ShotId, boolean>>,
+    baseline: s.baseline
+      ? { foreheadL: s.baseline.foreheadL, unit: s.baseline.unit, scleraLab: s.baseline.scleraLab, faceShape: s.baseline.faceShape }
+      : null,
+    faceShape: s.faceShape,
+    lookId: s.lookId,
+    currentPart: s.currentPart,
+    parts: s.parts.map(({ captured, ...rest }) => ({ ...rest, captured: !!captured })),
+    startedAt: s.startedAt,
+  };
+}
+
+export { LOOK_PART_IDS };

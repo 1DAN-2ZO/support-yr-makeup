@@ -15,7 +15,8 @@ npm run dev            # vite, http://localhost:5173 (카메라는 localhost/htt
 src/core/      순수 함수·계약 타입. 브라우저 API 없음. 전부 테스트 가능
   types.ts     모듈 계약 (server/app/schemas.py 와 짝)
   log.ts       공통 log() — 전 모듈이 이것만 부른다
-  (통합 시) landmarks.ts guides.ts gate.ts score.ts review.ts flow.ts looks.ts …  ← poc/full/lib/*.js 를 옮긴다
+  flow.ts      화면 순서, 촬영 4장 게이트(shotGate), 세션 전이, draft 저장 형식 — poc/full/lib/flow.js 이전 완료 (1-1)
+  (통합 시) landmarks.ts guides.ts gate.ts score.ts review.ts looks.ts …  ← poc/full/lib/*.js 를 옮긴다
 src/screens/   화면·상태 기계·카메라·저장 (I/O)
 tests/         vitest
 ```
