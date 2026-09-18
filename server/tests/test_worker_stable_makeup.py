@@ -24,11 +24,49 @@ def test_missing_source_raises(look_ref, tmp_path):
         stable_makeup_worker(str(tmp_path / "nope.jpg"), "look_01")
 
 
+def test_missing_source_message_has_no_raw_path(look_ref, tmp_path):
+    """사진 경로는 로그에 절대 안 남긴다 — 예외 메시지에 원본 경로 문자열이 있으면 안 된다."""
+    missing = str(tmp_path / "nope.jpg")
+    with pytest.raises(FileNotFoundError) as exc_info:
+        stable_makeup_worker(missing, "look_01")
+    assert missing not in str(exc_info.value)
+
+
 def test_missing_look_ref_raises(look_ref, tmp_path):
     source = tmp_path / "source.jpg"
     source.write_bytes(b"fake-source")
     with pytest.raises(FileNotFoundError):
         stable_makeup_worker(str(source), "look_99")
+
+
+def test_missing_look_ref_message_has_no_raw_path(look_ref, tmp_path):
+    """look_ref_dir 경로도 사진과 마찬가지로 로그에 남기면 안 된다 — look_id(토큰)는 있어도 된다."""
+    source = tmp_path / "source.jpg"
+    source.write_bytes(b"fake-source")
+    unresolved_ref_path = str(look_ref / "look_99.jpg")
+    with pytest.raises(FileNotFoundError) as exc_info:
+        stable_makeup_worker(str(source), "look_99")
+    assert unresolved_ref_path not in str(exc_info.value)
+    assert "look_99" in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "bad_look_id",
+    ["../../etc/passwd", "look_01/../../secret", "../secret", "look 01", "look.01"],
+)
+def test_unsafe_look_id_rejected_before_path_construction(look_ref, tmp_path, monkeypatch, bad_look_id):
+    """path traversal 성격의 look_id는 파일 경로를 만들기 전에 거부돼야 하고, 모델 서버 호출도 없어야 한다."""
+    source = tmp_path / "source.jpg"
+    source.write_bytes(b"fake-source")
+
+    def fail_post(*args, **kwargs):
+        raise AssertionError("httpx.post must not be called for an unsafe look_id")
+
+    monkeypatch.setattr(httpx, "post", fail_post)
+
+    with pytest.raises(ValueError) as exc_info:
+        stable_makeup_worker(str(source), bad_look_id)
+    assert bad_look_id not in str(exc_info.value)
 
 
 def test_posts_expected_payload_and_returns_result(look_ref, tmp_path, monkeypatch):
