@@ -3,13 +3,13 @@
 2026-09-18 · 분업안(`work-split-modules-v6.md`) + AI 파이프라인(`ai-pipeline-v6.md`) + 개발 규칙(`dev-stack-v6.md`)을 **사람 하나가 자기 몫만 보면 되게** 한 장으로 편 것. 순서대로 하면 된다. ★ = 다른 모듈이 기다리는 것(먼저).
 
 > **공통 (전원, 첫날)**
-> `git clone` → `bash scripts/setup.sh` → `client/src/core/types.ts`·`server/app/schemas.py` 읽고 자기 모듈 계약에 이의 있으면 첫 회의에서 → `main`에서 `종류/모듈-기능` 브랜치(예 `feat/gate-capture-bundle`) → PR은 CI 초록.
+> `git clone` → `bash scripts/setup.sh` → `client/src/core/types.ts`·`server/app/schemas.py` 읽고 자기 모듈 계약에 이의 있으면 첫 회의에서 → 자기 모듈 브랜치(`capture` `guide` `score` `server` `model` `app`)로 checkout → 작은 단위로 자주 `main`에 PR, CI 초록.
 >
 > **팀 전체가 정해야 시작되는 것 (첫 회의)**: 담당자 6명 · 화면 3 구현 두 벌 중 하나 · 눈 감음·45° 장 용도 · 룩 참조 사진 10장 방법 · 평가 1·2·3 통과 기준 "낮으면 뭘 바꿀지" · 서버 장애 시 "이용 불가"를 "룩 준비 중"으로 바꿀지
 
 ---
 
-## ① 촬영·기준 (클라이언트, TypeScript)
+## ① 촬영·기준 (클라이언트, TypeScript) — 브랜치 `capture`
 
 **받는 것** 카메라 · **주는 것** `Baseline`(얼굴 점·비율 척도·이마 L*·눈 흰자·얼굴형·쌩얼 사진), `Session` 저장소 · **지금 있는 것** `poc/full`의 `flow.js shotGate`·`createSession`·`stripImages`, `app.js` 촬영·자동 셔터
 
@@ -30,7 +30,7 @@
 
 ---
 
-## ② 가이드·실시간 (클라이언트, TypeScript)
+## ② 가이드·실시간 (클라이언트, TypeScript) — 브랜치 `guide`
 
 **받는 것** `Baseline`, `LookTemplate`, `FaceShape`, 라이브 프레임, 완성 예상 이미지·화장 레이어(④) · **주는 것** `GuideSet`, `GateResult`, `CaptureBundle`(3~5장 + 손 겹침) · **지금 있는 것** `guides.js`, `gate.js`, `screen3-core.js`·`screen3-rules.js`, `landmarks.js`, 실기기 수정 7건
 
@@ -50,7 +50,7 @@
 
 ---
 
-## ③ 채점·합산 (클라이언트 순수 함수, TypeScript + 평가는 Node CLI)
+## ③ 채점·합산 (클라이언트 순수 함수, TypeScript + 평가는 Node CLI) — 브랜치 `score`
 
 **받는 것** `Baseline`, `GuideSet`, `CaptureBundle`, `LookTemplate` 밴드·허용 범위 · **주는 것** `PartResult`, `SessionSummary`, 코드표 · **지금 있는 것** `score.js`(27개 검증), `sampling.js`, `review.js`(24개)
 
@@ -72,7 +72,7 @@
 
 ---
 
-## ④ 서버·생성 (Python 3.11 + FastAPI, GPU 워커 conda, 클라이언트 워핑은 TS)
+## ④ 서버·생성 (Python 3.11 + FastAPI, GPU 워커 conda, 클라이언트 워핑은 TS) — 브랜치 `server`
 
 **받는 것** 정면 사진 1장, 룩 참조 사진 10장 · **주는 것** `LookJob`(결과·레이어·닮음·버전) · **지금 있는 것** `server/app`(큐·스텁 워커·삭제·버전, 테스트 5개), `server-bench`(Stable-Makeup fp16 8 step 2.55초), `tryon.js`(3점 아핀)
 
@@ -94,7 +94,7 @@
 
 ---
 
-## ⑤ 모델·데이터·평가 (Python)
+## ⑤ 모델·데이터·평가 (Python) — 브랜치 `model`
 
 **받는 것** 팀 전체가 찍은 사진, `Baseline` 랜드마크 · **주는 것** `FaceShape` 함수, 평가 데이터, `eval-results-v6.md` · **지금 있는 것** `estimateFaceShape`(규칙), `datasets-ranked-v6.md`, `poc/datasets-eval`, `poc/synth`(보류), `eval/` 틀
 
@@ -117,7 +117,7 @@
 
 ---
 
-## ⑥ 앱·콘텐츠·통합 (TypeScript 화면 + 통합 주인, 로그·버전·지표는 Python 집계)
+## ⑥ 앱·콘텐츠·통합 (TypeScript 화면 + 통합 주인, 로그·버전·지표는 Python 집계) — 브랜치 `app`
 
 **받는 것** 모든 모듈 출력 · **주는 것** `LookTemplate` 10개, 화면·상태 기계, `log()`·`Event`·퍼널, 버전 규칙, 배포 URL · **지금 있는 것** `app.js`(11화면 상태 기계), `looks.js`(초안 10개), `flow.js`, 리뷰·결과 카드, `client/src/core/types.ts`·`log.ts`, `scripts/`, CI
 
