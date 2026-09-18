@@ -50,6 +50,9 @@
 | **화장 전이** (F-03 얹어보기, F-04 전체 완성 예상) | **Stable-Makeup** (SIGGRAPH 2025, SD1.5 기반, 가중치 공개) | 코드 Apache-2.0 / 베이스 SD1.5는 RAIL-M | **1순위** |
 | | SHMT (NeurIPS 2024, 잠재 확산, 자기지도) | **CC BY-NC-SA 4.0 (비상업)** | 2순위 |
 | | FLUX-Makeup (2025, DiT 기반) | 확인 필요 | 신규, 품질 우위 가능 |
+| | **FRAM** (CVPR 2026, 부위별 제어, SD2.1, 코드·가중치 공개) | **CC BY-NC-SA 4.0 (비상업)** | **발표용 최상.** 눈·입 부위 단위 생성 → 화면 3 확대 문제 해소 (`screen3-tech-v6.md` 3-5) |
+| | MakeupMirror (2026-06, Stable-Makeup 개선 — 얼굴 기하 ControlNet·영역 제어·피부톤 변조) | 미확인 | 코드 공개 여부 미확인 |
+| **완성본 업스케일** (화면 3 전용) | **MoD Control Tile Upscaler SDXL** — 잠재 공간 타일 확산 + ControlNet Tile | **Apache-2.0** | 512→1024. 원본에 조건화되어 초해상보다 충실. 룩 확정 후 1장에만 (`screen3-tech-v6.md` 3-4) |
 | **표면 법선 추정** (F-05 쉐딩 위치) | **DSINE** (CVPR 2024 Oral) | **Imperial College 비상업 전용** | 품질 1순위, 사업화 불가 |
 | | **Marigold-Normals** | **Apache-2.0 (상업 가능)** | 교체 후보. 확산 기반이라 느림 |
 | | Metric3D v2 | 확인 필요 | 카메라 내부 파라미터 필요 |
