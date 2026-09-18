@@ -40,7 +40,7 @@
 
 ```
 docs/   서비스 정의, 기능 정의서, 화면 브리프, 구현 요소 정의, 데이터셋 목록, 다이어그램 4장
-poc/    브라우저 POC — 아이라이너·볼터치 채점. 화면별 POC는 브랜치로 분리 (화면 4: `poc/screen4`, 화면 5: `poc/screen5`, 화면 6: `poc/screen6` 브랜치)
+poc/    브라우저 POC — 화면별 POC는 브랜치로 분리 (`poc/screen2`~`poc/screen6`), 전체 흐름 POC는 `poc/full/`. 통합 후 동결(참고용)
 server/ 서버 API (FastAPI, Python 3.11) — 큐·워커 인터페이스·삭제 정책. 스텁 워커로 흐름이 돈다
 eval/   평가 하네스 — 골든 세트·한 명령 재평가·결과표 자동 생성 (docs/eval-results-v6.md)
 client/ 모바일 웹 클라이언트 (TypeScript, Vite) — 모듈 계약 타입·공통 log(). POC lib 를 여기로 옮긴다
