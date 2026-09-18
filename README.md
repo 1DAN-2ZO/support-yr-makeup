@@ -39,8 +39,10 @@
 ## 저장소 구성
 
 ```
-docs/   서비스 정의, 기능 정의서, 화면 브리프, 구현 요소 정의, 데이터셋 목록, 다이어그램 4장
-poc/    브라우저 POC — 화면별 POC는 브랜치로 분리 (`poc/screen2`~`poc/screen6`), 전체 흐름 POC는 `poc/full/`. 통합 후 동결(참고용)
+docs/   서비스 정의, 기능 정의서, 화면 브리프, 구현 요소 정의, 필요 기술 목록, 선행 연구 크로스체크,
+        화면 3 기술 정리, 합성 데이터·학습 문서, 데이터셋 목록·순위표, 기술 검토, 분업·스프린트, 다이어그램 4장
+poc/    브라우저 POC — 화면별 POC는 브랜치로 분리 (`poc/screen2`~`poc/screen6`), 전체 흐름 POC는 `poc/full/`.
+        합성 학습 데이터 생성기 `poc/synth/`, 데이터셋 실측 `poc/datasets-eval/`, 촬영 세트 샘플 `poc/samples/`. 통합 후 동결(참고용)
 server/ 서버 API (FastAPI, Python 3.11) — 큐·워커 인터페이스·삭제 정책. 스텁 워커로 흐름이 돈다
 eval/   평가 하네스 — 골든 세트·한 명령 재평가·결과표 자동 생성 (docs/eval-results-v6.md)
 client/ 모바일 웹 클라이언트 (TypeScript, Vite) — 모듈 계약 타입·공통 log(). POC lib 를 여기로 옮긴다
@@ -75,6 +77,11 @@ cd poc && python -m http.server 8000      # → http://localhost:8000  (저장�
 # 화면 6 전체 리뷰 POC + 자동 검증 24개 → 브랜치 poc/screen6
 git checkout poc/screen6 && cd poc/screen6 && node tests.mjs
 python -m http.server 8000                # → http://localhost:8000
+
+# 합성 학습 데이터 생성기 POC + 자동 검증 27개
+cd poc/synth && node tests.mjs            # (저장소 루트 기준)
+cd .. && python -m http.server 8000       # 샘플 사진을 쓰므로 poc/ 에서 띄운다
+                                          # → http://localhost:8000/synth/
 ```
 
 랜드마크 검출은 브라우저에서 MediaPipe를 CDN으로 받아 돌리므로 인터넷이 필요합니다. 카메라 모드는 HTTPS 또는 localhost에서만 열립니다.
