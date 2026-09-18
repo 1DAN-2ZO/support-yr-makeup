@@ -1,0 +1,17 @@
+{
+  "periorbital_human_label_iris_over_eyewidth": {
+    "mean": 0.509,
+    "median": 0.507,
+    "p10": 0.462,
+    "p90": 0.559,
+    "n": 400
+  },
+  "mediapipe_easyportrait_iris_over_eyewidth": {
+    "mean": 0.452,
+    "median": 0.448,
+    "p10": 0.426,
+    "p90": 0.475,
+    "n": 400
+  },
+  "note": "눈 너비 = Periorbital 은 흰자+홍채 마스크 가로폭, MediaPipe 는 눈꼬리 점(33-133 / 362-263) 거리. 정의가 완전히 같지는 않다."
+}

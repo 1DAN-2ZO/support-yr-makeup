@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>당화응 POC — 화면 3 부위 완성본</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header>
+  <h1>당화응 POC · 화면 3 부위 완성본</h1>
+  <p class="sub">폰 실제 크기(가로 852×393 / 세로 393×852)로 그린다. 크롭은 <code>crop.js</code>가 계산하고,
+  표시 영역의 실제 종횡비를 그대로 넘긴다.</p>
+</header>
+
+<main>
+  <section class="panel">
+    <div class="row">
+      <label>사진
+        <select id="sampleSel"></select>
+      </label>
+      <label>부위
+        <select id="partSel"></select>
+      </label>
+      <label class="check"><input type="checkbox" id="forceFlip" /> 방향 강제로 뒤집기 (안내 화면 확인)</label>
+      <label class="check"><input type="checkbox" id="showBox" /> 크롭 박스 보기</label>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <span class="rowlabel">확인받기 흉내</span>
+      <button id="doPass">이 부위 통과 (점수 랜덤)</button>
+      <button id="doSkip">건너뛰기</button>
+      <button id="doNext">다음 부위</button>
+      <button id="doReset">세션 초기화</button>
+    </div>
+    <div id="info" class="note"></div>
+  </section>
+
+  <section class="stagewrap">
+    <div id="phone" class="phone" data-orientation="landscape">
+
+      <!-- 진행 칩 -->
+      <nav id="chips" class="chips"></nav>
+
+      <!-- 완성본 이미지 -->
+      <div id="viewport" class="viewport">
+        <img id="render" alt="완성본" />
+        <div id="boxline" class="boxline" hidden></div>
+        <span class="tag">완성본</span>
+        <p id="hint" class="hint" hidden></p>
+      </div>
+
+      <!-- 카드 -->
+      <aside id="card" class="card">
+        <h2 id="title">아이라이너 · 완성본</h2>
+        <p id="rationale" class="rationale"></p>
+        <div class="need">
+          <span class="needlabel">지금 필요한 것</span>
+          <p id="need"></p>
+        </div>
+        <button id="go" class="primary">그리러 가기</button>
+      </aside>
+
+      <!-- 방향 안내 -->
+      <div id="rotate" class="rotate" hidden>
+        <div class="rotateicon">⟳</div>
+        <p id="rotatetext">폰을 가로로 돌리세요</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h3>이 화면이 담는 것 (impl-screen1-5 3-1)</h3>
+    <ul class="legend">
+      <li><b>3-1</b> 진행 칩 6개 — 상태와 최신 점수</li>
+      <li><b>3-2</b> 방향 안내 — 눈 단계 가로, 나머지 세로</li>
+      <li><b>3-2b</b> 완성본 범위 — <code>fullRender</code>를 이 부위로 줌</li>
+      <li><b>3-5</b> 근거 한 줄 — 숫자 없이 말로</li>
+      <li><b>3-6</b> 지금 필요한 것 — 화면 3에만 (화면 4에는 없음)</li>
+      <li>버튼 "그리러 가기" → 화면 4</li>
+    </ul>
+    <p class="note">지금은 <b>완성본 자리에 맨얼굴 사진</b>을 넣었다. 서버 <code>fullRender</code>가 나오면 그 자리만 바꾸면 된다
+    (<code>docs/screen3-tech-v6.md</code> 0-5). 근거·제품 문장은 룩 템플릿 콘텐츠가 정해지기 전까지 더미다.</p>
+  </section>
+</main>
+
+<div id="status" class="status">불러오는 중…</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

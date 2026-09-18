@@ -1,0 +1,123 @@
+{
+  "pairs": 50,
+  "detected": 50,
+  "thr_deltaE": 6.0,
+  "P1_mean_deltaE_by_region": {
+    "lip": {
+      "mean": 20.89,
+      "median": 19.202,
+      "n": 50
+    },
+    "eyeL": {
+      "mean": 9.898,
+      "median": 9.57,
+      "n": 50
+    },
+    "eyeR": {
+      "mean": 9.636,
+      "median": 9.485,
+      "n": 50
+    },
+    "browL": {
+      "mean": 13.936,
+      "median": 12.826,
+      "n": 50
+    },
+    "browR": {
+      "mean": 14.751,
+      "median": 14.473,
+      "n": 50
+    },
+    "cheek_proxy": {
+      "mean": 9.477,
+      "median": 8.749,
+      "n": 50
+    },
+    "face_rest": {
+      "mean": 9.615,
+      "median": 9.097,
+      "n": 50
+    }
+  },
+  "P1_mean_deltaE_by_style": {
+    "01": {
+      "mean": 10.448,
+      "median": 9.61,
+      "n": 10
+    },
+    "02": {
+      "mean": 10.767,
+      "median": 9.579,
+      "n": 10
+    },
+    "03": {
+      "mean": 9.724,
+      "median": 8.702,
+      "n": 10
+    },
+    "04": {
+      "mean": 10.49,
+      "median": 10.57,
+      "n": 10
+    },
+    "05": {
+      "mean": 9.996,
+      "median": 9.057,
+      "n": 10
+    }
+  },
+  "P2_precision_like": {
+    "brow": {
+      "mean": 0.171,
+      "median": 0.082,
+      "n": 50
+    },
+    "liner": {
+      "mean": 0.16,
+      "median": 0.105,
+      "n": 50
+    },
+    "shadow": {
+      "mean": 0.097,
+      "median": 0.048,
+      "n": 50
+    },
+    "lip": {
+      "mean": 0.401,
+      "median": 0.267,
+      "n": 50
+    },
+    "cheek": {
+      "mean": 0.14,
+      "median": 0.09,
+      "n": 48
+    }
+  },
+  "P3_recall_like_makeup_classes": {
+    "mean": 0.397,
+    "median": 0.384,
+    "n": 50
+  },
+  "P4_bare_face_false_positive_ratio": {
+    "liner": {
+      "mean": 0.032,
+      "median": 0.019,
+      "n": 50
+    },
+    "shadow": {
+      "mean": 0.181,
+      "median": 0.127,
+      "n": 50
+    },
+    "lip": {
+      "mean": 0.152,
+      "median": 0.041,
+      "n": 50
+    },
+    "cheek": {
+      "mean": 0.199,
+      "median": 0.22,
+      "n": 50
+    }
+  }
+}
