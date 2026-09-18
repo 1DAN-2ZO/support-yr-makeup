@@ -149,7 +149,7 @@ cd poc/full && node tests.mjs
 | 규칙 | 내용 |
 | --- | --- |
 | **기준선은 `main`** | 서버·평가·클라이언트 뼈대·잠금 파일·문서가 전부 `main`에 있다. 새 작업은 항상 `main`에서 가지를 친다. `poc/*` 브랜치는 동결(참고용) |
-| 브랜치 이름 | `모듈/할일` — 예 `client/gate`, `server/queue-redis`, `eval/score-cli`, `docs/xxx` |
+| 브랜치 이름 | **`종류/모듈-기능`** — 종류는 `feat` `fix` `eval` `docs` `chore`, 모듈 축약은 `capture`(①) `gate`·`guide`(②) `score`·`review`(③) `server`·`tryon`(④) `eval`·`data`·`faceshape`(⑤) `app`·`looks`·`docs`(⑥). 예 `feat/score-frame-average`, `fix/review-harmony-zero`, `eval/faceshape-baseline`. 소문자·하이픈·4단어 안. **브랜치 하나 = 할 일 하나**, 며칠 안에 main으로. 오래 사는 모듈 브랜치는 만들지 않는다 |
 | PR | `main`으로 PR. **CI 초록(ruff·pytest·tsc·vitest·eslint)** + 계약(`types.ts`·`schemas.py`)을 바꿨으면 양쪽 변경이 같은 PR에 |
 | 리뷰 | 계약·`rules/*.json`·`eval/golden` 변경은 다른 모듈 담당 1명 확인. 나머지는 자기 모듈 안에서 자유 |
 | 커밋 전 | `bash scripts/check.sh` — CI 와 같은 검사. 실패하면 올리지 않는다 |

@@ -62,7 +62,7 @@ cd client && npm run dev                  # 클라이언트 (TypeScript, Vite) �
 uv run python eval/run_all.py             # 평가 하네스 → docs/eval-results-v6.md
 ```
 
-기준선은 `main`. 새 작업은 `main`에서 `모듈/할일` 브랜치를 만들어 PR로 올리고, CI가 초록이어야 합친다. 잠금 파일(`uv.lock`, `client/package-lock.json`)은 커밋한다.
+기준선은 `main`. 새 작업은 `main`에서 `종류/모듈-기능` 브랜치(예 `feat/score-frame-average`)를 만들어 PR로 올리고, CI가 초록이어야 합친다. 잠금 파일(`uv.lock`, `client/package-lock.json`)은 커밋한다.
 
 ## POC 실행
 

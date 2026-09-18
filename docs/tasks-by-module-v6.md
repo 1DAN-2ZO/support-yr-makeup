@@ -3,7 +3,7 @@
 2026-09-18 · 분업안(`work-split-modules-v6.md`) + AI 파이프라인(`ai-pipeline-v6.md`) + 개발 규칙(`dev-stack-v6.md`)을 **사람 하나가 자기 몫만 보면 되게** 한 장으로 편 것. 순서대로 하면 된다. ★ = 다른 모듈이 기다리는 것(먼저).
 
 > **공통 (전원, 첫날)**
-> `git clone` → `bash scripts/setup.sh` → `client/src/core/types.ts`·`server/app/schemas.py` 읽고 자기 모듈 계약에 이의 있으면 첫 회의에서 → `main`에서 `모듈/할일` 브랜치 → PR은 CI 초록.
+> `git clone` → `bash scripts/setup.sh` → `client/src/core/types.ts`·`server/app/schemas.py` 읽고 자기 모듈 계약에 이의 있으면 첫 회의에서 → `main`에서 `종류/모듈-기능` 브랜치(예 `feat/gate-capture-bundle`) → PR은 CI 초록.
 >
 > **팀 전체가 정해야 시작되는 것 (첫 회의)**: 담당자 6명 · 화면 3 구현 두 벌 중 하나 · 눈 감음·45° 장 용도 · 룩 참조 사진 10장 방법 · 평가 1·2·3 통과 기준 "낮으면 뭘 바꿀지" · 서버 장애 시 "이용 불가"를 "룩 준비 중"으로 바꿀지
 
