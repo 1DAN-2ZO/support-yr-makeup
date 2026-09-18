@@ -157,4 +157,12 @@ cd poc/full && node tests.mjs
 | 데이터·모델 | 저장소에 넣지 않는다. `DHE_DATA_DIR` 아래에 두고 `eval/golden/manifest.json`에 경로·해시만 |
 | 문서 | 코드가 바뀌면 같은 PR에서 `docs/`도 고친다. 결과표(`eval-results-v6.md`)는 손으로 안 고침 |
 
-GitHub 설정(⑥이 한 번): `main` 보호 — PR 필수, CI 통과 필수, 강제 push 금지.
+**`main` 브랜치 보호는 못 건다** (2026-09-18 확인). 비공개 저장소 + 무료 플랜이라 GitHub 이 기능 자체를 막는다(`Upgrade to GitHub Pro or make this repository public`). 선택지는 셋이다.
+
+| 선택 | 결과 |
+|---|---|
+| 그대로 간다 (기본) | 규칙으로만 지킨다. **PR 에서 CI 는 그대로 돈다** — 강제만 안 될 뿐이다. `main` 직접 push 가 기술적으로 가능하니 하지 않기로 서로 약속한다 |
+| 저장소를 공개로 | 보호가 켜진다. 단 공개 전에 확인: 저장소에 사람 사진이 없어야 한다(실촬영 사진은 원래 `DHE_DATA_DIR` 로 저장소 밖, 샘플 20장은 AI 생성). 팀·부트캠프와 상의 |
+| GitHub Pro | 유료 |
+
+어느 쪽이든 **PR 없이 `main` 에 직접 push 하지 않는다**가 팀 약속이다.
