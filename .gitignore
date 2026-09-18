@@ -12,3 +12,5 @@ __pycache__/
 uv.lock
 
 # 데이터·모델은 저장소 밖 (DHE_DATA_DIR)
+dist/
+client/node_modules/

@@ -16,13 +16,13 @@
 
 | 순서 | 할 것 | 왜 |
 | --- | --- | --- |
-| 1 | `poc/full/lib`를 정본으로 `src/core/`를 만든다. 비율 단위(`189e42c`)가 반영된 건 이것뿐 | 각자 자기 POC 복사본에서 시작하면 합칠 때 전부 다시 |
+| 1 | `poc/full/lib`를 정본으로 `client/src/core/*.ts`를 만든다(파일 단위 TS 이전 + `tests.mjs` → vitest). 비율 단위(`189e42c`)가 반영된 건 이것뿐 | 각자 자기 POC 복사본에서 시작하면 합칠 때 전부 다시 |
 | 2 | 화면 3 구현 두 벌(`poc/screen3` 규칙 vs `feat/screen3-finished-look`) 중 하나로 정한다 | ②가 두 벌을 들고 시작할 수 없다 |
-| 3 | 아래 §2 데이터 계약을 `src/core/types.js`(JSDoc)로 적는다 | 모듈 경계의 언어 |
+| 3 | 아래 §2 데이터 계약을 `client/src/core/types.ts`(TS)와 `server/app/schemas.py`(Pydantic)에 적는다 — **초안 있음** | 모듈 경계의 언어 |
 | 4 | 각 모듈 폴더 + 테스트 러너 하나(`node tests.mjs`가 전부 돌게) | 지금 화면별로 26·27·24·16개가 따로 |
 | 5 | HTTPS 실기기 환경(mkcert 또는 터널) | ①②④ 전부 폰 없이는 미실측 |
 | 6 | `eval/` 골격 + `run-all.sh` + 버전 규칙(`rules/*.json` version, `Event.ver`) — `ai-pipeline-v6.md` 2·3절 | 모듈이 코드를 바꿀 때 "실사진에서 나빠졌나"를 첫 주부터 재야 함 |
-| 7 | 기본 언어·스택 규칙(`dev-stack-v6.md`): Python 3.11 + FastAPI 공통, 브라우저 쪽만 JS. `uv sync --extra dev && uv run pytest` 로 서버 뼈대·평가 하네스가 도는 상태 | 이미 만들어 둠(2026-09-18). 각자 세팅만 |
+| 7 | 기본 언어·스택 규칙(`dev-stack-v6.md`): Python 3.11 + FastAPI 공통, 브라우저 쪽은 **TypeScript**(strict, Vite, Vitest). `uv sync --extra dev && uv run pytest`, `cd client && npm install && npm test` 로 서버 뼈대·평가 하네스·클라이언트 계약 타입·`log()`가 도는 상태 | 이미 만들어 둠(2026-09-18). 각자 세팅만 |
 
 ---
 
