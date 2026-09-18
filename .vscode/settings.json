@@ -1,0 +1,14 @@
+{
+  "files.eol": "\n",
+  "files.encoding": "utf8",
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": { "source.organizeImports": "explicit", "source.fixAll.eslint": "explicit" },
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
+  "python.testing.pytestEnabled": true,
+  "python.testing.pytestArgs": ["server/tests", "eval"],
+  "[python]": { "editor.defaultFormatter": "charliermarsh.ruff" },
+  "[typescript]": { "editor.defaultFormatter": "vscode.typescript-language-features" },
+  "eslint.workingDirectories": ["client"],
+  "typescript.tsdk": "client/node_modules/typescript/lib",
+  "search.exclude": { "**/node_modules": true, "**/.venv": true, "**/dist": true }
+}

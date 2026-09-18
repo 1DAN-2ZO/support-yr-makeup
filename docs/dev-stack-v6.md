@@ -84,11 +84,21 @@ support-yr-makeup/
 
 ## 5. 세팅 (처음 한 번)
 
+**모두 같은 환경**이 목표라 잠금 파일을 커밋한다: `uv.lock`(Python), `client/package-lock.json`(Node). 설치는 잠금 그대로(`--frozen`, `npm ci`). 의존성을 바꾸는 사람만 잠금을 갱신해 같은 PR에 넣는다.
+
+```bash
+git clone https://github.com/1DAN-2ZO/support-yr-makeup.git && cd support-yr-makeup
+bash scripts/setup.sh        # uv·node 확인 → uv sync --frozen → npm ci → 검사 전부 (Windows는 Git Bash)
+bash scripts/check.sh        # 커밋 전마다. CI 와 같은 검사
+```
+
+`scripts/setup.sh`가 하는 일을 손으로 하면:
+
 ```bash
 # 1. Python 3.11 확인 (없으면 uv가 받아 준다)
 python --version            # 3.11.x
-# 2. 가상환경 + 의존성
-uv sync --extra dev         # 개발 도구까지. 평가까지 하려면 --extra dev --extra eval
+# 2. 가상환경 + 의존성 (잠금 그대로)
+uv sync --frozen --extra dev --extra eval
 # 3. 검사
 uv run ruff check . && uv run pytest
 # 4. 서버 (스텁 워커)
@@ -96,8 +106,8 @@ uv run uvicorn server.app.main:app --reload --port 8000
 #    → http://localhost:8000/docs 에서 /health, /sessions/{sid}/jobs 시험
 # 5. 평가 하네스 (골든 세트 비어 있으면 skipped 로 표만 만든다)
 uv run python eval/run_all.py
-# 6. 클라이언트 (TypeScript)
-cd client && npm install
+# 6. 클라이언트 (TypeScript, 잠금 그대로)
+cd client && npm ci
 npm run typecheck && npm test && npm run lint
 npm run dev                  # http://localhost:5173 (카메라는 localhost/https)
 # 7. 화면별 POC (동결, 참고용)
@@ -106,6 +116,8 @@ cd poc/full && node tests.mjs
 ```
 
 환경 변수(선택): `DHE_DATA_DIR`(사진·모델 폴더), `DHE_UPLOAD_DIR`(업로드 임시 폴더, 운영은 tmpfs), `DHE_VER_*`(버전 5종), `DHE_IDENTITY_MIN_COS`, `DHE_QUEUE_WARN_SEC`, `DHE_JOB_TTL_SEC`.
+
+**에디터**: `.editorconfig`(UTF-8, LF, 들여쓰기), `.vscode/settings.json`(저장 시 포맷, ruff·eslint, `.venv` 인터프리터), `.vscode/extensions.json`(권장 확장). `.gitattributes`로 줄 끝은 저장소에서 LF — Windows에서 CRLF 경고가 나도 무시하면 된다.
 
 ## 6. 코드 규칙 (짧게)
 
@@ -131,3 +143,18 @@ cd poc/full && node tests.mjs
 | 버전 5종을 `/health`·모든 `LookJob.ver`에 | — |
 
 이 표의 오른쪽이 모듈 ④의 2주차 목록이다.
+
+## 8. 브랜치·PR·CI — 기준선을 지키는 규칙
+
+| 규칙 | 내용 |
+| --- | --- |
+| **기준선은 `main`** | 서버·평가·클라이언트 뼈대·잠금 파일·문서가 전부 `main`에 있다. 새 작업은 항상 `main`에서 가지를 친다. `poc/*` 브랜치는 동결(참고용) |
+| 브랜치 이름 | `모듈/할일` — 예 `client/gate`, `server/queue-redis`, `eval/score-cli`, `docs/xxx` |
+| PR | `main`으로 PR. **CI 초록(ruff·pytest·tsc·vitest·eslint)** + 계약(`types.ts`·`schemas.py`)을 바꿨으면 양쪽 변경이 같은 PR에 |
+| 리뷰 | 계약·`rules/*.json`·`eval/golden` 변경은 다른 모듈 담당 1명 확인. 나머지는 자기 모듈 안에서 자유 |
+| 커밋 전 | `bash scripts/check.sh` — CI 와 같은 검사. 실패하면 올리지 않는다 |
+| 의존성 변경 | `uv add …` / `npm install …` 한 사람이 `uv.lock`·`package-lock.json`을 같은 PR에 |
+| 데이터·모델 | 저장소에 넣지 않는다. `DHE_DATA_DIR` 아래에 두고 `eval/golden/manifest.json`에 경로·해시만 |
+| 문서 | 코드가 바뀌면 같은 PR에서 `docs/`도 고친다. 결과표(`eval-results-v6.md`)는 손으로 안 고침 |
+
+GitHub 설정(⑥이 한 번): `main` 보호 — PR 필수, CI 통과 필수, 강제 push 금지.

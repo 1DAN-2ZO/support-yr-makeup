@@ -6,11 +6,12 @@
 
 | 평가 | 지표 | 기준선 | 현재 | 통과 기준 | n | 비고 | 파일 |
 |---|---|---|---|---|---|---|---|
-| score | - |  |  |  | 0 | skipped | `2026-09-18_686d91a_score_score-v0.1_golden-v0.csv` |
+| score | - |  |  |  | 0 | skipped | `2026-09-18_a9c7f3c_score_score-v0.1_golden-v0.csv` |
 
 ## 이력
 
 - `2026-09-18_686d91a_score_score-v0.1_golden-v0.csv`
+- `2026-09-18_a9c7f3c_score_score-v0.1_golden-v0.csv`
 
 ## 실험 노트
 

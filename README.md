@@ -54,15 +54,15 @@ danghaeung_poc_3x4_20/  촬영 세트 샘플 20장 (5명 × 정면 눈 뜸·감�
 서버·평가·학습·집계는 Python, 폰 브라우저에서 도는 것은 TypeScript. 규칙은 [`docs/dev-stack-v6.md`](docs/dev-stack-v6.md).
 
 ```bash
-uv sync --extra dev                       # .venv 생성 (uv 없으면 https://docs.astral.sh/uv/)
-uv run ruff check . && uv run pytest      # 린트 + 테스트
-uv run uvicorn server.app.main:app --reload --port 8000   # 서버 (스텁 워커) → http://localhost:8000/docs
-uv run python eval/run_all.py             # 평가 하네스 → docs/eval-results-v6.md
+bash scripts/setup.sh                     # 처음 한 번: uv sync --frozen + npm ci + 검사 전부 (Windows는 Git Bash)
+bash scripts/check.sh                     # 커밋 전: ruff·pytest·tsc·vitest·eslint (CI 와 동일)
 
-cd client && npm install                  # 클라이언트 (TypeScript, Vite)
-npm run typecheck && npm test && npm run lint
-npm run dev                               # http://localhost:5173
+uv run uvicorn server.app.main:app --reload --port 8000   # 서버 (스텁 워커) → http://localhost:8000/docs
+cd client && npm run dev                  # 클라이언트 (TypeScript, Vite) → http://localhost:5173
+uv run python eval/run_all.py             # 평가 하네스 → docs/eval-results-v6.md
 ```
+
+기준선은 `main`. 새 작업은 `main`에서 `모듈/할일` 브랜치를 만들어 PR로 올리고, CI가 초록이어야 합친다. 잠금 파일(`uv.lock`, `client/package-lock.json`)은 커밋한다.
 
 ## POC 실행
 

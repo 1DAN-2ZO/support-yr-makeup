@@ -1,0 +1,12 @@
+# 줄 끝은 저장소에서 LF로 통일 (Windows/mac 섞여 있어도 diff 잡음 없게)
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.pt binary
+*.onnx binary

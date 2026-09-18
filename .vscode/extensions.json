@@ -1,0 +1,9 @@
+{
+  "recommendations": [
+    "ms-python.python",
+    "charliermarsh.ruff",
+    "dbaeumer.vscode-eslint",
+    "vitest.explorer",
+    "EditorConfig.EditorConfig"
+  ]
+}
