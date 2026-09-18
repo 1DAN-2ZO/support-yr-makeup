@@ -41,10 +41,23 @@
 ```
 docs/   서비스 정의, 기능 정의서, 화면 브리프, 구현 요소 정의, 데이터셋 목록, 다이어그램 4장
 poc/    브라우저 POC — 아이라이너·볼터치 채점. 화면별 POC는 브랜치로 분리 (화면 4: `poc/screen4`, 화면 5: `poc/screen5`, 화면 6: `poc/screen6` 브랜치)
+server/ 서버 API (FastAPI, Python 3.11) — 큐·워커 인터페이스·삭제 정책. 스텁 워커로 흐름이 돈다
+eval/   평가 하네스 — 골든 세트·한 명령 재평가·결과표 자동 생성 (docs/eval-results-v6.md)
 danghaeung_poc_3x4_20/  촬영 세트 샘플 20장 (5명 × 정면 눈 뜸·감음·좌45·우45, 셀카 3:4 1080×1440, Real-ESRGAN 4배 초해상도) + 원본 시트
 ```
 
 문서 색인과 확정 사항은 [`docs/README.md`](docs/README.md)에서 시작하세요. 화면별 결정 이력은 [`docs/service-definition-v6.md`](docs/service-definition-v6.md) 부록에 있습니다.
+
+## 개발 환경 (기본 언어 Python 3.11 + FastAPI)
+
+서버·평가·학습·집계는 Python, 폰 브라우저에서 도는 것만 JavaScript. 규칙은 [`docs/dev-stack-v6.md`](docs/dev-stack-v6.md).
+
+```bash
+uv sync --extra dev                       # .venv 생성 (uv 없으면 https://docs.astral.sh/uv/)
+uv run ruff check . && uv run pytest      # 린트 + 테스트
+uv run uvicorn server.app.main:app --reload --port 8000   # 서버 (스텁 워커) → http://localhost:8000/docs
+uv run python eval/run_all.py             # 평가 하네스 → docs/eval-results-v6.md
+```
 
 ## POC 실행
 

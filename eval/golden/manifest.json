@@ -1,0 +1,8 @@
+{
+  "golden_version": "golden-v0",
+  "labels_version": "labels-v0",
+  "note": "촬영 세션 후 30장으로 채운다. 사진은 저장소 밖(DHE_DATA_DIR), 여기엔 경로·해시·person_id·라벨만.",
+  "data_dir_env": "DHE_DATA_DIR",
+  "split": { "rule": "person_id 단위. golden은 평가 전용, 학습에 쓰지 않는다" },
+  "items": []
+}

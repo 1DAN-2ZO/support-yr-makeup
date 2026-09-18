@@ -22,6 +22,7 @@
 | 4 | 각 모듈 폴더 + 테스트 러너 하나(`node tests.mjs`가 전부 돌게) | 지금 화면별로 26·27·24·16개가 따로 |
 | 5 | HTTPS 실기기 환경(mkcert 또는 터널) | ①②④ 전부 폰 없이는 미실측 |
 | 6 | `eval/` 골격 + `run-all.sh` + 버전 규칙(`rules/*.json` version, `Event.ver`) — `ai-pipeline-v6.md` 2·3절 | 모듈이 코드를 바꿀 때 "실사진에서 나빠졌나"를 첫 주부터 재야 함 |
+| 7 | 기본 언어·스택 규칙(`dev-stack-v6.md`): Python 3.11 + FastAPI 공통, 브라우저 쪽만 JS. `uv sync --extra dev && uv run pytest` 로 서버 뼈대·평가 하네스가 도는 상태 | 이미 만들어 둠(2026-09-18). 각자 세팅만 |
 
 ---
 
