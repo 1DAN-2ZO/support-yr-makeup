@@ -75,6 +75,29 @@ gh api "repos/1DAN-2ZO/support-yr-makeup/events?per_page=100"   --jq '.[]|select
 | 의무 | 내 작업 브랜치가 뒤처지면 **`git merge origin/main`** 으로 따라간다. 충돌하면 내가 푼다 |
 | 의무 | 남의 브랜치를 main 에 맞춰야 하면 **덮어쓰지 말고 담당자에게 알린다** |
 
+### 기술적으로 막아 둔 것
+
+규칙만으로는 또 일어난다. 두 겹으로 막는다.
+
+| 겹 | 무엇 | 막는가 | 한계 |
+|---|---|---|---|
+| **① `.githooks/pre-push`** | 푸시 직전에 원격 커밋이 내 커밋의 조상인지 본다. 아니면 = 원격 이력을 버리는 푸시 → 거부. 보호 브랜치 삭제도 거부 | **예, 푸시 자체를 막는다** | `--no-verify` 로 우회 가능. `bash scripts/setup.sh` 를 돌린 사람에게만 적용 |
+| **② `.github/workflows/guard.yml`** | 강제 푸시·보호 브랜치 삭제를 사후 감지. 워크플로를 실패시키고 **덮기 전 SHA 와 복구 명령**을 Summary 에 남긴다 | 아니오 (사후) | 훅을 우회했거나 안 깐 경우의 안전망 |
+
+보호 브랜치: `main` `capture` `guide` `score` `server` `model` `app` `poc/full`.
+
+```bash
+# 훅 설치 (setup.sh 가 자동으로 함)
+git config core.hooksPath .githooks
+
+# 내 작업 브랜치라 확실할 때만
+FORCE_OK=1 git push --force-with-lease
+```
+
+보호 브랜치는 `FORCE_OK` 로도 뚫리지 않는다.
+
+**③ 브랜치 보호(서버 강제)** 는 비공개+무료 플랜이라 못 켠다. 저장소를 공개로 돌리면 켤 수 있고, 그때는 ①②가 보조가 된다.
+
 ## 1. 모듈 6개
 
 ### ① 촬영·기준 (클라이언트) — 브랜치 `capture`
