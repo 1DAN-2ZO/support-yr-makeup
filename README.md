@@ -47,6 +47,8 @@ client/ 모바일 웹 클라이언트 (TypeScript, Vite) — 모듈 계약 타�
 danghaeung_poc_3x4_20/  촬영 세트 샘플 20장 (5명 × 정면 눈 뜸·감음·좌45·우45, 셀카 3:4 1080×1440, Real-ESRGAN 4배 초해상도) + 원본 시트
 ```
 
+일정·스프린트는 [`docs/sprints-v6.md`](docs/sprints-v6.md), 모듈별 할 일은 [`docs/tasks-by-module-v6.md`](docs/tasks-by-module-v6.md). 작업 항목은 GitHub 이슈·마일스톤에 들어가 있다.
+
 문서 색인과 확정 사항은 [`docs/README.md`](docs/README.md)에서 시작하세요. 화면별 결정 이력은 [`docs/service-definition-v6.md`](docs/service-definition-v6.md) 부록에 있습니다.
 
 ## 개발 환경 (기본 언어 Python 3.11 + FastAPI)
