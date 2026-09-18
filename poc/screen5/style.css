@@ -1,0 +1,54 @@
+:root { --bg:#F7F5F1; --txt:#2B2B2B; --muted:#6B6B6B; --accent:#2A8C85; --teal:#3FD1C4; --gray-bg:#EFECE6; --gray:#8A8A8A; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--txt); font-family:"Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif; font-size:14px; }
+header { padding:12px 20px; background:#fff; border-bottom:1px solid #e6e2da; }
+h1 { font-size:16px; margin:0 0 4px; }
+.hint { color:var(--muted); font-size:12.5px; margin:4px 0 8px; }
+.muted { color:var(--muted); font-size:12px; }
+main { display:grid; grid-template-columns: auto 1fr; gap:20px; padding:16px 20px; max-width:1500px; margin:0 auto; }
+@media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+
+/* ---------- 폰 목업 ---------- */
+.phone-wrap { display:flex; justify-content:center; align-items:flex-start; }
+.phone { position:relative; background:var(--bg); border:10px solid #1f1f1f; border-radius:40px; overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,.2); display:flex; }
+.phone.landscape { width:844px; height:390px; flex-direction:row; }
+.phone.portrait { width:390px; height:844px; flex-direction:column; }
+.photo { position:relative; background:#111; overflow:hidden; }
+.landscape .photo { width:66.6%; height:100%; }
+.portrait .photo { width:100%; height:62%; }
+.photo canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
+.chips { position:absolute; top:10px; left:10px; display:flex; flex-wrap:wrap; gap:4px; max-width:75%; }
+.chip { font-size:10px; padding:2px 7px; border-radius:10px; background:rgba(0,0,0,.45); color:#fff; border:1px solid rgba(255,255,255,.25); cursor:pointer; }
+.chip.current { background:rgba(63,209,196,.85); color:#062; border-color:transparent; font-weight:700; }
+.card { flex:1; display:flex; flex-direction:column; justify-content:center; gap:10px; padding:18px 20px; }
+.scorebox .big { font-size:56px; font-weight:700; line-height:1; }
+.scorebox small { font-size:15px; color:var(--muted); margin-left:6px; }
+.scorebox[hidden], .checkchip[hidden], .toast[hidden], .loading[hidden] { display:none; }
+.checkchip { display:inline-block; align-self:flex-start; font-size:14px; padding:6px 14px; border-radius:16px; background:var(--gray-bg); color:var(--gray); font-weight:700; }
+.line { font-size:14px; line-height:1.45; min-height:40px; }
+.btns { display:flex; flex-direction:column; gap:8px; margin-top:6px; }
+.portrait .btns { flex-direction:row; flex-wrap:wrap; }
+.portrait .btns button { flex:1 1 45%; }
+.portrait .btns .ghost { flex-basis:100%; }
+button { padding:10px 14px; border:1px solid #d9d4ca; border-radius:12px; background:#fff; cursor:pointer; font-size:14px; }
+button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+button.ghost { background:transparent; color:var(--muted); border-color:transparent; }
+button.secondary { background:#fff; color:var(--txt); border-color:#d9d4ca; }
+button.on { background:#2B2B2B; color:#fff; border-color:#2B2B2B; }
+.toast { position:absolute; bottom:18px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,.75); color:#fff; padding:8px 14px; border-radius:20px; font-size:13px; white-space:nowrap; z-index:6; }
+.loading { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#ccc; background:rgba(17,17,17,.85); font-size:14px; z-index:5; }
+
+/* ---------- 패널 ---------- */
+.panel { background:#fff; border:1px solid #ebe7df; border-radius:12px; padding:14px 16px; min-width:0; }
+nav { display:flex; gap:6px; margin-bottom:10px; }
+nav .tab { padding:6px 14px; border-radius:20px; font-size:13px; }
+nav .tab.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+.tabpane[hidden] { display:none; }
+.row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:8px 0; }
+.row b { min-width:52px; }
+label { display:inline-flex; gap:6px; align-items:center; font-size:13px; }
+.panel button { padding:6px 11px; border-radius:10px; font-size:13px; }
+input[type=range] { width:110px; }
+.param { display:inline-flex; gap:4px; align-items:center; font-size:12px; background:#f4f1ec; padding:3px 8px; border-radius:8px; }
+.param output { min-width:34px; text-align:right; font-variant-numeric:tabular-nums; }
+.out { background:#1f1f1f; color:#e8e8e8; padding:12px; border-radius:8px; font-size:12px; white-space:pre-wrap; max-height:520px; overflow:auto; }

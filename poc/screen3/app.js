@@ -1,212 +1,250 @@
-// 화면 3 부위 완성본 — 레이아웃 데모.
-// 크롭 계산은 전부 crop.js(순수 함수). 여기서는 배치와 표시만 한다.
-
-import { cropSpec, PART_IDS, PART_ORIENTATION, upscaleFactor } from './crop.js';
-import {
-  PART_NAME as NAME, createSession, goTo, recordResult, skipPart,
-  chips as chipView, hintFor, nextPart, isComplete,
-  saveSession, loadSession, clearSession,
-} from './session.js';
-
-const SAMPLES = Array.from({ length: 5 }, (_, i) => `person_${i + 1}_front_open.jpg`);
-const PHOTO_DIR = '../samples/phone-portraits-20';
-
-// 룩 템플릿 콘텐츠가 정해지기 전까지 쓰는 더미. 문장은 화면 브리프의 예시를 그대로 썼다.
-// 실제로는 LookTemplate에 사람이 적어 둔 고정 문장이 온다 (docs/screen3-tech-v6.md 5장).
-const DUMMY = {
-  brow:    { why: '앞머리는 흐리게, 산은 눈동자 바깥에 두고 꼬리를 살짝 내려 그리세요.',
-             need: '브라운 아이브로 펜슬 + 스크루 브러시' },
-  liner:   { why: '눈꼬리를 살짝 올려 짧게 빼세요. 양쪽 꼬리 높이를 맞추세요.',
-             need: '블랙 젤 라이너 + 각진 브러시' },
-  shadow:  { why: '눈을 감고 눈꺼풀 가운데부터 바깥으로 펴 바르세요.',
-             need: '다크 브라운 섀도우(매트) + 블렌딩 브러시' },
-  lip:     { why: '입술 산을 또렷하게 잡고 아래 경계는 살짝 안쪽으로 그리세요.',
-             need: 'MLBB 립 + 립 브러시' },
-  cheek:   { why: '광대 위에서 관자놀이 쪽으로 옅게 쓸어 올리세요.',
-             need: '핑크 파우더 블러셔 + 블러셔 브러시' },
-  contour: { why: '둥근 얼굴형이라 턱선과 광대 아래에 쉐딩을, 광대 위에 하이라이트를 넣었어요.',
-             need: '컨투어 파우더 + 하이라이터 + 브러시' },
-};
+import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+import { partLandmarks, cropSpec, contourOutline, rationale, products } from './core.js';
+import { PART_IDS, PART_NAME, ORIENTATION, FACE_SHAPES, FACE_SHAPE_NAME, STATUS_LABEL } from './rules.js';
+import { run } from './tests-browser.js';
 
 const $ = (id) => document.getElementById(id);
-const setStatus = (t, cls = '') => { $('status').textContent = t; $('status').className = `status ${cls}`; };
+const SAMPLES = '../../danghaeung_poc_3x4_20/';
+const PERSONS = [1, 2, 3, 4, 5];
+const SHOTS = ['front_open', 'front_closed', 'left_45', 'right_45'];
+export const SAMPLE_FILES = PERSONS.flatMap((p) => SHOTS.map((s) => `person_${p}_${s}.jpg`));
 
-let landmarker = null;
-let photo = null;      // { url, w, h, lm }
-let flip = false;      // 방향을 일부러 뒤집어 안내 화면을 확인
-let session = null;    // 진행 칩의 근거. session.js가 관리한다
-
-const part = () => session.currentPart;
-
-/** 세션이 바뀔 때마다 저장한다 (F-07: 앱이 꺼져도 복원). */
-function update(next) {
-  session = next;
-  saveSession(session, window.localStorage);
-  render();
-}
-
-// ---------------- 랜드마크 ----------------
+const state = { landmarker: null, current: null, partId: 'liner', faceShape: 'round', statuses: {} };
 
 async function initLandmarker() {
-  const { FaceLandmarker, FilesetResolver } =
-    await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs');
-  const files = await FilesetResolver.forVisionTasks(
-    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
-  landmarker = await FaceLandmarker.createFromOptions(files, {
-    baseOptions: {
-      modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
-      delegate: 'GPU',
-    },
-    runningMode: 'IMAGE', numFaces: 1,
+  const files = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
+  const opts = (delegate) => ({
+    baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task", delegate },
+    runningMode: "IMAGE", numFaces: 1,
   });
+  try { state.landmarker = await FaceLandmarker.createFromOptions(files, opts("GPU")); }
+  catch { state.landmarker = await FaceLandmarker.createFromOptions(files, opts("CPU")); }
 }
 
-async function loadPhoto(file) {
-  const url = `${PHOTO_DIR}/${file}`;
-  setStatus('얼굴 찾는 중…');
-  const bitmap = await createImageBitmap(await (await fetch(url)).blob());
-  const cv = new OffscreenCanvas(bitmap.width, bitmap.height);
-  cv.getContext('2d').drawImage(bitmap, 0, 0);
-  const res = landmarker.detect(cv);
-  if (!res.faceLandmarks?.length) { setStatus(`${file}: 얼굴을 찾지 못했습니다`, 'bad'); return; }
-  photo = {
-    url, w: bitmap.width, h: bitmap.height,
-    lm: res.faceLandmarks[0].map((p) => [p.x * bitmap.width, p.y * bitmap.height]),
-  };
-  $('render').src = url;
-  setStatus(`불러옴 · ${file} · ${bitmap.width}×${bitmap.height}`, 'ok');
+async function loadImage(src, name) {
+  const img = new Image();
+  await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = src; });
+  const cv = document.createElement('canvas');
+  cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+  cv.getContext('2d').drawImage(img, 0, 0);
+  const det = state.landmarker.detect(cv);
+  return { name, img: cv, size: { w: cv.width, h: cv.height }, landmarks: det.faceLandmarks?.[0] || null };
+}
+
+const IDX_COLORS = { brow: '#C2731F', liner: '#2A8C85', shadow: '#7A6CC2', lip: '#B8432F', cheek: '#2F7FB8', contour: '#2B2B2B' };
+
+function drawIndexCheck(shot) {
+  const cv = $('cvIndex'), ctx = cv.getContext('2d');
+  const k = Math.min(cv.width / shot.size.w, cv.height / shot.size.h);
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  ctx.drawImage(shot.img, 0, 0, shot.size.w * k, shot.size.h * k);
+  if (!shot.landmarks) return;
+  for (const id of PART_IDS) {
+    ctx.fillStyle = IDX_COLORS[id];
+    for (const [x, y] of partLandmarks(shot.landmarks, shot.size, id)) {
+      ctx.beginPath(); ctx.arc(x * k, y * k, 2, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+}
+
+async function selectShot(name) {
+  $('photoInfo').textContent = '검출 중…';
+  const shot = await loadImage(SAMPLES + name, name);
+  state.current = shot;
+  $('photoInfo').textContent = shot.landmarks
+    ? `${name} · ${shot.size.w}×${shot.size.h} · 얼굴 검출됨`
+    : `${name} · 얼굴을 찾지 못함`;
+  drawIndexCheck(shot);
   render();
 }
 
-// ---------------- 렌더 ----------------
+const ROTATE_MSG = {
+  landscape: '눈 단계는 양쪽 눈을 같이 봐요.\n폰을 가로로 돌리세요',
+  portrait: '이제 폰을 세로로 돌리세요',
+};
+let rotateTimer = null;
 
-function renderChips() {
-  $('chips').innerHTML = chipView(session).map((c) => {
-    const score = c.score !== null ? `<span class="score">${c.score}</span>` : '';
-    return `<button class="chip ${c.active ? 'active' : ''}" data-part="${c.partId}" data-status="${c.status}"
-              title="${c.name} · ${c.label}"><span class="dot"></span>${c.short}${score}</button>`;
-  }).join('');
-  for (const el of $('chips').querySelectorAll('.chip')) {
-    el.onclick = () => update(goTo(session, el.dataset.part));   // F-04: 어느 단계로든 이동
-  }
-  // 칩이 넘치면 지금 부위가 안 보일 수 있다. 항상 보이게 끌어온다
-  $('chips').querySelector('.chip.active')
-    ?.scrollIntoView({ block: 'nearest', inline: 'center' });
+function drawCrop(canvas, shot, partId) {
+  const ctx = canvas.getContext('2d');
+  const c = cropSpec(shot.landmarks, shot.size, partId);
+  canvas.width = Math.round(c.w); canvas.height = Math.round(c.h);
+  ctx.drawImage(shot.img, c.x, c.y, c.w, c.h, 0, 0, canvas.width, canvas.height);
+  return c;
 }
 
-/** 표시 영역의 실제 종횡비를 crop.js에 넘기고, 받은 박스대로 이미지를 배치한다. */
-function placeImage(partId = part()) {
-  const vp = $('viewport');
-  const vw = vp.clientWidth, vh = vp.clientHeight;
-  if (!vw || !vh || !photo) return null;
+/** 원본 픽셀 폴리곤을 크롭 박스 좌표로 옮겨 점선 테두리만 그린다. 면 채우기 없음. */
+function drawContour(canvas, shot, crop, faceShape) {
+  const ctx = canvas.getContext('2d');
+  const o = contourOutline(shot.landmarks, shot.size, faceShape);
+  const sx = canvas.width / crop.w, sy = canvas.height / crop.h;
+  const toLocal = (p) => [(p[0] - crop.x) * sx, (p[1] - crop.y) * sy];
 
-  const spec = cropSpec(photo.lm, partId, {
-    imageW: photo.w, imageH: photo.h,
-    aspect: vw / vh,                    // ← 가정값이 아니라 실제 레이아웃 값
-  });
-
-  const scale = vw / spec.box.w;
-  const img = $('render');
-  img.style.width = `${photo.w * scale}px`;
-  img.style.height = 'auto';
-  img.style.left = `${-spec.box.x * scale}px`;
-  img.style.top = `${-spec.box.y * scale}px`;
-
-  const bl = $('boxline');
-  bl.hidden = !$('showBox').checked;
-  if (!bl.hidden) {
-    bl.style.left = `${(spec.content.x - spec.box.x) * scale}px`;
-    bl.style.top = `${(spec.content.y - spec.box.y) * scale}px`;
-    bl.style.width = `${spec.content.w * scale}px`;
-    bl.style.height = `${spec.content.h * scale}px`;
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 5]);
+  for (const [polys, color] of [[o.shading, '#2A8C85'], [o.highlight, '#7FC3BD']]) {
+    ctx.strokeStyle = color;
+    for (const poly of polys) {
+      ctx.beginPath();
+      poly.map(toLocal).forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
+      ctx.closePath(); ctx.stroke();
+    }
   }
-  return { spec, vw, vh, scale };
+  ctx.setLineDash([]);
+  ctx.font = '600 13px system-ui'; ctx.textAlign = 'center';
+  for (const l of o.labels) {
+    const [x, y] = toLocal(l.anchor);
+    const w = ctx.measureText(l.text).width + 10;
+    ctx.fillStyle = 'rgba(255,255,255,.85)';
+    ctx.fillRect(x - w / 2, y - 9, w, 18);
+    ctx.fillStyle = '#2B2B2B';
+    ctx.fillText(l.text, x, y + 4);
+  }
+}
+
+function chipHtml() {
+  return PART_IDS.map((id) => {
+    const st = state.statuses[id] || 'not_started';
+    const cur = id === state.partId ? ' current' : '';
+    const label = id === state.partId ? PART_NAME[id] : `${PART_NAME[id]} · ${STATUS_LABEL[st]}`;
+    return `<div class="chip ${st}${cur}" data-part="${id}">${label}</div>`;
+  }).join('');
 }
 
 function render() {
-  if (!photo || !session) return;
-  const cur = part();
-  $('partSel').value = cur;
-  const want = PART_ORIENTATION[cur];
-  const shown = flip ? (want === 'landscape' ? 'portrait' : 'landscape') : want;
-  $('phone').dataset.orientation = shown;
+  const phone = $('phone');
+  const shot = state.current;
+  const orientation = ORIENTATION[state.partId];
+  phone.className = `phone ${orientation}`;
+  phone.innerHTML = `
+    <div class="stage">
+      <div class="chips">${chipHtml()}</div>
+      <div class="body">
+        <div class="shot"><canvas id="cvShot"></canvas><div class="tag">완성본</div></div>
+        <div class="card">
+          <div class="why" id="why"></div>
+          <div class="need" id="need"></div>
+          <button class="primary" id="btnGo">그리러 가기</button>
+        </div>
+      </div>
+    </div>
+    <div class="rotate" id="rotate" hidden></div>
+    <div class="toast" id="toast" hidden></div>`;
 
-  renderChips();
-  $('title').textContent = `${NAME[cur]} · 완성본`;
-  $('rationale').textContent = DUMMY[cur].why;
-  $('need').textContent = DUMMY[cur].need;
+  phone.querySelectorAll('.chip').forEach((el) => { el.onclick = () => setPart(el.dataset.part); });
+  $('why').textContent = rationale(state.partId, state.faceShape);
+  $('need').textContent = products(state.partId);
+  $('btnGo').onclick = () => toast('화면 4(실시간 테두리)는 별도 POC입니다');
 
-  // 방향이 안 맞으면 안내를 띄운다 (실제 앱에서는 기기 방향으로 판단)
-  const bad = shown !== want;
-  $('rotate').hidden = !bad;
-  $('rotatetext').textContent = want === 'landscape' ? '폰을 가로로 돌리세요' : '폰을 세로로 돌리세요';
+  if (shot && shot.landmarks) {
+    const crop = drawCrop($('cvShot'), shot, state.partId);
+    if (state.partId === 'contour') drawContour($('cvShot'), shot, crop, state.faceShape);
+  }
 
-  // 앞 단계를 건너뛰고 왔으면 한 줄만 알려 준다. 이동을 막지는 않는다 (F-04)
-  const hint = hintFor(session, cur);
-  $('hint').hidden = !hint;
-  if (hint) $('hint').textContent = hint;
-
-  const r = placeImage(cur);
-  if (!r) return;
-  const { spec, vw } = r;
-  const up = upscaleFactor(spec, vw * (window.devicePixelRatio || 1));
-  $('info').innerHTML =
-    `<b>${NAME[cur]}</b> · ${want === 'landscape' ? '가로' : '세로'} · ` +
-    `표시 영역 ${vw}×${r.vh} (종횡비 ${(vw / r.vh).toFixed(2)}) · ` +
-    `크롭 ${spec.box.w.toFixed(0)}×${spec.box.h.toFixed(0)}px · ` +
-    `얼굴 대비 <b>${spec.zoom.toFixed(2)}배</b> · ` +
-    `원본을 <b>${up.toFixed(1)}배</b>로 늘려 표시${spec.clamped ? ' · 이미지 경계로 축소됨' : ''}` +
-    `<br>부위가 표시 영역의 가로 ${(spec.content.w / spec.box.w * 100).toFixed(0)}% · ` +
-    `세로 ${(spec.content.h / spec.box.h * 100).toFixed(0)}%를 차지한다.`;
+  // 칩 6개가 좁은 폰 화면에 다 안 들어갈 수 있으므로, 현재 부위 칩을 가로 스크롤 안으로 들여온다.
+  // block:'nearest' 는 .chips(overflow-x:auto) 안에서만 스크롤시키고 페이지 전체는 움직이지 않는다.
+  phone.querySelector('.chip.current')?.scrollIntoView({ block: 'nearest', inline: 'center' });
 }
 
-// ---------------- 시작 ----------------
-
-async function main() {
-  $('sampleSel').innerHTML = SAMPLES.map((f, i) => `<option value="${f}">${i + 1}번</option>`).join('');
-  $('partSel').innerHTML = PART_IDS.map((p) => `<option value="${p}">${NAME[p]}</option>`).join('');
-
-  // 저장된 세션이 있으면 이어서 (F-07). 없으면 새로 시작
-  session = loadSession(window.localStorage) || createSession();
-
-  try { await initLandmarker(); }
-  catch (e) { setStatus(`모델을 불러오지 못했습니다: ${e.message}`, 'bad'); return; }
-
-  await loadPhoto(SAMPLES[0]);
-
-  $('sampleSel').onchange = (e) => loadPhoto(e.target.value);
-  $('partSel').onchange = (e) => update(goTo(session, e.target.value));
-  $('forceFlip').onchange = (e) => { flip = e.target.checked; render(); };
-  $('showBox').onchange = render;
-  $('go').onclick = () => setStatus('화면 4(실시간 테두리)로 이동 — 아직 미구현', 'ok');
-
-  // 화면 4·5가 아직 없으므로 확인받기 결과를 여기서 흉내낸다
-  $('doPass').onclick = () => {
-    const score = 60 + Math.floor(Math.random() * 40);
-    update(recordResult(session, part(), { score }));
-    setStatus(`${NAME[part()]} 결과 기록 · ${score}점`, 'ok');
-  };
-  $('doSkip').onclick = () => {
-    update(skipPart(session, part()));
-    setStatus(`${NAME[part()]} 건너뜀`, 'ok');
-  };
-  $('doNext').onclick = () => {
-    const n = nextPart(session);
-    if (!n) { setStatus(isComplete(session) ? '모든 부위 완료 → 화면 6 전체 리뷰' : '마지막 부위입니다', 'ok'); return; }
-    update(goTo(session, n));
-  };
-  $('doReset').onclick = () => {
-    clearSession(window.localStorage);
-    update(createSession());
-    setStatus('세션을 새로 시작했습니다', 'ok');
-  };
-  new ResizeObserver(() => placeImage()).observe($('viewport'));
-
-  const q = new URLSearchParams(location.search);
-  const auto = q.get('part');
-  if (auto && PART_IDS.includes(auto)) update(goTo(session, auto));
-  if (q.get('bare')) document.body.classList.add('bare');   // 폰만 남긴다
-
+function toast(msg) {
+  const t = $('toast'); if (!t) return;
+  t.textContent = msg; t.hidden = false;
+  setTimeout(() => { t.hidden = true; }, 1800);
 }
 
-main();
+function setPart(partId) {
+  const before = ORIENTATION[state.partId];
+  state.partId = partId;
+  const after = ORIENTATION[partId];
+  render();
+  if (before !== after) {
+    const r = $('rotate');
+    r.textContent = ROTATE_MSG[after];
+    r.hidden = false;
+    clearTimeout(rotateTimer);
+    rotateTimer = setTimeout(() => { r.hidden = true; }, 1600);
+  }
+}
+
+function buildPartButtons() {
+  $('partButtons').innerHTML = PART_IDS.map((id) => `<button data-part="${id}">${PART_NAME[id]}</button>`).join('');
+  $('partButtons').querySelectorAll('button').forEach((b) => { b.onclick = () => setPart(b.dataset.part); });
+  $('statusEditor').innerHTML = PART_IDS.map((id) => `
+    <label>${PART_NAME[id]}
+      <select data-status="${id}">${Object.entries(STATUS_LABEL).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>
+    </label>`).join('');
+  $('statusEditor').querySelectorAll('select').forEach((s) => {
+    s.value = state.statuses[s.dataset.status] || 'not_started';
+    s.onchange = () => { state.statuses[s.dataset.status] = s.value; render(); };
+  });
+}
+
+function initUI() {
+  const sel = $('sampleList');
+  sel.innerHTML = SAMPLE_FILES.map((f) => `<option value="${f}">${f}</option>`).join('');
+  sel.onchange = () => selectShot(sel.value);
+  $('fileUp').onchange = async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    const url = URL.createObjectURL(f);
+    const shot = await loadImage(url, f.name);
+    URL.revokeObjectURL(url);
+    state.current = shot;
+    $('photoInfo').textContent = shot.landmarks ? `${f.name} · 얼굴 검출됨` : `${f.name} · 얼굴을 찾지 못함`;
+    drawIndexCheck(shot); render();
+  };
+  const fs = $('faceShape');
+  fs.innerHTML = FACE_SHAPES.map((f) => `<option value="${f}">${FACE_SHAPE_NAME[f]}</option>`).join('');
+  fs.value = state.faceShape;
+  fs.onchange = () => { state.faceShape = fs.value; render(); };
+  document.querySelectorAll('nav .tab').forEach((t) => {
+    t.onclick = () => {
+      document.querySelectorAll('nav .tab').forEach((x) => x.classList.remove('active'));
+      t.classList.add('active');
+      const map = { photo: 'tabPhoto', part: 'tabPart', verify: 'tabVerify' };
+      for (const [k, elId] of Object.entries(map)) $(elId).hidden = (k !== t.dataset.tab);
+    };
+  });
+  $('btnFixtures').onclick = buildFixtures;
+  $('btnRunTests').onclick = () => { $('testOut').textContent = run(); };
+  $('btnBatch').onclick = runBatch;
+  buildPartButtons();
+}
+
+async function runBatch() {
+  const rows = [];
+  const skipped = [];
+  for (const f of SAMPLE_FILES) {
+    const shot = await loadImage(SAMPLES + f, f);
+    if (!shot.landmarks) { skipped.push(f); continue; }
+    for (const id of PART_IDS) rows.push({ f, id, c: cropSpec(shot.landmarks, shot.size, id) });
+  }
+  const cov = rows.filter((r) => r.c.covered).length, cla = rows.filter((r) => r.c.clamped).length;
+  // 검출 실패로 건너뛴 사진은 분모(20장)에서 조용히 빠지므로, 몇 장이 빠졌는지 반드시 찍는다.
+  const skipNote = skipped.length
+    ? `<div class="muted" style="color:#B8432F">얼굴 검출 실패로 건너뜀 ${skipped.length}장: ${skipped.join(', ')}</div>`
+    : `<div class="muted">얼굴 검출 실패로 건너뜀 0장 (샘플 ${SAMPLE_FILES.length}장 전부 사용)</div>`;
+  $('batchTable').innerHTML =
+    `<table class="batch"><tr><th>사진</th><th>부위</th><th>확대율</th><th>박스</th><th>covered</th><th>clamped</th></tr>` +
+    rows.map((r) => `<tr><td>${r.f}</td><td>${PART_NAME[r.id]}</td><td>${r.c.zoomRatio.toFixed(2)}</td>` +
+      `<td>${Math.round(r.c.w)}×${Math.round(r.c.h)}</td>` +
+      `<td class="${r.c.covered ? '' : 'bad'}">${r.c.covered}</td>` +
+      `<td class="${r.c.clamped ? 'bad' : ''}">${r.c.clamped}${r.c.clampedSides.length ? ' (' + r.c.clampedSides.join(',') + ')' : ''}</td></tr>`).join('') +
+    `</table><div class="muted">covered ${cov}/${rows.length} · clamped ${cla}/${rows.length}</div>${skipNote}`;
+}
+
+async function buildFixtures() {
+  const out = {};
+  for (const f of SAMPLE_FILES) {
+    const shot = await loadImage(SAMPLES + f, f);
+    if (!shot.landmarks) { $('testOut').textContent += `\n${f}: 얼굴 검출 실패`; continue; }
+    out[f] = { size: shot.size, landmarks: shot.landmarks.map((p) => ({ x: +p.x.toFixed(6), y: +p.y.toFixed(6) })) };
+    $('testOut').textContent = `fixtures 생성 중… ${Object.keys(out).length}/${SAMPLE_FILES.length}`;
+  }
+  const blob = new Blob([JSON.stringify(out)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'fixtures.json'; a.click();
+  $('testOut').textContent = `fixtures.json 생성 완료 (${Object.keys(out).length}장). poc/screen3/ 에 저장하세요.`;
+}
+
+initLandmarker().then(() => { initUI(); selectShot(SAMPLE_FILES[0]); }).catch((e) => {
+  $('photoInfo').textContent = `랜드마커 로딩 실패: ${e?.message || e}. CDN 연결(인터넷)을 확인하세요.`;
+});

@@ -1,0 +1,55 @@
+candidate,variant,run_number,phase,time_sec,vram_peak_mb,notes
+stable_makeup,fp32,0,load,40.071,,model load + weights to GPU
+stable_makeup,fp32,1,infer,21.612,9751.3,
+stable_makeup,fp32,2,infer,21.784,9751.3,
+stable_makeup,fp32,3,infer,21.794,9751.3,
+stable_makeup,fp32,4,infer,21.896,9751.3,
+stable_makeup,fp32,5,infer,21.895,9751.3,
+stable_makeup,fp16,0,load,17.546,,model load + weights to GPU
+stable_makeup,fp16,1,infer,8.93,5287.3,
+stable_makeup,fp16,2,infer,8.97,5287.3,
+stable_makeup,fp16,3,infer,9.007,5287.3,
+stable_makeup,fp16,4,infer,9.002,5287.3,
+stable_makeup,fp16,5,infer,9.0,5287.3,
+stable_makeup,fp16_15steps,0,load,17.497,,model load + weights to GPU
+stable_makeup,fp16_15steps,1,infer,4.582,5286.7,
+stable_makeup,fp16_15steps,2,infer,4.638,5286.7,
+stable_makeup,fp16_15steps,3,infer,4.64,5286.7,
+stable_makeup,fp16_15steps,4,infer,4.6,5286.7,
+stable_makeup,fp16_15steps,5,infer,4.598,5286.7,
+stable_makeup,fp16_10steps,0,load,17.628,,model load + weights to GPU
+stable_makeup,fp16_10steps,1,infer,3.128,5287.9,
+stable_makeup,fp16_10steps,2,infer,3.127,5287.9,
+stable_makeup,fp16_10steps,3,infer,3.189,5287.9,
+stable_makeup,fp16_10steps,4,infer,3.163,5287.9,
+stable_makeup,fp16_10steps,5,infer,3.165,5287.9,
+stable_makeup,fp16_8steps,0,load,17.64,,model load + weights to GPU
+stable_makeup,fp16_8steps,1,infer,2.548,5287.4,
+stable_makeup,fp16_8steps,2,infer,2.549,5287.4,
+stable_makeup,fp16_8steps,3,infer,2.553,5287.4,
+stable_makeup,fp16_8steps,4,infer,2.551,5287.4,
+stable_makeup,fp16_8steps,5,infer,2.56,5287.4,
+shmt,h0_50steps,0,load,5.542,,model load + weights to GPU
+shmt,h0_50steps,1,infer,3.455,4470.1,
+shmt,h0_50steps,2,infer,3.404,4470.5,
+shmt,h0_50steps,3,infer,3.377,4470.5,
+shmt,h0_50steps,4,infer,3.386,4470.5,
+shmt,h0_50steps,5,infer,3.39,4470.5,
+shmt,h4_50steps,0,load,10.723,,model load + weights to GPU
+shmt,h4_50steps,1,infer,3.559,7518.6,
+shmt,h4_50steps,2,infer,3.495,7519.0,
+shmt,h4_50steps,3,infer,3.446,7519.0,
+shmt,h4_50steps,4,infer,3.455,7519.0,
+shmt,h4_50steps,5,infer,3.48,7519.0,
+shmt,h4_25steps,0,load,10.886,,model load + weights to GPU
+shmt,h4_25steps,1,infer,1.803,7401.4,
+shmt,h4_25steps,2,infer,1.779,7401.7,
+shmt,h4_25steps,3,infer,1.766,7401.7,
+shmt,h4_25steps,4,infer,1.795,7401.7,
+shmt,h4_25steps,5,infer,1.77,7401.7,
+stable_makeup,fp16_10steps,0,load,44.908,,model load + weights to GPU
+stable_makeup,fp16_10steps,1,infer,3.163,5287.9,
+stable_makeup,fp16_10steps,2,infer,3.138,5287.9,
+stable_makeup,fp16_10steps,3,infer,3.14,5287.9,
+stable_makeup,fp16_10steps,4,infer,3.136,5287.9,
+stable_makeup,fp16_10steps,5,infer,3.145,5287.9,

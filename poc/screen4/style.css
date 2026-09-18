@@ -1,0 +1,58 @@
+:root { --bg:#F7F5F1; --txt:#2B2B2B; --muted:#6B6B6B; --accent:#2A8C85; --teal:#3FD1C4; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--txt); font-family:"Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif; font-size:14px; }
+header { padding:12px 20px; background:#fff; border-bottom:1px solid #e6e2da; }
+h1 { font-size:16px; margin:0 0 4px; }
+.hint { color:var(--muted); font-size:12.5px; margin:4px 0 8px; }
+.muted { color:var(--muted); font-size:12px; }
+code { background:#eee; padding:1px 4px; border-radius:4px; }
+main { display:grid; grid-template-columns: auto 1fr; gap:20px; padding:16px 20px; max-width:1500px; margin:0 auto; }
+@media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+
+/* ---------- 폰 목업: 라이브 프리뷰가 전체 ---------- */
+.phone-wrap { display:flex; justify-content:center; align-items:flex-start; }
+.phone { position:relative; background:#111; border:10px solid #1f1f1f; border-radius:40px; overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,.2); }
+.phone.portrait { width:390px; height:844px; }
+.phone.landscape { width:844px; height:390px; }
+.phone canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
+.chips { position:absolute; top:14px; left:14px; display:flex; flex-wrap:wrap; gap:5px; max-width:70%; z-index:2; }
+.chip { font-size:11px; padding:3px 8px; border-radius:12px; background:rgba(0,0,0,.45); color:#fff; border:1px solid rgba(255,255,255,.25); cursor:pointer; backdrop-filter:blur(4px); }
+.chip.current { background:rgba(63,209,196,.85); color:#062; border-color:transparent; font-weight:700; }
+.chip.passed { border-color:rgba(63,209,196,.8); }
+.gate { position:absolute; bottom:24px; left:50%; transform:translateX(-50%); font-size:12.5px; color:#fff; background:rgba(0,0,0,.45); padding:4px 12px; border-radius:14px; white-space:nowrap; z-index:2; backdrop-filter:blur(4px); }
+.gate:empty { display:none; }
+.gate.ready { background:rgba(63,209,196,.9); color:#062; font-weight:700; }
+.landscape .chips { max-width:55%; }
+.landscape .gate { bottom:12px; }
+.zoomlow { position:absolute; top:14px; right:14px; font-size:11px; color:#fff; background:rgba(0,0,0,.45); padding:3px 8px; border-radius:10px; z-index:2; }
+.check { position:absolute; right:18px; bottom:22px; width:64px; height:64px; padding:0; border-radius:50%; border:none; background:var(--teal); color:#062; font-weight:700; font-size:12px; white-space:nowrap; letter-spacing:-0.5px; cursor:pointer; z-index:3; box-shadow:0 4px 12px rgba(0,0,0,.35); }
+.check:disabled { background:rgba(255,255,255,.35); color:rgba(255,255,255,.7); cursor:default; }
+.hintcard { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; z-index:4; background:rgba(0,0,0,.35); color:#fff; font-size:18px; font-weight:700; text-shadow:0 1px 4px rgba(0,0,0,.6); pointer-events:none; }
+.hintcard[hidden], .zoomlow[hidden], .toast[hidden], .flash[hidden], .loading[hidden] { display:none; }
+.flash { position:absolute; inset:0; background:#fff; z-index:5; animation:flash .35s ease-out forwards; }
+@keyframes flash { from { opacity:.9 } to { opacity:0 } }
+.toast { position:absolute; bottom:100px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,.75); color:#fff; padding:8px 14px; border-radius:20px; font-size:13px; white-space:nowrap; z-index:6; }
+.loading { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#ccc; font-size:14px; z-index:1; }
+
+/* 실기기 모드: 목업이 화면 전체 */
+body.device header, body.device .panel { display:none; }
+body.device main { display:block; padding:0; max-width:none; }
+body.device .phone { width:100vw; height:100dvh; border:none; border-radius:0; box-shadow:none; }
+body.device .chips { top:calc(14px + env(safe-area-inset-top, 0px)); }
+body.device .check { bottom:calc(22px + env(safe-area-inset-bottom, 0px)); }
+
+/* ---------- 패널 ---------- */
+.panel { background:#fff; border:1px solid #ebe7df; border-radius:12px; padding:14px 16px; min-width:0; }
+nav { display:flex; gap:6px; margin-bottom:10px; }
+nav .tab { padding:6px 14px; border-radius:20px; font-size:13px; }
+nav .tab.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+.tabpane[hidden] { display:none; }
+.row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:8px 0; }
+label { display:inline-flex; gap:6px; align-items:center; font-size:13px; }
+button { padding:7px 12px; border:1px solid #d9d4ca; border-radius:10px; background:#fff; cursor:pointer; font-size:13px; }
+button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+button.on { background:#2B2B2B; color:#fff; border-color:#2B2B2B; }
+.out { background:#1f1f1f; color:#e8e8e8; padding:12px; border-radius:8px; font-size:12px; white-space:pre-wrap; max-height:480px; overflow:auto; }
+.captures { display:flex; gap:8px; flex-wrap:wrap; }
+.captures figure { margin:0; text-align:center; font-size:11px; color:var(--muted); }
+.captures img { width:150px; border-radius:8px; display:block; border:1px solid #ddd; }

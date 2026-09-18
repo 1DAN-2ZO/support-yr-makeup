@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>당화응 POC — 화면 6 전체 리뷰</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header>
+  <h1>당화응 POC · 화면 6 전체 리뷰 (v6)</h1>
+  <div class="hint">왼쪽은 실제 화면 목업, 오른쪽은 시연용 입력·검증 패널. 합산은 룩 5부위만, 쉐딩·하이라이트는 항상 "확인만". 숫자 지표·보정 표시 없음.</div>
+</header>
+
+<main>
+  <!-- ===================== 폰 목업 (화면 6) ===================== -->
+  <section class="phone-wrap">
+    <div class="phone" id="phone">
+      <div class="statusbar"><span>9:41</span><span>▮▮▮</span></div>
+
+      <div id="screenReview" class="screen">
+        <div class="title">전체 리뷰</div>
+
+        <div class="scorecard">
+          <div class="big"><span id="total">—</span><small>/ 100</small></div>
+        </div>
+
+        <div id="bars" class="bars"></div>
+
+        <div class="compare">
+          <div class="cmp"><div class="img" id="imgBare"><span class="ph">쌩얼 사진 없음</span></div><div class="cap">쌩얼</div></div>
+          <div class="cmp"><div class="img" id="imgMine"><span class="ph">내 화장 사진 없음</span></div><div class="cap">내 화장</div></div>
+        </div>
+
+        <div class="btns">
+          <button id="btnSave" class="primary">결과 저장</button>
+          <button id="btnFinish" class="ghost">끝내기</button>
+        </div>
+      </div>
+
+      <div id="screenDone" class="screen" hidden>
+        <div class="done">
+          <div class="done-title">세션이 끝났어요</div>
+          <div class="done-sub">사진과 결과는 이 기기에서 지웠어요.<br/>결과 저장을 눌렀다면 갤러리에 한 장 남아 있어요.</div>
+          <button id="btnRestart" class="primary">다시 시작</button>
+        </div>
+      </div>
+
+      <div id="toast" class="toast" hidden></div>
+    </div>
+  </section>
+
+  <!-- ===================== 시연 패널 ===================== -->
+  <section class="panel">
+    <nav>
+      <button class="tab active" data-tab="edit">부위 결과 입력</button>
+      <button class="tab" data-tab="photo">사진</button>
+      <button class="tab" data-tab="verify">검증</button>
+    </nav>
+
+    <div id="tabEdit" class="tabpane">
+      <p class="hint">채점 엔진 출력을 흉내 내는 입력입니다. 바꾸면 왼쪽 화면이 즉시 갱신됩니다. 쉐딩·하이라이트는 점수를 넣어도 "확인만"으로 처리됩니다.</p>
+      <div id="partEditor"></div>
+      <div class="row">
+        <button id="btnPreset1">예시: 스모키 세션</button>
+        <button id="btnPreset2">예시: 확인만 2개</button>
+        <button id="btnPreset3">예시: 측정 0개</button>
+        <button id="btnRecheck">눈썹 다시 확인 (+10)</button>
+      </div>
+      <div class="row muted" id="internal"></div>
+    </div>
+
+    <div id="tabPhoto" class="tabpane" hidden>
+      <p class="hint">쌩얼(촬영 1)과 내 화장(리뷰 진입 프레임) 사진을 넣으면 랜드마크로 같은 크롭(눈썹 위 15% ~ 턱 아래 10%)을 잘라 왼쪽 화면에 나란히 놓습니다. 눈 중심 정렬 오차를 이미지 폭 %로 표시합니다(검증용, 화면엔 안 보임).</p>
+      <div class="row">
+        <label>쌩얼 <input id="fileBare" type="file" accept="image/*" /></label>
+        <label>내 화장 <input id="fileMine" type="file" accept="image/*" /></label>
+      </div>
+      <div id="alignInfo" class="muted">—</div>
+      <canvas id="cvBare" width="360" height="440" hidden></canvas>
+      <canvas id="cvMine" width="360" height="440" hidden></canvas>
+    </div>
+
+    <div id="tabVerify" class="tabpane" hidden>
+      <p class="hint">Node `tests.mjs`와 같은 24개 케이스를 브라우저에서 돌립니다. 저장 이미지·세션 복원·삭제·지연도 여기서 확인합니다.</p>
+      <div class="row">
+        <button id="btnRunTests" class="primary">테스트 실행</button>
+        <button id="btnPreviewCard">저장 이미지 미리보기</button>
+        <button id="btnPersist">세션 복원 검사</button>
+        <button id="btnPerf">합산 1,000회 지연</button>
+      </div>
+      <pre id="testOut" class="out">—</pre>
+      <canvas id="cardPreview" class="card" width="540" height="675" hidden></canvas>
+    </div>
+  </section>
+</main>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
