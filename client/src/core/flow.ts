@@ -72,9 +72,11 @@ export interface CaptureLimits {
   pitch: number;
   sharpMin: number;
   brightTol: number;
+  /** 이마 a*·b* 가 첫 장 대비 이만큼 넘게 돌면 "조명 색이 바뀜" (1-9). 임계는 1-4 실측으로 확정, 지금은 가정값 */
+  colorTol: number;
   stableFrames: number;
 }
-export const CAPTURE_LIMITS: CaptureLimits = { pitch: 10, sharpMin: 30, brightTol: 12, stableFrames: 5 };
+export const CAPTURE_LIMITS: CaptureLimits = { pitch: 10, sharpMin: 30, brightTol: 12, colorTol: 6, stableFrames: 5 };
 
 /** 촬영 조건 문구. 숫자 없이 한 줄 (기능 정의서 F-01) */
 export const SHOT_TEXT = {
@@ -90,6 +92,7 @@ export const SHOT_TEXT = {
   sharp: "흔들려요. 잠시 멈춰 주세요",
   bright_low: "조금 더 밝은 곳으로",
   bright_high: "너무 밝아요. 조금 어두운 곳으로",
+  color: "조명 색이 바뀌었어요. 처음 자리에서 찍어 주세요",
   stable: "잠시만 그대로",
   ready: "찍을게요",
 } as const;
@@ -111,6 +114,9 @@ export interface ShotMeasure {
   foreheadL?: number;
   /** 첫 장에서 잡은 이마 L*. 없으면 밝기 조건 생략 */
   baselineL?: number;
+  /** 이마 a*·b* (지금 프레임) 와 첫 장 값. 둘 다 있을 때만 색 조건 (1-9) */
+  foreheadAb?: { a: number; b: number };
+  baselineAb?: { a: number; b: number };
   stableCount?: number;
 }
 
@@ -119,7 +125,7 @@ export const FACE_RATIO = { min: 0.28, max: 0.75 } as const;
 
 /**
  * 촬영 조건: 안 맞는 것 하나만 한 줄.
- * 순서: 얼굴 → 각도 → 눈 상태 → 얼굴 크기 → 선명 → 밝기 → 안정 (F-01 "촬영 조건 안내")
+ * 순서: 얼굴 → 각도 → 눈 상태 → 얼굴 크기 → 선명 → 밝기 → 색 → 안정 (F-01 "촬영 조건 안내" + 1-9 색 조건)
  */
 export function shotGate(shotId: ShotId, m: ShotMeasure, limits: CaptureLimits = CAPTURE_LIMITS): GateResult {
   const shot = SHOTS.find((s) => s.id === shotId);
@@ -147,6 +153,10 @@ export function shotGate(shotId: ShotId, m: ShotMeasure, limits: CaptureLimits =
     const d = m.foreheadL - m.baselineL;
     if (d < -limits.brightTol) return fail("bright", "bright_low");
     if (d > limits.brightTol) return fail("bright", "bright_high");
+  }
+  if (m.foreheadAb && m.baselineAb) {
+    const dab = Math.hypot(m.foreheadAb.a - m.baselineAb.a, m.foreheadAb.b - m.baselineAb.b);
+    if (dab > limits.colorTol) return fail("color", "color");
   }
   if (stableCount < limits.stableFrames) return fail("stable", "stable");
   return { ok: true, firstFail: null, text: SHOT_TEXT.ready, stableCount };

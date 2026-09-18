@@ -101,6 +101,16 @@ describe("S 촬영 4장 게이트", () => {
     expect(nextShot({ front_open: 1, front_closed: 1, left_45: 1, right_45: 1 })).toBeNull();
   });
 
+  it("S7 색 조건(1-9): 첫 장 대비 이마 a*b* 가 임계보다 돌면 '조명 색이 바뀌었어요', 기준이 없으면 생략", () => {
+    const warm = { ...OK, foreheadAb: { a: 12, b: 20 }, baselineAb: { a: 10, b: 12 } };   // 거리 ≈ 8.2 > 6
+    expect(shotGate("front_open", warm)).toMatchObject({ firstFail: "color", text: "조명 색이 바뀌었어요. 처음 자리에서 찍어 주세요" });
+    expect(shotGate("front_open", { ...OK, foreheadAb: { a: 11, b: 13 }, baselineAb: { a: 10, b: 12 } }).ok).toBe(true);
+    expect(shotGate("front_open", { ...OK, foreheadAb: { a: 30, b: 30 } }).ok).toBe(true);
+    // 밝기가 먼저 걸리면 색은 안 본다 (순서)
+    expect(shotGate("front_open", { ...warm, foreheadL: 40 }).firstFail).toBe("bright");
+    expect(/\d/.test(shotGate("front_open", warm).text)).toBe(false);
+  });
+
   it("S6 밝기 기준(baselineL)이 없으면 밝기 조건을 건너뛴다 (첫 장)", () => {
     const noBase: ShotMeasure = { faceDetected: true, yaw: 0, pitch: 0, closedA: false, closedB: false, faceRatio: 0.5, sharpness: 80, foreheadL: 20, stableCount: 5 };
     expect(shotGate("front_open", noBase).ok).toBe(true);
