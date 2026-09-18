@@ -122,7 +122,8 @@ cd poc/full && node tests.mjs
 ## 6. 코드 규칙 (짧게)
 
 - **계약 먼저.** 모듈 경계 데이터는 `schemas.py`(Python)·`client/src/core/types.ts`(TS)에 먼저 적고 코드를 쓴다.
-- **POC → TS 이전.** `poc/full/lib/*.js`(비율 단위 정본)를 `client/src/core/*.ts`로 파일 단위로 옮기고 `tests.mjs` 케이스를 vitest로 같이 옮긴다. 이전 기간에만 `allowJs`. 옮긴 파일부터 `poc/`는 동결.
+- **`poc/full` 은 초기 데모다.** 전체 흐름(동의 → 촬영 → 룩 → 부위 6개 → 리뷰)을 처음 끝까지 돌려 본 것이고, 비율 단위(`189e42c`)가 반영된 판이라 **TS 이전의 출발점**으로 쓴다. 화면 3 규칙도 여기 있는 soyoon 판이 채택본(결정 #4). **옮기고 난 뒤로는 `client/src/core` 가 현행이다** — 데모와 현행이 갈리면 현행이 맞다. 다른 POC 브랜치는 내용을 `poc/full` 로 모은 뒤 삭제했다.
+- **POC → TS 이전.** `poc/full/lib/*.js` 를 `client/src/core/*.ts` 로 파일 단위로 옮기고 `tests.mjs` 케이스를 vitest 로 같이 옮긴다. 이전 기간에만 `allowJs`. 옮긴 파일부터 `poc/` 는 동결.
 - **순수 함수와 I/O를 나눈다.** 채점·합산·가이드·큐 우선순위는 입력→출력 함수. 카메라·파일·네트워크는 바깥에서.
 - **로그는 `log()`/`logging` 하나로, 숫자 요약만.** 사진·랜드마크 좌표·파일명은 로그에 안 남긴다(`jobs.py`가 예시).
 - **버전은 코드가 아니라 설정에.** `config.py Versions`, `rules/*.json`의 `version`. 응답·로그·결과 카드에 같이 찍힌다.
@@ -149,13 +150,17 @@ cd poc/full && node tests.mjs
 | 규칙 | 내용 |
 | --- | --- |
 | **기준선은 `main`** | 서버·평가·클라이언트 뼈대·잠금 파일·문서가 전부 `main`에 있다. 모듈 브랜치 6개는 `main`에서 만들었고 `main`으로만 합친다. `poc/*` 브랜치는 동결(참고용) |
-| 브랜치 이름 | **모듈명 그대로, 6개 고정**: `capture`(① 촬영·기준) `guide`(② 가이드·실시간) `score`(③ 채점·합산) `server`(④ 서버·생성) `model`(⑤ 모델·데이터·평가) `app`(⑥ 앱·콘텐츠·통합). 각자 자기 모듈 브랜치에서 작업하고 **작은 단위로 자주 `main`에 PR**(하루~이틀에 한 번). 매일 아침 `git rebase main`으로 최신을 받는다. 임시 실험은 `모듈명-무엇` (예 `score-wb-test`)으로 만들고 끝나면 지운다 |
-| PR | `main`으로 PR. **CI 초록(ruff·pytest·tsc·vitest·eslint)** + 계약(`types.ts`·`schemas.py`)을 바꿨으면 양쪽 변경이 같은 PR에 |
+| 브랜치 | **모듈 브랜치 6개에서 직접 작업**(`capture` `guide` `score` `server` `model` `app`). 작업마다 새로 파지 않는다. 6주 내내 유지 |
+| PR | **금요일 리뷰일에 그 주 작업을 PR 하나로** `main` 에. 단 다른 모듈이 기다리는 것(★ blocker)은 끝나는 대로 바로. **CI 초록** + 계약(`types.ts`·`schemas.py`)을 바꿨으면 양쪽 변경이 같은 PR에 |
 | 리뷰 | 계약·`rules/*.json`·`eval/golden` 변경은 다른 모듈 담당 1명 확인. 나머지는 자기 모듈 안에서 자유 |
+| 강제 푸시 | **남이 쓸 수 있는 브랜치에 `push -f`·`branch -f` 금지.** 자기 작업 브랜치에만 `--force-with-lease`. 남의 브랜치를 main 에 맞춰야 하면 덮어쓰지 말고 담당자에게 알린다 |
+| main 따라가기 | 내 모듈 브랜치가 뒤처지면 **내가** `git merge origin/main`. 남의 브랜치를 대신 맞추지 않는다 |
 | 커밋 전 | `bash scripts/check.sh` — CI 와 같은 검사. 실패하면 올리지 않는다 |
 | 의존성 변경 | `uv add …` / `npm install …` 한 사람이 `uv.lock`·`package-lock.json`을 같은 PR에 |
 | 데이터·모델 | 저장소에 넣지 않는다. `DHE_DATA_DIR` 아래에 두고 `eval/golden/manifest.json`에 경로·해시만 |
 | 문서 | 코드가 바뀌면 같은 PR에서 `docs/`도 고친다. 결과표(`eval-results-v6.md`)는 손으로 안 고침 |
+
+**브랜치 목록 (2026-09-18 정리 후)**: `main`(기준선) · 모듈 6개(`capture` `guide` `score` `server` `model` `app`) · `poc/full`(POC 보관·참조용, 화면별 POC 를 전부 모아 뒀다) · `docs/tech-stack-and-datasets`(병합 완료, 정리 대상). `poc/screen2`~`poc/screen6` 은 내용을 `poc/full` 로 옮기고 삭제했다.
 
 **`main` 브랜치 보호는 못 건다** (2026-09-18 확인). 비공개 저장소 + 무료 플랜이라 GitHub 이 기능 자체를 막는다(`Upgrade to GitHub Pro or make this repository public`). 선택지는 셋이다.
 

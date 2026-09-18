@@ -12,6 +12,11 @@ need git  "https://git-scm.com"
 NODE_MAJOR=$(node -v | sed 's/v\([0-9]*\).*/\1/')
 [ "$NODE_MAJOR" -ge 22 ] || { echo "Node 22 이상 필요 (지금 $(node -v))"; exit 1; }
 
+echo "== git 훅 (강제 푸시 차단)"
+git config core.hooksPath .githooks
+chmod +x .githooks/* 2>/dev/null || true
+echo "   .githooks/pre-push 활성화 — 보호 브랜치 강제 푸시·삭제를 막습니다"
+
 echo "== Python 3.11 + 의존성 (uv.lock 그대로)"
 uv sync --frozen --extra dev --extra eval
 
