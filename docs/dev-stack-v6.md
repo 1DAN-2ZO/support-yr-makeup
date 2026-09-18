@@ -122,7 +122,8 @@ cd poc/full && node tests.mjs
 ## 6. 코드 규칙 (짧게)
 
 - **계약 먼저.** 모듈 경계 데이터는 `schemas.py`(Python)·`client/src/core/types.ts`(TS)에 먼저 적고 코드를 쓴다.
-- **POC → TS 이전.** `poc/full/lib/*.js`(비율 단위 정본)를 `client/src/core/*.ts`로 파일 단위로 옮기고 `tests.mjs` 케이스를 vitest로 같이 옮긴다. 이전 기간에만 `allowJs`. 옮긴 파일부터 `poc/`는 동결.
+- **기준은 `poc/full` 이다 (2026-09-18 확정).** 계산·규칙·문구가 어디서 갈릴 때 `poc/full` 브랜치의 `poc/full/lib/*.js` 가 정답이다. 비율 단위(`189e42c`)가 반영된 유일한 판이고, 화면 3 규칙도 여기 있는 soyoon 판이 채택본이다(결정 #4). 다른 POC 브랜치는 내용을 `poc/full` 로 모은 뒤 삭제했다.
+- **POC → TS 이전.** `poc/full/lib/*.js` 를 `client/src/core/*.ts` 로 파일 단위로 옮기고 `tests.mjs` 케이스를 vitest 로 같이 옮긴다. 이전 기간에만 `allowJs`. 옮긴 파일부터 `poc/` 는 동결.
 - **순수 함수와 I/O를 나눈다.** 채점·합산·가이드·큐 우선순위는 입력→출력 함수. 카메라·파일·네트워크는 바깥에서.
 - **로그는 `log()`/`logging` 하나로, 숫자 요약만.** 사진·랜드마크 좌표·파일명은 로그에 안 남긴다(`jobs.py`가 예시).
 - **버전은 코드가 아니라 설정에.** `config.py Versions`, `rules/*.json`의 `version`. 응답·로그·결과 카드에 같이 찍힌다.
@@ -156,6 +157,8 @@ cd poc/full && node tests.mjs
 | 의존성 변경 | `uv add …` / `npm install …` 한 사람이 `uv.lock`·`package-lock.json`을 같은 PR에 |
 | 데이터·모델 | 저장소에 넣지 않는다. `DHE_DATA_DIR` 아래에 두고 `eval/golden/manifest.json`에 경로·해시만 |
 | 문서 | 코드가 바뀌면 같은 PR에서 `docs/`도 고친다. 결과표(`eval-results-v6.md`)는 손으로 안 고침 |
+
+**브랜치 목록 (2026-09-18 정리 후)**: `main`(기준선) · 모듈 6개(`capture` `guide` `score` `server` `model` `app`) · `poc/full`(POC 보관·참조용, 화면별 POC 를 전부 모아 뒀다) · `docs/tech-stack-and-datasets`(병합 완료, 정리 대상). `poc/screen2`~`poc/screen6` 은 내용을 `poc/full` 로 옮기고 삭제했다.
 
 **`main` 브랜치 보호는 못 건다** (2026-09-18 확인). 비공개 저장소 + 무료 플랜이라 GitHub 이 기능 자체를 막는다(`Upgrade to GitHub Pro or make this repository public`). 선택지는 셋이다.
 
