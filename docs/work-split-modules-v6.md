@@ -26,24 +26,29 @@
 
 ---
 
-## 0-1. 브랜치 규칙 (2026-09-18 사고 후 확정)
+## 0-1. 브랜치 규칙
 
-**작업은 `<모듈>-<작업>` 브랜치에서 한다.** `main` 에서 따고, PR 로 올리고, 병합되면 지운다.
+**작업은 자기 모듈 브랜치에서 한다.** `capture` `guide` `score` `server` `model` `app` 여섯 개.
 
+- 자기 모듈 브랜치에 **직접 커밋**한다. 작업마다 브랜치를 새로 파지 않는다.
+- **main 으로 모으는 건 금요일 리뷰일.** 그 주 작업을 PR 하나로 올린다(주간 리듬과 같음, §2).
+- **예외 — 다른 모듈이 기다리는 것(★ blocker)은 끝나는 대로 바로 PR.** 금요일까지 들고 있으면 남이 한 주를 통째로 못 쓴다. 예: `flow.ts`(#9)가 `capture` 에만 있으면 ②③⑥ 이 붙일 게 없다.
+- 내 브랜치가 뒤처지면 **내가** 따라간다: `git checkout <내 모듈> && git merge origin/main`. **남의 브랜치를 대신 맞추지 않는다.**
+- 임시 실험은 `<모듈>-<무엇>`(예: `score-wb-test`)으로 만들고 끝나면 지운다.
+
+```bash
+# 평소
+git checkout score && git pull
+... 작업 ... && git commit && git push          # 강제 푸시 없이
+
+# main 이 앞서갔으면
+git merge origin/main                            # 충돌은 내가 푼다
+
+# 금요일 (또는 blocker 가 끝났을 때)
+gh pr create --base main --head score            # 본문에 Closes #이슈번호
 ```
-git checkout main && git pull
-git checkout -b score-frame-average      # <모듈>-<짧은 작업>
-... 작업 ...
-git push -u origin score-frame-average
-gh pr create --base main                 # 본문에 Closes #이슈번호
-```
 
-예: `capture-flow-ts` · `model-shoot-forms` · `app-log-sink` · `server-worker` · `guide-onebuk` · `score-color-ref`.
-하이픈인 이유는 `app` 같은 **모듈 브랜치가 이미 있어서** `app/...` 을 만들 수 없기 때문이다(git ref 충돌).
-
-**모듈 브랜치 6개(`capture` `guide` `score` `server` `model` `app`)는 소유 표시용으로만 둔다.**
-- 여기에 **커밋하지 않는다.** 작업은 위의 작업 브랜치에서.
-- 따라서 **main 과 동기화할 일도 없다.** 동기화가 없으면 덮어쓸 일도 없다.
+**모듈 브랜치는 지우지 않는다.** 6주 내내 산다. PR 이 병합돼도 그대로 두고 계속 쓴다.
 
 ### 왜 이 규칙인가 — 2026-09-18 사고
 
