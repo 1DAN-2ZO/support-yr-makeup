@@ -1,7 +1,8 @@
 import { defineConfig } from "vite";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import type { Plugin } from "vite";
 
 /** 앱 버전 = git 짧은 해시. 로그·결과 카드에 찍힌다 (ai-pipeline-v6.md 3절) */
 function appVersion(): string {
@@ -30,7 +31,32 @@ function devHttps(): { key: Buffer; cert: Buffer } | undefined {
 
 const certs = devHttps();
 
+/**
+ * [dev 전용] 폰 실측 프로브(capture-probe.html · probe-lock.html)가 보낸 측정 JSON 을
+ * client/.probe/ 에 저장한다 (사진 없음, 숫자만). 모듈 ① 1-2·1-3·1-4 실측용. 빌드에는 안 들어간다.
+ */
+const probeSink: Plugin = {
+  name: "probe-sink",
+  apply: "serve",
+  configureServer(server) {
+    server.middlewares.use("/__probe", (req, res) => {
+      if (req.method !== "POST") { res.statusCode = 405; res.end(); return; }
+      let body = "";
+      req.on("data", (c: Buffer) => { body += c.toString(); });
+      req.on("end", () => {
+        const dir = fileURLToPath(new URL("./.probe/", import.meta.url));
+        mkdirSync(dir, { recursive: true });
+        const name = `probe-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+        writeFileSync(dir + name, body, "utf-8");
+        res.setHeader("content-type", "text/plain; charset=utf-8");
+        res.end(name);
+      });
+    });
+  },
+};
+
 export default defineConfig({
+  plugins: [probeSink],
   define: { __APP_VERSION__: JSON.stringify(appVersion()) },
   resolve: {
     alias: {
