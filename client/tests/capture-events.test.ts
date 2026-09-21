@@ -6,10 +6,10 @@ import type { Versions } from "@core/types";
 
 const ver: Versions = { app: "test", score: "score-v0.1", look: "look-v0.1", faceshape: "faceshape-rule-v1", transfer: "transfer-stub-v0" };
 
-function setup() {
+function setup(opts?: Parameters<typeof createCaptureEvents>[1]) {
   const m = memorySink();
   const logger = createLogger({ sid: "s1", screen: "capture", part: null, ver, now: () => 1 }, m.sink);
-  return { m, ev: createCaptureEvents(logger) };
+  return { m, ev: createCaptureEvents(logger, opts) };
 }
 
 describe("capture events", () => {
@@ -41,5 +41,52 @@ describe("capture events", () => {
     const { m, ev } = setup();
     ev.consent(true); ev.shot("front_open", true, null); ev.restore(true, true);
     for (const line of m.lines) expect(line).not.toMatch(/"(lm|pts|image|frames)"/);
+  });
+
+  // ---- 2026-09-21 폰 실측 뒤 추가: ok=false 는 "같은 조건에 3초 막힘" 일 때 한 번 ----
+  it("blocked: 같은 조건이 stuckMs 이상 이어질 때만 capture ok=false 한 번", () => {
+    const { m, ev } = setup({ stuckMs: 3000 });
+    // 17fps 로 2.9초 막힘 → 아직 안 찍음
+    for (let t = 0; t < 2900; t += 60) expect(ev.blocked("right_45", "bright", t)).toBe(false);
+    expect(m.events).toHaveLength(0);
+    expect(ev.blocked("right_45", "bright", 3000)).toBe(true);
+    // 계속 막혀도 다시 안 찍음
+    for (let t = 3060; t < 10000; t += 60) expect(ev.blocked("right_45", "bright", t)).toBe(false);
+    expect(m.events).toHaveLength(1);
+    expect(m.events[0]).toMatchObject({ name: "capture", shot: "right_45", ok: false, reason: "bright", retry: 0 });
+  });
+
+  it("blocked: 조건이 바뀌면 시간을 다시 센다, 통과(null)하면 리셋", () => {
+    const { m, ev } = setup({ stuckMs: 3000 });
+    ev.blocked("right_45", "bright", 0);
+    ev.blocked("right_45", "angle", 2000);      // 조건 바뀜 → angle 은 2000 부터
+    expect(ev.blocked("right_45", "angle", 4000)).toBe(false);   // 2초밖에 안 됨
+    expect(ev.blocked("right_45", "angle", 5000)).toBe(true);
+    ev.blocked("right_45", null, 5100);          // 통과 중 → 리셋
+    expect(ev.blocked("right_45", "angle", 5200)).toBe(false);
+    expect(ev.blocked("right_45", "angle", 8100)).toBe(false);   // 5200 부터 2.9초
+    expect(ev.blocked("right_45", "angle", 8200)).toBe(true);
+    expect(m.events.map((e) => (e.name === "capture" ? e.reason : null))).toEqual(["angle", "angle"]);
+  });
+
+  it("blocked 뒤 촬영 성공·재촬영은 막힘 상태를 지운다", () => {
+    const { m, ev } = setup({ stuckMs: 1000 });
+    ev.blocked("left_45", "angle", 0);
+    ev.shot("left_45", true, null);
+    expect(ev.blocked("left_45", "angle", 1500)).toBe(false);   // 새 에피소드 시작
+    ev.blocked("left_45", "angle", 2600);
+    expect(m.events.filter((e) => e.name === "capture" && !e.ok)).toHaveLength(1);
+    ev.retake("left_45");
+    expect(ev.blocked("left_45", "angle", 2700)).toBe(false);
+    expect(ev.blocked("left_45", "angle", 3800)).toBe(true);
+    expect(m.events.at(-1)).toMatchObject({ name: "capture", shot: "left_45", ok: false, retry: 1 });
+  });
+
+  it("faceLost: 1초 이상만 landmark_lost 로 찍는다", () => {
+    const { m, ev } = setup();
+    ev.faceLost(400);
+    ev.faceLost(3100.6);
+    expect(m.events).toHaveLength(1);
+    expect(m.events[0]).toMatchObject({ name: "landmark_lost", ms: 3101 });
   });
 });

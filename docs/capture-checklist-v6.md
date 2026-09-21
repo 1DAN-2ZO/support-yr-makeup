@@ -15,8 +15,8 @@
 
 | 기기 | 날짜 | 4장 총 시간(초) | 정면 눈뜸 재촬영 | 정면 눈감음 재촬영 | 왼쪽 45° 재촬영 | 오른쪽 45° 재촬영 | 45° 판정이 걸린 각도(yaw) | 비고 |
 |---|---|---|---|---|---|---|---|---|
-| iPhone (모델·iOS) | | | | | | | | |
-| Android (모델·OS) | | | | | | | | |
+| iPhone (보류) | | | | | | | | |
+| Android 10 · Chrome 152 | 2026-09-21 | 22.5 | 0 | 0 | 0 | 0 | 좌 −52.2 / 우 42.5 | 720×1280, 17fps. 오른쪽 45° 18.2초(밝기·검출 끊김·먼 눈). 상세 `docs/study/1-2-phone-capture.md` |
 
 통과 기준: 4장 60초 이내 (F-01). 45° 허용치(지금 −60~−22 / 22~60)가 너무 좁거나 넓으면 `flow.ts SHOTS` 의 yaw 범위를 고친다.
 
@@ -26,9 +26,10 @@
 
 | 기기(UA) | 트랙 이름 | getCapabilities | WB manual | 노출 manual | 초점 manual | 최대 해상도 |
 |---|---|---|---|---|---|---|
-| | | | | | | |
+| Android 10 · Chrome 152 (2026-09-21, 1-2 프로브에서 같이 측정) | camera 1, facing front | O | O | O | O | 4000×3000 |
+| iPhone (보류 — 아이폰 사용자 있을 때 `probe-lock.html`) | | | | | | |
 
-읽는 법: getCapabilities 가 X 면(iOS 사파리) 잠금 자체가 불가 → 보정(눈 흰자·이마)으로만 막는다. O 인데 manual 이 X 면 그 기기도 보정만.
+읽는 법: manual 이 X 인 항목은 그 기기에서 못 잠근다 → 보정(눈 흰자·이마)으로만 막는다. iOS 사파리도 getCapabilities 는 있지만(11+) `exposureMode`·`focusMode` 확장 제약이 없고 `whiteBalanceMode` 만 17.4부터 → **노출 잠금 불가**. Firefox Android 는 셋 다 없음. 기기별 근거·결론은 `docs/study/1-3-camera-locks.md` (2026-09-21 정정).
 
 ## 1-4. 4장 연속 촬영 시 이마 L*·a*·b* 변동 폭 (조명 3종 × 3명)
 

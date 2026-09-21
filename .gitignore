@@ -30,3 +30,7 @@ poc/look-tryon/server-bench/shmt/
 
 # Face Landmarker 모델(바이너리, 저장소 밖 관리 — DHE_FACE_LANDMARKER_PATH)
 server/assets/*.task
+
+# 모듈 ① 폰 실측 프로브 — 결과 JSON 과 로컬 모델 사본 (저장소 밖)
+client/.probe/
+client/public/models/

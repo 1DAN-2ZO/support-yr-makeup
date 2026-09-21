@@ -66,6 +66,9 @@ describe("S 촬영 4장 게이트", () => {
 
   it("S3 촬영 조건 순서: 얼굴(문구 없음) → 각도 → 눈 → 크기 → 선명 → 밝기 → 안정, 하나만", () => {
     expect(shotGate("front_open", { ...OK, faceDetected: false })).toMatchObject({ ok: false, firstFail: "face", text: "" });
+    expect(shotGate("front_open", { ...OK, faceInset: -0.02, yaw: 20 })).toMatchObject({ firstFail: "visible", text: "얼굴이 잘려요. 얼굴 전체가 보이게 해 주세요" });
+    expect(shotGate("front_open", { ...OK, faceInset: 0.01 })).toMatchObject({ firstFail: "visible" });
+    expect(shotGate("front_open", { ...OK, faceInset: 0.05 }).ok).toBe(true);
     expect(shotGate("front_open", { ...OK, yaw: 20, closedA: true, closedB: true, faceRatio: 0.1 })).toMatchObject({ firstFail: "angle", text: "조금만 정면으로" });
     expect(shotGate("front_open", { ...OK, closedA: true, closedB: true, faceRatio: 0.1 })).toMatchObject({ firstFail: "eyes", text: "눈을 떠 주세요" });
     expect(shotGate("front_closed", { ...OK, faceRatio: 0.1 })).toMatchObject({ firstFail: "eyes", text: "눈을 감아 주세요" });
