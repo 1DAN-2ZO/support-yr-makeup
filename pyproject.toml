@@ -24,6 +24,10 @@ eval = [
 server = [
     "redis>=5.0",
     "rq>=1.16",
+    # 화장 레이어 추출(#49): numpy Lab 변환 + 얼굴 랜드마크(Face Landmarker .task는 저장소 밖, DHE_FACE_LANDMARKER_PATH)
+    "numpy>=1.26",
+    "pillow>=10.3",
+    "mediapipe>=0.10.14",
 ]
 # 개발 도구
 dev = [

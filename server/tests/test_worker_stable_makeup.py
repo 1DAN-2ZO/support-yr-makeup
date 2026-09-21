@@ -2,6 +2,8 @@
 model_server.py 자체(별도 conda env, GPU 필요)는 여기서 못 돌린다 — server-bench/README.md의
 수동 재현 절차 + curl http://127.0.0.1:8100/health 로 별도 확인한다."""
 
+import os
+
 import httpx
 import pytest
 
@@ -99,3 +101,89 @@ def test_posts_expected_payload_and_returns_result(look_ref, tmp_path, monkeypat
     assert result_url == "/results/abc.jpg"
     assert layer_url is None
     assert cos is None
+
+
+@pytest.fixture()
+def fake_model_server(look_ref, tmp_path, monkeypatch):
+    """result_dir을 tmp로 돌리고 모델 서버 응답을 고정한다. (source 경로, result_dir) 반환."""
+    result_dir = tmp_path / "results"
+    result_dir.mkdir()
+    old = settings.result_dir
+    object.__setattr__(settings, "result_dir", str(result_dir))
+
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"result_url": "/results/1700000000.jpg", "ms": 3100}
+
+    monkeypatch.setattr(httpx, "post", lambda url, json, timeout: FakeResponse())
+    source = tmp_path / "source.jpg"
+    source.write_bytes(b"fake-source")
+    yield source, result_dir
+    object.__setattr__(settings, "result_dir", old)
+
+
+def test_layer_url_mapped_on_success(fake_model_server, monkeypatch):
+    source, result_dir = fake_model_server
+    calls = {}
+
+    def fake_extract(src, res):
+        calls["args"] = (src, res)
+        return res.rsplit(".", 1)[0] + "_layer.png"
+
+    monkeypatch.setattr("server.app.worker_stable_makeup.extract_layer", fake_extract)
+    result_url, layer_url, cos = stable_makeup_worker(str(source), "look_01")
+    assert result_url == "/results/1700000000.jpg"
+    assert layer_url == "/results/1700000000_layer.png"
+    assert cos is None
+    assert calls["args"] == (str(source), os.path.join(str(result_dir), "1700000000.jpg"))
+
+
+def test_layer_none_when_extractor_returns_none(fake_model_server, monkeypatch):
+    source, _ = fake_model_server
+    monkeypatch.setattr("server.app.worker_stable_makeup.extract_layer", lambda s, r: None)
+    assert stable_makeup_worker(str(source), "look_01") == ("/results/1700000000.jpg", None, None)
+
+
+def test_layer_exception_never_escapes(fake_model_server, monkeypatch):
+    source, _ = fake_model_server
+
+    def boom(s, r):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("server.app.worker_stable_makeup.extract_layer", boom)
+    assert stable_makeup_worker(str(source), "look_01") == ("/results/1700000000.jpg", None, None)
+
+
+def test_absent_landmarker_gives_no_layer(fake_model_server):
+    source, _ = fake_model_server
+    old = settings.face_landmarker_path
+    object.__setattr__(settings, "face_landmarker_path", "")
+    try:
+        assert stable_makeup_worker(str(source), "look_01") == ("/results/1700000000.jpg", None, None)
+    finally:
+        object.__setattr__(settings, "face_landmarker_path", old)
+
+
+@pytest.mark.parametrize(
+    "bad_url", ["/results/../secret.jpg", "/results/a/b.jpg", "/results/..jpg.x/", "http://x/results/a.jpg"]
+)
+def test_unsafe_result_url_skips_layer(fake_model_server, monkeypatch, bad_url):
+    source, _ = fake_model_server
+
+    class R:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"result_url": bad_url}
+
+    monkeypatch.setattr(httpx, "post", lambda url, json, timeout: R())
+
+    def fail(s, r):
+        raise AssertionError("extract_layer must not run for an unsafe result_url")
+
+    monkeypatch.setattr("server.app.worker_stable_makeup.extract_layer", fail)
+    assert stable_makeup_worker(str(source), "look_01") == (bad_url, None, None)

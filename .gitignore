@@ -24,3 +24,6 @@ poc/look-tryon/server-bench/shmt/
 
 # Playwright MCP debug artifacts (screenshots/console logs from ad-hoc testing)
 .playwright-mcp/
+
+# Face Landmarker 모델(바이너리, 저장소 밖 관리 — DHE_FACE_LANDMARKER_PATH)
+server/assets/*.task

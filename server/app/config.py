@@ -60,6 +60,10 @@ class Settings:
     # 벤치마크 결론(server-bench/README.md): fp16 + DDIM 8 step = 2.55초 (10 step은 3.15초로 3초 초과)
     transfer_steps: int = int(_env("TRANSFER_STEPS", "8"))
     transfer_guidance: float = float(_env("TRANSFER_GUIDANCE", "1.6"))
+    # MediaPipe Face Landmarker(.task) 경로. 바이너리라 저장소 밖 — 비면 레이어 추출은 None을 돌려준다(#49)
+    face_landmarker_path: str = _env("FACE_LANDMARKER_PATH", "")
+    # 화장 레이어 ΔE 절단 임계 (POC client/lib/extractLayer.js 기본값과 동일 6)
+    layer_de_threshold: float = float(_env("LAYER_DE_THRESHOLD", "6"))
 
 
 settings = Settings()
