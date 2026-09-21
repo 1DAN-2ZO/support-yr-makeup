@@ -47,8 +47,10 @@ git merge origin/main                            # 충돌은 내가 푼다
 
 # 준비되면
 gh pr create --base main --head score            # 본문에 Closes #이슈번호
-gh pr edit <번호> --add-reviewer <⑥ 계정>        # 리뷰 요청 = 병합 요청
 ```
+
+**PR 을 올렸으면 ⑥ 에게 말한다.** GitHub 리뷰어 지정은 쓰지 않는다 — 알림이 묻혀서
+아무도 안 봤다. 올렸다는 말이 곧 병합 요청이다.
 
 **모듈 브랜치는 지우지 않는다.** 6주 내내 산다. PR 이 병합돼도 그대로 두고 계속 쓴다.
 
@@ -119,7 +121,7 @@ gh api "repos/1DAN-2ZO/support-yr-makeup/events?per_page=100"   --jq '.[]|select
 # 훅 설치 (setup.sh 가 자동으로 함)
 git config core.hooksPath .githooks
 
-# 내 작업 브랜치라 확실할 때만
+# 내 임시 실험 브랜치라 확실할 때만 (모듈 브랜치에는 안 통한다)
 FORCE_OK=1 git push --force-with-lease
 ```
 

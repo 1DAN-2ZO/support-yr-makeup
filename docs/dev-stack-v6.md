@@ -164,13 +164,12 @@ cd poc/full && node tests.mjs
 
 **브랜치 목록 (2026-09-21 확인)**: `main`(기준선) · 모듈 6개(`capture` `guide` `score` `server` `model` `app`) · `poc/full`(POC 보관·참조용, 화면별 POC 를 전부 모아 뒀다). `poc/screen2`~`poc/screen6` 은 내용을 `poc/full` 로 옮기고 삭제했다.
 
-정리 대상 셋 — 지우기 전에 주인에게 확인한다.
+정리 대상 둘 — 지우기 전에 주인에게 확인한다. (`rescue/capture-jeakeun` 은 2026-09-21 삭제: 같은 작업이 jeakeun 본인 커밋 `f39fd1a` 로 main 에 있다)
 
 | 브랜치 | 무엇 | 누구 |
 |---|---|---|
 | `docs/tech-stack-and-datasets` | main 에 병합 완료 | 정리 가능 |
 | `model-shoot-plan` | JW020799 가 2026-09-18 사고 때 자기 커밋을 옮겨 둔 곳 | **본인 확인 전까지 두기** |
-| `rescue/capture-jeakeun` | 사고 복구 때 ⑥ 이 만든 임시 브랜치. 내용은 `capture` 에 있다 | ⑥ 정리 |
 
 **`main` 브랜치 보호는 못 건다** (2026-09-18 확인). 비공개 저장소 + 무료 플랜이라 GitHub 이 기능 자체를 막는다(`Upgrade to GitHub Pro or make this repository public`). 선택지는 셋이다.
 
