@@ -1,0 +1,38 @@
+/* 껍데기 기본 뼈대만. 화면별 모양은 각 모듈이 자기 화면에서 */
+:root {
+  --bg: #f7f5f1;
+  --ink: #2b2b2b;
+  --muted: #6b6b6b;
+  --line: #e6e2da;
+  --accent: #2a8c85;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1b1a18;
+    --ink: #ece8e2;
+    --muted: #9a948c;
+    --line: #35322e;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.5 system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+}
+#app { min-height: 100dvh; display: flex; flex-direction: column; }
+.screen { flex: 1; padding: 16px; }
+.chips { display: flex; gap: 6px; overflow-x: auto; padding: 8px 16px; border-bottom: 1px solid var(--line); }
+.chips[hidden] { display: none; }
+.chip {
+  flex: 0 0 auto; padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px;
+  background: transparent; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer;
+}
+.chip.current { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.chip.st-passed { color: var(--ink); }
+.hint { padding: 10px 16px; background: var(--accent); color: #fff; font-size: 14px; }
+.hint[hidden] { display: none; }
+.placeholder { padding: 24px 0; }
+.placeholder .muted, .muted { color: var(--muted); font-size: 13px; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; }
