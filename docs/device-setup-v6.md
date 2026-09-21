@@ -1,0 +1,141 @@
+# 실기기 환경 만들기 (6-3, #74)
+
+폰에서 `npm run dev` 화면을 열고 **카메라가 실제로 켜지는 것**까지가 목표다.
+담당 ⑥. 여기까지 되면 ②③이 실기기 확인을 시작할 수 있다.
+
+---
+
+## 0. 왜 번거로운가
+
+카메라(`getUserMedia`)는 브라우저가 **안전한 곳**이라고 인정한 주소에서만 열린다.
+
+| 주소 | 카메라 |
+|---|---|
+| `https://…` | 열린다 |
+| `http://localhost:5173` | 열린다 (예외) |
+| `http://192.168.0.7:5173` | **안 열린다** |
+
+폰은 LAN IP 로 들어오니 세 번째다. 이때 브라우저는 권한을 거부하는 게 아니라
+`navigator.mediaDevices` 를 **아예 안 준다.** 그래서 "권한 허용을 눌렀는데도 안 된다"처럼 보인다.
+
+앱이 부팅할 때 이걸 먼저 확인해서 빨간 띠로 알려 준다
+(`client/src/core/secure-context.ts`). 띠가 보이면 아래를 하면 된다.
+
+---
+
+## 1. 길이 둘이다
+
+| | mkcert | 터널 (cloudflared) |
+|---|---|---|
+| 방식 | 내 PC 가 발급한 인증서를 폰이 믿게 한다 | 진짜 https 주소를 빌려 쓴다 |
+| 폰 설정 | **필요** (루트 CA 설치, iOS 는 스위치 하나 더) | 없음 |
+| 인터넷 | 없어도 됨 | 필요 |
+| 속도 | 같은 공유기라 빠름 | 한 번 밖으로 나갔다 온다 |
+| 주소 | 고정 (`https://192.168.0.7:5173`) | 켤 때마다 바뀜 |
+| 막히는 곳 | 회사·학교 와이파이에서 기기 간 통신 차단 | 사내망에서 터널 차단 |
+
+**기본은 mkcert.** 한 번 해 두면 계속 쓴다.
+iOS 인증서 설치가 막히거나 공유기가 기기 간 통신을 막으면 터널로 간다.
+
+---
+
+## 2. mkcert 로 가기
+
+### 2-1. 설치
+
+```
+Windows : winget install FiloSottile.mkcert     (또는 choco install mkcert)
+macOS   : brew install mkcert
+Linux   : https://github.com/FiloSottile/mkcert#linux
+```
+
+### 2-2. 인증서 만들기
+
+```bash
+bash scripts/certs.sh
+```
+
+하는 일: 이 PC 를 발급자로 등록(`mkcert -install`, 처음 한 번 관리자 암호) →
+`localhost`·`127.0.0.1`·**이 PC 의 LAN IP** 로 인증서 발급 → `client/certs/{key,cert}.pem` 저장.
+
+끝나면 폰에서 열 주소와 루트 CA 파일 위치를 찍어 준다.
+
+> 랜카드가 여러 개(VPN·가상머신)라 엉뚱한 IP 를 잡으면 직접 넣는다:
+> `IP=192.168.0.7 bash scripts/certs.sh`
+
+인증서 파일은 저장소에 안 올라간다(`.gitignore`). **각자 자기 것을 만든다.**
+`client/certs/` 가 있으면 `npm run dev` 가 알아서 https 로 뜬다.
+
+### 2-3. 폰에 루트 CA 설치
+
+`mkcert -CAROOT` 가 알려 주는 폴더의 **`rootCA.pem`** 을 폰으로 보낸다(메일·에어드랍·USB 아무거나).
+
+**iOS** — 두 단계다. 둘째를 빼먹으면 계속 막힌다.
+1. 파일을 열면 → 설정 맨 위에 **"프로파일 다운로드됨"** → 설치
+2. 설정 > 일반 > 정보 > **인증서 신뢰 설정** → 방금 것 스위치 켜기
+
+**Android**
+- 설정 > 보안 > 암호화 및 자격 증명 > 인증서 설치 > **CA 인증서** → 파일 선택
+- 기종에 따라 "설정에서 `CA` 검색"이 빠르다
+
+### 2-4. 확인
+
+```bash
+cd client && npm run dev
+```
+
+폰에서 `https://<PC 의 LAN IP>:5173` — 자물쇠가 잠기고, 빨간 띠가 없으면 성공.
+
+---
+
+## 3. 터널로 가기
+
+```bash
+# 설치: winget install Cloudflare.cloudflared / brew install cloudflared
+cd client && npm run dev          # http 로 떠도 된다
+cloudflared tunnel --url http://localhost:5173
+```
+
+찍히는 `https://….trycloudflare.com` 주소를 폰에서 연다. 폰 설정은 없다.
+**주소가 켤 때마다 바뀐다.** 오래 쓸 거면 mkcert 로 돌아가는 게 낫다.
+
+---
+
+## 4. 막혔을 때
+
+| 증상 | 원인 | 할 것 |
+|---|---|---|
+| 폰에서 주소가 안 열림 | 방화벽이 5173 을 막음 | Windows 방화벽에서 Node.js 인바운드 허용 |
+| 〃 | 공유기가 기기 간 통신 차단 (AP 격리) | 핫스팟으로 묶거나 터널로 |
+| 〃 | PC 와 폰이 다른 와이파이 | 같은 네트워크로. 5GHz/2.4GHz 도 분리돼 있을 수 있다 |
+| "안전하지 않음" 경고 | 루트 CA 미설치 | 2-3 |
+| iOS 만 계속 경고 | **신뢰 설정 스위치를 안 켬** | 2-3 의 2번 |
+| 빨간 띠 "https 로 시작하는지" | http 로 들어옴 | https 주소로 |
+| 빨간 띠 "사파리나 크롬으로" | 카톡·인스타 인앱 브라우저 | 밖의 브라우저로 열기 |
+| LAN IP 가 바뀜 | DHCP 가 다시 줌 | `scripts/certs.sh` 다시 실행 (공유기에서 IP 고정이 편하다) |
+
+---
+
+## 5. 체크리스트
+
+기기가 준비되면 이 표를 채운다. 스프린트 1 안에 끝낸다.
+
+| | iOS | Android |
+|---|---|---|
+| 기기 (기종·OS) | | |
+| https 로 열림 | ☐ | ☐ |
+| 빨간 띠 없음 | ☐ | ☐ |
+| 후면 카메라 열림 | ☐ | ☐ |
+| 전면 카메라 열림 | ☐ | ☐ |
+| 가로/세로 전환됨 | ☐ | ☐ |
+
+**남은 것은 기기 확보와 폰 설정뿐이다.** 인증서 발급·서버 설정·부팅 확인은 코드에 들어가 있다.
+
+---
+
+## 6. 관련
+
+- `scripts/certs.sh` — 인증서 발급
+- `client/vite.config.ts` — `client/certs/` 가 있으면 https 로 뜸
+- `client/src/core/secure-context.ts` — 부팅 때 확인, 빨간 띠
+- `docs/dev-stack-v6.md` — 공통 개발 환경

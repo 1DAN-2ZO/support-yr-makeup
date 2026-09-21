@@ -15,11 +15,25 @@ import {
   type ScreenId,
   type Session,
 } from "./core/flow";
+import { checkSecureContext, readEnv, type SecureCheck } from "./core/secure-context";
 import { createSessionStore, indexedDbBackend, memoryBackend } from "./core/session-store";
 import { getVersions } from "./core/versions";
 import { fullRenderScreen } from "./screens/fullrender";
 import { looksScreen } from "./screens/looks";
 import { createShell } from "./screens/shell";
+
+/** 카메라를 못 여는 환경이면 맨 위에 띄운다. 흐름은 막지 않는다 */
+function showWarning(c: SecureCheck): void {
+  const box = document.createElement("div");
+  box.className = "warn";
+  const p = document.createElement("p");
+  p.textContent = c.message;
+  const small = document.createElement("p");
+  small.className = "warn-hint";
+  small.textContent = c.hint;
+  box.append(p, small);
+  el("app").prepend(box);
+}
 
 function el(id: string): HTMLElement {
   const found = document.getElementById(id);
@@ -59,6 +73,13 @@ async function boot(): Promise<void> {
     orientation: () =>
       window.matchMedia("(orientation: landscape)").matches ? "landscape" : "portrait",
   });
+
+  // 카메라가 열릴 수 있는 곳인지 먼저 알려 준다. 안 그러면 "왜 안 되지"로 한참 헤맨다
+  const secure = checkSecureContext(readEnv());
+  if (!secure.ok) {
+    showWarning(secure);
+    log.log({ name: "error", where: "boot", msg: `secure_context:${secure.reason}` });
+  }
 
   // ④ 의 서버가 붙으면 여기만 진짜 공급자로 바뀐다. 그때까지는 전부 "로딩 중"
   const lookJobs: LookJobSource = emptyJobSource();
