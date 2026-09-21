@@ -7,6 +7,7 @@
 
 import { createLogger } from "./core/log";
 import { createLogStore } from "./core/log-store";
+import { emptyJobSource, type LookJobSource } from "./core/look-jobs";
 import {
   createSession,
   setCurrentPart,
@@ -16,6 +17,8 @@ import {
 } from "./core/flow";
 import { createSessionStore, indexedDbBackend, memoryBackend } from "./core/session-store";
 import { getVersions } from "./core/versions";
+import { fullRenderScreen } from "./screens/fullrender";
+import { looksScreen } from "./screens/looks";
 import { createShell } from "./screens/shell";
 
 function el(id: string): HTMLElement {
@@ -57,7 +60,16 @@ async function boot(): Promise<void> {
       window.matchMedia("(orientation: landscape)").matches ? "landscape" : "portrait",
   });
 
-  registerAll(shell);
+  // ④ 의 서버가 붙으면 여기만 진짜 공급자로 바뀐다. 그때까지는 전부 "로딩 중"
+  const lookJobs: LookJobSource = emptyJobSource();
+
+  registerAll(shell, {
+    jobs: lookJobs,
+    getLookId: () => session.lookId,
+    setLookId: (lookId: string) => {
+      session = { ...session, lookId };
+    },
+  });
 
   // 방향이 바뀌면 안내만 다시 그린다
   window.addEventListener("orientationchange", () => shell.render());
@@ -79,8 +91,16 @@ async function boot(): Promise<void> {
  *
  * 예) shell.register("looks", looksScreen);
  */
-function registerAll(_shell: ReturnType<typeof createShell<Session>>): void {
-  // 아직 없음 — 등록 안 된 화면은 담당 모듈을 알려주는 자리표시가 뜬다
+interface LookDeps {
+  jobs: LookJobSource;
+  getLookId: () => string | null;
+  setLookId: (lookId: string) => void;
+}
+
+function registerAll(shell: ReturnType<typeof createShell<Session>>, look: LookDeps): void {
+  shell.register("looks", looksScreen<Session>(look));
+  shell.register("fullrender", fullRenderScreen<Session>(look));
+  // 나머지는 아직 없음 — 등록 안 된 화면은 담당 모듈을 알려주는 자리표시가 뜬다
 }
 
 void boot();
