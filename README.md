@@ -41,7 +41,7 @@
 ```
 docs/   서비스 정의, 기능 정의서, 화면 브리프, 구현 요소 정의, 필요 기술 목록, 선행 연구 크로스체크,
         화면 3 기술 정리, 합성 데이터·학습 문서, 데이터셋 목록·순위표, 기술 검토, 분업·스프린트, 다이어그램 4장
-poc/    브라우저 POC — 화면별 POC는 브랜치로 분리 (`poc/screen2`~`poc/screen6`), 전체 흐름 POC는 `poc/full/`.
+poc/    브라우저 POC — 화면별 POC는 `poc/full` 브랜치에 모두 모았다(화면별 브랜치는 삭제).
         합성 학습 데이터 생성기 `poc/synth/`, 데이터셋 실측 `poc/datasets-eval/`, 촬영 세트 샘플 `poc/samples/`. 통합 후 동결(참고용)
 server/ 서버 API (FastAPI, Python 3.11) — 큐·워커 인터페이스·삭제 정책. 스텁 워커로 흐름이 돈다
 eval/   평가 하네스 — 골든 세트·한 명령 재평가·결과표 자동 생성 (docs/eval-results-v6.md)
@@ -67,6 +67,8 @@ uv run python eval/run_all.py             # 평가 하네스 → docs/eval-resul
 ```
 
 기준선은 `main`. **작업은 자기 모듈 브랜치**(`capture` `guide` `score` `server` `model` `app`)에서 하고, **준비되면 PR 을 올리고 리뷰를 요청**한다. ⑥ 이 가능할 때 브랜치를 받아 확인하고 main 에 머지한다. 내 브랜치가 뒤처지면 내가 `git merge origin/main` 으로 따라간다.
+
+**내 PR 이 머지되면 내 브랜치는 반드시 `main` 과 갈라진다** — `main` 이 squash 머지라 그렇다. `git pull` 이 `divergent branches` 라고 해도 정상이다. `git merge origin/main --no-edit` 으로 따라가면 된다. `rebase` 나 `reset --hard` 는 쓰지 않는다.
 
 **남이 쓸 수 있는 브랜치에 `push --force` 를 쓰지 않는다.** 2026-09-18 에 모듈 브랜치를 강제 푸시로 main 에 맞추다가 팀원 커밋 두 건이 사라졌다. `bash scripts/setup.sh` 가 이를 막는 git 훅을 깔아 준다. 규칙은 [`docs/work-split-modules-v6.md`](docs/work-split-modules-v6.md) §0-1.
 

@@ -52,6 +52,28 @@ gh pr edit <번호> --add-reviewer <⑥ 계정>        # 리뷰 요청 = 병합 
 
 **모듈 브랜치는 지우지 않는다.** 6주 내내 산다. PR 이 병합돼도 그대로 두고 계속 쓴다.
 
+### 내 PR 이 머지된 다음 — 여기서 다들 막힌다
+
+`main` 은 **squash 머지**다. 내 커밋 여러 개가 `main` 에서는 **새 커밋 하나**가 된다.
+그래서 머지 직후 내 모듈 브랜치는 **반드시** `main` 과 갈라진다. 뒤처져서가 아니라 구조가 그렇다.
+
+```
+$ git pull
+hint: You have divergent branches and need to specify how to reconcile them.
+fatal: Not possible to fast-forward, aborting.
+```
+
+**정상이다.** 이렇게 따라간다:
+
+```bash
+git fetch origin
+git merge origin/main --no-edit        # 머지 커밋 하나 생긴다. 그대로 둔다
+git push origin score
+```
+
+`git rebase` 도 `git reset --hard` 도 쓰지 않는다. 둘 다 이력을 갈아서 강제 푸시가 필요해지고,
+그게 2026-09-18 에 커밋을 날린 바로 그 길이다.
+
 ### 왜 이 규칙인가 — 2026-09-18 사고
 
 모듈 브랜치를 main 에 맞추려고 `git branch -f` + `git push -f` 를 돌렸고, 그 사이 올라온 팀원 커밋 두 건이 원격에서 사라졌다.
@@ -76,10 +98,10 @@ gh api "repos/1DAN-2ZO/support-yr-makeup/events?per_page=100"   --jq '.[]|select
 
 | | |
 |---|---|
-| **금지** | 남이 쓸 수 있는 브랜치(`main`, 모듈 브랜치, 남의 작업 브랜치)에 **`push --force` / `push -f` / `branch -f`** |
+| **금지** | 남이 쓸 수 있는 브랜치(`main`, 모듈 브랜치 6개, `poc/full`)에 **`push --force` / `push -f` / `branch -f`** |
 | **금지** | `main` 에 직접 push, `main` 기록 변경 |
-| 허용 | 자기 작업 브랜치에서 리베이스 후 `--force-with-lease` (자기 것만) |
-| 의무 | 내 작업 브랜치가 뒤처지면 **`git merge origin/main`** 으로 따라간다. 충돌하면 내가 푼다 |
+| 허용 | **임시 실험 브랜치**(`<모듈>-<무엇>`)에서만 `FORCE_OK=1 … --force-with-lease`. 모듈 브랜치는 보호 브랜치라 이걸로도 안 된다 |
+| 의무 | 내 모듈 브랜치가 뒤처지면 **`git merge origin/main`** 으로 따라간다. 충돌하면 내가 푼다 |
 | 의무 | 남의 브랜치를 main 에 맞춰야 하면 **덮어쓰지 말고 담당자에게 알린다** |
 
 ### 기술적으로 막아 둔 것
