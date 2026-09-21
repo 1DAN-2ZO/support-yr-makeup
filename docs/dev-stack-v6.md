@@ -152,11 +152,11 @@ cd poc/full && node tests.mjs
 | **기준선은 `main`** | 서버·평가·클라이언트 뼈대·잠금 파일·문서가 전부 `main`에 있다. 모듈 브랜치 6개는 `main`에서 만들었고 `main`으로만 합친다. `poc/*` 브랜치는 동결(참고용) |
 | 브랜치 | **모듈 브랜치 6개에서 직접 작업**(`capture` `guide` `score` `server` `model` `app`). 작업마다 새로 파지 않는다. 6주 내내 유지 |
 | PR | **작성자가 올리고 리뷰를 요청**한다(⑥ 을 reviewer 로 지정). 정기 병합일은 없다 — 준비되면 올린다. **CI 초록** + 계약(`types.ts`·`schemas.py`)을 바꿨으면 양쪽 변경이 같은 PR에. 본문에 `Closes #이슈번호` |
-| 리뷰·병합 | **⑥ 이 가능할 때 작성자 브랜치를 받아 확인하고 `main` 에 머지한다.** 확인은 로컬에서(`git checkout <브랜치>` → 돌려 보기), **머지는 `gh pr merge` 로** — 로컬에서 합쳐 main 에 push 하지 않는다(CI 기록이 남아야 한다) |
+| 리뷰·병합 | **⑥ 이 작성자 브랜치를 로컬 `main` 에 받아 `bash scripts/check.sh` 로 실제로 돌려 본 뒤 민다.** `git merge origin/<모듈> --no-ff` → 검증 → `git push origin main`. 깨지면 `--abort` 하고 작성자에게 알린다. `main` 푸시는 ⑥ 만. 절차는 `work-split-modules-v6.md` §0-1-1 |
 | 강제 푸시 | **남이 쓸 수 있는 브랜치에 `push -f`·`branch -f` 금지.** 자기 작업 브랜치에만 `--force-with-lease`. 남의 브랜치를 main 에 맞춰야 하면 덮어쓰지 말고 담당자에게 알린다 |
 | 충돌 | **작성자가 자기 브랜치에서 `git merge origin/main` 으로 풀고 다시 올린다.** ⑥ 이 남의 코드를 대신 풀지 않는다 |
 | main 따라가기 | 내 모듈 브랜치가 뒤처지면 **내가** `git merge origin/main`. 남의 브랜치를 대신 맞추지 않는다 |
-| squash 후 | `main` 은 squash 머지라 **내 PR 이 머지되면 내 브랜치는 반드시 갈라진다**(`divergent branches`). 정상이다. `git merge origin/main --no-edit` 으로 따라간다 — `rebase`·`reset --hard` 는 쓰지 않는다 |
+| 머지 후 | 병합 커밋(`--no-ff`)이라 **내 브랜치가 갈라지지 않는다.** `git pull` 이 fast-forward 로 붙는다. 2026-09-21 이전 squash 머지로 이미 갈라진 브랜치만 `git merge origin/main --no-edit` 으로 한 번 정리한다 — `rebase`·`reset --hard` 는 쓰지 않는다 |
 | 커밋 전 | `bash scripts/check.sh` — CI 와 같은 검사. 실패하면 올리지 않는다 |
 | 의존성 변경 | `uv add …` / `npm install …` 한 사람이 `uv.lock`·`package-lock.json`을 같은 PR에 |
 | 데이터·모델 | 저장소에 넣지 않는다. `DHE_DATA_DIR` 아래에 두고 `eval/golden/manifest.json`에 경로·해시만 |
