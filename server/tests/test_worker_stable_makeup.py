@@ -5,8 +5,11 @@ model_server.py 자체(별도 conda env, GPU 필요)는 여기서 못 돌린다 
 import os
 
 import httpx
+import numpy as np
 import pytest
+from PIL import Image
 
+from server.app import layer as layer_mod
 from server.app.config import settings
 from server.app.worker_stable_makeup import stable_makeup_worker
 
@@ -157,12 +160,34 @@ def test_layer_exception_never_escapes(fake_model_server, monkeypatch):
     assert stable_makeup_worker(str(source), "look_01") == ("/results/1700000000.jpg", None, None)
 
 
-def test_absent_landmarker_gives_no_layer(fake_model_server):
-    source, _ = fake_model_server
+def _real_source_and_result(source, result_dir):
+    """진짜 RGB 사진 2장 — 레이어 실패가 이미지 문제가 아니라 랜드마커 조건에서 나오게 한다."""
+    n = layer_mod.ALIGNED_SIZE
+    base = np.full((n, n, 3), (200, 170, 150), dtype=np.uint8)
+    made = base.copy()
+    made[200:260, 120:200] = (200, 30, 60)
+    Image.fromarray(base).save(source, format="JPEG", quality=100)
+    Image.fromarray(made).save(result_dir / "1700000000.jpg", quality=100, subsampling=0)
+
+
+def test_absent_landmarker_gives_no_layer_but_would_with_landmarks(fake_model_server, monkeypatch):
+    """I1: 같은 실사진 설정에서 랜드마커만 비우면 None, 랜드마크가 나오면 layer_url이 붙는다."""
+    source, result_dir = fake_model_server
+    _real_source_and_result(source, result_dir)
     old = settings.face_landmarker_path
     object.__setattr__(settings, "face_landmarker_path", "")
     try:
         assert stable_makeup_worker(str(source), "look_01") == ("/results/1700000000.jpg", None, None)
+
+        n = layer_mod.ALIGNED_SIZE
+        lips = np.zeros((n, n), dtype=bool)
+        lips[200:260, 120:200] = True
+        fore = np.zeros((n, n), dtype=bool)
+        fore[20:80, 100:220] = True
+        monkeypatch.setattr(layer_mod, "_region_masks", lambda rgb: ({"lips": lips}, fore))
+        url, layer_url, cos = stable_makeup_worker(str(source), "look_01")
+        assert layer_url == "/results/1700000000_layer.png"
+        assert os.path.exists(result_dir / "1700000000_layer.png")
     finally:
         object.__setattr__(settings, "face_landmarker_path", old)
 

@@ -5,7 +5,7 @@
 
 알고리즘(POC 선행 구현 client/lib/extractLayer.js와 같은 순서):
  1. 이마(비화장 기준)에서 (결과 Lab - 원본 Lab)의 채널별 중앙값 = diffusion 재구성 전역 편향 추정
- 2. 결과 Lab에서 그 편향을 차감
+ 2. 결과 Lab에서 그 편향을 차감 (이마가 프레임 밖이라 추정 불가면 레이어 없음)
  3. 부위 마스크 안에서 원본과 보정된 결과의 ΔE(CIE76) 계산, layer_de_threshold 미만은 알파 0
 
 인코딩(RGBA, uint8):
@@ -56,19 +56,22 @@ def extract_layer_from_arrays(
     source_rgb: np.ndarray,
     result_rgb: np.ndarray,
     masks: dict[str, np.ndarray],
-    forehead: np.ndarray | None = None,
+    forehead: np.ndarray | None,
     threshold: float | None = None,
-) -> np.ndarray:
-    """source/result: HxWx3 uint8, masks: 부위 -> HxW bool, forehead: 편향 추정용 bool. 반환 HxWx4 uint8."""
+) -> np.ndarray | None:
+    """source/result: HxWx3 uint8, masks: 부위 -> HxW bool, forehead: 편향 추정용 bool. 반환 HxWx4 uint8.
+
+    forehead가 없거나 비면(이마가 프레임 밖) None — 전역 편향 보정 없이 뽑으면 diffusion 색조가 통째로
+    가짜 화장이 되므로, 가짜 레이어보다 클라이언트의 3점 아핀 폴백이 낫다."""
     thr = settings.layer_de_threshold if threshold is None else threshold
     lab_s = _rgb2lab(source_rgb)
     lab_r = _rgb2lab(result_rgb)
 
     diff = lab_r - lab_s
-    if forehead is not None and forehead.any():
-        bias = np.array([_median(diff[..., k][forehead]) for k in range(3)])
-    else:
-        bias = np.zeros(3)
+    if forehead is None or not forehead.any():
+        log.warning("layer: forehead outside frame, skipping layer")
+        return None
+    bias = np.array([_median(diff[..., k][forehead]) for k in range(3)])
     delta = diff - bias  # 편향 보정된 결과 - 원본
     de = np.linalg.norm(delta, axis=-1)
 
@@ -134,7 +137,7 @@ def extract_layer(source_path: str, result_path: str) -> str | None:
             return None
         masks, forehead = found
         layer = extract_layer_from_arrays(source, result, masks, forehead)
-        if layer[..., 3].max() == 0:
+        if layer is None or layer[..., 3].max() == 0:
             return None  # 임계 미달 = 화장이 안 보임. 레이어 없이 결과 이미지만
         out_path = result_path.rsplit(".", 1)[0] + "_layer.png"
         Image.fromarray(layer, mode="RGBA").save(out_path)

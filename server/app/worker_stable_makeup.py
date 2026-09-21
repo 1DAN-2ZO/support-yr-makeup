@@ -21,13 +21,13 @@ log = logging.getLogger(__name__)
 # look_id는 클라이언트가 보내는 원시 폼 입력이라 경로 조합 전에 반드시 검증한다 (path traversal 방지).
 _LOOK_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 # 모델 서버 result_url(/results/<이름>.jpg) 형식. 파일명만 허용해 result_dir 밖으로 못 나가게 한다.
-_RESULT_URL_RE = re.compile(r"^/results/([A-Za-z0-9_.-]+\.jpg)$")
+_RESULT_URL_RE = re.compile(r"/results/([A-Za-z0-9_.-]+\.jpg)")
 
 
 def _layer_url(source_path: str, result_url: str) -> str | None:
     """레이어 추출 시도 -> /results/<이름>_layer.png. 어떤 실패도 None (예외·경로를 밖으로 내지 않는다)."""
     try:
-        m = _RESULT_URL_RE.match(result_url)
+        m = _RESULT_URL_RE.fullmatch(result_url)
         if not m or ".." in m.group(1):
             log.warning("layer: unexpected result_url from model server")
             return None
