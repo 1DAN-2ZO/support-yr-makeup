@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>카메라 잠금 지원 확인 (1-3)</title>
+<style>
+  body { font: 15px/1.5 -apple-system, "Segoe UI", "Malgun Gothic", sans-serif; margin: 16px; color: #2b2723; }
+  button { font: inherit; padding: 10px 16px; border-radius: 8px; border: 0; background: #2a8c85; color: #fff; }
+  pre { background: #f4f1ee; padding: 10px; border-radius: 8px; white-space: pre-wrap; word-break: break-all; font-size: 12px; }
+  video { width: 100%; max-width: 360px; background: #000; border-radius: 8px; }
+  table { border-collapse: collapse; margin-top: 8px; } td, th { border: 1px solid #ddd; padding: 4px 8px; font-size: 13px; }
+</style>
+</head>
+<body>
+<h1>카메라 잠금 지원 확인</h1>
+<p>폰에서 이 페이지를 열고 <b>시작</b>을 누르세요. 결과 표를 그대로 복사해 <code>docs/capture-checklist-v6.md</code> 의 1-3 표에 붙입니다.</p>
+<button id="go">시작 (전면 카메라)</button>
+<video id="v" autoplay playsinline muted></video>
+<table id="t"><thead><tr><th>항목</th><th>값</th></tr></thead><tbody></tbody></table>
+<h3>표에 붙일 한 줄</h3>
+<pre id="row">—</pre>
+<h3>원본 getCapabilities()</h3>
+<pre id="raw">—</pre>
+<script type="module">
+  const $ = (id) => document.getElementById(id);
+  const has = (arr, v) => Array.isArray(arr) && arr.includes(v);
+  $('go').onclick = async () => {
+    const rows = [];
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+      $('v').srcObject = stream;
+      const track = stream.getVideoTracks()[0];
+      const caps = track.getCapabilities ? track.getCapabilities() : null;
+      const settings = track.getSettings ? track.getSettings() : {};
+      rows.push(['UA', navigator.userAgent]);
+      rows.push(['트랙 이름', track.label]);
+      rows.push(['getCapabilities', caps ? 'O' : 'X (iOS 사파리)']);
+      rows.push(['whiteBalanceMode', caps?.whiteBalanceMode ? caps.whiteBalanceMode.join(', ') : '-']);
+      rows.push(['exposureMode', caps?.exposureMode ? caps.exposureMode.join(', ') : '-']);
+      rows.push(['focusMode', caps?.focusMode ? caps.focusMode.join(', ') : '-']);
+      rows.push(['최대 해상도', caps?.width?.max ? `${caps.width.max}×${caps.height?.max}` : '-']);
+      rows.push(['지금 해상도', `${settings.width}×${settings.height}`]);
+      rows.push(['torch', caps?.torch != null ? String(caps.torch) : '-']);
+      rows.push(['Wake Lock', 'wakeLock' in navigator ? 'O' : 'X']);
+      rows.push(['ImageCapture', 'ImageCapture' in window ? 'O' : 'X']);
+      // manual 잠금 실제로 시도
+      const tryLock = async (key) => {
+        if (!has(caps?.[key], 'manual')) return 'X';
+        try { await track.applyConstraints({ advanced: [{ [key]: 'manual' }] }); return 'O'; } catch (e) { return '실패: ' + e.message; }
+      };
+      const wb = await tryLock('whiteBalanceMode'), ex = await tryLock('exposureMode'), fo = await tryLock('focusMode');
+      rows.push(['WB manual 잠금', wb]); rows.push(['노출 manual 잠금', ex]); rows.push(['초점 manual 잠금', fo]);
+      const m = (v) => (v === 'O' ? 'O' : v === 'X' ? 'X' : '실패');
+      $('row').textContent = `| ${navigator.userAgent.match(/\((.*?)\)/)?.[1] ?? navigator.userAgent} | ${track.label || '-'} | ${caps ? 'O' : 'X'} | ${m(wb)} | ${m(ex)} | ${m(fo)} | ${caps?.width?.max ?? '-'}×${caps?.height?.max ?? '-'} |`;
+      $('raw').textContent = JSON.stringify({ caps, settings }, null, 1);
+    } catch (e) {
+      rows.push(['오류', e.message]);
+    }
+    $('t').querySelector('tbody').innerHTML = rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+  };
+</script>
+</body>
+</html>

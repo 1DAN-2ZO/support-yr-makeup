@@ -7,7 +7,15 @@ import datetime as dt
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
+
+# Windows 콘솔(cp949)에서 한글·기호가 깨지지 않게. 평가 스크립트는 전부 이 파일을 거친다
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+    except Exception:
+        pass
 
 ROOT = Path(__file__).resolve().parents[1]
 GOLDEN = ROOT / "eval" / "golden" / "manifest.json"

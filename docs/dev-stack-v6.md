@@ -129,7 +129,7 @@ cd poc/full && node tests.mjs
 - **버전은 코드가 아니라 설정에.** `config.py Versions`, `rules/*.json`의 `version`. 응답·로그·결과 카드에 같이 찍힌다.
 - **테스트 없는 PR 없음.** Python은 pytest, TS는 vitest. 골든 세트가 생기면 채점 변경은 `eval/score/run.py`까지.
 - **가정값은 `PARAMS`/`rules/*.json` 한 곳.** 코드 여기저기 숫자를 박지 않는다.
-- **커밋 메시지 한국어**, 첫 줄에 무엇이 어떻게 나아졌는지. 브랜치는 모듈 이름(`server/queue`, `eval/score`, `client/gate`).
+- **커밋 메시지 한국어**, 첫 줄에 무엇이 어떻게 나아졌는지. 브랜치는 §8 을 따른다 — 모듈 브랜치 6개에서 직접 작업한다.
 
 ## 7. 서버 뼈대가 이미 하는 것 / 아직 안 하는 것
 
@@ -152,16 +152,24 @@ cd poc/full && node tests.mjs
 | **기준선은 `main`** | 서버·평가·클라이언트 뼈대·잠금 파일·문서가 전부 `main`에 있다. 모듈 브랜치 6개는 `main`에서 만들었고 `main`으로만 합친다. `poc/*` 브랜치는 동결(참고용) |
 | 브랜치 | **모듈 브랜치 6개에서 직접 작업**(`capture` `guide` `score` `server` `model` `app`). 작업마다 새로 파지 않는다. 6주 내내 유지 |
 | PR | **작성자가 올리고 리뷰를 요청**한다(⑥ 을 reviewer 로 지정). 정기 병합일은 없다 — 준비되면 올린다. **CI 초록** + 계약(`types.ts`·`schemas.py`)을 바꿨으면 양쪽 변경이 같은 PR에. 본문에 `Closes #이슈번호` |
-| 리뷰·병합 | **⑥ 이 가능할 때 작성자 브랜치를 받아 확인하고 `main` 에 머지한다.** 확인은 로컬에서(`git checkout <브랜치>` → 돌려 보기), **머지는 `gh pr merge` 로** — 로컬에서 합쳐 main 에 push 하지 않는다(CI 기록이 남아야 한다) |
+| 리뷰·병합 | **⑥ 이 작성자 브랜치를 로컬 `main` 에 받아 `bash scripts/check.sh` 로 실제로 돌려 본 뒤 민다.** `git merge origin/<모듈> --no-ff` → 검증 → `git push origin main`. 깨지면 `--abort` 하고 작성자에게 알린다. `main` 푸시는 ⑥ 만. 절차는 `work-split-modules-v6.md` §0-1-1 |
 | 강제 푸시 | **남이 쓸 수 있는 브랜치에 `push -f`·`branch -f` 금지.** 자기 작업 브랜치에만 `--force-with-lease`. 남의 브랜치를 main 에 맞춰야 하면 덮어쓰지 말고 담당자에게 알린다 |
 | 충돌 | **작성자가 자기 브랜치에서 `git merge origin/main` 으로 풀고 다시 올린다.** ⑥ 이 남의 코드를 대신 풀지 않는다 |
 | main 따라가기 | 내 모듈 브랜치가 뒤처지면 **내가** `git merge origin/main`. 남의 브랜치를 대신 맞추지 않는다 |
+| 머지 후 | 병합 커밋(`--no-ff`)이라 **내 브랜치가 갈라지지 않는다.** `git pull` 이 fast-forward 로 붙는다. 2026-09-21 이전 squash 머지로 이미 갈라진 브랜치만 `git merge origin/main --no-edit` 으로 한 번 정리한다 — `rebase`·`reset --hard` 는 쓰지 않는다 |
 | 커밋 전 | `bash scripts/check.sh` — CI 와 같은 검사. 실패하면 올리지 않는다 |
 | 의존성 변경 | `uv add …` / `npm install …` 한 사람이 `uv.lock`·`package-lock.json`을 같은 PR에 |
 | 데이터·모델 | 저장소에 넣지 않는다. `DHE_DATA_DIR` 아래에 두고 `eval/golden/manifest.json`에 경로·해시만 |
 | 문서 | 코드가 바뀌면 같은 PR에서 `docs/`도 고친다. 결과표(`eval-results-v6.md`)는 손으로 안 고침 |
 
-**브랜치 목록 (2026-09-18 정리 후)**: `main`(기준선) · 모듈 6개(`capture` `guide` `score` `server` `model` `app`) · `poc/full`(POC 보관·참조용, 화면별 POC 를 전부 모아 뒀다) · `docs/tech-stack-and-datasets`(병합 완료, 정리 대상). `poc/screen2`~`poc/screen6` 은 내용을 `poc/full` 로 옮기고 삭제했다.
+**브랜치 목록 (2026-09-21 확인)**: `main`(기준선) · 모듈 6개(`capture` `guide` `score` `server` `model` `app`) · `poc/full`(POC 보관·참조용, 화면별 POC 를 전부 모아 뒀다). `poc/screen2`~`poc/screen6` 은 내용을 `poc/full` 로 옮기고 삭제했다.
+
+정리 대상 둘 — 지우기 전에 주인에게 확인한다. (`rescue/capture-jeakeun` 은 2026-09-21 삭제: 같은 작업이 jeakeun 본인 커밋 `f39fd1a` 로 main 에 있다)
+
+| 브랜치 | 무엇 | 누구 |
+|---|---|---|
+| `docs/tech-stack-and-datasets` | main 에 병합 완료 | 정리 가능 |
+| `model-shoot-plan` | JW020799 가 2026-09-18 사고 때 자기 커밋을 옮겨 둔 곳 | **본인 확인 전까지 두기** |
 
 **`main` 브랜치 보호는 못 건다** (2026-09-18 확인). 비공개 저장소 + 무료 플랜이라 GitHub 이 기능 자체를 막는다(`Upgrade to GitHub Pro or make this repository public`). 선택지는 셋이다.
 

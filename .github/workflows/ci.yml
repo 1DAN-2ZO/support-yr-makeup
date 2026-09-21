@@ -1,8 +1,9 @@
 name: ci
 
 on:
+  # 모듈 브랜치에서도 돌린다 — 각자 작업 중에 바로 알 수 있게
   push:
-    branches: [main]
+    branches: [main, capture, guide, score, server, model, app]
   pull_request:
 
 jobs:
