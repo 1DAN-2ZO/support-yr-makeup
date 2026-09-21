@@ -6,11 +6,18 @@
 
 | 평가 | 지표 | 기준선 | 현재 | 통과 기준 | n | 비고 | 파일 |
 |---|---|---|---|---|---|---|---|
+| E-2 | 얼굴형 정확도 · 앱 규칙(estimateFaceShape) |  | 0.222 |  | 998 | 공개 얼굴형 test 998장(서양). 865장을 각진형으로 판정 | `2026-09-21_b418878_faceshape_pub-v0_faceshape-test998.csv` |
+| E-2 | 얼굴형 정확도 · 얼굴 점 · 기존 비율 3개 + 로지스틱 | 0.222 | 0.391 |  | 997 | 공개 얼굴형 test 998장(서양), 5겹 교차검증 (CNN과 측정 방식 다름) | `2026-09-21_b418878_faceshape_pub-v0_faceshape-test998.csv` |
+| E-2 | 얼굴형 정확도 · 얼굴 점 · 추천 기준 4종 + 로지스틱 | 0.222 | 0.46 |  | 997 | 공개 얼굴형 test 998장(서양), 5겹 교차검증 (CNN과 측정 방식 다름) | `2026-09-21_b418878_faceshape_pub-v0_faceshape-test998.csv` |
+| E-2 | 얼굴형 정확도 · 얼굴 점 · 윤곽선 36점 + 로지스틱 | 0.222 | 0.509 |  | 997 | 공개 얼굴형 test 998장(서양), 5겹 교차검증 (CNN과 측정 방식 다름) | `2026-09-21_b418878_faceshape_pub-v0_faceshape-test998.csv` |
+| E-2 | 얼굴형 정확도 · CNN 파인튜닝 efficientnet_b0 | 0.222 | 0.808 | 규칙보다 높음 · 라벨러 일치율 미측정 | 998 | 공개 얼굴형 test 998장(서양). 학습 8509장, 8에폭, 파라미터 4.01M, 시드 0 | `2026-09-21_b418878_faceshape_pub-v0_faceshape-test998.csv` |
+| E-2 | 얼굴형 정확도 · CNN 파인튜닝 mobilenetv3_large_100 | 0.222 | 0.782 | 규칙보다 높음 · 라벨러 일치율 미측정 | 998 | 공개 얼굴형 test 998장(서양). 학습 8509장, 8에폭, 파라미터 4.21M, 시드 0 | `2026-09-21_b418878_faceshape_pub-v0_faceshape-test998.csv` |
 | score | - |  |  |  | 0 | skipped | `2026-09-18_686d91a_score_score-v0.1_golden-v0.csv` |
 
 ## 이력
 
 - `2026-09-18_686d91a_score_score-v0.1_golden-v0.csv`
+- `2026-09-21_b418878_faceshape_pub-v0_faceshape-test998.csv`
 
 ## 실험 노트
 
