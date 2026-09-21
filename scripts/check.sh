@@ -3,9 +3,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# 커밋 전에 반드시 통과해야 한다. 출력을 자르지 말 것 — 잘라 보면 실패를 놓친다
 echo "-- ruff";       uv run ruff check . && uv run ruff format --check .
 echo "-- pytest";     uv run pytest
 echo "-- tsc";        ( cd client && npm run --silent typecheck )
 echo "-- vitest";     ( cd client && npm test --silent )
 echo "-- eslint";     ( cd client && npm run --silent lint )
-echo "OK"
+echo
+echo "OK — 전부 통과"
