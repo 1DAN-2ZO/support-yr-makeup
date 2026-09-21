@@ -44,6 +44,26 @@ class Settings:
     job_ttl_sec: int = int(_env("JOB_TTL_SEC", str(2 * 3600)))
     # 세션당 룩 수 상한
     max_looks: int = int(_env("MAX_LOOKS", "10"))
+    # stub | gpu — gpu면 stable_makeup_worker를 씀 (health 응답에도 그대로 노출)
+    worker_mode: str = _env("WORKER_MODE", "stub")
+    # 별도 conda 프로세스로 뜨는 상주 모델 서버 (poc/look-tryon/server-bench/model_server.py)
+    model_server_url: str = _env("MODEL_SERVER_URL", "http://127.0.0.1:8100")
+    # 룩 ID -> 참조 사진 매핑 폴더. 이슈 #6 결정 전까지는 벤치마크 샘플로 대체
+    look_ref_dir: str = _env(
+        "LOOK_REF_DIR",
+        os.path.join("poc", "look-tryon", "server-bench", "stable_makeup", "test_imgs", "makeup"),
+    )
+    # 결과 이미지 저장 폴더. 모델 서버와 메인 서버가 같은 경로를 봐야 함(같은 머신 전제)
+    result_dir: str = _env(
+        "RESULT_DIR", os.path.join(os.path.abspath(os.sep), "tmp", "danghwaeung", "results")
+    )
+    # 벤치마크 결론(server-bench/README.md): fp16 + DDIM 8 step = 2.55초 (10 step은 3.15초로 3초 초과)
+    transfer_steps: int = int(_env("TRANSFER_STEPS", "8"))
+    transfer_guidance: float = float(_env("TRANSFER_GUIDANCE", "1.6"))
+    # MediaPipe Face Landmarker(.task) 경로. 바이너리라 저장소 밖 — 비면 레이어 추출은 None을 돌려준다(#49)
+    face_landmarker_path: str = _env("FACE_LANDMARKER_PATH", "")
+    # 화장 레이어 ΔE 절단 임계 (POC client/lib/extractLayer.js 기본값과 동일 6)
+    layer_de_threshold: float = float(_env("LAYER_DE_THRESHOLD", "6"))
 
 
 settings = Settings()

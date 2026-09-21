@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>UV 와이어프레임 미리보기</title>
+<style>
+  body { font-family: sans-serif; background: #222; color: #eee; text-align: center; }
+  canvas { background: #fff; border: 1px solid #555; margin-top: 12px; }
+  p { max-width: 640px; margin: 8px auto; font-size: 14px; color: #ccc; }
+</style>
+</head>
+<body>
+  <h1>face-uv.json + face-triangles.json 와이어프레임</h1>
+  <p>정상이라면 눈 2개와 입이 <b>삼각형으로 안 채워진 구멍</b>으로 보여야 한다.
+     구멍 없이 꽉 채워져 있으면 인덱스가 꼬인 것 — 숫자 검증(길이 468/2640, 범위)만으로는 안 잡힌다.</p>
+  <canvas id="cv" width="700" height="700"></canvas>
+  <script type="module">
+    const uv = await (await fetch("../assets/face-uv.json")).json();
+    const tri = await (await fetch("../assets/face-triangles.json")).json();
+    const cv = document.getElementById("cv");
+    const ctx = cv.getContext("2d");
+    const pad = 20, size = cv.width - pad * 2;
+    const P = ([u, v]) => [pad + u * size, pad + v * size];
+
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.strokeStyle = "rgba(20,120,110,0.6)";
+    ctx.lineWidth = 1;
+    for (let i = 0; i < tri.length; i += 3) {
+      const [a, b, c] = [tri[i], tri[i + 1], tri[i + 2]];
+      const [ax, ay] = P(uv[a]), [bx, by] = P(uv[b]), [cx, cy] = P(uv[c]);
+      ctx.beginPath();
+      ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.lineTo(cx, cy); ctx.closePath();
+      ctx.stroke();
+    }
+    // 점도 같이 찍어서 468개가 실제로 다 쓰였는지 확인
+    ctx.fillStyle = "rgba(200,60,40,0.5)";
+    for (const [u, v] of uv) {
+      const [x, y] = P([u, v]);
+      ctx.fillRect(x - 0.5, y - 0.5, 1, 1);
+    }
+    document.title = `UV 미리보기 — ${uv.length}점 / ${tri.length / 3}삼각형`;
+  </script>
+</body>
+</html>

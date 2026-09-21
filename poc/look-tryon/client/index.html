@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>당화응 POC — 얼굴 촬영 → 룩 생성 → 실시간 매핑</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <h1>얼굴 촬영 → 룩 생성(서버) → 실시간 얼굴 매핑</h1>
+  <p class="note">v2: 눈썹·눈섀도우·입술·볼 부위별 랜드마크 폴리곤 워핑 + One Euro Filter 스무딩으로 라이브 얼굴에 붙입니다.</p>
+  <div id="status" class="status">초기화 중…</div>
+
+  <video id="video" playsinline muted class="camPreview"></video>
+
+  <section id="step1">
+    <h2>1. 얼굴 촬영</h2>
+    <button id="btnCapture" disabled>얼굴 촬영</button>
+    <img id="sourcePreview" class="thumb" />
+  </section>
+
+  <section id="step2" hidden>
+    <h2>2. 룩 참조 사진</h2>
+    <input type="file" id="refFile" accept="image/*" />
+    <img id="refPreview" class="thumb" />
+    <button id="btnGenerate" disabled>이 룩으로 생성 (서버, 약 3초)</button>
+  </section>
+
+  <section id="step3" hidden>
+    <h2>3. 완성 예상</h2>
+    <img id="resultPreview" class="thumb" />
+    <button id="btnLive">실시간으로 보기</button>
+  </section>
+
+  <section id="liveStage" hidden>
+    <h2>실시간 매핑 <span id="liveStatus"></span></h2>
+    <canvas id="liveCanvas"></canvas>
+    <label>합성 강도 <input type="range" id="alpha" min="0" max="1" step="0.05" value="0.85" /></label>
+    <label>반응성(beta) — 높을수록 얼굴에 딱 붙지만 떨림 더 남음
+      <input type="range" id="beta" min="0.01" max="0.3" step="0.01" value="0.08" />
+      <span id="betaVal"></span>
+    </label>
+    <label>기준 스무딩(minCutoff) — 높을수록 가만히 있을 때도 덜 부드러움(더 딱 붙음)
+      <input type="range" id="minCutoff" min="0.5" max="5" step="0.1" value="2.5" />
+      <span id="minCutoffVal"></span>
+    </label>
+  </section>
+
+  <button id="btnReset">초기화</button>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

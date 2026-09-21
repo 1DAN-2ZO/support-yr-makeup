@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>당화응 POC — WebGL 실시간 매핑 (C4)</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <h1>얼굴 촬영 → 룩 생성(서버) → 실시간 매핑 (WebGL, canonical UV 메시)</h1>
+  <p class="note">C4: 부위 폴리곤 워핑(app.js) 대신 468점 전체 메시를 canonical UV 공간에 굽고, WebGL2(three.js)로 매 프레임 정점만 갱신해서 재투영.</p>
+  <div id="status" class="status">초기화 중…</div>
+
+  <video id="video" playsinline muted class="camPreview"></video>
+
+  <section id="step1">
+    <h2>1. 얼굴 촬영</h2>
+    <button id="btnCapture" disabled>얼굴 촬영</button>
+    <img id="sourcePreview" class="thumb" />
+  </section>
+
+  <section id="step2" hidden>
+    <h2>2. 룩 참조 사진</h2>
+    <input type="file" id="refFile" accept="image/*" />
+    <img id="refPreview" class="thumb" />
+    <button id="btnGenerate" disabled>이 룩으로 생성 (서버, 약 3초)</button>
+  </section>
+
+  <section id="step3" hidden>
+    <h2>3. 구운 레이어(UV 공간)</h2>
+    <img id="bakedPreview" class="thumb" />
+    <button id="btnLive">실시간으로 보기</button>
+    <label><input type="checkbox" id="wireframe" /> 와이어프레임만 보기(디버그)</label>
+  </section>
+
+  <section id="liveStage" hidden>
+    <h2>실시간 매핑 <span id="liveStatus"></span></h2>
+    <canvas id="glCanvas"></canvas>
+  </section>
+
+  <button id="btnReset">초기화</button>
+
+  <script type="module" src="app-webgl.js"></script>
+</body>
+</html>

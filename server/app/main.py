@@ -19,15 +19,19 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.staticfiles import StaticFiles
 
 from .config import settings
-from .jobs import JobQueue
+from .jobs import JobQueue, stub_worker
 from .schemas import Health, JobBatch, LookJob
+from .worker_stable_makeup import stable_makeup_worker
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("dhe.api")
 
-queue = JobQueue()
+worker = stable_makeup_worker if settings.worker_mode == "gpu" else stub_worker
+queue = JobQueue(worker=worker)
+os.makedirs(settings.result_dir, exist_ok=True)
 
 
 @asynccontextmanager
@@ -37,11 +41,14 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="당화응 API", version=settings.versions.app, lifespan=lifespan)
+app.mount("/results", StaticFiles(directory=settings.result_dir), name="results")
 
 
 @app.get("/health", response_model=Health)
 def health() -> Health:
-    return Health(ok=True, ver=settings.versions.as_dict(), queue_depth=queue.depth(), worker="stub")
+    return Health(
+        ok=True, ver=settings.versions.as_dict(), queue_depth=queue.depth(), worker=settings.worker_mode
+    )
 
 
 @app.post("/sessions/{session_id}/jobs", response_model=JobBatch)
