@@ -12,6 +12,7 @@ export default defineConfig({
   server: { host: true, port: 5173 },
   build: { target: "es2022", sourcemap: true },
   test: {
+    // 기본은 node. DOM 이 필요한 파일은 맨 위에 `// @vitest-environment jsdom` 한 줄
     environment: "node",
     include: ["tests/**/*.test.ts", "src/**/*.test.ts"],
   },
