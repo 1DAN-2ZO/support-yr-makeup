@@ -81,6 +81,7 @@ export const CAPTURE_LIMITS: CaptureLimits = { pitch: 10, sharpMin: 30, brightTo
 /** 촬영 조건 문구. 숫자 없이 한 줄 (기능 정의서 F-01) */
 export const SHOT_TEXT = {
   none: "",
+  cut: "얼굴이 잘려요. 얼굴 전체가 보이게 해 주세요",
   front: "조금만 정면으로",
   left: "고개를 왼쪽으로 조금 더",
   right: "고개를 오른쪽으로 조금 더",
@@ -108,6 +109,8 @@ export interface ShotMeasure {
   closedB: boolean;
   /** 얼굴 폭 / 프레임 폭 */
   faceRatio?: number;
+  /** 랜드마크 전체가 프레임 가장자리에서 얼마나 떨어져 있나 (짧은 변 대비 비율, 밖이면 음수). 없으면 조건 생략 */
+  faceInset?: number;
   /** 라플라시안 분산 */
   sharpness?: number;
   /** 이마 L* (지금 프레임) */
@@ -122,10 +125,12 @@ export interface ShotMeasure {
 
 /** 얼굴 크기 허용 범위 (얼굴 폭 / 프레임 폭) */
 export const FACE_RATIO = { min: 0.28, max: 0.75 } as const;
+/** 얼굴 전체가 프레임 안에 있어야 하는 최소 여백 (짧은 변의 3%). 2026-09-21 폰 실측: 턱·이마가 잘린 장이 통과해서 추가 */
+export const FACE_INSET_MIN = 0.03;
 
 /**
  * 촬영 조건: 안 맞는 것 하나만 한 줄.
- * 순서: 얼굴 → 각도 → 눈 상태 → 얼굴 크기 → 선명 → 밝기 → 색 → 안정 (F-01 "촬영 조건 안내" + 1-9 색 조건)
+ * 순서: 얼굴 → 잘림 → 각도 → 눈 상태 → 얼굴 크기 → 선명 → 밝기 → 색 → 안정 (F-01 "촬영 조건 안내" + 1-9 색 조건 + 잘림 조건 2026-09-21)
  */
 export function shotGate(shotId: ShotId, m: ShotMeasure, limits: CaptureLimits = CAPTURE_LIMITS): GateResult {
   const shot = SHOTS.find((s) => s.id === shotId);
@@ -134,6 +139,7 @@ export function shotGate(shotId: ShotId, m: ShotMeasure, limits: CaptureLimits =
   const fail = (firstFail: GateFail, key: ShotTextKey): GateResult => ({ ok: false, firstFail, text: SHOT_TEXT[key], stableCount });
 
   if (!m.faceDetected) return fail("face", "none");
+  if (typeof m.faceInset === "number" && m.faceInset < FACE_INSET_MIN) return fail("visible", "cut");
   if (m.yaw < shot.yaw[0] || m.yaw > shot.yaw[1]) {
     if (shot.id.startsWith("front")) return fail("angle", "front");
     if (shot.id === "left_45") return fail("angle", m.yaw > shot.yaw[1] ? "left" : "back");
