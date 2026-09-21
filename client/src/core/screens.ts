@@ -8,48 +8,14 @@
 
 import type { PartId, PartStatus } from "./types";
 import { PART_IDS } from "./types";
+// 화면 목록·이름은 ① 의 flow.ts 가 정본이다 (세션이 먼저 쓴다). 여기서 다시 정의하지 않는다.
+import { SCREENS, SCREEN_NAME, type ScreenId } from "./flow";
 
-export type ScreenId =
-  | "consent"
-  | "denied"
-  | "capture"
-  | "processing"
-  | "looks"
-  | "fullrender"
-  | "guide"
-  | "live"
-  | "result"
-  | "review"
-  | "done";
+export { SCREEN_NAME };
+export type { ScreenId };
 
-/** 기본 진행 순서. 진행 칩·뒤로가기는 이 순서를 따르지 않고 세션 상태를 본다 */
-export const SCREEN_ORDER = [
-  "consent",
-  "denied",
-  "capture",
-  "processing",
-  "looks",
-  "fullrender",
-  "guide",
-  "live",
-  "result",
-  "review",
-  "done",
-] as const satisfies readonly ScreenId[];
-
-export const SCREEN_NAME: Record<ScreenId, string> = {
-  consent: "1 동의",
-  denied: "이용 불가",
-  capture: "1 촬영",
-  processing: "서버 처리",
-  looks: "2 룩",
-  fullrender: "2-b 전체 완성 예상",
-  guide: "3 완성본",
-  live: "4 실시간 테두리",
-  result: "5 결과",
-  review: "6 전체 리뷰",
-  done: "끝",
-};
+/** 기본 진행 순서 = flow.ts 의 SCREENS. 진행 칩·뒤로가기는 이 순서가 아니라 세션 상태를 본다 */
+export const SCREEN_ORDER: readonly ScreenId[] = SCREENS;
 
 /** 어느 모듈이 그 화면을 만드는가. 껍데기가 "아직 안 붙음"을 표시할 때 쓴다 */
 export const SCREEN_OWNER: Record<ScreenId, "capture" | "guide" | "score" | "app"> = {

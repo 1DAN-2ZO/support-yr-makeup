@@ -15,11 +15,19 @@ npm run dev            # vite, http://localhost:5173 (카메라는 localhost/htt
 src/core/      순수 함수·계약 타입. 브라우저 API 없음. 전부 테스트 가능
   types.ts     모듈 계약 (server/app/schemas.py 와 짝)
   log.ts       공통 log() — 전 모듈이 이것만 부른다
-  screens.ts   화면 목록·이름·담당, 방향 규칙, 진행 칩
-  looks.ts     룩 템플릿 읽기 (데이터는 rules/looks.json)
-  (이전 예정) landmarks.ts guides.ts gate.ts score.ts review.ts flow.ts …  ← poc/full/lib/*.js
+  flow.ts      화면 순서·ScreenId, 촬영 4장 게이트(shotGate), 세션 전이, draft 저장 형식 — 1-1
+  color.ts     sRGB→Lab, 이마 L*a*b*, 눈 흰자 a*b* 참조(scleraLab), 4장 변동 폭(labDrift) — 1-4·1-6·1-9
+  baseline.ts  Baseline 만들기(unit·이마·흰자), 눈꺼풀 기준점(eyelidRef, 1-10), 정면 재촬영 재정렬(retakeFront, 1-11)
+  capture-events.ts  consent·capture{shot,ok,retry,reason}·restore 이벤트 + 장별 재촬영 횟수 — 1-5
+  session-store.ts   메모리→IndexedDB 세션 저장(draft 2시간 만료, 사진 3장), clearAll 잔존 0 — 1-7·1-11
+  screens.ts   화면 담당(§0-2), 방향 규칙, 진행 칩 — 화면 목록·이름은 flow.ts 것을 가져다 쓴다 (6-2)
+  looks.ts     룩 템플릿 읽기 (데이터는 rules/looks.json) — 6-2
+  (이전 예정) landmarks.ts guides.ts gate.ts score.ts review.ts …  ← poc/full/lib/*.js
 src/screens/
-  shell.ts     껍데기 — 화면을 갈아 끼우는 틀 (모듈 ⑥)
+  shell.ts     껍데기 — 화면을 갈아 끼우는 틀 (모듈 ⑥, 6-2)
+  camera-locks.ts    WB·노출·초점 manual 잠금(applyConstraints), Wake Lock, visibilitychange·webglcontextlost — 1-8·1-3
+  image-encode.ts    저장용 WebP 1024 인코딩 — 1-7
+public/probe-camera.html  폰에서 getCapabilities 표 한 줄 뽑기 — 1-3
 tests/         vitest. DOM 이 필요하면 파일 맨 위에 `// @vitest-environment jsdom`
 ```
 
