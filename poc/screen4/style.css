@@ -1,0 +1,110 @@
+:root {
+  --teal: #2A8C85;
+  --warn: #C2731F;
+  --bad: #B8432F;
+  --ink: #2B2B2B;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: #101010;
+  color: #F2F0EC;
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/* 라이브 프리뷰가 화면 전체를 채운다 (화면 4 규칙) */
+.stage {
+  position: relative;
+  width: 100vw;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+#video, #overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);   /* 거울 모드. 캔버스는 ctx에서 한 번 더 뒤집는다 */
+}
+
+#overlay { transform: none; }
+
+/* 품질 게이트 한 줄. 안 맞는 것 하나만 */
+.gate {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.gate.good { color: #7FE3D8; }
+.gate.warn { color: #F0B366; }
+
+.hud {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: max(12px, env(safe-area-inset-bottom));
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(16, 16, 16, 0.82);
+  backdrop-filter: blur(8px);
+  max-width: 420px;
+}
+
+.fpsrow { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.fpsnum { font-size: 30px; font-weight: 700; line-height: 1; }
+.fpsnum small { font-size: 12px; font-weight: 400; opacity: 0.6; margin-left: 4px; }
+.barwrap { flex: 1; height: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+.bar { height: 100%; width: 0; border-radius: 4px; background: var(--teal); transition: width 0.2s; }
+.bar.good { background: var(--teal); }
+.bar.warn { background: var(--warn); }
+.bar.bad { background: var(--bad); }
+
+.nums { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.nums th { text-align: left; font-weight: 400; opacity: 0.6; padding: 2px 0; }
+.nums td { text-align: right; padding: 2px 0; }
+.nums tr.cmp th { color: #7FE3D8; opacity: 0.9; }
+.nums tr.cmp td { color: #7FE3D8; }
+
+.controls { display: grid; gap: 6px; margin: 10px 0 8px; }
+.controls label { display: flex; align-items: center; gap: 8px; font-size: 13px; opacity: 0.85; }
+.controls select { flex: 1; padding: 5px 8px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.18); background: #1C1C1C; color: inherit; }
+.controls .check { gap: 6px; }
+.controls .slider { gap: 8px; font-size: 12px; }
+.controls .slider input[type=range] { flex: 1; min-width: 0; }
+.controls .slider span { min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; opacity: 1; }
+
+.btns { display: flex; flex-wrap: wrap; gap: 6px; }
+button {
+  flex: 1 1 auto;
+  min-width: 96px;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--teal);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+button:disabled { background: #3A3A3A; color: #8A8A8A; cursor: default; }
+
+.meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; font-size: 12px; opacity: 0.55; }
+.status { margin-top: 6px; font-size: 12px; opacity: 0.8; }
+.status.bad { color: #F09A88; }
+
+#dump { width: 100%; margin-top: 8px; background: #1C1C1C; color: inherit; border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 8px; padding: 8px; font-family: ui-monospace, monospace; font-size: 12px; }
+
+@media (min-width: 720px) {
+  .hud { left: auto; right: 16px; top: 16px; bottom: auto; width: 360px; }
+}

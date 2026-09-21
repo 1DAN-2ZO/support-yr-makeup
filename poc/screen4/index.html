@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>화면 4 POC · 실시간 테두리 + fps 측정</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div class="stage">
+    <video id="video" playsinline muted></video>
+    <canvas id="overlay"></canvas>
+
+    <div id="gate" class="gate">준비 중</div>
+
+    <div class="hud">
+      <div class="fpsrow">
+        <div class="fpsnum"><span id="fps">—</span><small>fps 실제 처리</small></div>
+        <div class="barwrap"><div id="fpsBar" class="bar"></div></div>
+      </div>
+
+      <table class="nums">
+        <tr><th>루프 여력</th><td id="capacity">—</td></tr>
+        <tr><th>전체 (평균/p95)</th><td id="tTotal">—</td></tr>
+        <tr><th>얼굴</th><td id="tFace">—</td></tr>
+        <tr><th>손</th><td id="tHand">—</td></tr>
+        <tr><th>게이트</th><td id="tGate">—</td></tr>
+        <tr><th>그리기</th><td id="tDraw">—</td></tr>
+        <tr><th>루프 틱</th><td id="tickRate">—</td></tr>
+        <tr><th>중복 프레임</th><td id="dupes">—</td></tr>
+        <tr><th>WASM 스레드</th><td id="isolated">—</td></tr>
+        <tr class="cmp"><th>자세 차이 yaw (행렬↔근사)</th><td id="dYaw">—</td></tr>
+        <tr class="cmp"><th>자세 차이 pitch</th><td id="dPitch">—</td></tr>
+        <tr class="cmp"><th>눈감음 일치 (EAR↔BS)</th><td id="blinkAgree">—</td></tr>
+        <tr class="cmp"><th>웃음 최대 (mouthSmile)</th><td id="smileMax">—</td></tr>
+        <tr><th>고개</th><td id="pose">—</td></tr>
+        <tr><th>선명도</th><td id="sharp">—</td></tr>
+        <tr><th>밝기</th><td id="bright">—</td></tr>
+      </table>
+
+      <div class="controls">
+        <label>루프
+          <select id="loopMode">
+            <option value="rvfc">requestVideoFrameCallback</option>
+            <option value="raf">requestAnimationFrame (기존 방식)</option>
+          </select>
+        </label>
+        <label>손 검출
+          <select id="handMode">
+            <option value="every">매 프레임</option>
+            <option value="skip:3">3프레임마다</option>
+            <option value="skip:10">10프레임마다</option>
+            <option value="off">끔 (얼굴만)</option>
+          </select>
+        </label>
+        <label class="check"><input id="smoothing" type="checkbox"> 1€ 필터 추가 스무딩</label>
+        <label class="slider">떨림 억제<input id="minCutoff" type="range" min="0.1" max="5" step="0.1" value="1"><span id="minCutoffVal">1.0</span></label>
+        <label class="slider">따라오는 속도<input id="beta" type="range" min="0" max="20" step="0.5" value="5"><span id="betaVal">5.0</span></label>
+      </div>
+
+      <div class="btns">
+        <button id="btnStart" disabled>카메라 시작</button>
+        <button id="btnBaseline" disabled>기준 잡기</button>
+        <button id="btnReset">측정 초기화</button>
+        <button id="btnCopy">결과 복사</button>
+      </div>
+
+      <div class="meta">
+        <span>MediaPipe <b id="mpVersion">—</b></span>
+        <span id="delegate">—</span>
+        <span id="res">—</span>
+      </div>
+
+      <div id="status" class="status">불러오는 중…</div>
+      <textarea id="dump" hidden rows="10"></textarea>
+    </div>
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
