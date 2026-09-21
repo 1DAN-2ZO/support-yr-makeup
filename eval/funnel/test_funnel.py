@@ -30,7 +30,15 @@ def full_session(sid: str, *, save: bool = True, end: str = "finish") -> list[di
         st = "check_only" if part == "contour" else "passed"
         out.append(ev(sid, t, "part_status", part=part, **{"from": "in_progress", "to": st, "score": 80}))
         out.append(
-            ev(sid, t, "score", part=part, status=st, check_reason="contour" if part == "contour" else None, ms=40)
+            ev(
+                sid,
+                t,
+                "score",
+                part=part,
+                status=st,
+                check_reason="contour" if part == "contour" else None,
+                ms=40,
+            )
         )
         t += 1
     if save:
@@ -45,7 +53,9 @@ def rows_by_metric(rows: list[dict]) -> dict[str, object]:
 
 
 def test_깨진_줄은_버린다():
-    text = "\n".join([json.dumps(ev("a", 1, "consent", ok=True)), "{깨짐", "", "[]", json.dumps({"no": "sid"})])
+    text = "\n".join(
+        [json.dumps(ev("a", 1, "consent", ok=True)), "{깨짐", "", "[]", json.dumps({"no": "sid"})]
+    )
     assert len(parse_jsonl(text)) == 1
 
 
@@ -72,7 +82,9 @@ def test_중간에_나간_세션():
     events = [ev(sid, 0, "consent", ok=True)]
     for i, sc in enumerate(["consent", "capture", "looks"]):
         events.append(ev(sid, i + 1, "screen_enter", screen=sc))
-    events.append(ev(sid, 9, "capture", screen="capture", shot="front_open", ok=False, retry=1, reason="bright"))
+    events.append(
+        ev(sid, 9, "capture", screen="capture", shot="front_open", ok=False, retry=1, reason="bright")
+    )
     s = summarize_session(events)
     assert s.furthest == "looks"
     assert "review" not in s.reached
@@ -121,7 +133,10 @@ def test_확인만_이유와_부위_상태():
 
 
 def test_종료_이유_없는_세션은_기록_없음으로_센다():
-    events = full_session("a") + [ev("b", 0, "consent", ok=True), ev("b", 1, "screen_enter", screen="capture")]
+    events = full_session("a") + [
+        ev("b", 0, "consent", ok=True),
+        ev("b", 1, "screen_enter", screen="capture"),
+    ]
     m = rows_by_metric(aggregate(events))
     assert m["세션 종료 · finish(%)"] == 50.0
     assert m["세션 종료 · 기록 없음(%)"] == 50.0

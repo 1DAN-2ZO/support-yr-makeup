@@ -13,8 +13,9 @@ from __future__ import annotations
 
 import json
 from collections import Counter, defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, Iterable
+from typing import Any
 
 Event = dict[str, Any]
 
@@ -183,7 +184,12 @@ def aggregate(events: Iterable[Event]) -> list[dict]:
         status.update(s.part_status.values())
     total_part = sum(status.values())
     for st in ("passed", "check_only", "skipped"):
-        row(f"부위 · {st}(%)", _pct(status.get(st, 0), total_part), f"{status.get(st, 0)}/{total_part}", total_part)
+        row(
+            f"부위 · {st}(%)",
+            _pct(status.get(st, 0), total_part),
+            f"{status.get(st, 0)}/{total_part}",
+            total_part,
+        )
     reasons: Counter = Counter()
     for s in sessions:
         reasons.update(s.check_reasons)
@@ -207,6 +213,11 @@ def aggregate(events: Iterable[Event]) -> list[dict]:
     row("얼굴 놓침 중앙값(ms)", _median([s.lost_face_ms for s in sessions]))
     row("채점 시간 중앙값(ms)", _median([m for s in sessions for m in s.score_ms]))
     tried = [s for s in sessions if s.restore_ok is not None]
-    row("복원 성공률(%)", _pct(sum(1 for s in tried if s.restore_ok), len(tried)), f"시도 {len(tried)}", len(tried))
+    row(
+        "복원 성공률(%)",
+        _pct(sum(1 for s in tried if s.restore_ok), len(tried)),
+        f"시도 {len(tried)}",
+        len(tried),
+    )
 
     return rows
