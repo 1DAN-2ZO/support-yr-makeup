@@ -53,3 +53,45 @@ stable_makeup,fp16_10steps,2,infer,3.138,5287.9,
 stable_makeup,fp16_10steps,3,infer,3.14,5287.9,
 stable_makeup,fp16_10steps,4,infer,3.136,5287.9,
 stable_makeup,fp16_10steps,5,infer,3.145,5287.9,
+stable_makeup,fp16_10steps,0,load,17.765,,model load + weights to GPU
+stable_makeup,fp16_10steps,1,infer,3.128,5287.9,
+stable_makeup,fp16_10steps,2,infer,3.149,5287.9,
+stable_makeup,fp16_10steps,3,infer,3.131,5287.9,
+stable_makeup,fp16_10steps,4,infer,3.147,5287.9,
+stable_makeup,fp16_10steps,5,infer,3.141,5287.9,
+stable_makeup,fp16_10steps,-,identity,,,facenet_vggface2_cos=0.6051207780838013
+lcm_lora,fp16_4steps_g1.5,0,load,18.857,,model load + weights to GPU
+lcm_lora,fp16_4steps_g1.5,1,infer,1.661,5548.5,
+lcm_lora,fp16_4steps_g1.5,2,infer,1.661,5548.5,
+lcm_lora,fp16_4steps_g1.5,3,infer,1.663,5548.5,
+lcm_lora,fp16_4steps_g1.5,4,infer,1.677,5548.5,
+lcm_lora,fp16_4steps_g1.5,5,infer,1.668,5548.5,
+lcm_lora,fp16_4steps_g1.5,-,identity,,,facenet_vggface2_cos=0.5941801071166992
+lcm_lora,fp16_8steps_g1.5,0,load,18.959,,model load + weights to GPU
+lcm_lora,fp16_8steps_g1.5,1,infer,3.082,5548.1,
+lcm_lora,fp16_8steps_g1.5,2,infer,3.09,5548.1,
+lcm_lora,fp16_8steps_g1.5,3,infer,3.12,5548.1,
+lcm_lora,fp16_8steps_g1.5,4,infer,3.09,5548.1,
+lcm_lora,fp16_8steps_g1.5,5,infer,3.096,5548.1,
+lcm_lora,fp16_8steps_g1.5,-,identity,,,facenet_vggface2_cos=0.6514545679092407
+lcm_lora,fp16_4steps_g2.0,0,load,18.777,,model load + weights to GPU
+lcm_lora,fp16_4steps_g2.0,1,infer,1.657,5548.5,
+lcm_lora,fp16_4steps_g2.0,2,infer,1.658,5548.5,
+lcm_lora,fp16_4steps_g2.0,3,infer,1.656,5548.5,
+lcm_lora,fp16_4steps_g2.0,4,infer,1.661,5548.5,
+lcm_lora,fp16_4steps_g2.0,5,infer,1.666,5548.5,
+lcm_lora,fp16_4steps_g2.0,-,identity,,,facenet_vggface2_cos=0.5505157709121704
+stable_makeup,fp16_8steps,0,load,17.199,,model load + weights to GPU
+stable_makeup,fp16_8steps,1,infer,2.547,5287.4,
+stable_makeup,fp16_8steps,2,infer,2.552,5287.4,
+stable_makeup,fp16_8steps,3,infer,2.552,5287.4,
+stable_makeup,fp16_8steps,4,infer,2.552,5287.4,
+stable_makeup,fp16_8steps,5,infer,2.55,5287.4,
+stable_makeup,fp16_8steps,-,identity,,,facenet_vggface2_cos=0.6712577939033508
+stable_makeup,fp16_15steps,0,load,17.073,,model load + weights to GPU
+stable_makeup,fp16_15steps,1,infer,4.566,5286.7,
+stable_makeup,fp16_15steps,2,infer,4.574,5286.7,
+stable_makeup,fp16_15steps,3,infer,4.594,5286.7,
+stable_makeup,fp16_15steps,4,infer,4.582,5286.7,
+stable_makeup,fp16_15steps,5,infer,4.587,5286.7,
+stable_makeup,fp16_15steps,-,identity,,,facenet_vggface2_cos=0.6403918266296387

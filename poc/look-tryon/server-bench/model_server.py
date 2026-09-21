@@ -94,7 +94,7 @@ def _get_pose(source_path: str, id_image: Image.Image) -> Image.Image:
 class InferRequest(BaseModel):
     source_path: str
     ref_path: str
-    steps: int = 10
+    steps: int = 8
     guidance_scale: float = 1.6
 
 

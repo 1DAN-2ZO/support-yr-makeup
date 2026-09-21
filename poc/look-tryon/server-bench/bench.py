@@ -34,7 +34,7 @@ def write_rows(rows):
             writer.writerow(row)
 
 
-def bench_stable_makeup(dtype_name, steps=30):
+def bench_stable_makeup(dtype_name, steps=30, guidance=1.6, lcm=False):
     import torch
 
     sm_dir = SERVER_BENCH_DIR / "stable_makeup"
@@ -80,7 +80,13 @@ def bench_stable_makeup(dtype_name, steps=30):
         controlnet=[id_encoder, pose_encoder],
         torch_dtype=dtype,
     ).to("cuda")
-    pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+    if lcm:
+        # LCM-LoRA: SD1.5용 few-step 증류 LoRA + LCMScheduler (벤더링 diffusers 0.23.1이 지원)
+        from diffusers import LCMScheduler
+        pipe.load_lora_weights("latent-consistency/lcm-lora-sdv1-5")
+        pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
+    else:
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
     torch.cuda.synchronize()
     load_time = time.perf_counter() - t0
 
@@ -96,8 +102,11 @@ def bench_stable_makeup(dtype_name, steps=30):
     makeup_image = load_image(str(sm_dir / "test_imgs/makeup/1.jpg")).resize((512, 512))
     pose_image = get_draw(id_image, size=512)
 
+    candidate = "lcm_lora" if lcm else "stable_makeup"
     variant_label = f"{dtype_name}_{steps}steps"
-    rows = [{"candidate": "stable_makeup", "variant": variant_label, "run_number": 0, "phase": "load",
+    if lcm or guidance != 1.6:
+        variant_label += f"_g{guidance}"
+    rows = [{"candidate": candidate, "variant": variant_label, "run_number": 0, "phase": "load",
              "time_sec": round(load_time, 3), "vram_peak_mb": "", "notes": "model load + weights to GPU"}]
 
     result_img = None
@@ -106,7 +115,7 @@ def bench_stable_makeup(dtype_name, steps=30):
         torch.cuda.synchronize()
         t0 = time.perf_counter()
         result_img = makeup_encoder.generate(
-            id_image=[id_image, pose_image], makeup_image=makeup_image, pipe=pipe, guidance_scale=1.6,
+            id_image=[id_image, pose_image], makeup_image=makeup_image, pipe=pipe, guidance_scale=guidance,
             num_inference_steps=steps,
         )
         torch.cuda.synchronize()
@@ -116,10 +125,16 @@ def bench_stable_makeup(dtype_name, steps=30):
             print(f"[warmup] {dt:.3f}s  vram={vram:.0f}MB")
             continue
         print(f"[run {run}] {dt:.3f}s  vram={vram:.0f}MB")
-        rows.append({"candidate": "stable_makeup", "variant": variant_label, "run_number": run, "phase": "infer",
+        rows.append({"candidate": candidate, "variant": variant_label, "run_number": run, "phase": "infer",
                       "time_sec": round(dt, 3), "vram_peak_mb": round(vram, 1), "notes": ""})
 
-    result_img.save(RESULTS_DIR / f"stable_makeup_{dtype_name}_{steps}steps_sample.jpg")
+    sample_name = f"{candidate}_{variant_label}_sample.jpg" if lcm or guidance != 1.6 else f"stable_makeup_{dtype_name}_{steps}steps_sample.jpg"
+    result_img.save(RESULTS_DIR / sample_name)
+    from identity import face_cosine
+    cos = face_cosine(id_image, result_img)
+    print(f"[identity] face_cosine(source, result)={cos}")
+    rows.append({"candidate": candidate, "variant": variant_label, "run_number": "-", "phase": "identity",
+                 "time_sec": "", "vram_peak_mb": "", "notes": f"facenet_vggface2_cos={cos}"})
     id_image.save(RESULTS_DIR / "stable_makeup_source.jpg")
     makeup_image.save(RESULTS_DIR / "stable_makeup_reference.jpg")
     write_rows(rows)
@@ -248,19 +263,31 @@ def bench_shmt(variant, ddim_steps=50):
 
     result_img.save(RESULTS_DIR / f"shmt_{variant_label}_sample.jpg")
     from torchvision.transforms.functional import to_pil_image
-    to_pil_image(torch.clamp((source_image[0] + 1.0) / 2.0, 0.0, 1.0).cpu()).save(RESULTS_DIR / "shmt_source.jpg")
+    source_pil = to_pil_image(torch.clamp((source_image[0] + 1.0) / 2.0, 0.0, 1.0).cpu())
+    source_pil.save(RESULTS_DIR / "shmt_source.jpg")
+    try:
+        from identity import face_cosine
+    except ImportError:  # shmt env에 facenet-pytorch가 없으면 코사인 측정 생략
+        face_cosine = None
+    if face_cosine is not None:
+        cos = face_cosine(source_pil, result_img)
+        rows.append({"candidate": "shmt", "variant": variant_label, "run_number": "-", "phase": "identity",
+                     "time_sec": "", "vram_peak_mb": "", "notes": f"facenet_vggface2_cos={cos}"})
     to_pil_image(torch.clamp((ref_image[0] + 1.0) / 2.0, 0.0, 1.0).cpu()).save(RESULTS_DIR / "shmt_reference.jpg")
     write_rows(rows)
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--candidate", required=True, choices=["stable_makeup", "shmt"])
+    ap.add_argument("--candidate", required=True, choices=["stable_makeup", "shmt", "lcm_lora"])
     ap.add_argument("--variant", default=None, help="stable_makeup: fp32|fp16 (default fp32). shmt: h0|h4 (default h0)")
     ap.add_argument("--steps", type=int, default=None, help="DDIM steps (default: 30 for stable_makeup, 50 for shmt)")
+    ap.add_argument("--guidance", type=float, default=1.6, help="stable_makeup/lcm_lora guidance_scale (default 1.6)")
     args = ap.parse_args()
 
     if args.candidate == "stable_makeup":
-        bench_stable_makeup(args.variant or "fp32", args.steps or 30)
+        bench_stable_makeup(args.variant or "fp32", args.steps or 30, args.guidance)
+    elif args.candidate == "lcm_lora":
+        bench_stable_makeup(args.variant or "fp16", args.steps or 4, args.guidance, lcm=True)
     else:
         bench_shmt(args.variant or "h0", args.steps or 50)
