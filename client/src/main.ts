@@ -12,14 +12,17 @@ import {
   createSession,
   setCurrentPart,
   setScreen,
+  toReviewParts,
   type ScreenId,
   type Session,
 } from "./core/flow";
 import { checkSecureContext, readEnv, type SecureCheck } from "./core/secure-context";
 import { createSessionStore, indexedDbBackend, memoryBackend } from "./core/session-store";
 import { getVersions } from "./core/versions";
+import { lookById } from "./core/looks";
 import { fullRenderScreen } from "./screens/fullrender";
 import { looksScreen } from "./screens/looks";
+import { reviewScreen, type ReviewDeps } from "./screens/review";
 import { createShell } from "./screens/shell";
 
 /** 카메라를 못 여는 환경이면 맨 위에 띄운다. 흐름은 막지 않는다 */
@@ -50,7 +53,6 @@ async function boot(): Promise<void> {
   const backend = (await indexedDbBackend()) ?? memoryBackend();
   const logStore = await createLogStore({ backend });
   const sid = crypto.randomUUID();
-  void sessionStore;
 
   const log = createLogger(
     { sid, screen: session.screen, part: session.currentPart, ver: getVersions() },
@@ -84,13 +86,25 @@ async function boot(): Promise<void> {
   // ④ 의 서버가 붙으면 여기만 진짜 공급자로 바뀐다. 그때까지는 전부 "로딩 중"
   const lookJobs: LookJobSource = emptyJobSource();
 
-  registerAll(shell, {
-    jobs: lookJobs,
-    getLookId: () => session.lookId,
-    setLookId: (lookId: string) => {
-      session = { ...session, lookId };
+  registerAll(
+    shell,
+    {
+      jobs: lookJobs,
+      getLookId: () => session.lookId,
+      setLookId: (lookId: string) => {
+        session = { ...session, lookId };
+      },
     },
-  });
+    {
+      getParts: () => toReviewParts(session),
+      getLookName: () => lookById(session.lookId).name,
+      // 조명 차 안내: 화면은 받을 준비가 됐지만 **아직 줄 값이 없다.**
+      // 맨얼굴 기준(baseline.foreheadL)과 견줄 "확인받기 시점 이마 L*" 을 세션에 남기는 건
+      // ② 의 게이트 출력이다(#79). 그 값이 생기면 여기서 lightingDiffers 로 바꾼다.
+      lightingNote: () => null,
+      store: sessionStore,
+    },
+  );
 
   // 방향이 바뀌면 안내만 다시 그린다
   window.addEventListener("orientationchange", () => shell.render());
@@ -118,9 +132,14 @@ interface LookDeps {
   setLookId: (lookId: string) => void;
 }
 
-function registerAll(shell: ReturnType<typeof createShell<Session>>, look: LookDeps): void {
+function registerAll(
+  shell: ReturnType<typeof createShell<Session>>,
+  look: LookDeps,
+  review: ReviewDeps,
+): void {
   shell.register("looks", looksScreen<Session>(look));
   shell.register("fullrender", fullRenderScreen<Session>(look));
+  shell.register("review", reviewScreen<Session>(review));
   // 나머지는 아직 없음 — 등록 안 된 화면은 담당 모듈을 알려주는 자리표시가 뜬다
 }
 
