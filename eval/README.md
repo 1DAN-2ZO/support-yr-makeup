@@ -15,7 +15,15 @@ uv run python eval/report.py             # results/*.csv → docs/eval-results-v
 | `faceshape/` | E-2·S-2 규칙 vs 후보 모델 | Python | |
 | `transfer/` | E-3·S-1 시간·ArcFace·부위 ΔE | Python (서버 API 호출) | |
 | `region/` | E-4·S-3 EasyPortrait·Periorbital IoU | Python | jeakeun `poc/datasets-eval` 이식 |
-| `gate/` `live/` `funnel/` | E-5·E-6·E-8 | Python이 Event 로그(JSONL) 집계 | |
+| `funnel/` | **E-8 사용자 흐름** — 퍼널(화면별 도달률), 동의 거부, 촬영 완주·재촬영, 게이트 첫 실패 분포, 부위 상태·확인만 이유·재확인, 리뷰 도달·저장 클릭, 세션 시간·얼굴 놓침·채점 시간·복원 성공률 | Python. 앱에서 `logStore.exportJsonl()` 로 내보낸 `.jsonl` 을 읽는다 | 집계는 `funnel.py`(순수 함수), 실행은 `run.py` |
+| `gate/` `live/` | E-5·E-6 | Python | |
 | `results/` | `<날짜>_<커밋>_<모델버전>_<골든버전>.csv` | — | 커밋한다 (작음) |
 
 규칙: 골든 세트는 고정, 사람 단위 분할, 결과 파일명에 버전 셋, 손으로 결과표 쓰지 않기.
+
+**이벤트 로그 위치**: `DHE_DATA_DIR/events/*.jsonl`. 사용자 실험 때 **동의받아** 내보낸 것만 쓴다. 저장소에 넣지 않는다.
+
+```bash
+uv run python eval/funnel/run.py                 # 기본 위치
+uv run python eval/funnel/run.py --dir 경로
+```
