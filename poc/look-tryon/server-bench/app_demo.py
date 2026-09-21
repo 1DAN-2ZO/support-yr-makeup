@@ -110,14 +110,14 @@ def run(id_image, makeup_image, steps, guidance_scale):
 
 id_examples = sorted((SM_DIR / "test_imgs/id").glob("*.jpg"))
 makeup_examples = sorted((SM_DIR / "test_imgs/makeup").glob("*.jpg"))
-examples = [[str(id_examples[0]), str(makeup_examples[0]), 10, 1.6]] if id_examples and makeup_examples else None
+examples = [[str(id_examples[0]), str(makeup_examples[0]), 8, 1.6]] if id_examples and makeup_examples else None
 
 demo = gr.Interface(
     fn=run,
     inputs=[
         gr.Image(type="pil", label="얼굴 사진 (id_image)"),
         gr.Image(type="pil", label="룩 참조 사진 (makeup_image)"),
-        gr.Slider(minimum=4, maximum=30, value=10, step=1, label="DDIM steps (10 = 벤치마크 권장값, 3.15초)"),
+        gr.Slider(minimum=4, maximum=30, value=8, step=1, label="DDIM steps (8 = 벤치마크 권장값, 2.55초 / 10 step은 3.15초로 3초 예산 초과)"),
         gr.Slider(minimum=1.01, maximum=5.0, value=1.6, step=0.05, label="makeup_guidance_scale (1.05~1.15 옅은 화장, 2+ 진한 화장)"),
     ],
     outputs=[
@@ -128,7 +128,7 @@ demo = gr.Interface(
     title="Stable-Makeup 서버 벤치마크 데모 (RTX 3060)",
     description=(
         "화면 2 '룩 얹어보기' 서버 화장 전이 후보(Apache-2.0, 상업 사용 가능) 실측용 데모. "
-        "fp16 + 10 step이 3초 목표를 만족하는 벤치마크 설정."
+        "fp16 + 8 step(2.55초)이 3초 목표를 만족하는 벤치마크 설정(10 step은 3.15초로 초과)."
     ),
 )
 

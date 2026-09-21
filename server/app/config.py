@@ -57,7 +57,7 @@ class Settings:
     result_dir: str = _env(
         "RESULT_DIR", os.path.join(os.path.abspath(os.sep), "tmp", "danghwaeung", "results")
     )
-    # 벤치마크 결론(server-bench/README.md): fp16 + DDIM 8 step = 2.55초 (10 step은 3.14초로 3초 초과)
+    # 벤치마크 결론(server-bench/README.md): fp16 + DDIM 8 step = 2.55초 (10 step은 3.15초로 3초 초과)
     transfer_steps: int = int(_env("TRANSFER_STEPS", "8"))
     transfer_guidance: float = float(_env("TRANSFER_GUIDANCE", "1.6"))
 
