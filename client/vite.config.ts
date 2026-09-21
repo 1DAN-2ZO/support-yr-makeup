@@ -40,7 +40,14 @@ export default defineConfig({
   },
   // host: true 라야 폰에서 LAN IP 로 들어올 수 있다.
   // 인증서가 없을 때는 https 키 자체를 빼야 한다 (exactOptionalPropertyTypes)
-  server: { host: true, port: 5173, ...(certs ? { https: certs } : {}) },
+  server: {
+    host: true,
+    port: 5173,
+    // 터널로 들어오면 Host 가 낯설어서 vite 가 403 으로 막는다.
+    // 앞의 점은 그 도메인의 모든 하위 주소를 뜻한다 — 터널 주소는 켤 때마다 바뀌므로 필요하다
+    allowedHosts: [".trycloudflare.com"],
+    ...(certs ? { https: certs } : {}),
+  },
   build: { target: "es2022", sourcemap: true },
   test: {
     // 기본은 node. DOM 이 필요한 파일은 맨 위에 `// @vitest-environment jsdom` 한 줄
