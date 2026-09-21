@@ -32,10 +32,12 @@
 | 인터넷 | 없어도 됨 | 필요 |
 | 속도 | 같은 공유기라 빠름 | 한 번 밖으로 나갔다 온다 |
 | 주소 | 고정 (`https://192.168.0.7:5173`) | 켤 때마다 바뀜 |
+| 돈 | 무료 | 무료 (계정·카드 없음) |
 | 막히는 곳 | 회사·학교 와이파이에서 기기 간 통신 차단 | 사내망에서 터널 차단 |
 
-**기본은 mkcert.** 한 번 해 두면 계속 쓴다.
-iOS 인증서 설치가 막히거나 공유기가 기기 간 통신을 막으면 터널로 간다.
+**평소 개발은 터널이 편하다** — 설치 한 번이면 폰 설정이 아예 없다.
+**실기기 속도를 재거나 발표할 때는 mkcert.** 터널은 한 번 밖으로 나갔다 오므로
+왕복 시간이 늘어서 #53(실기기 왕복 3초) 같은 측정에 쓰면 안 된다.
 
 ---
 
@@ -88,16 +90,32 @@ cd client && npm run dev
 
 ---
 
-## 3. 터널로 가기
+## 3. 터널로 가기 (Cloudflare)
+
+무료다. **계정도 카드도 필요 없다.**
 
 ```bash
-# 설치: winget install Cloudflare.cloudflared / brew install cloudflared
-cd client && npm run dev          # http 로 떠도 된다
+# 설치 (한 번)
+winget install --id Cloudflare.cloudflared     # macOS: brew install cloudflared
+
+# 터미널 두 개
+cd client && npm run dev                       # http 로 떠도 된다
 cloudflared tunnel --url http://localhost:5173
 ```
 
-찍히는 `https://….trycloudflare.com` 주소를 폰에서 연다. 폰 설정은 없다.
-**주소가 켤 때마다 바뀐다.** 오래 쓸 거면 mkcert 로 돌아가는 게 낫다.
+찍히는 `https://….trycloudflare.com` 주소를 폰에서 연다. 인증서도 폰 설정도 같은 와이파이도 필요 없다.
+
+### 제약 — 미리 알아야 하는 것
+
+| | |
+|---|---|
+| 주소가 켤 때마다 바뀐다 | 팀에 공유하려면 매번 새로 던져야 한다 |
+| **SSE(Server-Sent Events) 를 지원하지 않는다** | ④ 가 룩 작업 진행 상황을 미는 방식을 고를 때 걸린다. 화면 쪽 `LookJobSource` 는 폴링·SSE 어느 쪽이든 되는 모양이라 화면은 안 고쳐도 된다 |
+| 동시 요청 200개 | 우리 인원에는 문제없다 |
+| 왕복이 느려진다 | 속도 측정(#53)에는 쓰지 말 것 |
+
+고정 주소가 필요하면 Cloudflare 계정 + 도메인(연 1.5만원쯤)으로 이름 있는 터널을 판다.
+터널 자체는 그때도 무료다. **발표 때 필요해지면 그때 정한다.**
 
 ---
 
@@ -113,6 +131,8 @@ cloudflared tunnel --url http://localhost:5173
 | 빨간 띠 "https 로 시작하는지" | http 로 들어옴 | https 주소로 |
 | 빨간 띠 "사파리나 크롬으로" | 카톡·인스타 인앱 브라우저 | 밖의 브라우저로 열기 |
 | LAN IP 가 바뀜 | DHCP 가 다시 줌 | `scripts/certs.sh` 다시 실행 (공유기에서 IP 고정이 편하다) |
+| 터널 주소가 502 | vite 를 안 켬 | `npm run dev` 를 먼저, 터널을 나중에 |
+| 터널에서 진행 상황이 안 옴 | Quick Tunnel 은 SSE 를 안 준다 | 3절 제약 표. ④ 와 상의 |
 
 ---
 
