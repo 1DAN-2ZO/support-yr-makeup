@@ -32,7 +32,7 @@
 
 - 자기 모듈 브랜치에 **직접 커밋**한다. 작업마다 브랜치를 새로 파지 않는다.
 - **준비되면 PR 을 올리고 리뷰를 요청한다.** 정기 병합일은 없다. 특히 다른 모듈이 기다리는 것(★ blocker)은 끝나는 대로 바로 올린다 — 들고 있으면 남이 그만큼 못 쓴다.
-- **리뷰와 병합은 ⑥ 이 한다.** 가능할 때 작성자 브랜치를 받아 확인하고 `main` 에 머지한다. 확인은 로컬에서, 머지는 `gh pr merge` 로(로컬에서 합쳐 main 에 push 하지 않는다).
+- **리뷰와 병합은 ⑥ 이 한다.** 가능할 때 작성자 브랜치를 **로컬 `main` 에 받아 실제로 돌려 보고** 밀어 올린다 (아래 §0-1-1). `main` 에 푸시하는 사람은 ⑥ 뿐이다.
 - **충돌은 작성자가 푼다.** 자기 브랜치에서 `git merge origin/main` 으로 풀고 다시 올린다. ⑥ 이 남의 코드를 대신 풀지 않는다.
 - 내 브랜치가 뒤처지면 **내가** 따라간다: `git checkout <내 모듈> && git merge origin/main`. **남의 브랜치를 대신 맞추지 않는다.**
 - 임시 실험은 `<모듈>-<무엇>`(예: `score-wb-test`)으로 만들고 끝나면 지운다.
@@ -54,24 +54,41 @@ gh pr create --base main --head score            # 본문에 Closes #이슈번�
 
 **모듈 브랜치는 지우지 않는다.** 6주 내내 산다. PR 이 병합돼도 그대로 두고 계속 쓴다.
 
-### 내 PR 이 머지된 다음 — 여기서 다들 막힌다
-
-`main` 은 **squash 머지**다. 내 커밋 여러 개가 `main` 에서는 **새 커밋 하나**가 된다.
-그래서 머지 직후 내 모듈 브랜치는 **반드시** `main` 과 갈라진다. 뒤처져서가 아니라 구조가 그렇다.
-
-```
-$ git pull
-hint: You have divergent branches and need to specify how to reconcile them.
-fatal: Not possible to fast-forward, aborting.
-```
-
-**정상이다.** 이렇게 따라간다:
+### 0-1-1. ⑥ 이 PR 을 합치는 절차
 
 ```bash
-git fetch origin
-git merge origin/main --no-edit        # 머지 커밋 하나 생긴다. 그대로 둔다
-git push origin score
+git checkout main && git merge origin/main        # 로컬 main 최신으로
+git merge origin/score --no-ff                    # 작성자 브랜치를 받는다
+bash scripts/check.sh                             # ★ 여기서 실제로 돌려 본다
+git push origin main                              # 통과하면 민다. PR 은 자동으로 '머지됨'
 ```
+
+검증이 깨지면 `git merge --abort` 하고 작성자에게 알린다. **고쳐서 밀지 않는다** — 남의 코드다.
+
+**왜 `gh pr merge` 가 아닌가.** 그건 아무도 코드를 돌려 보지 않고 합친다.
+2026-09-18 에 CI 가 빨간 PR #104 를 그렇게 머지했다. 로컬에서 합쳐 돌려 보면 그 일이 안 생긴다.
+CI 기록은 그대로 남는다 — `ci.yml` 이 `main` 푸시에서도 돈다.
+
+**병합 커밋으로 남긴다(`--no-ff`).** 작성자 커밋이 이름과 함께 그대로 보존되고,
+squash 와 달리 **작성자 브랜치가 main 과 갈라지지 않는다**(아래).
+
+### 내 PR 이 머지된 다음
+
+
+
+병합 커밋이라 내 커밋이 `main` 안에 그대로 들어간다. 그래서 그냥 따라가면 된다:
+
+```bash
+git checkout score && git pull         # fast-forward 로 붙는다
+```
+
+> **2026-09-21 이전에 갈라진 브랜치.** 그 전에는 squash 머지였고, squash 는 내 커밋
+> 여러 개를 `main` 에서 **새 커밋 하나**로 만들기 때문에 머지 직후 브랜치가 반드시 갈라졌다.
+> `git pull` 이 `divergent branches` 라고 하면 그 경우다. 한 번만 이렇게 정리한다:
+>
+> ```bash
+> git fetch origin && git merge origin/main --no-edit && git push origin score
+> ```
 
 `git rebase` 도 `git reset --hard` 도 쓰지 않는다. 둘 다 이력을 갈아서 강제 푸시가 필요해지고,
 그게 2026-09-18 에 커밋을 날린 바로 그 길이다.
@@ -101,7 +118,7 @@ gh api "repos/1DAN-2ZO/support-yr-makeup/events?per_page=100"   --jq '.[]|select
 | | |
 |---|---|
 | **금지** | 남이 쓸 수 있는 브랜치(`main`, 모듈 브랜치 6개, `poc/full`)에 **`push --force` / `push -f` / `branch -f`** |
-| **금지** | `main` 에 직접 push, `main` 기록 변경 |
+| **금지** | `main` 기록 변경(되감기·강제 푸시). `main` 푸시는 **⑥ 만**, 그것도 §0-1-1 절차로만 |
 | 허용 | **임시 실험 브랜치**(`<모듈>-<무엇>`)에서만 `FORCE_OK=1 … --force-with-lease`. 모듈 브랜치는 보호 브랜치라 이걸로도 안 된다 |
 | 의무 | 내 모듈 브랜치가 뒤처지면 **`git merge origin/main`** 으로 따라간다. 충돌하면 내가 푼다 |
 | 의무 | 남의 브랜치를 main 에 맞춰야 하면 **덮어쓰지 말고 담당자에게 알린다** |
