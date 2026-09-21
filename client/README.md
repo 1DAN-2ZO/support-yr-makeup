@@ -22,6 +22,8 @@ src/core/      순수 함수·계약 타입. 브라우저 API 없음. 전부 테
   session-store.ts   메모리→IndexedDB 세션 저장(draft 2시간 만료, 사진 3장), clearAll 잔존 0 — 1-7·1-11
   screens.ts   화면 담당(§0-2), 방향 규칙, 진행 칩 — 화면 목록·이름은 flow.ts 것을 가져다 쓴다 (6-2)
   looks.ts     룩 템플릿 읽기 (데이터는 rules/looks.json) — 6-2
+  versions.ts  버전 5종(app·score·look·faceshape·transfer). 자기 칸만 setVersions 로 알린다 — 6-4·6-5
+  log-store.ts 이벤트를 기기 안에 쌓고 JSONL 로 내보내기. ① 의 KvBackend 재사용 — 6-4
   (이전 예정) landmarks.ts guides.ts gate.ts score.ts review.ts …  ← poc/full/lib/*.js
 src/screens/
   shell.ts     껍데기 — 화면을 갈아 끼우는 틀 (모듈 ⑥, 6-2)
@@ -47,6 +49,23 @@ shell.register("capture", {
 
 `ctx` 로 오는 것: `root`(그릴 자리), `session`, `go(화면)`, `goPart(부위)`, `log`.
 등록 안 된 화면은 "담당 모듈이 아직 안 올렸다"는 자리표시가 뜬다 — 통합 전에도 전 흐름이 끊기지 않는다.
+
+## 버전과 로그
+
+버전 5종은 `versions.ts` 한 곳에 모인다. **각 모듈은 자기 칸만 알린다.**
+
+```ts
+setVersions({ score: SCORE_VERSION });          // ③ 이 PARAMS 를 옮길 때
+setVersions({ transfer: job.ver.transfer });    // ④ 서버 응답에서
+setVersions({ faceshape: "faceshape-model-v0.2" }); // ⑤ 가 모델을 올릴 때
+```
+
+`app` 은 빌드할 때 git 짧은 해시가 박힌다. `look` 은 `rules/looks.json` 에서 읽는다.
+`score` 는 ③ 이 `rules/score.json`(version 필드 포함)을 만들면 거기서 읽도록 바꾼다.
+
+로그는 `log()` → `logStore.sink` 로 기기 안(IndexedDB)에 쌓인다. 버퍼에 모았다가 20개마다 또는 3초마다 저장한다.
+사용자 실험 때만 동의받아 `exportJsonl()` 로 내보내고, 끝내기 때 `clear()` 로 지운다.
+**사진·좌표·얼굴 데이터는 `log()` 가 막는다.**
 
 **화면 담당** (`docs/work-split-modules-v6.md` §0-2): 1 촬영 ① · 2·2-b·6·껍데기 ⑥ · 3·4 ② · 5·5-b ③.
 
