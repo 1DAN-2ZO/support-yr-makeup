@@ -26,6 +26,85 @@
 
 ---
 
+## 0-1. 브랜치 규칙
+
+**작업은 자기 모듈 브랜치에서 한다.** `capture` `guide` `score` `server` `model` `app` 여섯 개.
+
+- 자기 모듈 브랜치에 **직접 커밋**한다. 작업마다 브랜치를 새로 파지 않는다.
+- **준비되면 PR 을 올리고 리뷰를 요청한다.** 정기 병합일은 없다. 특히 다른 모듈이 기다리는 것(★ blocker)은 끝나는 대로 바로 올린다 — 들고 있으면 남이 그만큼 못 쓴다.
+- **리뷰와 병합은 ⑥ 이 한다.** 가능할 때 작성자 브랜치를 받아 확인하고 `main` 에 머지한다. 확인은 로컬에서, 머지는 `gh pr merge` 로(로컬에서 합쳐 main 에 push 하지 않는다).
+- **충돌은 작성자가 푼다.** 자기 브랜치에서 `git merge origin/main` 으로 풀고 다시 올린다. ⑥ 이 남의 코드를 대신 풀지 않는다.
+- 내 브랜치가 뒤처지면 **내가** 따라간다: `git checkout <내 모듈> && git merge origin/main`. **남의 브랜치를 대신 맞추지 않는다.**
+- 임시 실험은 `<모듈>-<무엇>`(예: `score-wb-test`)으로 만들고 끝나면 지운다.
+
+```bash
+# 평소
+git checkout score && git pull
+... 작업 ... && git commit && git push          # 강제 푸시 없이
+
+# main 이 앞서갔으면
+git merge origin/main                            # 충돌은 내가 푼다
+
+# 준비되면
+gh pr create --base main --head score            # 본문에 Closes #이슈번호
+gh pr edit <번호> --add-reviewer <⑥ 계정>        # 리뷰 요청 = 병합 요청
+```
+
+**모듈 브랜치는 지우지 않는다.** 6주 내내 산다. PR 이 병합돼도 그대로 두고 계속 쓴다.
+
+### 왜 이 규칙인가 — 2026-09-18 사고
+
+모듈 브랜치를 main 에 맞추려고 `git branch -f` + `git push -f` 를 돌렸고, 그 사이 올라온 팀원 커밋 두 건이 원격에서 사라졌다.
+
+| 시각(UTC) | 일어난 일 |
+|---|---|
+| 07:12 | jeakeun 이 `capture` 에 `31642ba` 푸시 |
+| 07:14 | `capture` 를 `b5bd307` 로 덮어씀 → `31642ba` 사라짐 |
+| 07:14 | `model` 을 덮어씀 → JW020799 의 `b5aa584` 사라짐 |
+| 07:28 | JW020799 가 `model` 에 `6aa8dc7` 푸시 |
+| 07:33 | `model`·`score`·`guide`·`server` 를 `ee53040` 으로 덮어씀 → `6aa8dc7` 사라짐. PR #92 가 변경 0건이 되며 닫힘 |
+
+확인 명령:
+
+```bash
+gh api "repos/1DAN-2ZO/support-yr-makeup/events?per_page=100"   --jq '.[]|select(.type=="PushEvent")|"\(.created_at) \(.actor.login) \(.payload.ref) \(.payload.before[0:7])→\(.payload.head[0:7])"'
+```
+
+`before` 가 새 `head` 의 조상이 아니면 덮어쓰기다.
+
+### 금지·의무
+
+| | |
+|---|---|
+| **금지** | 남이 쓸 수 있는 브랜치(`main`, 모듈 브랜치, 남의 작업 브랜치)에 **`push --force` / `push -f` / `branch -f`** |
+| **금지** | `main` 에 직접 push, `main` 기록 변경 |
+| 허용 | 자기 작업 브랜치에서 리베이스 후 `--force-with-lease` (자기 것만) |
+| 의무 | 내 작업 브랜치가 뒤처지면 **`git merge origin/main`** 으로 따라간다. 충돌하면 내가 푼다 |
+| 의무 | 남의 브랜치를 main 에 맞춰야 하면 **덮어쓰지 말고 담당자에게 알린다** |
+
+### 기술적으로 막아 둔 것
+
+규칙만으로는 또 일어난다. 두 겹으로 막는다.
+
+| 겹 | 무엇 | 막는가 | 한계 |
+|---|---|---|---|
+| **① `.githooks/pre-push`** | 푸시 직전에 원격 커밋이 내 커밋의 조상인지 본다. 아니면 = 원격 이력을 버리는 푸시 → 거부. 보호 브랜치 삭제도 거부 | **예, 푸시 자체를 막는다** | `--no-verify` 로 우회 가능. `bash scripts/setup.sh` 를 돌린 사람에게만 적용 |
+| **② `.github/workflows/guard.yml`** | 강제 푸시·보호 브랜치 삭제를 사후 감지. 워크플로를 실패시키고 **덮기 전 SHA 와 복구 명령**을 Summary 에 남긴다 | 아니오 (사후) | 훅을 우회했거나 안 깐 경우의 안전망 |
+
+보호 브랜치: `main` `capture` `guide` `score` `server` `model` `app` `poc/full`.
+
+```bash
+# 훅 설치 (setup.sh 가 자동으로 함)
+git config core.hooksPath .githooks
+
+# 내 작업 브랜치라 확실할 때만
+FORCE_OK=1 git push --force-with-lease
+```
+
+보호 브랜치는 `FORCE_OK` 로도 뚫리지 않는다.
+
+**③ 브랜치 보호(서버 강제)** 는 비공개+무료 플랜이라 못 켠다. 저장소를 공개로 돌리면 켤 수 있고, 그때는 ①②가 보조가 된다.
+
 ## 1. 모듈 6개
 
 ### ① 촬영·기준 (클라이언트) — 브랜치 `capture`

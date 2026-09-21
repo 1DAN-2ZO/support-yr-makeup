@@ -66,7 +66,9 @@ cd client && npm run dev                  # 클라이언트 (TypeScript, Vite) �
 uv run python eval/run_all.py             # 평가 하네스 → docs/eval-results-v6.md
 ```
 
-기준선은 `main`. 모듈 브랜치 6개(`capture` `guide` `score` `server` `model` `app`)에서 작업하고 작은 단위로 자주 `main`에 PR, CI가 초록이어야 합친다. 잠금 파일(`uv.lock`, `client/package-lock.json`)은 커밋한다.
+기준선은 `main`. **작업은 자기 모듈 브랜치**(`capture` `guide` `score` `server` `model` `app`)에서 하고, **준비되면 PR 을 올리고 리뷰를 요청**한다. ⑥ 이 가능할 때 브랜치를 받아 확인하고 main 에 머지한다. 내 브랜치가 뒤처지면 내가 `git merge origin/main` 으로 따라간다.
+
+**남이 쓸 수 있는 브랜치에 `push --force` 를 쓰지 않는다.** 2026-09-18 에 모듈 브랜치를 강제 푸시로 main 에 맞추다가 팀원 커밋 두 건이 사라졌다. `bash scripts/setup.sh` 가 이를 막는 git 훅을 깔아 준다. 규칙은 [`docs/work-split-modules-v6.md`](docs/work-split-modules-v6.md) §0-1.
 
 ## POC 실행
 
