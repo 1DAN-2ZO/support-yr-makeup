@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import threading
@@ -146,17 +147,22 @@ class JobQueue:
         except Exception as e:  # 룩 하나 실패해도 나머지는 계속
             j.job.status = JobStatus.error
             j.job.error = type(e).__name__
-            log.exception("look_job error job=%s", job_id)
+            log.error("look_job error job=%s type=%s", job_id, type(e).__name__)
         finally:
             # 로그엔 작업 ID·시간·상태만. 파일명·사진은 남기지 않는다.
             log.info(
-                "look_job job=%s look=%s status=%s ms=%s queue_ms=%s cos=%s",
-                job_id,
-                j.job.look_id,
-                j.job.status,
-                j.job.ms,
-                j.job.queue_ms,
-                j.job.identity.cos,
+                "look_job %s",
+                json.dumps(
+                    {
+                        "job": job_id,
+                        "look": j.job.look_id,
+                        "status": j.job.status,
+                        "ms": j.job.ms,
+                        "queue_ms": j.job.queue_ms,
+                        "cos": j.job.identity.cos,
+                        "ver": j.job.ver,
+                    }
+                ),
             )
             self._release_source(job_id)
 

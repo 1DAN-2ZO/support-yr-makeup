@@ -51,15 +51,16 @@ while read -r local_ref local_sha remote_ref remote_sha; do
         "원격에만 있는 커밋 ${lost}개가 사라집니다 (마지막 작성자: ${who})." \
         "" \
         "  최신을 따라가려면:  git merge origin/${branch}" \
-        "  모듈 브랜치에는 커밋하지 않습니다. 작업은 <모듈>-<작업> 브랜치에서."
+        "  모듈 브랜치는 덮어쓰지 않습니다. 원격 커밋을 살린 채 합칩니다."
     fi
 
+    # 여기까지 왔으면 보호 브랜치가 아니다 = 임시 실험 브랜치(<모듈>-<무엇>)
     if [ "${FORCE_OK:-}" != "1" ]; then
-      fail "강제 푸시 (내 작업 브랜치라도 확인이 필요합니다)" "$branch" \
+      fail "강제 푸시 (임시 브랜치라도 확인이 필요합니다)" "$branch" \
         "원격에만 있는 커밋 ${lost}개가 사라집니다 (마지막 작성자: ${who})." \
         "" \
-        "  내 브랜치가 확실하면:  FORCE_OK=1 git push --force-with-lease" \
-        "  아니면:               git merge origin/${branch}"
+        "  내 임시 브랜치가 확실하면:  FORCE_OK=1 git push --force-with-lease" \
+        "  아니면:                    git merge origin/${branch}"
     fi
     echo "  ! ${branch}: 강제 푸시를 FORCE_OK=1 로 허용합니다 (커밋 ${lost}개 사라짐)" >&2
   fi

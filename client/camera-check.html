@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <title>카메라 점검 — 당화응</title>
+    <!--
+      실기기 점검용 (6-3, #74). 앱과 상관없는 독립 페이지다.
+      docs/device-setup-v6.md 5절 체크리스트를 이 페이지로 채운다.
+      빌드에 안 들어간다 — vite 가 정적 파일로 그대로 내보낸다.
+    -->
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        margin: 0; padding: 16px;
+        font: 15px/1.6 system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+      }
+      h1 { font-size: 18px; margin: 0 0 12px; }
+      table { border-collapse: collapse; width: 100%; margin-bottom: 16px; }
+      td { padding: 6px 4px; border-bottom: 1px solid #8884; vertical-align: top; }
+      td:first-child { width: 42%; color: #8a8a8a; }
+      .ok { color: #1a7f5a; font-weight: 600; }
+      .no { color: #b03030; font-weight: 600; }
+      .row { display: flex; gap: 8px; margin-bottom: 12px; }
+      button {
+        flex: 1; padding: 12px; font: inherit; border-radius: 10px;
+        border: 1px solid #8886; background: transparent; color: inherit;
+      }
+      video { width: 100%; border-radius: 10px; background: #0003; display: block; }
+      #msg { margin: 12px 0; font-size: 14px; word-break: break-all; }
+      code { font-family: ui-monospace, Menlo, monospace; font-size: 0.9em; }
+    </style>
+  </head>
+  <body>
+    <h1>카메라 점검</h1>
+
+    <table id="env"></table>
+
+    <div class="row">
+      <button type="button" data-facing="user">전면 카메라</button>
+      <button type="button" data-facing="environment">후면 카메라</button>
+    </div>
+    <div class="row">
+      <button type="button" id="stop">끄기</button>
+    </div>
+
+    <p id="msg">버튼을 누르면 카메라를 엽니다.</p>
+    <video id="v" playsinline muted autoplay></video>
+
+    <script>
+      const env = document.getElementById("env");
+      const msg = document.getElementById("msg");
+      const video = document.getElementById("v");
+      let stream = null;
+
+      function mark(ok) {
+        return ok ? '<span class="ok">예</span>' : '<span class="no">아니오</span>';
+      }
+
+      function row(label, html) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${label}</td><td>${html}</td>`;
+        env.append(tr);
+      }
+
+      const secure = window.isSecureContext;
+      const hasMd = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+
+      row("주소", `<code>${location.protocol}//${location.host}</code>`);
+      row("보안 컨텍스트", mark(secure));
+      row("카메라 API 있음", mark(hasMd));
+      row("브라우저", `<code>${navigator.userAgent.slice(0, 60)}…</code>`);
+
+      if (!secure) {
+        msg.innerHTML =
+          '<span class="no">보안 컨텍스트가 아닙니다.</span> https 로 여세요. ' +
+          "카메라는 여기서 절대 안 열립니다.";
+      } else if (!hasMd) {
+        msg.innerHTML =
+          '<span class="no">카메라 API 가 없습니다.</span> 인앱 브라우저(카톡·인스타)일 수 있습니다. ' +
+          "사파리나 크롬으로 여세요.";
+      }
+
+      function stop() {
+        if (stream) {
+          stream.getTracks().forEach((t) => t.stop());
+          stream = null;
+        }
+        video.srcObject = null;
+      }
+
+      async function open(facing) {
+        stop();
+        msg.textContent = "여는 중…";
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: facing, width: { ideal: 1080 }, height: { ideal: 1440 } },
+            audio: false,
+          });
+          video.srcObject = stream;
+          const track = stream.getVideoTracks()[0];
+          const s = track.getSettings();
+          msg.innerHTML =
+            '<span class="ok">열렸습니다.</span> ' +
+            `<code>${s.width}×${s.height}</code> · ${track.label || "이름 없음"}`;
+        } catch (e) {
+          // NotAllowedError = 권한 거부, NotFoundError = 그런 카메라 없음
+          msg.innerHTML = `<span class="no">실패: ${e.name}</span> — ${e.message}`;
+        }
+      }
+
+      for (const b of document.querySelectorAll("button[data-facing]")) {
+        b.addEventListener("click", () => open(b.dataset.facing));
+      }
+      document.getElementById("stop").addEventListener("click", () => {
+        stop();
+        msg.textContent = "껐습니다.";
+      });
+    </script>
+  </body>
+</html>
