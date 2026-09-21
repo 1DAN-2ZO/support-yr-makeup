@@ -12,26 +12,40 @@ from server.app import main
 def test_look_job_log_is_structured_json(caplog):
     """look_job 로그가 파일명·경로 없이 JSON 한 줄(job/look/status/ms/queue_ms/cos/ver)로 나가는지 확인."""
     client = TestClient(main.app)
+    import time
+
     with caplog.at_level(logging.INFO, logger="dhe.jobs"):
         files = {"photo": ("front.webp", io.BytesIO(b"x"), "image/webp")}
         r = client.post("/sessions/s9/jobs", files=files, data={"look_ids": "look_01"})
         job_id = r.json()["jobs"][0]["job_id"]
-        import time
 
-        # 폴링으로 작업 완료 대기
+        # 폴링으로 작업 상태 터미널 대기
+        terminal_status = None
         for _ in range(100):
             status = client.get(f"/jobs/{job_id}").json()["status"]
             if status in ("done", "error", "fallback"):
+                terminal_status = status
                 break
             time.sleep(0.02)
 
-    # look_job 로그 찾기
-    look_job_lines = [rec.message for rec in caplog.records if rec.message.startswith("look_job ")]
-    assert look_job_lines, "look_job 로그가 없음"
+        assert terminal_status is not None, "작업이 터미널 상태에 도달하지 못함"
 
-    # 해당 job_id의 look_job 로그 찾기 (다른 테스트의 로그와 섞일 수 있음)
+        # 워커 스레드가 JSON 로그를 내보낼 때까지 대기 (finally 블록 실행)
+        deadline = time.time() + 2.0
+        while time.time() < deadline:
+            look_job_records = [
+                rec
+                for rec in caplog.records
+                if rec.message.startswith("look_job {") and job_id in rec.message
+            ]
+            if look_job_records:
+                break
+            time.sleep(0.01)
+
+    # look_job JSON 로그를 찾기 (JSON 형식만)
+    look_job_lines = [rec.message for rec in caplog.records if rec.message.startswith("look_job {")]
     job_log_lines = [line for line in look_job_lines if job_id in line]
-    assert job_log_lines, f"job_id {job_id}의 look_job 로그가 없음"
+    assert job_log_lines, f"job_id {job_id}의 look_job JSON 로그가 없음"
 
     # JSON 파싱
     payload = json.loads(job_log_lines[0][len("look_job ") :])
@@ -63,18 +77,36 @@ def test_look_job_error_log_no_path_leak(caplog):
 
     try:
         client = TestClient(main.app)
+        import time
+
         with caplog.at_level(logging.INFO, logger="dhe.jobs"):
             files = {"photo": ("front.webp", io.BytesIO(b"x"), "image/webp")}
             r = client.post("/sessions/s10/jobs", files=files, data={"look_ids": "look_02"})
             job_id = r.json()["jobs"][0]["job_id"]
-            import time
 
-            # 폴링으로 작업 완료 대기 (에러까지)
+            # 폴링으로 작업 에러 상태 대기
+            terminal_status = None
             for _ in range(100):
                 status = client.get(f"/jobs/{job_id}").json()["status"]
                 if status in ("done", "error", "fallback"):
+                    terminal_status = status
                     break
                 time.sleep(0.02)
+
+            assert terminal_status is not None, "작업이 터미널 상태에 도달하지 못함"
+            assert terminal_status == "error", f"Expected error status, got {terminal_status}"
+
+            # 워커 스레드가 JSON 로그를 내보낼 때까지 대기 (finally 블록 실행)
+            deadline = time.time() + 2.0
+            while time.time() < deadline:
+                look_job_records = [
+                    rec
+                    for rec in caplog.records
+                    if rec.message.startswith("look_job {") and job_id in rec.message
+                ]
+                if look_job_records:
+                    break
+                time.sleep(0.01)
 
         # 전체 로그에서 경로/파일명이 없는지 확인
         full_log = caplog.text
