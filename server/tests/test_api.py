@@ -55,7 +55,9 @@ def test_jobs_flow_and_source_deleted(client, tmp_path):
     assert all(b["ms"] is not None and b["queue_ms"] is not None for b in results)
 
     # 마지막 작업이 끝나면 원본 사진은 임시 폴더에서 사라진다 (즉시 삭제 원칙)
-    time.sleep(0.05)
+    deadline = time.monotonic() + 2.0
+    while os.listdir(tmp_path) and time.monotonic() < deadline:
+        time.sleep(0.01)
     assert os.listdir(tmp_path) == []
 
 
