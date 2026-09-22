@@ -17,6 +17,7 @@
     "person_id": "누구 사진인지 (학습·평가 분리 단위)",
     "part": "parts 중 하나",
     "source": "사진 출처 — ffhq-makeup · synthetic-off(일부러 틀리게 만든 사진) · self(자체 촬영) 등",
+    "look": "어느 룩 기준으로 채점하나 — rules/looks.json 의 id (daily·smoky…). 아직 템플릿 전이면 null, 채점기는 기본 룩(smoky)으로 재고 note 에 적는다",
     "bare": "맨얼굴 사진 경로 (data_dir 기준 상대 경로, PNG)",
     "makeup": "화장 사진 경로",
     "bare_lm": "맨얼굴 얼굴 점 파일",
