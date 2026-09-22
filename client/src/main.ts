@@ -19,7 +19,7 @@ import {
 import { checkSecureContext, readEnv, type SecureCheck } from "./core/secure-context";
 import { createSessionStore, indexedDbBackend, memoryBackend } from "./core/session-store";
 import { getVersions } from "./core/versions";
-import { lookById } from "./core/looks";
+import { lookById, SUMMARY_TEMPLATE } from "./core/looks";
 import { fullRenderScreen } from "./screens/fullrender";
 import { looksScreen } from "./screens/looks";
 import { reviewScreen, type ReviewDeps } from "./screens/review";
@@ -103,6 +103,8 @@ async function boot(): Promise<void> {
       // ② 의 게이트 출력이다(#79). 그 값이 생기면 여기서 lightingDiffers 로 바꾼다.
       lightingNote: () => null,
       store: sessionStore,
+      // 합산 설정은 전 룩 공통이다 (결정 2026-09-22). 값은 rules/looks.json
+      template: SUMMARY_TEMPLATE,
     },
   );
 
