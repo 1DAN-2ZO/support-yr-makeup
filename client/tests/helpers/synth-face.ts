@@ -43,6 +43,9 @@ export const LMS = faceLandmarks();
 export const P = (i: number): Pt => LMS[i]!;
 export const eyeOf = (s: Side) => (s === "R" ? LM.eyeA : LM.eyeB);
 
+/** 시험용 가이드 치수. 실제로는 ② 가 룩마다 정한다 — 여기 값은 POC 기본(1.2mm/27mm, 0.5mm/50mm) */
+export const GUIDE = { linerThick: 0.045, lipOffset: 0.01 } as const;
+
 /** poc/full/lib/guides.js 와 같은 모양을 내는 시험용 가이드. 진짜는 ② 의 guides.ts 가 준다 */
 export const guide: GuideSource = (partId, f): PartGeometry => {
   const at = (i: number): Pt => f.lm[i]!;
@@ -57,8 +60,9 @@ export const guide: GuideSource = (partId, f): PartGeometry => {
       const d = { x: v.x * Math.cos(a), y: v.y * Math.cos(a) - Math.sin(a) }, dl = Math.hypot(d.x, d.y);
       return [outer, { x: outer.x + (d.x / dl) * 0.15 * f.unit.eye, y: outer.y + (d.y / dl) * 0.15 * f.unit.eye }];
     };
-    return { linerWing: { R: wing("R"), L: wing("L") } };
+    return { liner: { wing: { R: wing("R"), L: wing("L") }, thick: GUIDE.linerThick } };
   }
+  if (partId === "lip") return { lip: { offset: GUIDE.lipOffset } };
   if (partId === "shadow") {
     const region = (s: Side): Pt[] => {
       const lid = eyeOf(s).upper.map(at), browLo = (s === "R" ? LM.browA : LM.browB).lower.map(at);
@@ -69,7 +73,11 @@ export const guide: GuideSource = (partId, f): PartGeometry => {
   }
   const cheek = (s: Side, dy: number): Pt[] => ellipse({ ...mix(at(s === "R" ? LM.cheekA : LM.cheekB), at(s === "R" ? LM.faceL : LM.faceR), 0.25), y: 340 + dy }, faceW * 0.11, faceW * 0.07);
   if (partId === "cheek") return { regions: { R: cheek("R", 0), L: cheek("L", 0) } };
-  if (partId === "contour") return { regions: { R: cheek("R", 60), L: cheek("L", 60) }, highlights: { R: cheek("R", -40), L: cheek("L", -40) } };
+  if (partId === "contour") {
+    // 얼굴형 규칙처럼 밴드 배열로: 쉐딩 좌·우, 하이라이트 좌·우 + 가운데(콧대) 하나. 가운데 밴드는 채점이 좌우 비교에서 빼야 한다
+    const nose = ellipse({ x: (at(LM.faceL).x + at(LM.faceR).x) / 2, y: 300 }, faceW * 0.03, faceW * 0.08);
+    return { contour: { shading: [cheek("R", 60), cheek("L", 60)], highlight: [cheek("R", -40), cheek("L", -40), nose] } };
+  }
   return {};
 };
 
@@ -99,13 +107,20 @@ function distToPath(x: number, y: number, path: readonly Pt[]): number {
 
 export const BARE: SampleFrame = frameOf(image(), LMS);
 export const geomOf = (partId: PartId): PartGeometry => guide(partId, BARE);
-export const inRegion = (partId: PartId, s: Side) => { const poly = geomOf(partId).regions![s]; return (x: number, y: number) => pointInPoly(x, y, poly); };
-export const inHighlight = (s: Side) => { const poly = geomOf("contour").highlights![s]; return (x: number, y: number) => pointInPoly(x, y, poly); };
+const bandIdx = (s: Side): number => (s === "R" ? 0 : 1);
+/** 부위 영역 판정기. 쉐딩은 밴드 배열에서 좌우 하나씩 (R = 0, L = 1) */
+export const inRegion = (partId: PartId, s: Side) => {
+  const poly = partId === "contour" ? geomOf("contour").contour!.shading[bandIdx(s)]! : geomOf(partId).regions![s];
+  return (x: number, y: number) => pointInPoly(x, y, poly);
+};
+export const inHighlight = (s: Side) => { const poly = geomOf("contour").contour!.highlight[bandIdx(s)]!; return (x: number, y: number) => pointInPoly(x, y, poly); };
+/** 가운데(콧대) 하이라이트 밴드 */
+export const inNoseHighlight = () => { const poly = geomOf("contour").contour!.highlight[2]!; return (x: number, y: number) => pointInPoly(x, y, poly); };
 
 /** 속눈썹 선 + 꼬리를 폭 4px 로 그린다. lift 는 꼬리 끝을 위로 올리는 양(px) */
 export function linerPaint(lift: Partial<Record<Side, number>> = {}, sides: readonly Side[] = ["R", "L"]): Paint {
   const paths = sides.map((s) => {
-    const [, end] = geomOf("liner").linerWing![s];
+    const [, end] = geomOf("liner").liner!.wing[s];
     return [...eyeOf(s).upper.map(P).reverse(), { x: end.x, y: end.y - (lift[s] ?? 0) }];
   });
   return (x, y) => (paths.some((path) => distToPath(x, y, path) <= 2) ? INK : null);

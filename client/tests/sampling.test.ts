@@ -7,7 +7,7 @@ import type { SampleFrame } from "@core/sampling";
 import { alignedFrame, scorePart } from "@core/score-part";
 import { decide, toOutcome } from "@core/score";
 import type { PartId } from "@core/types";
-import { BARE, BLUSH, DEEP_BLUSH, HIGHLIGHT, LMS, SHADE, W, browPaint, geomOf, guide, image, inHighlight, inRegion, linerPaint, lipPaint, made, regionPaint } from "./helpers/synth-face";
+import { BARE, BLUSH, DEEP_BLUSH, GUIDE, HIGHLIGHT, LMS, SHADE, W, browPaint, geomOf, guide, image, inHighlight, inNoseHighlight, inRegion, linerPaint, lipPaint, made, regionPaint } from "./helpers/synth-face";
 import type { Paint } from "./helpers/synth-face";
 
 const run = (partId: PartId, cur: SampleFrame, base: SampleFrame = BARE) => {
@@ -17,16 +17,19 @@ const run = (partId: PartId, cur: SampleFrame, base: SampleFrame = BARE) => {
 
 describe("샘플 모양", () => {
   it("M1 score.ts 가 받는 모양 그대로: 라이너 80×25, 눈썹 24×9×2, 입술 60×25", () => {
-    const liner = sampleLiner(BARE, "R", geomOf("liner").linerWing!.R);
+    const g = geomOf("liner").liner!;
+    const liner = sampleLiner(BARE, "R", g.wing.R, g.thick);
     expect(liner.lab).toHaveLength(80);
     expect(liner.lab[0]).toHaveLength(LINER_OFFS.length);
     expect(liner.meta.isWing.filter(Boolean).length).toBeGreaterThan(0);
     expect(liner.meta.wingLen).toBeCloseTo(0.15, 6);
+    expect(liner.meta.thick).toBe(GUIDE.linerThick);   // 치수는 가이드가 준 값 그대로 샘플에 실린다
     const brow = sampleBrow(BARE);
     expect(brow.lab).toHaveLength(24 * 9 * 2);
     expect(brow.meta.side.filter((s) => s === "R")).toHaveLength(24 * 9);
-    const lip = sampleLip(BARE);
+    const lip = sampleLip(BARE, GUIDE.lipOffset);
     expect(lip.lab).toHaveLength(60);
+    expect(lip.meta.offset).toBe(GUIDE.lipOffset);
     expect(lip.lab[0]).toHaveLength(LIP_OFFS.length);
     expect(new Set(lip.meta.half)).toEqual(new Set(["upper", "lower"]));
   });
@@ -118,6 +121,19 @@ describe("사진 → 점수", () => {
     const both = run("contour", made((x, y) => (hiR(x, y) || hiL(x, y) ? HIGHLIGHT : null))).result;
     expect(both.codes).toEqual([]);
   });
+
+  it("N10 가운데 밴드(콧대 하이라이트)는 좌우 비교에 안 들어간다; 하이라이트 밴드가 없으면 비교를 건너뛴다", () => {
+    const nose = inNoseHighlight();
+    const r = run("contour", made((x, y) => (nose(x, y) ? HIGHLIGHT : null))).result;
+    expect(r.codes).toEqual([]);   // POC 는 가운데를 L 로 몰아 "왼쪽 하이라이트" 를 냈다
+    expect(r.metrics.hiIndex).toEqual({ left: 0, right: 0 });
+    const noHi = scorePart("contour", BARE, made(regionPaint("contour", SHADE, ["L"])), (partId, f) => {
+      const g = guide(partId, f);
+      return partId === "contour" && g.contour ? { contour: { shading: g.contour.shading, highlight: [] } } : g;
+    }).result;
+    expect(noHi.codes).toEqual(["CONTOUR_LR_L"]);
+    expect(noHi.metrics.hiIndex).toBeUndefined();
+  });
 });
 
 describe("조명·정렬", () => {
@@ -149,8 +165,23 @@ describe("조명·정렬", () => {
     expect(scorePart("lip", BARE, frameOf(moved, detected), guide).result.score).not.toBe(aligned.score);
   });
 
-  it("G4 가이드가 모양을 안 주면 조용히 넘어가지 않고 던진다", () => {
-    expect(() => scorePart("liner", BARE, BARE, () => ({}))).toThrow(/꼬리 선/);
+  it("G4 가이드가 모양·치수를 안 주면 조용히 넘어가지 않고 던진다", () => {
+    expect(() => scorePart("liner", BARE, BARE, () => ({}))).toThrow(/꼬리 선·두께/);
+    expect(() => scorePart("lip", BARE, BARE, () => ({}))).toThrow(/오프셋/);
     expect(() => scorePart("cheek", BARE, BARE, () => ({}))).toThrow(/cheek 영역/);
+    expect(() => scorePart("contour", BARE, BARE, () => ({}))).toThrow(/쉐딩 밴드/);
+  });
+
+  it("G5 치수는 가이드를 따라간다: ② 가 굵게 그린 룩이면 같은 선도 '두꺼워요' 가 아니다", () => {
+    // 같은 사진, 같은 그림. 가이드 두께만 룩마다 다르게 준다
+    const withThick = (thick: number) => scorePart("liner", BARE, made(linerPaint(), 1), (partId, f) => {
+      const g = guide(partId, f);
+      return partId === "liner" && g.liner ? { liner: { ...g.liner, thick } } : g;
+    }).result;
+    const thin = withThick(0.02), same = withThick(GUIDE.linerThick), thick = withThick(0.08);
+    expect(same.codes).toEqual([]);
+    expect(thin.codes).toContain("LINER_THICK");    // 얇은 룩 기준에선 4px 선이 두껍다
+    expect(thick.codes).toContain("LINER_THIN");    // 굵은 룩 기준에선 옅다
+    expect(thin.metrics.thickness).toBe(same.metrics.thickness);   // 잰 두께는 같고, 기준만 다르다
   });
 });

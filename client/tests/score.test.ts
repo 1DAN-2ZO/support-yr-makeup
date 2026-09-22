@@ -49,7 +49,8 @@ function linerStrip(hit: (i: number, offMm: number) => boolean): LinerStrip {
     tFromCorner.push(wing ? (((i - 59) / 20) * 4) / EYE_MM : -1 / EYE_MM);
     rows.push(OFFS_MM.map((o) => (hit(i, o) ? INK : SKIN)));
   }
-  return { lab: rows, meta: { offs: OFFS_MM.map((o) => o / EYE_MM), isWing, tFromCorner, wingLen: 4 / EYE_MM } };
+  // 가이드 두께 1.2mm — 원래 채점기 상수였지만 이제 ② 가 룩마다 주는 값이라 샘플 meta 로 들어온다
+  return { lab: rows, meta: { offs: OFFS_MM.map((o) => o / EYE_MM), isWing, tFromCorner, wingLen: 4 / EYE_MM, thick: 1.2 / EYE_MM } };
 }
 const bareStrip = linerStrip(() => false);
 const eyeRes = (hit: (i: number, offMm: number) => boolean) => compareLinerEye(bareStrip, linerStrip(hit), noCorr);
@@ -168,7 +169,7 @@ describe("입술", () => {
       side.push(i % 2 ? "R" : "L");
       rows.push(OFFS_MM.map((o) => (hit(h, o) ? INK : SKIN)));
     }
-    return { lab: rows, meta: { offs: OFFS_MM.map((o) => o / LIP_MM), half, side } };
+    return { lab: rows, meta: { offs: OFFS_MM.map((o) => o / LIP_MM), half, side, offset: 0.5 / LIP_MM } };
   }
   const bareLip = lipStrip(() => false);
   const lip = (hit: Parameters<typeof lipStrip>[0]) => compareLip(bareLip, lipStrip(hit), noCorr);

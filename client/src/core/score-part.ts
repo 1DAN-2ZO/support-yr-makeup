@@ -8,23 +8,40 @@
  *   session = applyResult(session, partId, toOutcome(partId, result, ctx));
  */
 
-import type { RgbaImage } from "./color";
+import type { Lab, RgbaImage } from "./color";
 import { deltaE } from "./color";
-import { LM } from "./landmarks";
+import { LM, at } from "./landmarks";
 import type { SampleFrame } from "./sampling";
 import { frameOf, sampleBrow, sampleForehead, sampleLiner, sampleLip, sampleRegion } from "./sampling";
-import type { Band, DecideContext, PartScore, ScoreParams, Side, SimilarityFit } from "./score";
+import type { Band, DecideContext, LightCorr, PartScore, ScoreParams, Side, SimilarityFit } from "./score";
 import { PARAMS, alignToBaseline, browResult, compareLinerEye, compareLip, compareRegion, intensityIndex, intensityResult, lightCorr, linerResult, makeupBiasPx, noCorr } from "./score";
 import type { PartId, Pt } from "./types";
 
-/** 채점이 가이드에서 받아야 하는 모양. 그 프레임의 좌표(px)로 */
+/**
+ * 채점이 가이드에서 받아야 하는 모양. 그 프레임의 좌표(px)로.
+ * 치수(thick·offset)는 ② 가 룩마다 정해서 그린 값이다 — 채점은 자기 치수를 갖지 않고 여기 온 값을 그대로 쓴다
+ */
 export interface PartGeometry {
-  /** 아이라이너 꼬리 선 [눈꼬리, 꼬리 끝] */
-  linerWing?: Record<Side, readonly [Pt, Pt]>;
-  /** 강도 부위(섀도우·볼터치·쉐딩) 영역 다각형. 쉐딩은 쉐딩(어둡게) 영역 */
+  liner?: {
+    /** 꼬리 선 [눈꼬리, 꼬리 끝] */
+    wing: Record<Side, readonly [Pt, Pt]>;
+    /** 선 두께 (눈 폭 비율) */
+    thick: number;
+  };
+  lip?: {
+    /** 경계 오프셋 (입술 폭 비율, + 바깥) */
+    offset: number;
+  };
+  /** 섀도우·볼터치 영역 다각형, 좌우 하나씩 */
   regions?: Record<Side, readonly Pt[]>;
-  /** 쉐딩 화면의 하이라이트(밝게) 영역. 있으면 좌우 차 한 줄을 더 낸다. 점수 없음 */
-  highlights?: Record<Side, readonly Pt[]>;
+  /**
+   * 쉐딩 화면: 얼굴형 규칙(contourOutline)이 낸 밴드 배열 그대로. 좌우 구분 없이, 한쪽에 여러 개, 가운데 밴드(콧대·이마 위·턱 끝)도 섞여 있다.
+   * 좌우 분류와 가운데 제외는 채점이 한다. 점수는 없고 좌우 차 한 줄씩만 (쉐딩·하이라이트). highlight 가 비어 있으면 하이라이트 비교는 건너뛴다
+   */
+  contour?: {
+    shading: readonly (readonly Pt[])[];
+    highlight: readonly (readonly Pt[])[];
+  };
 }
 
 /**
@@ -60,12 +77,15 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
 
   let result: PartScore;
   if (partId === "liner") {
-    const eye = (s: Side) => compareLinerEye(sampleLiner(base, s, wingOf(guide, partId, base, s)), sampleLiner(cur, s, wingOf(guide, partId, cur, s)), corr, p);
+    const gb = linerOf(guide, base), gc = linerOf(guide, cur);
+    const eye = (s: Side) => compareLinerEye(sampleLiner(base, s, gb.wing[s], gb.thick), sampleLiner(cur, s, gc.wing[s], gc.thick), corr, p);
     result = linerResult({ R: eye("R"), L: eye("L") }, opts.baseAsym ?? 0, p);
   } else if (partId === "brow") {
     result = browResult(compareRegion(sampleBrow(base), sampleBrow(cur), corr, p.dEThresh.brow));
   } else if (partId === "lip") {
-    result = compareLip(sampleLip(base), sampleLip(cur), corr, p);
+    result = compareLip(sampleLip(base, lipOf(guide, base).offset), sampleLip(cur, lipOf(guide, cur).offset), corr, p);
+  } else if (partId === "contour") {
+    result = scoreContour(base, cur, guide, corr, p);
   } else {
     const halves = partId === "shadow";
     const side = (s: Side) => {
@@ -75,23 +95,11 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
       return { ...intensityIndex(b.part, c.part, b.ring, c.ring, corr, p), dir };
     };
     const L = side("L"), R = side("R");
-    // 쉐딩 화면: 하이라이트 영역도 같은 방법으로 좌우를 잰다 (가이드가 주면). 점수에는 안 들어간다
-    const hiPoly = partId === "contour" ? guide(partId, base).highlights : undefined;
-    const hi = hiPoly
-      ? (() => {
-          const one = (s: Side) => {
-            const b = sampleRegion(base, hiPoly[s], s), c = sampleRegion(cur, guide(partId, cur).highlights![s], s);
-            return { index: b && c ? intensityIndex(b.part, c.part, b.ring, c.ring, corr, p).index : 0 };
-          };
-          return { L: one("L"), R: one("R") };
-        })()
-      : undefined;
     result = intensityResult(partId, {
       L, R,
       present: Math.max(L.delta, R.delta) > p.tPresent[partId],
       directionOk: !halves || (L.dir + R.dir) / 2 > 0,   // 섀도우: 눈꼬리 쪽이 더 진해야 한다
       ...(opts.band !== undefined ? { band: opts.band } : {}),
-      ...(hi ? { hi } : {}),
     }, p);
     result.metrics.deltas = { L: L.delta, R: R.delta };
   }
@@ -99,10 +107,63 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
   return { result, ctx };
 }
 
-function wingOf(guide: GuideSource, partId: PartId, f: SampleFrame, s: Side): readonly [Pt, Pt] {
-  const w = guide(partId, f).linerWing?.[s];
-  if (!w) throw new Error(`가이드에 아이라이너 꼬리 선이 없다 (${s})`);
-  return w;
+/** 밴드 무게중심이 얼굴 중심에서 얼굴 폭의 이 비율 안이면 가운데 밴드 — 좌우 어느 쪽도 아니다 */
+const CENTER_BAND = 0.05;
+
+/**
+ * 얼굴형 규칙 밴드들을 좌우로 나눠 한쪽의 부위 색·둘레 맨살 색을 평균한다.
+ * R = 이미지 왼쪽(x 작은 쪽). POC(sampleContourS3)는 가운데 밴드를 L 로 몰아넣었는데 여기서는 뺀다 — 콧대 하이라이트가 "왼쪽 하이라이트"가 되면 안 된다
+ */
+function sideMean(f: SampleFrame, bands: readonly (readonly Pt[])[], s: Side): { part: Lab; ring: Lab } | null {
+  const center = (at(f.lm, LM.faceL).x + at(f.lm, LM.faceR).x) / 2, w = f.unit.face || 1;
+  const acc = { part: { L: 0, a: 0, b: 0 }, ring: { L: 0, a: 0, b: 0 } };
+  let n = 0;
+  for (const poly of bands) {
+    if (poly.length < 3) continue;
+    const cx = poly.reduce((sum, q) => sum + q.x, 0) / poly.length, d = (cx - center) / w;
+    if (Math.abs(d) < CENTER_BAND) continue;
+    if ((d < 0 ? "R" : "L") !== s) continue;
+    const r = sampleRegion(f, poly, s);
+    if (!r) continue;
+    for (const k of ["L", "a", "b"] as const) { acc.part[k] += r.part[k]; acc.ring[k] += r.ring[k]; }
+    n++;
+  }
+  if (!n) return null;
+  const avg = (v: Lab): Lab => ({ L: v.L / n, a: v.a / n, b: v.b / n });
+  return { part: avg(acc.part), ring: avg(acc.ring) };
+}
+
+/** 쉐딩 화면: 점수 없이 쉐딩 좌우 차 + (있으면) 하이라이트 좌우 차 */
+function scoreContour(base: SampleFrame, cur: SampleFrame, guide: GuideSource, corr: LightCorr, p: ScoreParams): PartScore {
+  const gb = contourOf(guide, base), gc = contourOf(guide, cur);
+  const idx = (bb: readonly (readonly Pt[])[], bc: readonly (readonly Pt[])[], s: Side) => {
+    const b = sideMean(base, bb, s), c = sideMean(cur, bc, s);
+    return b && c ? intensityIndex(b.part, c.part, b.ring, c.ring, corr, p) : { delta: 0, index: 0 };   // 그쪽에 밴드가 없으면 화장 없음
+  };
+  const L = idx(gb.shading, gc.shading, "L"), R = idx(gb.shading, gc.shading, "R");
+  const hasHi = gb.highlight.length > 0 && gc.highlight.length > 0;
+  const hi = hasHi ? { L: { index: idx(gb.highlight, gc.highlight, "L").index }, R: { index: idx(gb.highlight, gc.highlight, "R").index } } : undefined;
+  const result: PartScore = intensityResult("contour", { L, R, present: Math.max(L.delta, R.delta) > p.tPresent.contour, ...(hi ? { hi } : {}) }, p);
+  result.metrics.deltas = { L: L.delta, R: R.delta };
+  return result;
+}
+
+function contourOf(guide: GuideSource, f: SampleFrame): NonNullable<PartGeometry["contour"]> {
+  const g = guide("contour", f).contour;
+  if (!g || !Array.isArray(g.shading)) throw new Error("가이드에 쉐딩 밴드가 없다");
+  return g;
+}
+
+function linerOf(guide: GuideSource, f: SampleFrame): NonNullable<PartGeometry["liner"]> {
+  const g = guide("liner", f).liner;
+  if (!g || !(g.thick > 0)) throw new Error("가이드에 아이라이너 꼬리 선·두께가 없다");
+  return g;
+}
+
+function lipOf(guide: GuideSource, f: SampleFrame): NonNullable<PartGeometry["lip"]> {
+  const g = guide("lip", f).lip;
+  if (!g || typeof g.offset !== "number") throw new Error("가이드에 입술 경계 오프셋이 없다");
+  return g;
 }
 
 function regionOf(guide: GuideSource, partId: PartId, f: SampleFrame, s: Side): readonly Pt[] {
