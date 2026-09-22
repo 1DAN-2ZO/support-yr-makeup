@@ -139,6 +139,9 @@ export function shotGate(shotId: ShotId, m: ShotMeasure, limits: CaptureLimits =
   const fail = (firstFail: GateFail, key: ShotTextKey): GateResult => ({ ok: false, firstFail, text: SHOT_TEXT[key], stableCount });
 
   if (!m.faceDetected) return fail("face", "none");
+  // 깨진 측정값(NaN·Infinity)은 비교가 전부 false 라 모든 조건을 통과해 버린다 → 얼굴을 못 잰 것으로 본다.
+  // 랜드마크 yaw 는 얼굴 폭으로 나누므로 점이 겹치면 NaN 이 나온다 (1-1 재검증 2026-09-22)
+  if (!measureFinite(m)) return fail("face", "none");
   if (typeof m.faceInset === "number" && m.faceInset < FACE_INSET_MIN) return fail("visible", "cut");
   if (m.yaw < shot.yaw[0] || m.yaw > shot.yaw[1]) {
     if (shot.id.startsWith("front")) return fail("angle", "front");
@@ -166,6 +169,13 @@ export function shotGate(shotId: ShotId, m: ShotMeasure, limits: CaptureLimits =
   }
   if (stableCount < limits.stableFrames) return fail("stable", "stable");
   return { ok: true, firstFail: null, text: SHOT_TEXT.ready, stableCount };
+}
+
+/** 들어온 숫자가 전부 유한한가. 없는 항목(undefined)은 건너뛴다 */
+function measureFinite(m: ShotMeasure): boolean {
+  const nums = [m.yaw, m.pitch, m.faceRatio, m.faceInset, m.sharpness, m.foreheadL, m.baselineL, m.stableCount,
+    m.foreheadAb?.a, m.foreheadAb?.b, m.baselineAb?.a, m.baselineAb?.b];
+  return nums.every((v) => v === undefined || Number.isFinite(v));
 }
 
 /** 아직 안 찍은 첫 장. 틀린 장만 지우고 다시 부르면 그 장만 다시 찍는다 */

@@ -114,6 +114,20 @@ describe("S 촬영 4장 게이트", () => {
     expect(/\d/.test(shotGate("front_open", warm).text)).toBe(false);
   });
 
+  it("S8 깨진 측정값(NaN·Infinity)은 어느 칸이든 찍지 않는다 — 얼굴을 못 잰 것으로", () => {
+    const broken: Partial<ShotMeasure>[] = [
+      { yaw: NaN }, { pitch: NaN }, { yaw: Infinity }, { faceRatio: NaN }, { faceInset: NaN }, { sharpness: NaN },
+      { foreheadL: NaN }, { baselineL: -Infinity }, { stableCount: NaN },
+      { foreheadAb: { a: NaN, b: 0 }, baselineAb: { a: 0, b: 0 } }, { foreheadAb: { a: 0, b: 0 }, baselineAb: { a: 0, b: Infinity } },
+    ];
+    for (const b of broken) {
+      expect(shotGate("front_open", { ...OK, ...b } as ShotMeasure), JSON.stringify(b)).toMatchObject({ ok: false, firstFail: "face", text: "" });
+    }
+    // 없는 항목(undefined)은 그대로 건너뛴다
+    const { sharpness: _s, faceRatio: _r, ...partial } = OK;
+    expect(shotGate("front_open", partial).ok).toBe(true);
+  });
+
   it("S6 밝기 기준(baselineL)이 없으면 밝기 조건을 건너뛴다 (첫 장)", () => {
     const noBase: ShotMeasure = { faceDetected: true, yaw: 0, pitch: 0, closedA: false, closedB: false, faceRatio: 0.5, sharpness: 80, foreheadL: 20, stableCount: 5 };
     expect(shotGate("front_open", noBase).ok).toBe(true);
