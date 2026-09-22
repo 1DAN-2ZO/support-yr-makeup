@@ -39,7 +39,11 @@ export type IntensityPartId = (typeof INTENSITY_PARTS)[number];
 export type Side = "R" | "L";
 export type Band = readonly [number, number];
 
-/** 임계·가이드 값. 전부 가정값이고 E-1 뒤에 rules/score.json 으로 옮긴다 (3-13) */
+/**
+ * 채점 임계. 전부 가정값이고 E-1 뒤에 rules/score.json 으로 옮긴다 (3-13).
+ * 가이드 치수(라이너 두께·입술 오프셋)는 여기 없다 — ② 가 룩마다 정해서 그린 값을 샘플 meta 로 받아 쓴다.
+ * 채점이 자기 치수를 갖고 있으면 가이드와 어긋날 때 가이드대로 그려도 감점된다
+ */
 export interface ScoreParams {
   /** 형태 부위 화장 감지 임계 (ΔE) */
   dEThresh: { liner: number; brow: number; lip: number };
@@ -51,8 +55,6 @@ export interface ScoreParams {
   lightTol: number;
   /** 목표 지수 밴드. 룩 템플릿 값이 우선이고, 없으면 확인만 */
   band: Partial<Record<IntensityPartId, Band>>;
-  /** 가이드 치수 (눈 폭·입술 폭 비율) */
-  guide: { liner: { thick: number; wing: number }; brow: { tail: number }; lip: { offset: number } };
   tol: {
     band: number;
     out: number;
@@ -74,7 +76,6 @@ export const PARAMS: ScoreParams = {
   toneDiv: 4,
   lightTol: 12,
   band: { cheek: [25, 60], shadow: [20, 65] },
-  guide: { liner: { thick: 0.045, wing: 0.15 }, brow: { tail: 0.11 }, lip: { offset: 0.01 } },
   tol: { band: 0.011, out: 0.022, wingDev: 0.022, wingShort: 0.055, thickOver: 0.015, thickUnder: 0.022, lrDiff: 0.045, lipIn: 0.006, lipOut: 0.012, wingMin: 0.015 },
 };
 
@@ -193,6 +194,8 @@ export interface LinerStrip {
     /** 눈꼬리에서 꼬리를 따라 간 거리 (눈 폭 비율). 눈꺼풀 행은 음수 */
     tFromCorner: readonly number[];
     wingLen: number;
+    /** 가이드 선 두께 (눈 폭 비율). ② 가 이 룩에서 그린 값 — 밴드 안/밖과 두꺼움/옅음의 기준 */
+    thick: number;
   };
 }
 
@@ -202,6 +205,8 @@ export interface LinerEyeMetrics {
   /** 밴드 밖 감지율 */
   overflow: number;
   thickness: number;
+  /** 가이드 선 두께 (샘플 meta 에서 그대로) */
+  guideThick: number;
   wingGuide: number;
   wingDrawn: number;
   /** 꼬리 끝 쪽의 감지 중심 오프셋. + 는 가이드 법선(위·바깥) 방향 */
@@ -211,12 +216,12 @@ export interface LinerEyeMetrics {
 }
 
 export function compareLinerEye(base: LinerStrip, cur: LinerStrip, corr: LightCorr, p: ScoreParams = PARAMS): LinerEyeMetrics {
-  const { offs, isWing, tFromCorner, wingLen } = cur.meta;
-  const half = p.guide.liner.thick / 2;
+  const { offs, isWing, tFromCorner, wingLen, thick: guideThick } = cur.meta;
+  const half = guideThick / 2;
   const N = Math.min(base.lab.length, cur.lab.length), M = offs.length;
   const step = M > 1 ? offs[1]! - offs[0]! : 0.0092;
   let rowsN = 0, rowsCovered = 0, outN = 0, outHit = 0, wingDrawn = 0, lidRows = 0, lidHitRows = 0;
-  const thick: number[] = [], devs: number[] = [];
+  const widths: number[] = [], devs: number[] = [];
   for (let i = 0; i < N; i++) {
     const wing = isWing[i] ?? false, t = tFromCorner[i] ?? 0;
     let drawnW = 0, bandHit = false;
@@ -235,7 +240,7 @@ export function compareLinerEye(base: LinerStrip, cur: LinerStrip, corr: LightCo
     rowsN++;
     if (bandHit) rowsCovered++;
     if (drawnW > 0) {
-      thick.push(drawnW);
+      widths.push(drawnW);
       if (wing && t > wingLen * 0.5) devs.push(median(hitOffs));   // 꼬리 바깥쪽 절반의 중심 오프셋
     }
     if (!wing) { lidRows++; if (drawnW > 0) lidHitRows++; }
@@ -244,12 +249,13 @@ export function compareLinerEye(base: LinerStrip, cur: LinerStrip, corr: LightCo
   return {
     coverage: rowsN ? rowsCovered / rowsN : 0,
     overflow: outN ? outHit / outN : 0,
-    thickness: median(thick),
+    thickness: median(widths),
+    guideThick,
     wingGuide: wingLen,
     wingDrawn,
     wingDev: devs.length ? median(devs) : 0,
     gapRatio: lidRows ? 1 - lidHitRows / lidRows : 1,
-    present: thick.length >= 3,
+    present: widths.length >= 3,
   };
 }
 
@@ -268,9 +274,9 @@ export function linerResult(perEye: Record<Side, LinerEyeMetrics>, baseAsym = 0,
     if (e.gapRatio > 0.25) codes.push(`LINER_GAP_${k}`);
     if (e.overflow > 0.35) codes.push(`LINER_OUT_${k}`);
   }
-  const thickness = (R.thickness + L.thickness) / 2;
-  if (thickness > p.guide.liner.thick + p.tol.thickOver) codes.push("LINER_THICK");
-  else if (thickness < p.guide.liner.thick - p.tol.thickUnder && thickness > 0) codes.push("LINER_THIN");
+  const thickness = (R.thickness + L.thickness) / 2, guideThick = (R.guideThick + L.guideThick) / 2;
+  if (thickness > guideThick + p.tol.thickOver) codes.push("LINER_THICK");
+  else if (thickness < guideThick - p.tol.thickUnder && thickness > 0) codes.push("LINER_THIN");
   const lrDiff = Math.abs(R.wingDev - L.wingDev - baseAsym);
   if (lrDiff > p.tol.lrDiff) codes.push("LINER_LR_DIFF");
   const avg = (a: number, b: number): number => (a + b) / 2;
@@ -278,7 +284,7 @@ export function linerResult(perEye: Record<Side, LinerEyeMetrics>, baseAsym = 0,
     coverage: avg(R.coverage, L.coverage),
     overflow: avg(R.overflow, L.overflow),
     wingDelta: avg(R.wingDrawn - R.wingGuide, L.wingDrawn - L.wingGuide),
-    thickDelta: thickness - p.guide.liner.thick,
+    thickDelta: thickness - guideThick,
   });
   return { present, score, codes, lrIndex: null, metrics: { perEye, lrDiff, thickness } };
 }
@@ -344,12 +350,14 @@ export interface LipStrip {
     offs: readonly number[];
     half: readonly ("upper" | "lower")[];
     side: readonly Side[];
+    /** 가이드 경계 오프셋 (입술 폭 비율, + 바깥). ② 가 이 룩에서 그린 값 */
+    offset: number;
   };
 }
 
 export function compareLip(base: LipStrip, cur: LipStrip, corr: LightCorr, p: ScoreParams = PARAMS): PartScore {
-  const { offs, half, side } = cur.meta;
-  const N = Math.min(base.lab.length, cur.lab.length), M = offs.length, off = p.guide.lip.offset;
+  const { offs, half, side, offset: off } = cur.meta;
+  const N = Math.min(base.lab.length, cur.lab.length), M = offs.length;
   const out = { upper: { n: 0, hit: 0 }, lower: { n: 0, hit: 0 } };
   const sideRows = { R: { n: 0, hit: 0 }, L: { n: 0, hit: 0 } };
   let inN = 0, inHit = 0, rowsHit = 0;

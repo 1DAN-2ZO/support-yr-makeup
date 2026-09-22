@@ -5,12 +5,13 @@
  * 평가가 앱과 같은 것을 잰다 — 치수(꼬리 각 30°·길이 0.15, 섀도우 0.55, 볼 0.11×0.07 기울기 −25°)는
  * POC TEMPLATE 그대로다.
  *
- * 모양은 client/src/core/score-part.ts 의 GuideSource: (partId, frame) → { linerWing?, regions? }.
+ * 모양은 client/src/core/score-part.ts 의 GuideSource: (partId, frame) → { liner?, lip?, regions?, contour? }.
  * R = 이미지 왼쪽 눈(eyeA) = 피험자 오른쪽.
  */
 
 const TEMPLATE = {
-  liner: { wingAngle: 30, wing: 0.15 },
+  liner: { wingAngle: 30, wing: 0.15, thick: 0.045 },   // thick·offset 은 ② 가 룩마다 정한다. 여기 값은 POC 기본(스모키 1벌)
+  lip: { offset: 0.01 },
   shadow: { rangeRatio: 0.55 },
   cheek: { rx: 0.11, ry: 0.07, tilt: -25 },
   contour: { rx: 0.13, ry: 0.05, tilt: -30, down: 0.06, toward: 0.35 },
@@ -49,14 +50,18 @@ export function makePocGuide(LM) {
 
     if (partId === "liner") {
       return {
-        linerWing: both(({ eye }) => {
-          const outer = P(eye.outer), inner = P(eye.inner);
-          const v = norm(sub(outer, inner)), a = (TEMPLATE.liner.wingAngle * Math.PI) / 180;
-          const dir = norm(add(mul(v, Math.cos(a)), { x: 0, y: -Math.sin(a) }));
-          return [outer, add(outer, mul(dir, TEMPLATE.liner.wing * f.unit.eye))];
-        }),
+        liner: {
+          wing: both(({ eye }) => {
+            const outer = P(eye.outer), inner = P(eye.inner);
+            const v = norm(sub(outer, inner)), a = (TEMPLATE.liner.wingAngle * Math.PI) / 180;
+            const dir = norm(add(mul(v, Math.cos(a)), { x: 0, y: -Math.sin(a) }));
+            return [outer, add(outer, mul(dir, TEMPLATE.liner.wing * f.unit.eye))];
+          }),
+          thick: TEMPLATE.liner.thick,
+        },
       };
     }
+    if (partId === "lip") return { lip: { offset: TEMPLATE.lip.offset } };
     if (partId === "shadow") {
       return {
         regions: both(({ eye, brow }) => {
@@ -72,10 +77,14 @@ export function makePocGuide(LM) {
       };
     }
     if (partId === "contour") {
+      // [자리표시] 앱은 얼굴형 규칙(contourOutline, screen3-core.js)의 밴드를 쓴다 — 턱선·광대 아래·이마 옆 등 얼굴형마다 다르고 가운데 밴드도 있다.
+      // ② 의 contour.ts 가 그 배열을 그대로 넘기면 된다. 그때까지는 guides.js 의 둥근형 예시 타원(좌우 하나씩)
       const c = TEMPLATE.contour, h = TEMPLATE.highlight;
       return {
-        regions: both(({ cheek, face, sign }) => ellipse(add(mix(P(cheek), P(face), c.toward), { x: 0, y: faceW * c.down }), faceW * c.rx, faceW * c.ry, sign * c.tilt)),
-        highlights: both(({ cheek, face, sign }) => ellipse(add(mix(P(cheek), P(face), h.toward), { x: 0, y: -faceW * h.up }), faceW * h.rx, faceW * h.ry, sign * h.tilt)),
+        contour: {
+          shading: SIDES.map(({ cheek, face, sign }) => ellipse(add(mix(P(cheek), P(face), c.toward), { x: 0, y: faceW * c.down }), faceW * c.rx, faceW * c.ry, sign * c.tilt)),
+          highlight: SIDES.map(({ cheek, face, sign }) => ellipse(add(mix(P(cheek), P(face), h.toward), { x: 0, y: -faceW * h.up }), faceW * h.rx, faceW * h.ry, sign * h.tilt)),
+        },
       };
     }
     return {};
