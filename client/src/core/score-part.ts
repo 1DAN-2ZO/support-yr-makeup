@@ -21,8 +21,10 @@ import type { PartId, Pt } from "./types";
 export interface PartGeometry {
   /** 아이라이너 꼬리 선 [눈꼬리, 꼬리 끝] */
   linerWing?: Record<Side, readonly [Pt, Pt]>;
-  /** 강도 부위(섀도우·볼터치·쉐딩) 영역 다각형. 쉐딩은 하이라이트 말고 쉐딩 영역 */
+  /** 강도 부위(섀도우·볼터치·쉐딩) 영역 다각형. 쉐딩은 쉐딩(어둡게) 영역 */
   regions?: Record<Side, readonly Pt[]>;
+  /** 쉐딩 화면의 하이라이트(밝게) 영역. 있으면 좌우 차 한 줄을 더 낸다. 점수 없음 */
+  highlights?: Record<Side, readonly Pt[]>;
 }
 
 /**
@@ -73,11 +75,23 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
       return { ...intensityIndex(b.part, c.part, b.ring, c.ring, corr, p), dir };
     };
     const L = side("L"), R = side("R");
+    // 쉐딩 화면: 하이라이트 영역도 같은 방법으로 좌우를 잰다 (가이드가 주면). 점수에는 안 들어간다
+    const hiPoly = partId === "contour" ? guide(partId, base).highlights : undefined;
+    const hi = hiPoly
+      ? (() => {
+          const one = (s: Side) => {
+            const b = sampleRegion(base, hiPoly[s], s), c = sampleRegion(cur, guide(partId, cur).highlights![s], s);
+            return { index: b && c ? intensityIndex(b.part, c.part, b.ring, c.ring, corr, p).index : 0 };
+          };
+          return { L: one("L"), R: one("R") };
+        })()
+      : undefined;
     result = intensityResult(partId, {
       L, R,
       present: Math.max(L.delta, R.delta) > p.tPresent[partId],
       directionOk: !halves || (L.dir + R.dir) / 2 > 0,   // 섀도우: 눈꼬리 쪽이 더 진해야 한다
       ...(opts.band !== undefined ? { band: opts.band } : {}),
+      ...(hi ? { hi } : {}),
     }, p);
     result.metrics.deltas = { L: L.delta, R: R.delta };
   }

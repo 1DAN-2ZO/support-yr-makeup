@@ -1,0 +1,123 @@
+// 시험용 합성 얼굴 — 478점 랜드마크 + 살색 사진에 화장을 픽셀로 "그린다".
+// sampling.test.ts(사진 → 점수)와 score-cli.test.ts(평가 CLI)가 같은 얼굴을 쓴다.
+import type { RgbaImage } from "@core/color";
+import { pointInPoly } from "@core/color";
+import { LM } from "@core/landmarks";
+import { frameOf } from "@core/sampling";
+import type { SampleFrame } from "@core/sampling";
+import type { GuideSource, PartGeometry } from "@core/score-part";
+import type { Side } from "@core/score";
+import type { PartId, Pt } from "@core/types";
+
+export const W = 600, H = 600;
+export type Rgb = readonly [number, number, number];
+export const SKIN: Rgb = [224, 172, 140], INK: Rgb = [30, 25, 28], BROWN: Rgb = [80, 55, 45], RED: Rgb = [180, 60, 80];
+/** 볼터치 적당(지수 ≈ 39, 밴드 25~60 안) / 과함(≈ 150) / 쉐딩 */
+export const BLUSH: Rgb = [226, 158, 140], DEEP_BLUSH: Rgb = [215, 95, 105], SHADE: Rgb = [170, 120, 110], HIGHLIGHT: Rgb = [248, 215, 195];
+
+const mirror = (p: Pt): Pt => ({ x: W - p.x, y: p.y });
+const arc = (x0: number, x1: number, y: number, rise: number, n: number): Pt[] =>
+  Array.from({ length: n }, (_, i) => ({ x: x0 + ((x1 - x0) * i) / (n - 1), y: y - rise * Math.sin((Math.PI * i) / (n - 1)) }));
+
+/** 478점. 채점이 쓰는 점만 제자리에 두고 나머지는 얼굴 가운데 */
+export function faceLandmarks(): Pt[] {
+  const lm: Pt[] = Array.from({ length: 478 }, () => ({ x: 300, y: 300, z: 0 }));
+  const put = (ids: readonly number[], pts: readonly Pt[]) => ids.forEach((id, i) => { lm[id] = { ...pts[i]!, z: 0 }; });
+  put(LM.eyeA.upper, arc(170, 260, 250, 18, 9));            // 바깥 → 안쪽
+  put(LM.eyeB.upper, arc(170, 260, 250, 18, 9).map(mirror));
+  put(LM.browA.upper, arc(160, 270, 200, 8, 5));
+  put(LM.browA.lower, arc(160, 270, 214, 4, 5));
+  put(LM.browB.upper, arc(160, 270, 200, 8, 5).map(mirror));
+  put(LM.browB.lower, arc(160, 270, 214, 4, 5).map(mirror));
+  put(LM.lipsOuter, Array.from({ length: 20 }, (_, k) => ({ x: 300 - 60 * Math.cos((k * Math.PI) / 10), y: 420 - 25 * Math.sin((k * Math.PI) / 10) })));
+  put([LM.faceL, LM.faceR, LM.cheekA, LM.cheekB], [{ x: 100, y: 300 }, { x: 500, y: 300 }, { x: 190, y: 340 }, { x: 410, y: 340 }]);
+  put([168, 6, 197, 195, 5, 4], [260, 275, 290, 305, 320, 335].map((y) => ({ x: 300, y })));
+  put([10, 338, 297, 332, 284, 251, 21, 54, 103, 67, 109], [
+    { x: 300, y: 100 }, { x: 340, y: 102 }, { x: 380, y: 110 }, { x: 410, y: 125 }, { x: 430, y: 150 }, { x: 440, y: 180 },
+    { x: 160, y: 180 }, { x: 170, y: 150 }, { x: 190, y: 125 }, { x: 220, y: 110 }, { x: 260, y: 102 },
+  ]);
+  return lm;
+}
+
+export const LMS = faceLandmarks();
+export const P = (i: number): Pt => LMS[i]!;
+export const eyeOf = (s: Side) => (s === "R" ? LM.eyeA : LM.eyeB);
+
+/** poc/full/lib/guides.js 와 같은 모양을 내는 시험용 가이드. 진짜는 ② 의 guides.ts 가 준다 */
+export const guide: GuideSource = (partId, f): PartGeometry => {
+  const at = (i: number): Pt => f.lm[i]!;
+  const faceW = f.unit.face;
+  const ellipse = (c: Pt, rx: number, ry: number): Pt[] => Array.from({ length: 28 }, (_, i) => ({ x: c.x + rx * Math.cos((i / 28) * 2 * Math.PI), y: c.y + ry * Math.sin((i / 28) * 2 * Math.PI) }));
+  const mix = (a: Pt, b: Pt, t: number): Pt => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+  if (partId === "liner") {
+    const wing = (s: Side): readonly [Pt, Pt] => {
+      const outer = at(eyeOf(s).outer), inner = at(eyeOf(s).inner);
+      const l = Math.hypot(outer.x - inner.x, outer.y - inner.y);
+      const v = { x: (outer.x - inner.x) / l, y: (outer.y - inner.y) / l }, a = (30 * Math.PI) / 180;
+      const d = { x: v.x * Math.cos(a), y: v.y * Math.cos(a) - Math.sin(a) }, dl = Math.hypot(d.x, d.y);
+      return [outer, { x: outer.x + (d.x / dl) * 0.15 * f.unit.eye, y: outer.y + (d.y / dl) * 0.15 * f.unit.eye }];
+    };
+    return { linerWing: { R: wing("R"), L: wing("L") } };
+  }
+  if (partId === "shadow") {
+    const region = (s: Side): Pt[] => {
+      const lid = eyeOf(s).upper.map(at), browLo = (s === "R" ? LM.browA : LM.browB).lower.map(at);
+      const top = lid.map((p, i) => mix(p, browLo[Math.min(browLo.length - 1, Math.round((i / (lid.length - 1)) * (browLo.length - 1)))]!, 0.55));
+      return [...lid, ...top.reverse()];
+    };
+    return { regions: { R: region("R"), L: region("L") } };
+  }
+  const cheek = (s: Side, dy: number): Pt[] => ellipse({ ...mix(at(s === "R" ? LM.cheekA : LM.cheekB), at(s === "R" ? LM.faceL : LM.faceR), 0.25), y: 340 + dy }, faceW * 0.11, faceW * 0.07);
+  if (partId === "cheek") return { regions: { R: cheek("R", 0), L: cheek("L", 0) } };
+  if (partId === "contour") return { regions: { R: cheek("R", 60), L: cheek("L", 60) }, highlights: { R: cheek("R", -40), L: cheek("L", -40) } };
+  return {};
+};
+
+export type Paint = (x: number, y: number) => Rgb | null;
+
+/** 살색 바탕에 paint 가 색을 주는 픽셀만 칠한다. gain 은 전체 밝기 (조명 변화 흉내) */
+export function image(paint: Paint = () => null, gain = 1): RgbaImage {
+  const data = new Uint8ClampedArray(W * H * 4);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const c = paint(x, y) ?? SKIN, i = (y * W + x) * 4;
+      data[i] = c[0] * gain; data[i + 1] = c[1] * gain; data[i + 2] = c[2] * gain; data[i + 3] = 255;
+    }
+  }
+  return { data, w: W, h: H };
+}
+
+function distToPath(x: number, y: number, path: readonly Pt[]): number {
+  let best = Infinity;
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1]!, b = path[i]!, dx = b.x - a.x, dy = b.y - a.y;
+    const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+    best = Math.min(best, Math.hypot(x - a.x - t * dx, y - a.y - t * dy));
+  }
+  return best;
+}
+
+export const BARE: SampleFrame = frameOf(image(), LMS);
+export const geomOf = (partId: PartId): PartGeometry => guide(partId, BARE);
+export const inRegion = (partId: PartId, s: Side) => { const poly = geomOf(partId).regions![s]; return (x: number, y: number) => pointInPoly(x, y, poly); };
+export const inHighlight = (s: Side) => { const poly = geomOf("contour").highlights![s]; return (x: number, y: number) => pointInPoly(x, y, poly); };
+
+/** 속눈썹 선 + 꼬리를 폭 4px 로 그린다. lift 는 꼬리 끝을 위로 올리는 양(px) */
+export function linerPaint(lift: Partial<Record<Side, number>> = {}, sides: readonly Side[] = ["R", "L"]): Paint {
+  const paths = sides.map((s) => {
+    const [, end] = geomOf("liner").linerWing![s];
+    return [...eyeOf(s).upper.map(P).reverse(), { x: end.x, y: end.y - (lift[s] ?? 0) }];
+  });
+  return (x, y) => (paths.some((path) => distToPath(x, y, path) <= 2) ? INK : null);
+}
+export const browPaint: Paint = (x, y) => {
+  for (const b of [LM.browA, LM.browB]) if (pointInPoly(x, y, [...b.upper.map(P), ...b.lower.map(P).reverse()])) return BROWN;
+  return null;
+};
+export const lipPaint: Paint = (x, y) => (pointInPoly(x, y, LM.lipsOuter.map(P)) ? RED : null);
+export const regionPaint = (partId: PartId, color: Rgb, sides: readonly Side[] = ["R", "L"]): Paint => {
+  const tests = sides.map((s) => inRegion(partId, s));
+  return (x, y) => (tests.some((t) => t(x, y)) ? color : null);
+};
+
+export const made = (paint: Paint, gain = 1): SampleFrame => frameOf(image(paint, gain), LMS);

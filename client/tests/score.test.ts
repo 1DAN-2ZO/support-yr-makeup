@@ -229,6 +229,13 @@ describe("강도 부위", () => {
     expect(decide("contour", r)).toMatchObject({ status: "check_only", reason: "contour" });
     expect(oneLiner("contour", decide("contour", r), r.codes)).toBe("확인하고 넘어가세요. 오른쪽이 조금 진해요");
     expect(oneLiner("contour", decide("contour", r), [])).toBe("확인하고 넘어가세요.");
+    // 하이라이트도 같은 규칙으로 좌우만 본다. 점수는 여전히 없고, 쉐딩·하이라이트 한 줄씩
+    const h = intensityResult("contour", { ...mk(30, 45), hi: { L: { index: 40 }, R: { index: 20 } } });
+    expect(h.score).toBeNull();
+    expect(h.codes).toEqual(["CONTOUR_LR_R", "CONTOUR_HI_L"]);
+    expect(h.metrics.hiIndex).toEqual({ left: 40, right: 20 });
+    expect(oneLiner("contour", decide("contour", h), h.codes)).toBe("확인하고 넘어가세요. 오른쪽이 조금 진해요 왼쪽 하이라이트가 조금 밝아요");
+    expect(intensityResult("contour", { ...mk(30, 30), hi: { L: { index: 40 }, R: { index: 35 } } }).codes).toEqual([]);
   });
 
   it("I6 밴드 없는 룩 → 점수 null → 확인만(기준 없음)", () => {
