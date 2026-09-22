@@ -1,0 +1,100 @@
+name: notify
+
+# PR 이 올라오거나 닫히면 디스코드 #github-pr 로 알린다.
+# 규칙상 작성자가 PR 을 올리면 ⑥ 이 받아서 병합하는데(§0-1-1), 말로 알리는 걸 잊으면
+# PR 이 그냥 떠 있게 된다. 이 알림이 그 자리를 메운다.
+#
+# 준비: 저장소 시크릿 DISCORD_WEBHOOK_URL (디스코드 채널 웹후크 주소)
+# 시크릿이 없으면 조용히 건너뛴다 — 알림 때문에 CI 가 빨개지면 안 된다.
+
+on:
+  pull_request:
+    # synchronize(커밋 추가)는 뺐다 — 작업 중에 계속 울린다
+    types: [opened, reopened, ready_for_review, closed]
+
+jobs:
+  discord:
+    runs-on: ubuntu-latest
+    # 포크에서 온 PR 은 시크릿을 못 읽는다. 조직 저장소라 해당 없지만 명시해 둔다
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: 디스코드로 보내기
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          ACTION: ${{ github.event.action }}
+          MERGED: ${{ github.event.pull_request.merged }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+          NUM: ${{ github.event.pull_request.number }}
+          TITLE: ${{ github.event.pull_request.title }}
+          URL: ${{ github.event.pull_request.html_url }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          ADD: ${{ github.event.pull_request.additions }}
+          DEL: ${{ github.event.pull_request.deletions }}
+          FILES: ${{ github.event.pull_request.changed_files }}
+        run: |
+          if [ -z "${WEBHOOK}" ]; then
+            echo "DISCORD_WEBHOOK_URL 이 없습니다 — 알림을 건너뜁니다"
+            exit 0
+          fi
+
+          # 브랜치 이름이 곧 모듈이다 (work-split-modules-v6.md §0-1)
+          case "${BRANCH}" in
+            capture) MODULE="① 촬영·기준" ;;
+            guide)   MODULE="② 가이드·실시간" ;;
+            score)   MODULE="③ 채점·합산" ;;
+            server)  MODULE="④ 서버·생성" ;;
+            model)   MODULE="⑤ 모델·데이터·평가" ;;
+            app)     MODULE="⑥ 앱·통합" ;;
+            *)       MODULE="${BRANCH}" ;;
+          esac
+
+          # 상태에 따라 제목·색을 고른다
+          if [ "${ACTION}" = "closed" ] && [ "${MERGED}" = "true" ]; then
+            HEAD="병합됨"; COLOR=5763719; NOTE="main 에 들어갔습니다"
+          elif [ "${ACTION}" = "closed" ]; then
+            HEAD="닫힘"; COLOR=10070709; NOTE="병합하지 않고 닫았습니다"
+          elif [ "${DRAFT}" = "true" ]; then
+            HEAD="초안"; COLOR=10070709; NOTE="아직 작업 중입니다"
+          else
+            HEAD="리뷰 대기"; COLOR=3447003; NOTE="⑥ 이 받아서 검증하고 병합합니다"
+          fi
+
+          # 제목에 따옴표·한글이 들어가므로 jq 로 안전하게 만든다.
+          # 디스코드 embed 제목은 256자 제한이라 잘라 준다 — 넘으면 400 으로 실패한다
+          jq -n \
+            --arg head "${HEAD}" \
+            --arg num "${NUM}" \
+            --arg title "${TITLE}" \
+            --arg url "${URL}" \
+            --arg author "${AUTHOR}" \
+            --arg module "${MODULE}" \
+            --arg branch "${BRANCH}" \
+            --arg diff "+${ADD} −${DEL} · 파일 ${FILES}개" \
+            --arg note "${NOTE}" \
+            --argjson color "${COLOR}" \
+            '{
+              username: "당화응 PR",
+              embeds: [{
+                title: (("[" + $head + "] #" + $num + " " + $title)[0:250]),
+                url: $url,
+                color: $color,
+                fields: [
+                  { name: "모듈",   value: $module, inline: true },
+                  { name: "올린 이", value: $author, inline: true },
+                  { name: "변경",   value: $diff,   inline: true }
+                ],
+                footer: { text: ($note + " · 브랜치 " + $branch) }
+              }]
+            }' > payload.json
+
+          # 실패해도 워크플로를 빨갛게 만들지 않는다 — 알림은 부가 기능이다
+          code=$(curl -sS -o resp.txt -w '%{http_code}' \
+            -H 'Content-Type: application/json' \
+            -d @payload.json "${WEBHOOK}") || code="000"
+
+          echo "디스코드 응답: ${code}"
+          if [ "${code}" != "204" ] && [ "${code}" != "200" ]; then
+            echo "::warning::디스코드 알림 실패 (${code})"
+            cat resp.txt || true
+          fi
