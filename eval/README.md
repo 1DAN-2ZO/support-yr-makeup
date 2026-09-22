@@ -21,6 +21,23 @@ uv run python eval/report.py             # results/*.csv → docs/eval-results-v
 
 규칙: 골든 세트는 고정, 사람 단위 분할, 결과 파일명에 버전 셋, 손으로 결과표 쓰지 않기.
 
+### `score/` 채점 CLI 가 받는 골든 항목 (초안 · ③⑤ 합의 중)
+
+`run.py` 는 `manifest.json` 의 `items` 를 그대로 `node eval/score/score_cli.mjs` 의 stdin 에 넣는다. 항목 하나:
+
+```json
+{ "id": "ffhq_0001_liner", "person_id": "ffhq_0001", "part": "liner",
+  "bare": "ffhq/0001_bare.png", "makeup": "ffhq/0001_makeup.png",
+  "bare_lm": "ffhq/0001_bare.lm.json", "makeup_lm": "ffhq/0001_makeup.lm.json",
+  "label": "ok" }
+```
+
+- 경로는 `DHE_DATA_DIR` 기준 상대 경로. 사진은 PNG
+- 랜드마크는 MediaPipe 478점 JSON (`[{x,y}]` 또는 `[[x,y]]`, 픽셀 또는 0~1). Node 에서는 MediaPipe 가 안 돌아 ⑤ 가 파이썬으로 뽑는다
+- `label` 은 `ok | slight | off`. CLI 는 점수를 같은 3단계로 접어 `pred` 로 낸다 (경계 80·50 — E-1 첫 결과 뒤 확정)
+- 못 잰 항목은 `status: "check_only"` + `check_reason`, `pred: null`. 일치율 분모에서 빼고 비율을 따로 세는 것을 제안
+- 채점 코드는 `client/src/core/score-part.ts` 를 그대로 묶어 쓴다(앱과 같은 것을 잰다). 가이드 기하는 ② `guides.ts` 전까지 `guide-poc.mjs`
+
 **이벤트 로그 위치**: `DHE_DATA_DIR/events/*.jsonl`. 사용자 실험 때 **동의받아** 내보낸 것만 쓴다. 저장소에 넣지 않는다.
 
 ```bash

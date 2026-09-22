@@ -113,6 +113,8 @@ export const DIAG_TEXT = {
   TONE_OK: "적당해요",
   CONTOUR_LR_R: "오른쪽이 조금 진해요",
   CONTOUR_LR_L: "왼쪽이 조금 진해요",
+  CONTOUR_HI_R: "오른쪽 하이라이트가 조금 밝아요",
+  CONTOUR_HI_L: "왼쪽 하이라이트가 조금 밝아요",
 } as const;
 export type DiagCode = keyof typeof DIAG_TEXT;
 
@@ -416,6 +418,8 @@ export interface IntensityInput {
   directionOk?: boolean;
   /** 룩 템플릿의 목표 밴드. 안 주면 PARAMS.band, null 이면 기준 없음(확인만) */
   band?: Band | null;
+  /** 쉐딩 화면의 하이라이트 영역 좌우 지수. 점수에는 안 들어가고 좌우 차 한 줄만 낸다 */
+  hi?: { L: { index: number }; R: { index: number } };
 }
 
 export interface IntensityScore extends PartScore {
@@ -428,8 +432,15 @@ export function intensityResult(partId: IntensityPartId, input: IntensityInput, 
   const codes: DiagCode[] = [];
   const lrDiff = R.index - L.index, lrIndex = { left: L.index, right: R.index };
   if (partId === "contour") {
+    // 쉐딩·하이라이트는 점수 없이 좌우 차만 알려 준다 (F-09 확인만). 하이라이트도 같은 규칙, 같은 임계
     if (Math.abs(lrDiff) >= 10) codes.push(lrDiff > 0 ? "CONTOUR_LR_R" : "CONTOUR_LR_L");
-    return { present, score: null, codes, lrIndex, verdict: null, metrics: {} };
+    const metrics: PartResult["metrics"] = {};
+    if (input.hi) {
+      const hiDiff = input.hi.R.index - input.hi.L.index;
+      if (Math.abs(hiDiff) >= 10) codes.push(hiDiff > 0 ? "CONTOUR_HI_R" : "CONTOUR_HI_L");
+      metrics.hiIndex = { left: input.hi.L.index, right: input.hi.R.index };
+    }
+    return { present, score: null, codes, lrIndex, verdict: null, metrics };
   }
   if (!present) return { present, score: null, codes, lrIndex, verdict: null, metrics: {} };
   const verdict = toneVerdict((L.index + R.index) / 2, band);
@@ -471,7 +482,7 @@ export function decide(partId: PartId, res: Pick<PartScore, "present" | "score">
 /** 한 줄 평: 숫자 없이. 코드 순서대로 최대 두 문장 */
 export function oneLiner(partId: PartId, decision: Decision, codes: readonly string[] = []): string {
   const texts = codes.map(diagText).filter((t): t is string => !!t);
-  if (partId === "contour") return CHECK_REASON_TEXT.contour + (texts[0] ? " " + texts[0] : "");
+  if (partId === "contour") return [CHECK_REASON_TEXT.contour, ...texts.slice(0, 2)].join(" ");   // 쉐딩 한 줄 + 하이라이트 한 줄까지
   if (decision.status === "check_only") return CHECK_REASON_TEXT[decision.reason ?? "faint"];
   if (!texts.length) return "잘 됐어요";
   return texts.slice(0, 2).join(". ");
