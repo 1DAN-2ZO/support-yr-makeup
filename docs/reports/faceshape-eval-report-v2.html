@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>얼굴형 분류 성능평가 요약</title>
+<style>
+@page { size: A4; margin: 11mm 14mm }
+* { box-sizing: border-box }
+body { font-family: 'Apple SD Gothic Neo','Pretendard',sans-serif; color: #222; font-size: 9.2pt; line-height: 1.45; margin: 0 }
+h1 { font-size: 18pt; font-weight: 600; margin: 0 0 1mm }
+.sub { color: #666; margin-bottom: 3mm }
+h2 { font-size: 11pt; font-weight: 600; margin: 3.5mm 0 1mm; border-left: 3px solid #3b6fd8; padding-left: 2.5mm }
+p { margin: 1mm 0 }
+table { width: 100%; border-collapse: collapse; font-size: 8.8pt; margin-top: 1mm }
+th { background: #eef1f6; font-weight: 600; padding: 1.4mm 2mm; text-align: left }
+td { padding: 0.9mm 2mm; border-bottom: 1px solid #e6e8ec; vertical-align: top }
+td.n, th.n { text-align: right; white-space: nowrap }
+tr.best td { font-weight: 600; background: #f3f7ff }
+.red { color: #c0392b } .blue { color: #2d6bd8 }
+ul { margin: 1mm 0; padding-left: 5mm } li { margin: 0.6mm 0 }
+.note { font-size: 8.2pt; color: #888; margin-top: 1mm }
+table { break-inside: avoid } h2 { break-after: avoid } .pb { break-before: page }
+</style></head><body>
+
+<h1>얼굴형 분류 성능평가 요약</h1>
+<div class="sub">당화응 ⑤ 모델·데이터·평가 · 2026-09-22 (v2) · 공개 얼굴형 데이터(해외 연예인 사진, 서양·동양 혼합)</div>
+
+<h2>1. 최초 정답률 — 기존 앱 규칙 <span class="red">22.2%</span></h2>
+<ul>
+  <li>앱에 있던 규칙(<code>estimateFaceShape</code>)은 얼굴 점 4쌍으로 비율 3개(길이/폭, 턱/얼굴 폭, 이마/얼굴 폭)를 재고 정해진 기준값으로 얼굴형을 나눈다.</li>
+  <li>시험 사진 998장 중 <b>865장을 각진형</b>으로 판정했고 <b>긴형은 한 번도</b> 나오지 않았다. 5개 중 찍는 수준(20%)이다.</li>
+  <li>원인: 얼굴 점 맨 위가 머리선이 아니라 이마 중간이라 얼굴 길이가 짧게 재지고, 기준값이 점 위치와 맞지 않았다.</li>
+</ul>
+
+<h2>2. 데이터 누수 발견과 정리 — CNN 80.8%는 과대평가된 숫자였다</h2>
+<ul>
+  <li>1차 평가(v1)에서 CNN은 80.8%였다. 그런데 시험 사진(흑백·얼굴만 잘림)이 <b>학습 사진(컬러 원본)을 가공한 복사본</b>이었다. 이렇게 시험 데이터가 학습에 새어 들어간 상황을 <b>데이터 누수</b>라고 한다. 가장 비슷한 학습 사진의 라벨만 베껴도 76.5%가 맞았다.</li>
+  <li>정리: 흑백 복사본을 모두 빼고 컬러 원본만 사용 → 같은 사진을 묶음으로 이어(이미지 특징 유사도·얼굴 점 거리) <b>학습·검증·시험을 묶음 단위로 분리</b> → 같은 사진인데 라벨이 다른 107장 제외.</li>
+  <li>결과: 학습 4,727장 · 시험 643장(얼굴형별 약 129장). 라벨 베끼기 76.5% → 56.6%, 거의 같은 사진 쌍 0쌍.</li>
+  <li>앱 촬영과 비슷하게 <b>컬러 + 머리 위·어깨까지 여백</b> 버전과 <b>얼굴 확대</b> 버전을 함께 만들었다. 아래 숫자는 모두 정리한 데이터 기준이다.</li>
+</ul>
+
+<h2>3. 성능평가한 방법·모델 (정리한 데이터, 여백 버전 시험 643장)</h2>
+<table>
+<tr><th style="width:4%">#</th><th style="width:34%">방법</th><th>사용 모델</th><th class="n">정답률</th></tr>
+<tr><td>①</td><td>기존 앱 규칙</td><td>MediaPipe 얼굴 점 + 고정 기준값</td><td class="n">22.2%*</td></tr>
+<tr><td>②</td><td>얼굴 점 + 로지스틱 회귀</td><td>MediaPipe 얼굴 점 (윤곽 36점 / 전체 478점)</td><td class="n">64.2 / 72.2%</td></tr>
+<tr><td>③</td><td>CNN 파인튜닝</td><td>EfficientNet-B0 (사진 픽셀을 직접 봄)</td><td class="n">71.7%</td></tr>
+<tr><td>④</td><td>얼굴 점 + MLP</td><td>MediaPipe 얼굴 점 478개 → 3층 신경망</td><td class="n">79.8%</td></tr>
+<tr class="best"><td>⑤</td><td>얼굴 점 + 머리선 점 + MLP ✔ 최종</td><td>얼굴 점 478개 + 머리선 점 10개(MediaPipe 머리카락 분할) → 3층 신경망</td><td class="n">81.5%</td></tr>
+</table>
+<div class="note">*①은 v1 시험 사진 998장 기준. ④⑤는 5번 반복 학습의 평균(⑤ ±0.6%p), 5번 모두 ⑤가 ④보다 높았다. MLP = 다층 퍼셉트론(Dense 층을 쌓은 신경망). 모델 출처: MediaPipe(Google, Apache-2.0), EfficientNet-B0(Hugging Face timm, Apache-2.0).</div>
+
+<h2>4. 진행 방식과 차이점</h2>
+<table>
+<tr><th style="width:22%">방식</th><th>어떻게 판단하나</th><th style="width:36%">결과 / 차이</th></tr>
+<tr><td>얼굴 점 + 로지스틱 회귀</td><td>점 좌표에 가중치를 곱해 더하는 가장 단순한 모델</td><td>72.2%. 좌표와 얼굴형의 관계가 단순하지 않아 한계</td></tr>
+<tr><td>CNN</td><td>사진 픽셀을 작은 창으로 훑어 윤곽을 스스로 찾음</td><td>71.7%. 앞머리에 강함(앞머리 있음 71.5%)</td></tr>
+<tr><td>얼굴 점 + MLP</td><td>얼굴 점 478개(x·y·z 좌표 1,434개)를 펼쳐 3층 신경망에 넣음</td><td>79.8%. 앞머리가 이마를 덮으면 크게 떨어짐(82.9 → 68.2%)</td></tr>
+<tr><td>+ 머리선 점</td><td>얼굴 피부가 끝나는 선에 점 10개를 더해 이마 윗부분 정보 추가</td><td>81.5%. 계란형 +3.8%p, 둥근형 +5.7%p</td></tr>
+</table>
+<p class="note">함께 시험했지만 효과가 없었던 것: 점 줄이기(윤곽·턱 점만 78.2%), 사람이 정한 얼굴형 숫자만(65.7%), 좌우 반전·회전 증강, 층 넓히기, 눈썹 위 정해진 높이의 이마 폭(78.7%, 머리카락에 가려 못 잰 경우가 많음). 설정 고르기는 검증 사진으로만 하고 시험 사진은 마지막에 한 번만 채점했다.</p>
+
+<h2>5. 최종 선정 이유 — 얼굴 점 + 머리선 점 + MLP</h2>
+<ul>
+  <li><b>정답률이 가장 높다</b>: 81.5%로 CNN(71.7%)보다 약 10%p 높다.</li>
+  <li><b>가볍고 앱과 잘 맞는다</b>: 파라미터 약 40만 개로 CNN의 1/10. 앱이 이미 가이드용으로 뽑는 얼굴 점을 그대로 쓴다.</li>
+  <li><b>약점은 촬영 기준으로 막는다</b>: 앞머리에 약하므로 팀 촬영 기준을 <b>"앞머리를 넘겨 이마를 드러내고 촬영"</b>으로 바꿨다. 이 조건(앞머리 없음)에서 <b>82.9%</b>.</li>
+</ul>
+
+<h2 class="pb">6. 카테고리와 얼굴형별 정답률</h2>
+<p>얼굴형 <b>5개</b> 카테고리, 전체 정답률 <b>81.5%</b> (5번 평균).</p>
+<table>
+<tr><th>각진형</th><th>긴형</th><th>둥근형</th><th>역삼각형</th><th>계란형</th></tr>
+<tr><td>84.2%</td><td>83.9%</td><td>81.2%</td><td>80.2%</td><td class="red"><b>78.0%</b></td></tr>
+</table>
+
+<h2>7. 어려웠던 얼굴형</h2>
+<ul>
+  <li><b>계란형 (78.0%)</b>: 가장 어렵다. 역삼각형(턱이 더 좁음)·둥근형(볼이 더 넓음)·긴형(더 긺) 모두와 경계가 붙은 '가운데' 얼굴형이라 사방으로 헷갈린다.</li>
+  <li>가장 많이 헷갈린 쌍은 <b>계란형↔역삼각형</b>(평균 25.4장). 오답 사진을 보면 같은 사람의 다른 사진을 일관되게 역삼각형으로 판정했다. 라벨 자체가 애매한 경우가 섞여 있을 수 있어 확인이 필요하다.</li>
+  <li>가장 잘 맞힌 것은 각진형(84.2%)이다.</li>
+</ul>
+
+<h2>한계와 다음 단계</h2>
+<ul>
+  <li>숫자는 <b>사진 1장 기준</b>이다. 실전에서는 정면을 여러 장 찍어 확률을 평균 내는 방식(소프트 보팅)으로 보완할 예정 — 효과는 팀원 6명 실제 앱 테스트로 측정한다.</li>
+  <li>공개 데이터의 라벨 근거가 불명확하고, 같은 연예인의 <b>다른 사진</b>까지 완전히 분리하지는 못했다. 한국인 정확도는 AI Hub 한국인 얼굴(K-FACE) 승인 후 확인한다.</li>
+  <li>앱에 넣으려면 머리카락 분할 모델(16MB)도 함께 돌아야 한다. 폰 속도는 아직 재지 않았다.</li>
+</ul>
+</body></html>

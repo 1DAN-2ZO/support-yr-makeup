@@ -177,6 +177,13 @@ def main() -> int:
     H = [
         f"<style>{CSS.replace('%TITLE%', TITLE)}</style>",
         f"<h1>{TITLE}</h1>",
+        '<div style="border:1px solid #c0392b;background:#fdf1ef;color:#8e2a1d;padding:2.5mm 4mm;'
+        'margin:0 0 4mm;border-radius:2mm;font-size:9pt">'
+        "<b>정정 (2026-09-22)</b> — 이 보고서의 CNN 80.8%는 데이터 누수로 과대평가된 숫자입니다. "
+        "시험 사진 998장이 학습 사진(컬러 원본)을 흑백·얼굴만 잘라 가공한 복사본이었습니다. "
+        "겹침을 정리한 뒤 CNN은 71.7%, 최종 선택한 얼굴 점 + 머리선 점 + MLP는 81.5%입니다. "
+        "최신 결과는 <code>docs/reports/faceshape-eval-report-v2.pdf</code> 와 "
+        "<code>docs/eval-results-v6.md</code> 를 보세요.</div>",
         '<div class="sub">맨얼굴 정면 사진을 보고 얼굴형 5종(역삼각형·긴형·계란형·둥근형·각진형)을 '
         "판정하는 방법 후보를 같은 시험 사진으로 비교한 결과입니다. "
         "판정 결과는 쉐딩·하이라이트 가이드 위치를 정하는 데 쓰입니다(F-02, 화면 3-c).</div>",
