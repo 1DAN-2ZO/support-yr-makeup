@@ -85,3 +85,16 @@ def test_rejects_bad_input(client):
 
 def test_unknown_job_404(client):
     assert client.get("/jobs/nope").status_code == 404
+
+
+def test_transfer_version_reflects_selected_model(client):
+    r = client.get("/health")
+    assert r.json()["ver"]["transfer"] == "transfer-v0.1-sm-fp16-8step"
+
+
+def test_cors_allows_dev_client_origin(client):
+    r = client.options(
+        "/health",
+        headers={"origin": "http://localhost:5173", "access-control-request-method": "GET"},
+    )
+    assert r.headers.get("access-control-allow-origin") == "http://localhost:5173"
