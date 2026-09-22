@@ -7,7 +7,7 @@
  * 깎였는지도 보여 주지 않는다 (F-10). 대칭·조화 보정은 안에서만 돈다.
  */
 
-import { computeSummary, reviewLine } from "../core/review";
+import { computeSummary, reviewLine, type SummaryTemplate } from "../core/review";
 import { PART_NAME } from "../core/score";
 import type { SessionStore } from "../core/session-store";
 import { versionStamp } from "../core/versions";
@@ -31,6 +31,8 @@ export interface ReviewDeps {
   /** 맨얼굴 기준과 지금 조명. 둘 다 있어야 조명 차를 본다 */
   lightingNote: () => string | null;
   store: Pick<SessionStore, "clearAll" | "loadImage">;
+  /** 합산 설정. 전 룩 공통이라 룩과 무관하다 (core/looks.ts SUMMARY_TEMPLATE) */
+  template?: SummaryTemplate;
   /** 공유·내려받기 환경. 안 주면 브라우저 것을 쓴다 */
   shareEnv?: ShareEnv;
   /** 카드를 만들 수 없을 때도 화면은 떠야 한다 */
@@ -59,7 +61,7 @@ export function reviewScreen<S>(deps: ReviewDeps): Screen<S> {
   return {
     mount(ctx: ScreenContext<S>) {
       const parts = deps.getParts();
-      const summary = computeSummary(parts);
+      const summary = deps.template ? computeSummary(parts, deps.template) : computeSummary(parts);
       const note = deps.lightingNote();
 
       // 카드는 **지금** 만든다. 버튼을 누른 뒤에 만들면 iOS 에서 제스처가 끊겨 공유가 안 열린다
