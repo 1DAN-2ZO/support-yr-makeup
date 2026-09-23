@@ -33,6 +33,8 @@ uv run python eval/report.py             # results/*.csv → docs/eval-results-v
 ```
 
 - 경로는 `DHE_DATA_DIR` 기준 상대 경로. 사진은 PNG
+- `look`: `rules/looks.json` 의 id. 라이너 두께 등 잣대가 룩을 따라간다. 비어 있으면 기본 룩 `smoky` 로 재고 결과 행 `look` 에 적힌다
+- `sha256: { bare, makeup }` 이 있으면 사진 지문을 대조한다. 다르면 그 행은 `error` (사진이 바뀌면 정답이 더는 그 사진의 정답이 아니다)
 - 랜드마크는 MediaPipe 478점 JSON (`[{x,y}]` 또는 `[[x,y]]`, 픽셀 또는 0~1). Node 에서는 MediaPipe 가 안 돌아 ⑤ 가 파이썬으로 뽑는다
 - `label` 은 `ok | slight | off`. CLI 는 점수를 같은 3단계로 접어 `pred` 로 낸다 (경계 80·50 — E-1 첫 결과 뒤 확정)
 - 못 잰 항목은 `status: "check_only"` + `check_reason`, `pred: null`. 일치율 분모에서 빼고 비율을 따로 세는 것을 제안

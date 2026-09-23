@@ -10,7 +10,7 @@
  */
 
 const TEMPLATE = {
-  liner: { wingAngle: 30, wing: 0.15, thick: 0.045 },   // thick·offset 은 ② 가 룩마다 정한다. 여기 값은 POC 기본(스모키 1벌)
+  liner: { wingAngle: 30, wing: 0.15, thick: 0.045 },   // thick 은 룩(rules/looks.json parts.liner.thick)에서 읽고, 없을 때만 이 값. offset 은 ② 가 룩마다 정하기 전까지 POC 기본
   lip: { offset: 0.01 },
   shadow: { rangeRatio: 0.55 },
   cheek: { rx: 0.11, ry: 0.07, tilt: -25 },
@@ -33,8 +33,12 @@ function ellipse(c, rx, ry, deg, n = 28) {
   return out;
 }
 
-/** @param LM client/src/core/landmarks.ts 의 인덱스 표 (묶은 core 에서 받는다) */
-export function makePocGuide(LM) {
+/**
+ * @param LM client/src/core/landmarks.ts 의 인덱스 표 (묶은 core 에서 받는다)
+ * @param lookParts rules/looks.json 의 그 룩 parts. 라이너 두께를 여기서 읽는다 — 룩을 고르면 채점 잣대가 따라가야 한다 (#44)
+ */
+export function makePocGuide(LM, lookParts = {}) {
+  const linerThick = lookParts?.liner?.thick > 0 ? lookParts.liner.thick : TEMPLATE.liner.thick;
   const SIDES = [
     { key: "R", eye: LM.eyeA, brow: LM.browA, cheek: LM.cheekA, face: LM.faceL, sign: -1 },
     { key: "L", eye: LM.eyeB, brow: LM.browB, cheek: LM.cheekB, face: LM.faceR, sign: 1 },
@@ -57,7 +61,7 @@ export function makePocGuide(LM) {
             const dir = norm(add(mul(v, Math.cos(a)), { x: 0, y: -Math.sin(a) }));
             return [outer, add(outer, mul(dir, TEMPLATE.liner.wing * f.unit.eye))];
           }),
-          thick: TEMPLATE.liner.thick,
+          thick: linerThick,
         },
       };
     }
