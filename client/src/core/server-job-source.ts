@@ -9,6 +9,11 @@
  * 원칙: 서버가 없거나 요청이 실패해도 던지지 않는다 — `onError`만 부르고
  * 마지막으로 알려진 상태로 둔다(초기 제출 실패면 `current()`는 계속 빈 배열 —
  * `emptyJobSource()`와 같은 "로딩 중" 동작).
+ *
+ * **보는 사람이 없으면 폴링하지 않는다 (#130).** 구독자가 0이면 타이머를 걸지 않고,
+ * 마지막 구독자가 떠나면 걸려 있던 타이머를 끈다. 폰에서 화면을 떠난 뒤에도 1초마다
+ * 서버를 두드리면 배터리를 먹고, 작업이 `queued`에 걸려 있으면 영원히 안 멈춘다.
+ * 다시 구독하면 재개하므로 화면으로 돌아오면 이어서 따라간다.
  */
 
 import type { LookJob } from "./types";
@@ -52,6 +57,7 @@ export function createServerJobSource(opts: ServerJobSourceOptions): LookJobSour
 
   function schedulePoll(): void {
     if (timer !== undefined) return;
+    if (subs.size === 0) return;          // 보는 사람이 없으면 안 건다 (#130)
     if (!jobs.some(isPending)) return;
     timer = setTimeout(() => {
       timer = undefined;
@@ -88,7 +94,13 @@ export function createServerJobSource(opts: ServerJobSourceOptions): LookJobSour
     }
 
     if (changed) notify();
-    schedulePoll();
+    schedulePoll();   // 폴링이 도는 사이에 마지막 구독자가 떠났으면 여기서 멈춘다
+  }
+
+  function stopPoll(): void {
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    timer = undefined;
   }
 
   async function submit(): Promise<void> {
@@ -123,7 +135,11 @@ export function createServerJobSource(opts: ServerJobSourceOptions): LookJobSour
     current: () => [...jobs],
     subscribe(onChange) {
       subs.add(onChange);
-      return () => subs.delete(onChange);
+      schedulePoll();                     // 다시 보기 시작하면 재개
+      return () => {
+        subs.delete(onChange);
+        if (subs.size === 0) stopPoll();
+      };
     },
   };
 }
