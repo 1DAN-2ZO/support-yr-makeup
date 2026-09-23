@@ -81,30 +81,32 @@ export const PARAMS: ScoreParams = {
 
 /** 진단 코드 → 한 줄 문장. 코드표는 여기 한 곳에만 둔다 (review.ts 도 가져다 쓴다). 숫자를 쓰지 않는다 */
 export const DIAG_TEXT = {
-  LINER_WING_HIGH_R: "오른쪽 꼬리가 조금 위로 갔어요. 왼쪽에 맞춰 살짝 내려 그리세요",
-  LINER_WING_HIGH_L: "왼쪽 꼬리가 조금 위로 갔어요. 오른쪽에 맞춰 살짝 내려 그리세요",
-  LINER_WING_LOW_R: "오른쪽 꼬리가 조금 아래로 갔어요. 살짝 올려 그리세요",
-  LINER_WING_LOW_L: "왼쪽 꼬리가 조금 아래로 갔어요. 살짝 올려 그리세요",
-  LINER_WING_SHORT_R: "오른쪽 꼬리가 짧아요. 조금 더 빼 주세요",
-  LINER_WING_SHORT_L: "왼쪽 꼬리가 짧아요. 조금 더 빼 주세요",
+  // 화장 초보가 읽는다 (2026-09-23 정리): "산·연장선·점막" 같은 용어 대신 "끝·사이·테두리". 기준은 늘 화면에 보이는 테두리.
+  // 눈꼬리 = 눈 바깥 끝(라이너), 눈썹 꼬리 = 눈썹 바깥 끝. "왼쪽에 맞춰" 처럼 반대쪽이 맞다고 단정하지 않는다
+  LINER_WING_HIGH_R: "오른쪽 눈꼬리 선이 위로 올라갔어요. 테두리에 맞춰 살짝 내리세요",
+  LINER_WING_HIGH_L: "왼쪽 눈꼬리 선이 위로 올라갔어요. 테두리에 맞춰 살짝 내리세요",
+  LINER_WING_LOW_R: "오른쪽 눈꼬리 선이 아래로 처졌어요. 테두리에 맞춰 살짝 올리세요",
+  LINER_WING_LOW_L: "왼쪽 눈꼬리 선이 아래로 처졌어요. 테두리에 맞춰 살짝 올리세요",
+  LINER_WING_SHORT_R: "오른쪽 눈꼬리 선이 짧아요. 테두리 끝까지 조금 더 그리세요",
+  LINER_WING_SHORT_L: "왼쪽 눈꼬리 선이 짧아요. 테두리 끝까지 조금 더 그리세요",
   LINER_THICK: "선이 조금 두꺼워요. 다음엔 얇게 시작해 보세요",
   LINER_THIN: "선이 옅어요. 한 번 더 겹쳐 그리세요",
-  LINER_GAP_R: "오른쪽 속눈썹 사이가 비었어요",
-  LINER_GAP_L: "왼쪽 속눈썹 사이가 비었어요",
-  LINER_OUT_R: "오른쪽 선이 라인 밖으로 번졌어요",
-  LINER_OUT_L: "왼쪽 선이 라인 밖으로 번졌어요",
-  LINER_LR_DIFF: "좌우 꼬리 높이가 달라요",
-  BROW_TAIL_SHORT_R: "오른쪽 눈썹 꼬리가 짧아요. 눈꼬리 연장선까지 채우세요",
-  BROW_TAIL_SHORT_L: "왼쪽 눈썹 꼬리가 짧아요. 눈꼬리 연장선까지 채우세요",
+  LINER_GAP_R: "오른쪽 선 중간이 끊겼어요. 이어서 그리세요",
+  LINER_GAP_L: "왼쪽 선 중간이 끊겼어요. 이어서 그리세요",
+  LINER_OUT_R: "오른쪽 선이 테두리 밖으로 번졌어요",
+  LINER_OUT_L: "왼쪽 선이 테두리 밖으로 번졌어요",
+  LINER_LR_DIFF: "양쪽 눈꼬리 선 높이가 달라요",
+  BROW_TAIL_SHORT_R: "오른쪽 눈썹 꼬리가 덜 그려졌어요. 테두리 끝까지 이어 그리세요",
+  BROW_TAIL_SHORT_L: "왼쪽 눈썹 꼬리가 덜 그려졌어요. 테두리 끝까지 이어 그리세요",
   BROW_OUT_R: "오른쪽 눈썹이 테두리 밖으로 나갔어요",
   BROW_OUT_L: "왼쪽 눈썹이 테두리 밖으로 나갔어요",
-  BROW_SPARSE: "눈썹 안쪽이 덜 채워졌어요",
-  BROW_LR_DIFF: "좌우 눈썹 높이가 달라요",
-  LIP_OUT_LOWER: "아래 경계가 살짝 밖으로 나갔어요",
-  LIP_OUT_UPPER: "위 경계가 살짝 밖으로 나갔어요",
-  LIP_UNDER: "입술 안쪽이 덜 채워졌어요. 가운데를 한 번 더",
-  LIP_LR_DIFF: "좌우 입꼬리가 달라요",
-  SHADOW_DIR: "눈꼬리 쪽으로 더 진하게 가야 해요",
+  BROW_SPARSE: "눈썹 사이사이가 비어 보여요. 빈 곳을 살짝 메우세요",
+  BROW_LR_DIFF: "양쪽 눈썹 높이가 달라요",
+  LIP_OUT_LOWER: "아랫입술 선이 살짝 밖으로 나갔어요",
+  LIP_OUT_UPPER: "윗입술 선이 살짝 밖으로 나갔어요",
+  LIP_UNDER: "입술 안쪽이 덜 채워졌어요. 가운데를 한 번 더 바르세요",
+  LIP_LR_DIFF: "양쪽 입꼬리가 달라요",
+  SHADOW_DIR: "눈 바깥쪽으로 갈수록 진하게 발라 보세요",
   SHADOW_LR_DIFF_R: "오른쪽 섀도우가 조금 진해요",
   SHADOW_LR_DIFF_L: "왼쪽 섀도우가 조금 진해요",
   CHEEK_LR_DIFF_R: "오른쪽이 조금 진해요",
@@ -196,6 +198,8 @@ export interface LinerStrip {
     wingLen: number;
     /** 가이드 선 두께 (눈 폭 비율). ② 가 이 룩에서 그린 값 — 밴드 안/밖과 두꺼움/옅음의 기준 */
     thick: number;
+    /** 이 프레임에서 눈을 뜨고 있나. 뜨고 있으면 속눈썹 선 아래는 눈알이라 그 칸을 안 본다 */
+    eyeOpen: boolean;
   };
 }
 
@@ -220,6 +224,9 @@ export function compareLinerEye(base: LinerStrip, cur: LinerStrip, corr: LightCo
   const half = guideThick / 2;
   const N = Math.min(base.lab.length, cur.lab.length), M = offs.length;
   const step = M > 1 ? offs[1]! - offs[0]! : 0.0092;
+  // 속눈썹 선 아래(−)는 눈을 뜨고 있으면 눈알이다. 시선·홍채가 조금만 움직여도 색이 크게 변해 "선 아래 잉크"로 오인된다.
+  // 두 프레임 다 눈을 감았을 때만 아래쪽(아래 눈꺼풀 피부)을 본다. 꼬리 행은 눈 밖이라 항상 본다
+  const useBelow = !base.meta.eyeOpen && !cur.meta.eyeOpen;
   let rowsN = 0, rowsCovered = 0, outN = 0, outHit = 0, wingDrawn = 0, lidRows = 0, lidHitRows = 0;
   const widths: number[] = [], devs: number[] = [];
   for (let i = 0; i < N; i++) {
@@ -228,6 +235,7 @@ export function compareLinerEye(base: LinerStrip, cur: LinerStrip, corr: LightCo
     const hitOffs: number[] = [];
     for (let j = 0; j < M; j++) {
       const o = offs[j]!;
+      if (!wing && !useBelow && o < -p.tol.band) continue;   // 눈알 칸 — 어느 계산에도 안 넣는다
       const hit = deltaE(base.lab[i]![j]!, corr(cur.lab[i]![j]!)) >= p.dEThresh.liner;
       if (Math.abs(o) <= half + p.tol.band) {
         if (hit) bandHit = true;   // 가이드 밴드(두께 + 허용) 안에 감지가 있으면 그 행은 덮임

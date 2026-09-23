@@ -7,7 +7,7 @@ import type { SampleFrame } from "@core/sampling";
 import { alignedFrame, scorePart } from "@core/score-part";
 import { decide, toOutcome } from "@core/score";
 import type { PartId } from "@core/types";
-import { BARE, BLUSH, DEEP_BLUSH, GUIDE, HIGHLIGHT, LMS, SHADE, W, browPaint, geomOf, guide, image, inHighlight, inNoseHighlight, inRegion, linerPaint, lipPaint, made, regionPaint } from "./helpers/synth-face";
+import { BARE, BLUSH, DEEP_BLUSH, GUIDE, HIGHLIGHT, LMS, SHADE, W, browPaint, eyeballPaint, geomOf, guide, image, inHighlight, inNoseHighlight, inRegion, linerPaint, lipPaint, made, regionPaint } from "./helpers/synth-face";
 import type { Paint } from "./helpers/synth-face";
 
 const run = (partId: PartId, cur: SampleFrame, base: SampleFrame = BARE) => {
@@ -64,6 +64,15 @@ describe("사진 → 점수", () => {
     expect(result.codes).toContain("LINER_WING_HIGH_R");
     expect(result.codes).not.toContain("LINER_WING_HIGH_L");
     expect(result.codes).toContain("LINER_LR_DIFF");
+  });
+
+  it("N2b 눈을 뜬 사진: 홍채가 움직여 선 아래 색이 바뀌어도 라이너 판정은 같다", () => {
+    const paint = linerPaint(), eye = eyeballPaint([40, 60, 90]);
+    const clean = run("liner", made(paint)).result;
+    const moved = run("liner", made((x, y) => paint(x, y) ?? eye(x, y))).result;
+    expect(moved.codes).toEqual(clean.codes);
+    expect(moved.score).toBe(clean.score);
+    expect(moved.metrics.thickness).toBe(clean.metrics.thickness);
   });
 
   it("N4 왼쪽 눈은 안 그림 → LINER_GAP_L", () => {
