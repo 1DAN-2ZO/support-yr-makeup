@@ -1,6 +1,8 @@
 // 촬영 게이트·세션 검증 — poc/full/tests.mjs 의 F1·S1~S5·P1~P3 를 vitest 로 옮김 (이슈 #9, 1-1)
 import { describe, expect, it } from "vitest";
 import {
+  CAPTURE_GUIDE,
+  FACE_SHAPE_BURST,
   PART_ORDER,
   SCREENS,
   SERVER_SHOTS,
@@ -8,11 +10,14 @@ import {
   allDone,
   applyResult,
   applySkip,
+  burstShot,
+  burstStep,
   createSession,
   nextPart,
   nextShot,
   setCurrentPart,
   shotGate,
+  startBurst,
   stripImages,
   toReviewParts,
 } from "@core/flow";
@@ -27,7 +32,7 @@ const OK: ShotMeasure = {
   closedA: false,
   closedB: false,
   faceRatio: 0.5,
-  sharpness: 80,
+  sharpness: 400,
   foreheadL: 70,
   baselineL: 70,
   stableCount: 5,
@@ -114,6 +119,14 @@ describe("S 촬영 4장 게이트", () => {
     expect(/\d/.test(shotGate("front_open", warm).text)).toBe(false);
   });
 
+  it("S9 촬영 안내: 동의 뒤 이마·양쪽 귀가 다 보이게, 숫자 없음", () => {
+    const all = [CAPTURE_GUIDE.title, ...CAPTURE_GUIDE.lines, CAPTURE_GUIDE.button];
+    expect(CAPTURE_GUIDE.lines.some((t) => t.includes("이마"))).toBe(true);
+    expect(CAPTURE_GUIDE.lines.some((t) => t.includes("귀"))).toBe(true);
+    expect(CAPTURE_GUIDE.lines.some((t) => t.includes("안경"))).toBe(true);
+    for (const t of all) expect(/\d/.test(t), t).toBe(false);
+  });
+
   it("S8 깨진 측정값(NaN·Infinity)은 어느 칸이든 찍지 않는다 — 얼굴을 못 잰 것으로", () => {
     const broken: Partial<ShotMeasure>[] = [
       { yaw: NaN }, { pitch: NaN }, { yaw: Infinity }, { faceRatio: NaN }, { faceInset: NaN }, { sharpness: NaN },
@@ -128,8 +141,75 @@ describe("S 촬영 4장 게이트", () => {
     expect(shotGate("front_open", partial).ok).toBe(true);
   });
 
+  it("S10 정의서 기준(impl-screen1-5 1-2): 눈 폭 80px 미만은 '조금 더 가까이', 이마 L* 40~85 밖은 첫 장부터 막음, 선명 150 미만은 흔들림", () => {
+    expect(shotGate("front_open", { ...OK, eyeWidthPx: 79.9 })).toMatchObject({ firstFail: "size", text: "조금 더 가까이" });
+    expect(shotGate("front_open", { ...OK, eyeWidthPx: 80 }).ok).toBe(true);
+    // 얼굴 비율은 맞아도 눈 폭이 작으면 막는다 (저해상도 프레임)
+    expect(shotGate("front_open", { ...OK, faceRatio: 0.39, eyeWidthPx: 55 }).firstFail).toBe("size");
+    const { baselineL: _b, ...first } = OK;
+    expect(shotGate("front_open", { ...first, foreheadL: 12.3 })).toMatchObject({ firstFail: "bright", text: "조금 더 밝은 곳으로" });
+    expect(shotGate("front_open", { ...first, foreheadL: 39.9 }).firstFail).toBe("bright");
+    expect(shotGate("front_open", { ...first, foreheadL: 40 }).ok).toBe(true);
+    expect(shotGate("front_open", { ...first, foreheadL: 85.1 })).toMatchObject({ firstFail: "bright", text: "너무 밝아요. 조금 어두운 곳으로" });
+    expect(shotGate("front_open", { ...OK, sharpness: 101 }).firstFail).toBe("sharp");   // Android 흔들기 하위 10%
+    expect(shotGate("front_open", { ...OK, sharpness: 241 }).ok).toBe(true);              // Android 가만히 최소
+    expect(shotGate("front_open", { ...OK, eyeWidthPx: NaN }).firstFail).toBe("face");
+  });
+
+  it("S11 얼굴형 프레임: 첫 장 셔터 전 정면 통과 프레임을 0.15초 간격으로 최근 5장만, 다 차 있으면 셔터 순간 끝", () => {
+    expect(FACE_SHAPE_BURST).toEqual({ count: 5, minGapMs: 150, afterShotMs: 1500 });
+    let b = startBurst();
+    const kept: number[] = [];
+    // 30fps 로 2초 동안 정면 유지 (1.1~1.3초는 고개 돌림 → 안 모음)
+    for (let t = 0; t < 2000; t += 33) {
+      const r = burstStep(b, t, !(t > 1100 && t < 1300));
+      b = r.state;
+      if (r.dropOldest) kept.shift();
+      if (r.take) kept.push(t);
+    }
+    expect(kept).toHaveLength(5);                     // 최근 5장만
+    expect(kept[0]!).toBeGreaterThan(1000);           // 오래된 건 버려졌다
+    expect(kept.every((t) => !(t > 1100 && t < 1300))).toBe(true);
+    for (let i = 1; i < kept.length; i++) expect(kept[i]! - kept[i - 1]!).toBeGreaterThanOrEqual(150);
+    expect(b.done).toBe(false);                       // 셔터 전에는 안 끝난다
+    b = burstShot(b, 2000);
+    expect(b.done).toBe(true);                        // 이미 5장 → 기다림 없음
+    expect(burstStep(b, 2100, true).take).toBe(false);
+  });
+
+  it("S11b 셔터 순간 모자라면 셔터 뒤 1.5초만 더 모으고, 그래도 모자라면 모은 만큼", () => {
+    let b = startBurst();
+    b = burstStep(b, 0, true).state;
+    b = burstStep(b, 200, true).state;
+    b = burstShot(b, 300);
+    expect(b.done).toBe(false);
+    b = burstStep(b, 400, true).state;
+    b = burstStep(b, 600, true).state;
+    let r = burstStep(b, 800, true);
+    expect(r.dropOldest).toBe(false);                 // 셔터 뒤에는 버리지 않는다
+    expect(r.state).toMatchObject({ done: true });    // 5장 참
+    expect(r.state.taken).toHaveLength(5);
+    // 셔터 뒤 계속 실패 → 1.5초에 2장으로 끝
+    let c = burstStep(startBurst(), 0, true).state;
+    c = burstStep(c, 200, true).state;
+    c = burstShot(c, 300);
+    for (let t = 333; t < 1800; t += 33) c = burstStep(c, t, false).state;
+    expect(c.done).toBe(false);
+    r = burstStep(c, 1800, true);
+    expect(r.state).toMatchObject({ done: true });
+    expect(r.take).toBe(false);
+    expect(r.state.taken).toHaveLength(2);
+  });
+
+  it("S12 얼굴형 사진은 draft 에 장수만 남는다 (사진 없음)", () => {
+    const s = createSession();
+    s.faceShapeFrames.push({ canvas: {} }, { canvas: {} });
+    const d = JSON.parse(JSON.stringify(stripImages(s))) as ReturnType<typeof stripImages>;
+    expect(d.faceShapeFrames).toBe(2);
+  });
+
   it("S6 밝기 기준(baselineL)이 없으면 밝기 조건을 건너뛴다 (첫 장)", () => {
-    const noBase: ShotMeasure = { faceDetected: true, yaw: 0, pitch: 0, closedA: false, closedB: false, faceRatio: 0.5, sharpness: 80, foreheadL: 20, stableCount: 5 };
+    const noBase: ShotMeasure = { faceDetected: true, yaw: 0, pitch: 0, closedA: false, closedB: false, faceRatio: 0.5, sharpness: 400, foreheadL: 50, stableCount: 5 };
     expect(shotGate("front_open", noBase).ok).toBe(true);
   });
 });

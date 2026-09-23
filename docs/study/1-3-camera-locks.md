@@ -47,7 +47,7 @@
 | Android 10 · Chrome 152 (트랙 "camera 1, facing front") | **실측** 2026-09-21 | O | **O** | **O** | **O** | 4000×3000 | 잠금 가능. 4장 동안 3종 다 고정 |
 | Android · 삼성 인터넷 | 문서 (Chromium 기반, Image Capture 지원) | O | O(추정) | O(추정) | O(추정) | 기기별 | Chrome 과 같을 것. 실측 필요 |
 | Android · Firefox | 문서 (getCapabilities 는 155부터, Image Capture 확장 제약은 미구현) | O | X | X | X | — | 잠금 불가 → 보정만 |
-| iPhone · Safari 17.4 이상 | 문서 (WebKit 17.4 "adds support whiteBalanceMode to MediaStream", 18.4 에서 getSettings 갱신 버그 수정) | O | **가능성 있음** (모드 목록에 manual 이 있는지 실측 필요) | **X** (릴리스 노트·W3C 현황 어디에도 없음) | X | 기기별 | **노출은 못 잠근다** → 보정 필수. WB 만 잠글 수 있을 수도 |
+| iPhone · iOS 18.7 · Safari | **실측** 2026-09-22 (트랙 "Front Ultra Wide Camera") | O | **O** | **X** | **X** | 4032×4032 | 문서 예상대로. **WB 만 잠기고 노출·초점은 못 잠근다** → 보정 필수 |
 | iPhone · Safari 17.3 이하 | 문서 | O (해상도·facingMode 만) | X | X | X | — | 잠금 불가 → 보정만 |
 | iPhone · Chrome/기타 앱 | iOS 는 모든 브라우저가 WebKit | Safari 와 같음 | | | | | |
 
@@ -63,14 +63,14 @@
 |---|---|---|
 | 1 | `docs/capture-checklist-v6.md` 1-3 읽는 법에 "getCapabilities 가 X 면 iOS 사파리" 라고 썼는데 **틀림**. iOS 도 getCapabilities 는 있다 (11부터). 없는 건 `exposureMode` 같은 확장 제약 | 문구 고침 (이 기록과 같은 날). `applyCameraLocks` 의 `capsSupported` 는 "함수가 있나" 만 보므로 iOS 에서 O 로 나오고, 모드별로 unsupported 가 찍힌다 — 코드 동작은 맞음 |
 | 2 | 잠금 "성공" ≠ 잠금 "유지". `applyConstraints` 가 resolve 돼도 카메라가 실제 고정됐는지는 `getSettings` 와 프레임 값으로 봐야 한다 | `probe-lock.html` 준비. Android 에서 한 번 돌리면 답이 나옴 (선택) |
-| 3 | iPhone 행이 문서 기반 | 아이폰 사용자 생기면 `probe-lock.html` 한 번 (1분) |
+| 3 | iPhone 행이 문서 기반 | **닫음 (2026-09-22)**: 실측 WB O · 노출 X · 초점 X — 문서 예상과 일치 |
 | 4 | UA 로 기종을 못 적는다 | 표에 손으로 기종 기입. 필요하면 `userAgentData` |
 
 ## 8. 1-4 로 넘어가는 조건
 
 - [x] Android 실측 1행 + 나머지 기기 문서 근거로 표 완성, ③ 에 줄 결론 정리
 - [x] 체크리스트 1-3 표·읽는 법 정정
-- [ ] iPhone 실측 (보류 — 사용자 결정)
+- [x] iPhone 실측 (2026-09-22, iOS 18.7 Safari — WB O · 노출 X · 초점 X)
 - [ ] (선택) `probe-lock.html` 로 잠금 유지 확인 — 1-4 측정과 같은 날 같이 하면 한 번에 끝남
 - 1-4 는 보류 (2026-09-21 사용자 결정: 사람 3명 모일 때). 1-5 로 진행
 
