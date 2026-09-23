@@ -1,6 +1,6 @@
 {
   "version": "look-v0.1",
-  "note": "POC 초안. 팀 확정 전. 길이는 눈 폭 대비 비율, 색은 RGB 0-255",
+  "note": "POC 초안. 룩 선정은 #133(④), 값은 #121 에서 잰다. 길이는 눈 폭 대비 비율, 색은 RGB 0-255. scoring 은 전 룩 공통",
   "partOrder": [
     "brow",
     "liner",
@@ -8,6 +8,19 @@
     "lip",
     "cheek"
   ],
+  "scoring": {
+    "_note": "합산 설정. 전 룩 공통 — 룩마다 다르면 '이 룩은 점수가 잘 나온다'가 생겨 룩 간 비교가 안 된다 (결정 2026-09-22). review.ts DEFAULT_TEMPLATE 에서 옮겨 온 값, 숫자는 그대로",
+    "weights": {
+      "brow": 1.0,
+      "liner": 1.0,
+      "shadow": 1.0,
+      "lip": 1.0,
+      "cheek": 0.7
+    },
+    "harmonyRange": {
+      "maxDeltaAb": 12
+    }
+  },
   "contour": {
     "products": [
       "쉐딩 · 컨투어 파우더",

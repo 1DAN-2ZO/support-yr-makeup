@@ -1,146 +1,35 @@
 // 샘플링 + 채점 연결 검증 (이슈 #32, 3-1) — 합성 얼굴 사진에 화장을 "그려서" 사진 → 점수까지 한 번에 본다.
-// score.test.ts 는 Lab 값을 직접 만들어 넣는다. 여기는 픽셀에서 시작한다.
+// score.test.ts 는 Lab 값을 직접 만들어 넣는다. 여기는 픽셀에서 시작한다. 합성 얼굴은 helpers/synth-face.ts.
 import { describe, expect, it } from "vitest";
-import type { RgbaImage } from "@core/color";
-import { pointInPoly } from "@core/color";
 import { LM } from "@core/landmarks";
 import { LINER_OFFS, LIP_OFFS, frameOf, sampleBrow, sampleLiner, sampleLip } from "@core/sampling";
 import type { SampleFrame } from "@core/sampling";
 import { alignedFrame, scorePart } from "@core/score-part";
-import type { GuideSource, PartGeometry } from "@core/score-part";
 import { decide, toOutcome } from "@core/score";
-import type { Side } from "@core/score";
-import type { PartId, Pt } from "@core/types";
-
-// ---------- 합성 얼굴 ----------
-
-const W = 600, H = 600;
-type Rgb = readonly [number, number, number];
-const SKIN: Rgb = [224, 172, 140], INK: Rgb = [30, 25, 28], BROWN: Rgb = [80, 55, 45], RED: Rgb = [180, 60, 80], BLUSH: Rgb = [226, 158, 140], DEEP_BLUSH: Rgb = [215, 95, 105], SHADE: Rgb = [170, 120, 110];
-
-const mirror = (p: Pt): Pt => ({ x: W - p.x, y: p.y });
-const arc = (x0: number, x1: number, y: number, rise: number, n: number): Pt[] =>
-  Array.from({ length: n }, (_, i) => ({ x: x0 + ((x1 - x0) * i) / (n - 1), y: y - rise * Math.sin((Math.PI * i) / (n - 1)) }));
-
-/** 478점. 채점이 쓰는 점만 제자리에 두고 나머지는 얼굴 가운데 */
-function faceLandmarks(): Pt[] {
-  const lm: Pt[] = Array.from({ length: 478 }, () => ({ x: 300, y: 300, z: 0 }));
-  const put = (ids: readonly number[], pts: readonly Pt[]) => ids.forEach((id, i) => { lm[id] = { ...pts[i]!, z: 0 }; });
-  put(LM.eyeA.upper, arc(170, 260, 250, 18, 9));            // 바깥 → 안쪽
-  put(LM.eyeB.upper, arc(170, 260, 250, 18, 9).map(mirror));
-  put(LM.browA.upper, arc(160, 270, 200, 8, 5));
-  put(LM.browA.lower, arc(160, 270, 214, 4, 5));
-  put(LM.browB.upper, arc(160, 270, 200, 8, 5).map(mirror));
-  put(LM.browB.lower, arc(160, 270, 214, 4, 5).map(mirror));
-  put(LM.lipsOuter, Array.from({ length: 20 }, (_, k) => ({ x: 300 - 60 * Math.cos((k * Math.PI) / 10), y: 420 - 25 * Math.sin((k * Math.PI) / 10) })));
-  put([LM.faceL, LM.faceR, LM.cheekA, LM.cheekB], [{ x: 100, y: 300 }, { x: 500, y: 300 }, { x: 190, y: 340 }, { x: 410, y: 340 }]);
-  put([168, 6, 197, 195, 5, 4], [260, 275, 290, 305, 320, 335].map((y) => ({ x: 300, y })));
-  put([10, 338, 297, 332, 284, 251, 21, 54, 103, 67, 109], [
-    { x: 300, y: 100 }, { x: 340, y: 102 }, { x: 380, y: 110 }, { x: 410, y: 125 }, { x: 430, y: 150 }, { x: 440, y: 180 },
-    { x: 160, y: 180 }, { x: 170, y: 150 }, { x: 190, y: 125 }, { x: 220, y: 110 }, { x: 260, y: 102 },
-  ]);
-  return lm;
-}
-
-const LMS = faceLandmarks();
-const P = (i: number): Pt => LMS[i]!;
-const eyeOf = (s: Side) => (s === "R" ? LM.eyeA : LM.eyeB);
-
-/** poc/full/lib/guides.js 와 같은 모양을 내는 시험용 가이드. 진짜는 ② 의 guides.ts 가 준다 */
-const guide: GuideSource = (partId, f): PartGeometry => {
-  const at = (i: number): Pt => f.lm[i]!;
-  const faceW = f.unit.face;
-  const ellipse = (c: Pt, rx: number, ry: number): Pt[] => Array.from({ length: 28 }, (_, i) => ({ x: c.x + rx * Math.cos((i / 28) * 2 * Math.PI), y: c.y + ry * Math.sin((i / 28) * 2 * Math.PI) }));
-  const mix = (a: Pt, b: Pt, t: number): Pt => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
-  if (partId === "liner") {
-    const wing = (s: Side): readonly [Pt, Pt] => {
-      const outer = at(eyeOf(s).outer), inner = at(eyeOf(s).inner);
-      const l = Math.hypot(outer.x - inner.x, outer.y - inner.y);
-      const v = { x: (outer.x - inner.x) / l, y: (outer.y - inner.y) / l }, a = (30 * Math.PI) / 180;
-      const d = { x: v.x * Math.cos(a), y: v.y * Math.cos(a) - Math.sin(a) }, dl = Math.hypot(d.x, d.y);
-      return [outer, { x: outer.x + (d.x / dl) * 0.15 * f.unit.eye, y: outer.y + (d.y / dl) * 0.15 * f.unit.eye }];
-    };
-    return { linerWing: { R: wing("R"), L: wing("L") } };
-  }
-  if (partId === "shadow") {
-    const region = (s: Side): Pt[] => {
-      const lid = eyeOf(s).upper.map(at), browLo = (s === "R" ? LM.browA : LM.browB).lower.map(at);
-      const top = lid.map((p, i) => mix(p, browLo[Math.min(browLo.length - 1, Math.round((i / (lid.length - 1)) * (browLo.length - 1)))]!, 0.55));
-      return [...lid, ...top.reverse()];
-    };
-    return { regions: { R: region("R"), L: region("L") } };
-  }
-  const cheek = (s: Side, dy: number): Pt[] => ellipse({ ...mix(at(s === "R" ? LM.cheekA : LM.cheekB), at(s === "R" ? LM.faceL : LM.faceR), 0.25), y: 340 + dy }, faceW * 0.11, faceW * 0.07);
-  if (partId === "cheek") return { regions: { R: cheek("R", 0), L: cheek("L", 0) } };
-  if (partId === "contour") return { regions: { R: cheek("R", 60), L: cheek("L", 60) } };
-  return {};
-};
-
-type Paint = (x: number, y: number) => Rgb | null;
-
-function image(paint: Paint = () => null, gain = 1): RgbaImage {
-  const data = new Uint8ClampedArray(W * H * 4);
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const c = paint(x, y) ?? SKIN, i = (y * W + x) * 4;
-      data[i] = c[0] * gain; data[i + 1] = c[1] * gain; data[i + 2] = c[2] * gain; data[i + 3] = 255;
-    }
-  }
-  return { data, w: W, h: H };
-}
-
-function distToPath(x: number, y: number, path: readonly Pt[]): number {
-  let best = Infinity;
-  for (let i = 1; i < path.length; i++) {
-    const a = path[i - 1]!, b = path[i]!, dx = b.x - a.x, dy = b.y - a.y;
-    const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy || 1)));
-    best = Math.min(best, Math.hypot(x - a.x - t * dx, y - a.y - t * dy));
-  }
-  return best;
-}
-
-const BARE = frameOf(image(), LMS);
-const geomOf = (partId: PartId) => guide(partId, BARE);
-const inRegion = (partId: PartId, s: Side) => { const poly = geomOf(partId).regions![s]; return (x: number, y: number) => pointInPoly(x, y, poly); };
-
-/** 속눈썹 선 + 꼬리를 폭 4px 로 그린다. lift 는 꼬리 끝을 위로 올리는 양(px) */
-function linerPaint(lift: Partial<Record<Side, number>> = {}, sides: readonly Side[] = ["R", "L"]): Paint {
-  const paths = sides.map((s) => {
-    const [, end] = geomOf("liner").linerWing![s];
-    return [...eyeOf(s).upper.map(P).reverse(), { x: end.x, y: end.y - (lift[s] ?? 0) }];
-  });
-  return (x, y) => (paths.some((path) => distToPath(x, y, path) <= 2) ? INK : null);
-}
-const browPaint: Paint = (x, y) => {
-  for (const b of [LM.browA, LM.browB]) if (pointInPoly(x, y, [...b.upper.map(P), ...b.lower.map(P).reverse()])) return BROWN;
-  return null;
-};
-const lipPaint: Paint = (x, y) => (pointInPoly(x, y, LM.lipsOuter.map(P)) ? RED : null);
-const regionPaint = (partId: PartId, color: Rgb, sides: readonly Side[] = ["R", "L"]): Paint => {
-  const tests = sides.map((s) => inRegion(partId, s));
-  return (x, y) => (tests.some((t) => t(x, y)) ? color : null);
-};
+import type { PartId } from "@core/types";
+import { BARE, BLUSH, DEEP_BLUSH, GUIDE, HIGHLIGHT, LMS, SHADE, W, browPaint, geomOf, guide, image, inHighlight, inNoseHighlight, inRegion, linerPaint, lipPaint, made, regionPaint } from "./helpers/synth-face";
+import type { Paint } from "./helpers/synth-face";
 
 const run = (partId: PartId, cur: SampleFrame, base: SampleFrame = BARE) => {
   const { result, ctx } = scorePart(partId, base, cur, guide);
   return { result, ctx, outcome: toOutcome(partId, result, ctx) };
 };
-const made = (paint: Paint, gain = 1): SampleFrame => frameOf(image(paint, gain), LMS);
-
-// ---------- 검증 ----------
 
 describe("샘플 모양", () => {
   it("M1 score.ts 가 받는 모양 그대로: 라이너 80×25, 눈썹 24×9×2, 입술 60×25", () => {
-    const liner = sampleLiner(BARE, "R", geomOf("liner").linerWing!.R);
+    const g = geomOf("liner").liner!;
+    const liner = sampleLiner(BARE, "R", g.wing.R, g.thick);
     expect(liner.lab).toHaveLength(80);
     expect(liner.lab[0]).toHaveLength(LINER_OFFS.length);
     expect(liner.meta.isWing.filter(Boolean).length).toBeGreaterThan(0);
     expect(liner.meta.wingLen).toBeCloseTo(0.15, 6);
+    expect(liner.meta.thick).toBe(GUIDE.linerThick);   // 치수는 가이드가 준 값 그대로 샘플에 실린다
     const brow = sampleBrow(BARE);
     expect(brow.lab).toHaveLength(24 * 9 * 2);
     expect(brow.meta.side.filter((s) => s === "R")).toHaveLength(24 * 9);
-    const lip = sampleLip(BARE);
+    const lip = sampleLip(BARE, GUIDE.lipOffset);
     expect(lip.lab).toHaveLength(60);
+    expect(lip.meta.offset).toBe(GUIDE.lipOffset);
     expect(lip.lab[0]).toHaveLength(LIP_OFFS.length);
     expect(new Set(lip.meta.half)).toEqual(new Set(["upper", "lower"]));
   });
@@ -217,6 +106,33 @@ describe("사진 → 점수", () => {
     expect(result.score).toBeNull();
     expect(result.codes).toEqual(["CONTOUR_LR_L"]);
     expect(outcome.diagnosis).toBe("확인하고 넘어가세요. 왼쪽이 조금 진해요");
+    expect(result.metrics.hiIndex).toEqual({ left: 0, right: 0 });   // 하이라이트는 안 발랐으니 좌우 다 0
+  });
+
+  it("N9 하이라이트도 좌우를 본다: 오른쪽만 밝게 → CONTOUR_HI_R, 점수는 여전히 없음", () => {
+    const hiR = inHighlight("R"), hiL = inHighlight("L");
+    const { result, outcome } = run("contour", made((x, y) => (hiR(x, y) ? HIGHLIGHT : null)));
+    expect(result.score).toBeNull();
+    expect(result.codes).toEqual(["CONTOUR_HI_R"]);
+    expect(result.metrics.hiIndex).toMatchObject({ left: 0 });
+    expect((result.metrics.hiIndex as { right: number }).right).toBeGreaterThanOrEqual(10);
+    expect(outcome).toMatchObject({ decision: "check_only", checkReason: "contour", diagnosis: "확인하고 넘어가세요. 오른쪽 하이라이트가 조금 밝아요" });
+    // 양쪽 다 바르면 좌우 차가 없어 코드 없음
+    const both = run("contour", made((x, y) => (hiR(x, y) || hiL(x, y) ? HIGHLIGHT : null))).result;
+    expect(both.codes).toEqual([]);
+  });
+
+  it("N10 가운데 밴드(콧대 하이라이트)는 좌우 비교에 안 들어간다; 하이라이트 밴드가 없으면 비교를 건너뛴다", () => {
+    const nose = inNoseHighlight();
+    const r = run("contour", made((x, y) => (nose(x, y) ? HIGHLIGHT : null))).result;
+    expect(r.codes).toEqual([]);   // POC 는 가운데를 L 로 몰아 "왼쪽 하이라이트" 를 냈다
+    expect(r.metrics.hiIndex).toEqual({ left: 0, right: 0 });
+    const noHi = scorePart("contour", BARE, made(regionPaint("contour", SHADE, ["L"])), (partId, f) => {
+      const g = guide(partId, f);
+      return partId === "contour" && g.contour ? { contour: { shading: g.contour.shading, highlight: [] } } : g;
+    }).result;
+    expect(noHi.codes).toEqual(["CONTOUR_LR_L"]);
+    expect(noHi.metrics.hiIndex).toBeUndefined();
   });
 });
 
@@ -249,8 +165,23 @@ describe("조명·정렬", () => {
     expect(scorePart("lip", BARE, frameOf(moved, detected), guide).result.score).not.toBe(aligned.score);
   });
 
-  it("G4 가이드가 모양을 안 주면 조용히 넘어가지 않고 던진다", () => {
-    expect(() => scorePart("liner", BARE, BARE, () => ({}))).toThrow(/꼬리 선/);
+  it("G4 가이드가 모양·치수를 안 주면 조용히 넘어가지 않고 던진다", () => {
+    expect(() => scorePart("liner", BARE, BARE, () => ({}))).toThrow(/꼬리 선·두께/);
+    expect(() => scorePart("lip", BARE, BARE, () => ({}))).toThrow(/오프셋/);
     expect(() => scorePart("cheek", BARE, BARE, () => ({}))).toThrow(/cheek 영역/);
+    expect(() => scorePart("contour", BARE, BARE, () => ({}))).toThrow(/쉐딩 밴드/);
+  });
+
+  it("G5 치수는 가이드를 따라간다: ② 가 굵게 그린 룩이면 같은 선도 '두꺼워요' 가 아니다", () => {
+    // 같은 사진, 같은 그림. 가이드 두께만 룩마다 다르게 준다
+    const withThick = (thick: number) => scorePart("liner", BARE, made(linerPaint(), 1), (partId, f) => {
+      const g = guide(partId, f);
+      return partId === "liner" && g.liner ? { liner: { ...g.liner, thick } } : g;
+    }).result;
+    const thin = withThick(0.02), same = withThick(GUIDE.linerThick), thick = withThick(0.08);
+    expect(same.codes).toEqual([]);
+    expect(thin.codes).toContain("LINER_THICK");    // 얇은 룩 기준에선 4px 선이 두껍다
+    expect(thick.codes).toContain("LINER_THIN");    // 굵은 룩 기준에선 옅다
+    expect(thin.metrics.thickness).toBe(same.metrics.thickness);   // 잰 두께는 같고, 기준만 다르다
   });
 });

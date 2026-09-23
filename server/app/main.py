@@ -19,6 +19,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .config import settings
@@ -41,6 +42,19 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="당화응 API", version=settings.versions.app, lifespan=lifespan)
+
+# CORS 설정 — 개발 클라이언트(localhost:5173) 허용
+_DEFAULT_CORS_ORIGINS = (
+    "http://localhost:5173,http://127.0.0.1:5173,https://localhost:5173,https://127.0.0.1:5173"
+)
+_origins = os.environ.get("DHE_CORS_ORIGINS", _DEFAULT_CORS_ORIGINS).split(",")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_origins,
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
+
 app.mount("/results", StaticFiles(directory=settings.result_dir), name="results")
 
 

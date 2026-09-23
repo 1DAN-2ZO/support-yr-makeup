@@ -17,7 +17,7 @@ class Versions:
     score: str = _env("VER_SCORE", "score-v0.1")
     look: str = _env("VER_LOOK", "look-v0.1")
     faceshape: str = _env("VER_FACESHAPE", "faceshape-rule-v1")
-    transfer: str = _env("VER_TRANSFER", "transfer-stub-v0")
+    transfer: str = _env("VER_TRANSFER", "transfer-v0.1-sm-fp16-8step")
 
     def as_dict(self) -> dict[str, str]:
         return {
