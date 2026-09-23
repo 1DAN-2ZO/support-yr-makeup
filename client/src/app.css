@@ -115,3 +115,24 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
 .result-say { margin: 4px 0 0; }
 .result-extra:empty { display: none; }
 .result-buttons .ghost { display: block; width: 100%; margin-top: 10px; padding: 10px; border: 0; background: transparent; color: var(--muted); font: inherit; cursor: pointer; }
+
+/* 서버 처리 · 끝 (모듈 6) */
+.processing, .done { text-align: center; padding-top: 48px; }
+.processing h1, .done h1 { font-size: 22px; margin: 0 0 8px; }
+.processing .row, .done .row { justify-content: center; }
+/* 진행률이 아니라 "돌고 있다" 는 표시 — 가짜 퍼센트를 그리지 않는다 */
+.wait-bar {
+  margin: 28px auto 0; width: 160px; height: 4px; border-radius: 999px;
+  background: var(--line); overflow: hidden;
+}
+.wait-bar span {
+  display: block; width: 40%; height: 100%; border-radius: 999px;
+  background: var(--accent); animation: wait-slide 1.4s ease-in-out infinite;
+}
+@keyframes wait-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wait-bar span { animation: none; width: 100%; opacity: 0.5; }
+}
