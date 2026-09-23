@@ -9,19 +9,25 @@ import { createLogger } from "./core/log";
 import { createLogStore } from "./core/log-store";
 import { emptyJobSource, type LookJobSource } from "./core/look-jobs";
 import {
+  applyResult,
+  applySkip,
   createSession,
+  nextPart,
   setCurrentPart,
   setScreen,
   toReviewParts,
   type ScreenId,
   type Session,
 } from "./core/flow";
+import { pocGuide } from "./core/guide-poc";
+import type { CaptureBundle } from "./core/types";
 import { checkSecureContext, readEnv, type SecureCheck } from "./core/secure-context";
 import { createSessionStore, indexedDbBackend, memoryBackend } from "./core/session-store";
 import { getVersions } from "./core/versions";
 import { lookById, SUMMARY_TEMPLATE } from "./core/looks";
 import { fullRenderScreen } from "./screens/fullrender";
 import { looksScreen } from "./screens/looks";
+import { resultScreen, type ResultDeps } from "./screens/result";
 import { reviewScreen, type ReviewDeps } from "./screens/review";
 import { createShell } from "./screens/shell";
 
@@ -106,6 +112,22 @@ async function boot(): Promise<void> {
       // 합산 설정은 전 룩 공통이다 (결정 2026-09-22). 값은 rules/looks.json
       template: SUMMARY_TEMPLATE,
     },
+    {
+      getPart: () => session.currentPart,
+      getBaseline: () => session.baseline,
+      // 화면 4(②) 가 확인받기 순간의 프레임 묶음을 parts[].captured 에 둔다 (CaptureBundle)
+      getCapture: (part) => (session.parts.find((p) => p.partId === part)?.captured as CaptureBundle | null) ?? null,
+      // 고른 룩의 치수(라이너 두께)로 채점한다. ② guides.ts 가 오면 여기만 바뀐다
+      guide: () => pocGuide(lookById(session.lookId).parts),
+      getStatus: (part) => session.parts.find((p) => p.partId === part)?.status ?? "in_progress",
+      apply: (part, outcome) => {
+        session = applyResult(session, part, outcome);
+      },
+      skip: (part) => {
+        session = applySkip(session, part);
+      },
+      nextPart: (after) => nextPart(session, after),
+    },
   );
 
   // 방향이 바뀌면 안내만 다시 그린다
@@ -138,9 +160,11 @@ function registerAll(
   shell: ReturnType<typeof createShell<Session>>,
   look: LookDeps,
   review: ReviewDeps,
+  result: ResultDeps,
 ): void {
   shell.register("looks", looksScreen<Session>(look));
   shell.register("fullrender", fullRenderScreen<Session>(look));
+  shell.register("result", resultScreen<Session>(result));
   shell.register("review", reviewScreen<Session>(review));
   // 나머지는 아직 없음 — 등록 안 된 화면은 담당 모듈을 알려주는 자리표시가 뜬다
 }

@@ -38,7 +38,7 @@ uv run python eval/report.py             # results/*.csv → docs/eval-results-v
 - 랜드마크는 MediaPipe 478점 JSON (`[{x,y}]` 또는 `[[x,y]]`, 픽셀 또는 0~1). Node 에서는 MediaPipe 가 안 돌아 ⑤ 가 파이썬으로 뽑는다
 - `label` 은 `ok | slight | off`. CLI 는 점수를 같은 3단계로 접어 `pred` 로 낸다 (경계 80·50 — E-1 첫 결과 뒤 확정)
 - 못 잰 항목은 `status: "check_only"` + `check_reason`, `pred: null`. 일치율 분모에서 빼고 비율을 따로 세는 것을 제안
-- 채점 코드는 `client/src/core/score-part.ts` 를 그대로 묶어 쓴다(앱과 같은 것을 잰다). 가이드 기하는 ② `guides.ts` 전까지 `guide-poc.mjs`
+- 채점 코드는 `client/src/core/score-part.ts` 를 그대로 묶어 쓴다(앱과 같은 것을 잰다). 가이드 기하도 앱과 같은 파일(`client/src/core/guide-poc.ts`, ② `guides.ts` 전까지의 임시본)을 묶어 쓴다
 
 **이벤트 로그 위치**: `DHE_DATA_DIR/events/*.jsonl`. 사용자 실험 때 **동의받아** 내보낸 것만 쓴다. 저장소에 넣지 않는다.
 
