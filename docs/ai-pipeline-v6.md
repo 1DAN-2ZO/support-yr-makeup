@@ -18,19 +18,19 @@
 MediaPipe Face Landmarker (478점, VIDEO 모드, GPU→CPU 폴백)        ── 매 프레임, 목표 30fps
    │  실패(얼굴 없음) → 테두리 숨김, 3초 지속 시 presence=away, 카메라 저속
    ▼
-(3~5프레임에 1회) MediaPipe Hand Landmarker → 손 박스 ∩ 부위 크롭 → handOverlap
+(매 프레임) 비화장 참조(이마) 급변 감지 → occluded        ── 모델 없음, 0바이트 (#148)
    │
    ▼
-게이트 evaluateGate(각도·부위 가시·손·선명·밝기·a*b* 변동·기준과 각도 차·안정 5프레임)
+게이트 evaluateGate(각도·부위 가시·가림·선명·밝기·a*b* 변동·기준과 각도 차·안정 5프레임)
    │  첫 실패 조건 하나 → 문구 한 줄, 버튼 비활성
    ▼ 통과
-"확인받기" → CaptureBundle(3~5프레임 + pts + handOverlap + foreheadL)
+"확인받기" → CaptureBundle(3~5프레임 + pts + occluded + foreheadL)
    │
    ▼
 정합 alignToBaseline(안정점 유사변환) ── 잔차 > 눈 폭 5% → status=check_only(reason=align)
    │
    ▼
-샘플링·ΔE (Lab, 이마 L* 보정 + 눈 흰자 a*b* 보정) ── 손 걸린 프레임 제외, 전부 더러우면 check_only(reason=hand)
+샘플링·ΔE (Lab, 이마 L* 보정 + 눈 흰자 a*b* 보정) ── 가림 프레임 제외 → 중앙값, 전부 더러우면 check_only(reason=occluded)
    │                                              ── a*b* 이동 > 임계 → check_only(reason=lighting)
    ▼
 채점 scorePart → PartResult(score | check_only + reason, codes, oneLiner, metrics)
@@ -42,7 +42,7 @@ MediaPipe Face Landmarker (478점, VIDEO 모드, GPU→CPU 폴백)        ──
 | 단계 | 모델/규칙 | 실행 위치 | 시간 예산 | 실패 시 |
 | --- | --- | --- | --- | --- |
 | 랜드마크 | Face Landmarker (Apache-2.0) | 클라이언트 WASM/WebGL | 33ms/프레임 (30fps) | GPU delegate 실패 → CPU. 모델 로딩 실패 → "다시 시도" 화면 |
-| 손 | Hand Landmarker | 클라이언트 | 3~5프레임에 1회 | 실패 시 handOverlap=unknown → 게이트 통과시키되 채점에서 프레임 평균만 |
+| 가림 | 비화장 참조(이마) 급변 — 모델 없음 | 클라이언트 | 프레임 내 | 참조를 못 재면 unknown → 게이트 통과시키되 채점은 중앙값으로 밀어낸다 (#148) |
 | 얼굴형 | 규칙 → 분류기(S-2 결과) | 클라이언트, 세션당 1회(촬영 직후) | 100ms | 모델 실패 → 규칙으로 폴백, `FaceShape.method='rule'` 기록 |
 | 게이트 | 규칙 | 클라이언트 | 프레임 내 | — |
 | 정합·채점 | 규칙(순수 함수) | 클라이언트 | 확인받기 → 결과 500ms | 정합 실패 → check_only(reason). 절대 거짓 점수 없음 |
@@ -75,7 +75,9 @@ MediaPipe Face Landmarker (478점, VIDEO 모드, GPU→CPU 폴백)        ──
 | 레이어 추출 | 규칙 | 200ms | 실패 → 결과 이미지만 주고 layer=null (클라이언트는 3점 아핀으로 폴백) |
 | 삭제 | 규칙 | 응답 직후 | 삭제 실패는 오류 로그 + 크론이 TTL 2시간으로 정리 |
 
-**원칙**: 서버가 없어도 촬영·가이드·채점은 돈다(룩 미리보기만 못 봄). 서버 장애는 이용 불가가 아니라 "룩 준비 중"이어야 한다 — 정의서 "서버 장애 시 이용 불가"를 이렇게 고칠지 팀 결정.
+**원칙**: **룩 하나가 죽어도 나머지는 고를 수 있다** — 실패는 룩 단위이고, 사용자는 `fallback`(닮음 미달)과 `error`(예외)를 똑같이 "준비 중"으로 본다(할 수 있는 게 없어 구분하지 않는다).
+
+**서버 전체가 죽으면 이용 불가다** (2026-09-21 **결정 #8**). 룩 없이 진행하는 대체 흐름은 없다 — 우리 서비스는 "고른 룩을 따라 그리기"라, 룩이 없으면 가르칠 것이 없기 때문이다. 정의서 §39·`client/src/screens/processing.ts` 가 이것을 따른다.
 
 ---
 
