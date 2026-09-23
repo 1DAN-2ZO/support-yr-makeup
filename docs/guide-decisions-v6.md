@@ -70,7 +70,7 @@ guide("contour", f) → { contour: { shading: Pt[][], highlight: Pt[][] } }
 - **치수를 안 주면 던진다.** 기본값으로 조용히 채점하지 않는다
 - 쉐딩은 **좌우 구분 없이 밴드 배열 그대로** 넘긴다. 좌우 분류(무게중심 x)와 가운데 밴드(콧대·이마 위·턱 끝) 제외는 **채점이 한다**
 - `highlight` 가 빈 배열이면 하이라이트 비교만 건너뛴다. 쉐딩 밴드가 없으면 던진다
-- 명세는 `eval/score/guide-poc.mjs` (PR #139 이후 판). `guides.ts`·`contour.ts` 가 올라가면 그 파일을 지운다
+- 명세는 `client/src/core/guide-poc.ts` (PR #139 이후 판. 화면 5 와 평가 CLI 가 같은 파일을 쓴다 — 전에는 `eval/score/guide-poc.mjs`). `guides.ts`·`contour.ts` 가 올라가면 그 파일을 지운다
 
 ---
 
