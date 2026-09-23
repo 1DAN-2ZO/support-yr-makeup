@@ -9,19 +9,27 @@ import { createLogger } from "./core/log";
 import { createLogStore } from "./core/log-store";
 import { emptyJobSource, type LookJobSource } from "./core/look-jobs";
 import {
+  applyResult,
+  applySkip,
   createSession,
+  nextPart,
   setCurrentPart,
   setScreen,
   toReviewParts,
   type ScreenId,
   type Session,
 } from "./core/flow";
+import { pocGuide } from "./core/guide-poc";
+import type { CaptureBundle } from "./core/types";
 import { checkSecureContext, readEnv, type SecureCheck } from "./core/secure-context";
 import { createSessionStore, indexedDbBackend, memoryBackend } from "./core/session-store";
 import { getVersions } from "./core/versions";
 import { lookById, SUMMARY_TEMPLATE } from "./core/looks";
+import { doneScreen, type DoneDeps } from "./screens/done";
 import { fullRenderScreen } from "./screens/fullrender";
 import { looksScreen } from "./screens/looks";
+import { processingScreen, type ProcessingDeps } from "./screens/processing";
+import { resultScreen, type ResultDeps } from "./screens/result";
 import { reviewScreen, type ReviewDeps } from "./screens/review";
 import { createShell } from "./screens/shell";
 
@@ -86,6 +94,9 @@ async function boot(): Promise<void> {
   // ④ 의 서버가 붙으면 여기만 진짜 공급자로 바뀐다. 그때까지는 전부 "로딩 중"
   const lookJobs: LookJobSource = emptyJobSource();
 
+  // 끝내기가 지우고 남은 키 수. 0 이어야 한다 (F-11)
+  let clearRemaining = 0;
+
   registerAll(
     shell,
     {
@@ -102,9 +113,42 @@ async function boot(): Promise<void> {
       // 맨얼굴 기준(baseline.foreheadL)과 견줄 "확인받기 시점 이마 L*" 을 세션에 남기는 건
       // ② 의 게이트 출력이다(#79). 그 값이 생기면 여기서 lightingDiffers 로 바꾼다.
       lightingNote: () => null,
-      store: sessionStore,
+      store: {
+        loadImage: (k) => sessionStore.loadImage(k),
+        async clearAll() {
+          const r = await sessionStore.clearAll();
+          clearRemaining = r.remaining;
+          return r;
+        },
+      },
       // 합산 설정은 전 룩 공통이다 (결정 2026-09-22). 값은 rules/looks.json
       template: SUMMARY_TEMPLATE,
+    },
+    {
+      getPart: () => session.currentPart,
+      getBaseline: () => session.baseline,
+      // 화면 4(②) 가 확인받기 순간의 프레임 묶음을 parts[].captured 에 둔다 (CaptureBundle)
+      getCapture: (part) => (session.parts.find((p) => p.partId === part)?.captured as CaptureBundle | null) ?? null,
+      // 고른 룩의 치수(라이너 두께)로 채점한다. ② guides.ts 가 오면 여기만 바뀐다
+      guide: () => pocGuide(lookById(session.lookId).parts),
+      getStatus: (part) => session.parts.find((p) => p.partId === part)?.status ?? "in_progress",
+      apply: (part, outcome) => {
+        session = applyResult(session, part, outcome);
+      },
+      skip: (part) => {
+        session = applySkip(session, part);
+      },
+      nextPart: (after) => nextPart(session, after),
+    },
+    { jobs: lookJobs },
+    {
+      remaining: () => clearRemaining,
+      // 세션을 통째로 새로 만든다 — 앞 세션 값이 하나도 안 남게
+      restart: () => {
+        session = createSession();
+        clearRemaining = 0;
+        shell.render();
+      },
     },
   );
 
@@ -138,11 +182,18 @@ function registerAll(
   shell: ReturnType<typeof createShell<Session>>,
   look: LookDeps,
   review: ReviewDeps,
+  result: ResultDeps,
+  processing: ProcessingDeps,
+  done: DoneDeps,
 ): void {
+  shell.register("processing", processingScreen<Session>(processing));
   shell.register("looks", looksScreen<Session>(look));
   shell.register("fullrender", fullRenderScreen<Session>(look));
+  shell.register("result", resultScreen<Session>(result));
   shell.register("review", reviewScreen<Session>(review));
-  // 나머지는 아직 없음 — 등록 안 된 화면은 담당 모듈을 알려주는 자리표시가 뜬다
+  shell.register("done", doneScreen<Session>(done));
+  // 남은 것: ① consent·denied·capture · ② guide·live
+  // 등록 안 된 화면은 담당 모듈을 알려주는 자리표시가 뜬다
 }
 
 void boot();

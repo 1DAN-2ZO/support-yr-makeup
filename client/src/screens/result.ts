@@ -1,0 +1,231 @@
+/**
+ * 화면 5·5-b — 부위 결과 (F-08·F-09). 모듈 ③.
+ *
+ * 화면 4 가 확인받기 순간의 프레임 묶음(CaptureBundle)을 세션에 두면, 여기서 맨얼굴 기준과 비교해 채점하고 보여 준다.
+ * 채점은 core(score-part.ts) 가 하고, 이 파일은 그 위에 얇게 — 사진 위 가이드 테두리, 점수 또는 "확인만", 한 줄 평, 버튼 셋.
+ *
+ * 화면에 **숫자는 점수 하나뿐**이다. 거리·각도·%·좌우 지수는 안 내보낸다 (F-09). 쉐딩·하이라이트는 점수 없이 "확인만".
+ *
+ *   다음          → 결과를 세션에 반영(applyResult) → 다음 부위 완성본 / 마지막이면 화면 6
+ *   다시 확인받기 → 결과를 남기지 않고 화면 4 로
+ *   건너뛰기      → skipped → 다음 부위
+ */
+
+import type { RgbaImage } from "../core/color";
+import type { ScoreOutcome } from "../core/flow";
+import { guideOutline } from "../core/overlay";
+import { frameOf } from "../core/sampling";
+import { alignedFrame, scorePart, type GuideSource } from "../core/score-part";
+import { PART_NAME, toOutcome } from "../core/score";
+import type { Baseline, CaptureBundle, PartId, PartStatus } from "../core/types";
+import type { Screen, ScreenContext } from "./shell";
+
+export interface ResultDeps {
+  getPart: () => PartId | null;
+  getBaseline: () => Baseline | null;
+  /** 화면 4 가 세션에 둔 확인받기 프레임 묶음 */
+  getCapture: (part: PartId) => CaptureBundle | null;
+  /** 고른 룩 기준의 가이드 (② guides.ts, 그 전엔 guide-poc.ts) */
+  guide: () => GuideSource;
+  /** 세션 반영 (①의 applyResult / applySkip / nextPart) */
+  apply: (part: PartId, outcome: ScoreOutcome) => void;
+  skip: (part: PartId) => void;
+  nextPart: (after: PartId) => PartId | null;
+  /** 지금 상태 (part_status 로그의 from). 안 주면 in_progress */
+  getStatus?: (part: PartId) => PartStatus;
+  /** 이미지 → 픽셀. 안 주면 캔버스로. 테스트에서 바꿔 끼운다 */
+  toRgba?: (src: ImageBitmap | Blob) => Promise<RgbaImage>;
+}
+
+const GUIDE_COLOR = "#3FD1C4";
+const INTENSITY: readonly PartId[] = ["shadow", "cheek"];
+
+export function resultScreen<S>(deps: ResultDeps): Screen<S> {
+  return {
+    mount(ctx: ScreenContext<S>) {
+      const part = deps.getPart();
+      const wrap = el("div", "result");
+      ctx.root.append(wrap);
+      if (!part) {
+        wrap.append(line("muted", "부위가 정해지지 않았어요"));
+        return;
+      }
+      wrap.append(line("result-part", PART_NAME[part]));
+
+      const baseline = deps.getBaseline(), bundle = deps.getCapture(part);
+      const frame = bundle?.frames[bundle.frames.length - 1], pts = bundle?.pts[bundle.pts.length - 1];
+      if (!baseline?.bareImage || !frame || !pts) {
+        wrap.append(line("muted", "확인받기 결과가 없어요. 다시 확인받아 주세요"));
+        wrap.append(buttons(ctx, deps, part, null));
+        return;
+      }
+
+      const photo = el("div", "result-photo");
+      const canvas = document.createElement("canvas");
+      photo.append(canvas);
+      const scoreEl = el("div", "result-score");
+      scoreEl.textContent = "채점 중…";
+      const say = line("result-say", "");
+      const extra = line("result-extra muted", "");
+      wrap.append(photo, scoreEl, say, extra);
+      const row = buttons(ctx, deps, part, null);
+      wrap.append(row);
+
+      let alive = true;
+      const toRgba = deps.toRgba ?? canvasToRgba;
+      const t0 = performance.now();
+      void (async () => {
+        let outcome: ScoreOutcome;
+        try {
+          const [bareIm, curIm] = await Promise.all([toRgba(baseline.bareImage!), toRgba(frame)]);
+          if (!alive) return;
+          const guide = deps.guide();
+          const base = frameOf(bareIm, baseline.lm);
+          const { frame: cur, fit } = alignedFrame(base, curIm, pts);
+          const { result, ctx: sctx } = scorePart(part, base, cur, guide, { alignResidual: fit.residual });
+          outcome = toOutcome(part, result, sctx);
+          drawOverlay(canvas, frame, curIm, guideOutline(part, cur.lm, guide(part, cur)));
+          ctx.log.log({ name: "score", part, status: outcome.decision === "scored" ? "passed" : "check_only", check_reason: outcome.checkReason, ms: Math.round(performance.now() - t0) });
+        } catch (e) {
+          if (!alive) return;
+          ctx.log.log({ name: "error", where: "result", msg: e instanceof Error ? e.message : String(e) });
+          scoreEl.textContent = "채점하지 못했어요";
+          say.textContent = "다시 확인받아 주세요";
+          return;
+        }
+        fill(scoreEl, say, extra, part, outcome);
+        row.replaceWith(buttons(ctx, deps, part, outcome));
+      })();
+
+      return () => {
+        alive = false;
+      };
+    },
+  };
+}
+
+/** 점수(또는 확인만) · 한 줄 평 · 강도 부위 한 줄. 숫자는 점수뿐 */
+function fill(scoreEl: HTMLElement, say: HTMLElement, extra: HTMLElement, part: PartId, o: ScoreOutcome): void {
+  scoreEl.textContent = "";
+  if (o.decision === "scored" && o.score != null) {
+    const n = el("strong", "result-num");
+    n.textContent = String(o.score);
+    const unit = el("span", "result-unit");
+    unit.textContent = "/ 100";
+    scoreEl.append(n, unit);
+  } else {
+    scoreEl.textContent = "확인만";
+  }
+  say.textContent = o.diagnosis;
+  if (INTENSITY.includes(part) && o.decision === "scored") {
+    const bits = ["발림 확인"];
+    if (part === "shadow") bits.push(o.diagnosisCodes.includes("SHADOW_DIR") ? "방향 불일치" : "방향 일치");
+    extra.textContent = bits.join(" · ");
+  } else if (INTENSITY.includes(part) && o.checkReason === "faint") {
+    extra.textContent = "감지되지 않음";
+  } else {
+    extra.textContent = "";
+  }
+}
+
+/**
+ * 버튼 셋. outcome 이 없으면(채점 전·실패) "다음"은 잠긴다 — 결과 없이 passed 가 되면 안 된다.
+ * 마지막 부위면 "다음" 대신 "결과 보러 가기"
+ */
+function buttons<S>(ctx: ScreenContext<S>, deps: ResultDeps, part: PartId, outcome: ScoreOutcome | null): HTMLElement {
+  const next = deps.nextPart(part);
+  const wrap = el("div", "result-buttons");
+  const from = (): PartStatus => deps.getStatus?.(part) ?? "in_progress";
+  const goOn = (): void => {
+    if (next) ctx.goPart(next);
+    else ctx.go("review");
+  };
+
+  const nextBtn = document.createElement("button");
+  nextBtn.type = "button";
+  nextBtn.className = "primary";
+  nextBtn.textContent = next ? "다음" : "결과 보러 가기";
+  nextBtn.disabled = !outcome;
+  nextBtn.addEventListener("click", () => {
+    if (!outcome) return;
+    ctx.log.log({ name: "button", button: next ? "next" : "to_review" });
+    const to: PartStatus = part === "contour" || outcome.decision === "check_only" ? "check_only" : "passed";
+    ctx.log.log({ name: "part_status", part, from: from(), to, score: to === "passed" ? outcome.score : null });
+    deps.apply(part, outcome);
+    goOn();
+  });
+
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.textContent = "다시 확인받기";
+  retry.addEventListener("click", () => {
+    ctx.log.log({ name: "button", button: "retry" });
+    ctx.go("live");
+  });
+
+  const skip = document.createElement("button");
+  skip.type = "button";
+  skip.className = "ghost";
+  skip.textContent = "건너뛰기";
+  skip.addEventListener("click", () => {
+    ctx.log.log({ name: "button", button: "skip" });
+    ctx.log.log({ name: "part_status", part, from: from(), to: "skipped", score: null });
+    deps.skip(part);
+    goOn();
+  });
+
+  const row = el("div", "row");
+  row.append(nextBtn, retry);
+  wrap.append(row, skip);
+  return wrap;
+}
+
+/** 사진 위에 청록 테두리만. 캔버스를 못 쓰는 환경(jsdom)에서는 조용히 넘어간다 */
+function drawOverlay(canvas: HTMLCanvasElement, frame: ImageBitmap | Blob, im: RgbaImage, outline: ReturnType<typeof guideOutline>): void {
+  canvas.width = im.w;
+  canvas.height = im.h;
+  canvas.dataset.polys = String(outline.polys.length);
+  canvas.dataset.lines = String(outline.lines.length);
+  if (typeof ImageData === "undefined") return;   // jsdom — 캔버스 없음
+  const g = canvas.getContext("2d");
+  if (!g) return;
+  if (frame instanceof ImageBitmap) g.drawImage(frame, 0, 0, im.w, im.h);
+  else g.putImageData(new ImageData(new Uint8ClampedArray(im.data), im.w, im.h), 0, 0);
+  g.strokeStyle = GUIDE_COLOR;
+  g.lineWidth = Math.max(2, im.w / 300);
+  g.lineJoin = "round";
+  const path = (pts: readonly { x: number; y: number }[], close: boolean): void => {
+    if (pts.length < 2) return;
+    g.beginPath();
+    g.moveTo(pts[0]!.x, pts[0]!.y);
+    for (const p of pts.slice(1)) g.lineTo(p.x, p.y);
+    if (close) g.closePath();
+    g.stroke();
+  };
+  for (const p of outline.polys) path(p, true);
+  for (const l of outline.lines) path(l, false);
+}
+
+async function canvasToRgba(src: ImageBitmap | Blob): Promise<RgbaImage> {
+  const bmp = src instanceof Blob ? await createImageBitmap(src) : src;
+  const c = document.createElement("canvas");
+  c.width = bmp.width;
+  c.height = bmp.height;
+  const g = c.getContext("2d", { willReadFrequently: true });
+  if (!g) throw new Error("캔버스를 열 수 없어요");
+  g.drawImage(bmp, 0, 0);
+  const d = g.getImageData(0, 0, c.width, c.height);
+  return { data: d.data, w: d.width, h: d.height };
+}
+
+function el(tag: string, cls: string): HTMLElement {
+  const e = document.createElement(tag);
+  e.className = cls;
+  return e;
+}
+
+function line(cls: string, text: string): HTMLElement {
+  const p = el("p", cls);
+  p.textContent = text;
+  return p;
+}

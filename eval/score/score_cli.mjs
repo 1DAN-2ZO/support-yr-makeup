@@ -18,7 +18,7 @@
  *   - label: ok | slight | off (3단계, #64). 없으면 null
  *
  * 채점 코드는 client/src/core/score-part.ts 를 esbuild 로 묶어서 그대로 쓴다 — 평가가 앱과 다른 것을 재면 안 된다.
- * 가이드 기하는 ② 의 guides.ts 가 나올 때까지 guide-poc.mjs (POC 값 + 룩별 라이너 두께) 를 쓴다.
+ * 가이드 기하도 앱과 같은 파일(client/src/core/guide-poc.ts — ② guides.ts 전까지의 임시본)을 묶어 쓴다.
  *
  * 혼자 돌려 보기:  echo '{"items":[...],"data_dir":"..."}' | node eval/score/score_cli.mjs
  */
@@ -28,8 +28,6 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-
-import { makePocGuide } from "./guide-poc.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..", "..");
@@ -53,7 +51,7 @@ function foldLabel(score) {
   return "off";
 }
 
-const CORE_FILES = ["score-part", "score", "sampling", "landmarks", "color", "baseline", "flow", "types"];
+const CORE_FILES = ["score-part", "score", "sampling", "landmarks", "color", "baseline", "flow", "types", "guide-poc"];
 
 /** client/src/core 를 하나의 ESM 으로 묶는다. 소스가 안 바뀌었으면 캐시를 그대로 쓴다 */
 async function loadCore() {
@@ -69,7 +67,7 @@ async function loadCore() {
           'export { alignedFrame, scorePart } from "./src/core/score-part";',
           'export { decide, toOutcome } from "./src/core/score";',
           'export { frameOf } from "./src/core/sampling";',
-          'export { LM } from "./src/core/landmarks";',
+          'export { pocGuide } from "./src/core/guide-poc";',
         ].join("\n"),
         resolveDir: CLIENT,
         loader: "ts",
@@ -160,7 +158,7 @@ async function main() {
   const core = await loadCore();
   // 룩마다 가이드 하나 (라이너 두께가 룩을 따라간다). 같은 룩은 다시 만들지 않는다
   const cache = new Map();
-  const guides = { for: (look) => cache.get(look) ?? cache.set(look, makePocGuide(core.LM, lookParts(look))).get(look) };
+  const guides = { for: (look) => cache.get(look) ?? cache.set(look, core.pocGuide(lookParts(look))).get(look) };
   const out = [];
   let errors = 0;
   for (const item of items) {
