@@ -28,10 +28,17 @@ export interface Look {
   rationale: Partial<Record<LookPartId, string>>;
 }
 
+/** 합산 설정. **전 룩 공통** — 룩마다 다르면 "이 룩은 점수가 잘 나온다"가 생겨 룩 간 비교가 안 된다 */
+export interface Scoring {
+  weights: Partial<Record<LookPartId, number>>;
+  harmonyRange: { maxDeltaAb: number } | null;
+}
+
 interface LooksFile {
   version: string;
   note: string;
   partOrder: LookPartId[];
+  scoring: Scoring;
   contour: { products: string[]; rationale: Record<string, string> };
   looks: Look[];
 }
@@ -41,6 +48,23 @@ const file = raw as unknown as LooksFile;
 export const LOOKS_VERSION = file.version;
 export const LOOKS: readonly Look[] = file.looks;
 export const LOOK_PART_ORDER: readonly LookPartId[] = file.partOrder;
+
+/**
+ * ③ 의 `computeSummary` 에 넘기는 합산 설정 (`SummaryTemplate` 과 같은 모양).
+ * 값은 `rules/looks.json` 에 있다 — 코드에 숫자를 박지 않는다 (dev-stack-v6.md §6).
+ *
+ * **전 룩 공통이다** (결정 2026-09-22). 룩마다 가중치가 다르면 점수가 잘 나오는 룩이 생기고,
+ * 사용자가 그것만 고르게 된다. 룩 간 비교도 안 된다.
+ */
+export const SUMMARY_TEMPLATE: {
+  partIds: readonly LookPartId[];
+  weights: Scoring["weights"];
+  harmonyRange: Scoring["harmonyRange"];
+} = {
+  partIds: file.partOrder,
+  weights: file.scoring.weights,
+  harmonyRange: file.scoring.harmonyRange,
+};
 
 /** 쉐딩·하이라이트는 룩 템플릿에 없다 — 얼굴형 규칙에서 온다 (F-05) */
 export const CONTOUR_PRODUCTS: readonly string[] = file.contour.products;

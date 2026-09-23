@@ -78,9 +78,10 @@ function resample(poly: readonly Pt[], N: number, up: boolean): PathSample[] {
 
 /**
  * 아이라이너 스트립 (한쪽 눈): 속눈썹 선 + 꼬리 선을 따라 80행, 법선 방향 25칸. + 가 위쪽.
- * wing = 가이드의 꼬리 선 [눈꼬리, 꼬리 끝]. R = 이미지 왼쪽 눈(eyeA) = 피험자 오른쪽
+ * wing = 가이드의 꼬리 선 [눈꼬리, 꼬리 끝], thick = 가이드 선 두께 (눈 폭 비율) — 둘 다 ② 가 이 룩에서 그린 값.
+ * R = 이미지 왼쪽 눈(eyeA) = 피험자 오른쪽
  */
-export function sampleLiner(f: SampleFrame, side: Side, wing: readonly [Pt, Pt]): LinerStrip {
+export function sampleLiner(f: SampleFrame, side: Side, wing: readonly [Pt, Pt], thick: number): LinerStrip {
   const eye = side === "R" ? LM.eyeA : LM.eyeB;
   const lid = eye.upper.map((i) => at(f.lm, i)).reverse();   // 안쪽 → 바깥쪽
   let lidLen = 0;
@@ -92,7 +93,7 @@ export function sampleLiner(f: SampleFrame, side: Side, wing: readonly [Pt, Pt])
     isWing.push(s.t > lidLen);
     tFromCorner.push((s.t - lidLen) / ue);
   }
-  return { lab, meta: { offs: LINER_OFFS, isWing, tFromCorner, wingLen: dist(wing[0], wing[1]) / ue } };
+  return { lab, meta: { offs: LINER_OFFS, isWing, tFromCorner, wingLen: dist(wing[0], wing[1]) / ue, thick } };
 }
 
 /** 눈썹 격자 세로 위치. 0~1 이 테두리 안, 그 밖은 바깥 띠 */
@@ -122,8 +123,8 @@ export function sampleBrow(f: SampleFrame): RegionGrid {
   return { lab, meta: { inside, tail, side } };
 }
 
-/** 입술 경계 스트립: 바깥 윤곽을 따라 60행, 안쪽(−) … 바깥쪽(+) 25칸 */
-export function sampleLip(f: SampleFrame): LipStrip {
+/** 입술 경계 스트립: 바깥 윤곽을 따라 60행, 안쪽(−) … 바깥쪽(+) 25칸. offset = 가이드 경계 오프셋 (입술 폭 비율, ② 값) */
+export function sampleLip(f: SampleFrame, offset: number): LipStrip {
   const lip = LM.lipsOuter.map((i) => at(f.lm, i)), c = centroid(lip), ul = f.unit.lip;
   const lab: Lab[][] = [], half: ("upper" | "lower")[] = [], side: Side[] = [];
   for (const s of resample([...lip, lip[0]!], 60, false)) {
@@ -132,7 +133,7 @@ export function sampleLip(f: SampleFrame): LipStrip {
     half.push(s.p.y < c.y ? "upper" : "lower");
     side.push(s.p.x < c.x ? "R" : "L");
   }
-  return { lab, meta: { offs: LIP_OFFS, half, side } };
+  return { lab, meta: { offs: LIP_OFFS, half, side, offset } };
 }
 
 /** 강도 부위 한쪽: 영역 평균과 그 둘레 맨살 띠 평균. 섀도우는 눈꼬리 쪽·안쪽 반 평균도 (방향) */

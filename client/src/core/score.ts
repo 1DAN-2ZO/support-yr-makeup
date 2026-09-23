@@ -39,7 +39,11 @@ export type IntensityPartId = (typeof INTENSITY_PARTS)[number];
 export type Side = "R" | "L";
 export type Band = readonly [number, number];
 
-/** 임계·가이드 값. 전부 가정값이고 E-1 뒤에 rules/score.json 으로 옮긴다 (3-13) */
+/**
+ * 채점 임계. 전부 가정값이고 E-1 뒤에 rules/score.json 으로 옮긴다 (3-13).
+ * 가이드 치수(라이너 두께·입술 오프셋)는 여기 없다 — ② 가 룩마다 정해서 그린 값을 샘플 meta 로 받아 쓴다.
+ * 채점이 자기 치수를 갖고 있으면 가이드와 어긋날 때 가이드대로 그려도 감점된다
+ */
 export interface ScoreParams {
   /** 형태 부위 화장 감지 임계 (ΔE) */
   dEThresh: { liner: number; brow: number; lip: number };
@@ -51,8 +55,6 @@ export interface ScoreParams {
   lightTol: number;
   /** 목표 지수 밴드. 룩 템플릿 값이 우선이고, 없으면 확인만 */
   band: Partial<Record<IntensityPartId, Band>>;
-  /** 가이드 치수 (눈 폭·입술 폭 비율) */
-  guide: { liner: { thick: number; wing: number }; brow: { tail: number }; lip: { offset: number } };
   tol: {
     band: number;
     out: number;
@@ -74,7 +76,6 @@ export const PARAMS: ScoreParams = {
   toneDiv: 4,
   lightTol: 12,
   band: { cheek: [25, 60], shadow: [20, 65] },
-  guide: { liner: { thick: 0.045, wing: 0.15 }, brow: { tail: 0.11 }, lip: { offset: 0.01 } },
   tol: { band: 0.011, out: 0.022, wingDev: 0.022, wingShort: 0.055, thickOver: 0.015, thickUnder: 0.022, lrDiff: 0.045, lipIn: 0.006, lipOut: 0.012, wingMin: 0.015 },
 };
 
@@ -113,6 +114,8 @@ export const DIAG_TEXT = {
   TONE_OK: "적당해요",
   CONTOUR_LR_R: "오른쪽이 조금 진해요",
   CONTOUR_LR_L: "왼쪽이 조금 진해요",
+  CONTOUR_HI_R: "오른쪽 하이라이트가 조금 밝아요",
+  CONTOUR_HI_L: "왼쪽 하이라이트가 조금 밝아요",
 } as const;
 export type DiagCode = keyof typeof DIAG_TEXT;
 
@@ -191,6 +194,8 @@ export interface LinerStrip {
     /** 눈꼬리에서 꼬리를 따라 간 거리 (눈 폭 비율). 눈꺼풀 행은 음수 */
     tFromCorner: readonly number[];
     wingLen: number;
+    /** 가이드 선 두께 (눈 폭 비율). ② 가 이 룩에서 그린 값 — 밴드 안/밖과 두꺼움/옅음의 기준 */
+    thick: number;
   };
 }
 
@@ -200,6 +205,8 @@ export interface LinerEyeMetrics {
   /** 밴드 밖 감지율 */
   overflow: number;
   thickness: number;
+  /** 가이드 선 두께 (샘플 meta 에서 그대로) */
+  guideThick: number;
   wingGuide: number;
   wingDrawn: number;
   /** 꼬리 끝 쪽의 감지 중심 오프셋. + 는 가이드 법선(위·바깥) 방향 */
@@ -209,12 +216,12 @@ export interface LinerEyeMetrics {
 }
 
 export function compareLinerEye(base: LinerStrip, cur: LinerStrip, corr: LightCorr, p: ScoreParams = PARAMS): LinerEyeMetrics {
-  const { offs, isWing, tFromCorner, wingLen } = cur.meta;
-  const half = p.guide.liner.thick / 2;
+  const { offs, isWing, tFromCorner, wingLen, thick: guideThick } = cur.meta;
+  const half = guideThick / 2;
   const N = Math.min(base.lab.length, cur.lab.length), M = offs.length;
   const step = M > 1 ? offs[1]! - offs[0]! : 0.0092;
   let rowsN = 0, rowsCovered = 0, outN = 0, outHit = 0, wingDrawn = 0, lidRows = 0, lidHitRows = 0;
-  const thick: number[] = [], devs: number[] = [];
+  const widths: number[] = [], devs: number[] = [];
   for (let i = 0; i < N; i++) {
     const wing = isWing[i] ?? false, t = tFromCorner[i] ?? 0;
     let drawnW = 0, bandHit = false;
@@ -233,7 +240,7 @@ export function compareLinerEye(base: LinerStrip, cur: LinerStrip, corr: LightCo
     rowsN++;
     if (bandHit) rowsCovered++;
     if (drawnW > 0) {
-      thick.push(drawnW);
+      widths.push(drawnW);
       if (wing && t > wingLen * 0.5) devs.push(median(hitOffs));   // 꼬리 바깥쪽 절반의 중심 오프셋
     }
     if (!wing) { lidRows++; if (drawnW > 0) lidHitRows++; }
@@ -242,12 +249,13 @@ export function compareLinerEye(base: LinerStrip, cur: LinerStrip, corr: LightCo
   return {
     coverage: rowsN ? rowsCovered / rowsN : 0,
     overflow: outN ? outHit / outN : 0,
-    thickness: median(thick),
+    thickness: median(widths),
+    guideThick,
     wingGuide: wingLen,
     wingDrawn,
     wingDev: devs.length ? median(devs) : 0,
     gapRatio: lidRows ? 1 - lidHitRows / lidRows : 1,
-    present: thick.length >= 3,
+    present: widths.length >= 3,
   };
 }
 
@@ -266,9 +274,9 @@ export function linerResult(perEye: Record<Side, LinerEyeMetrics>, baseAsym = 0,
     if (e.gapRatio > 0.25) codes.push(`LINER_GAP_${k}`);
     if (e.overflow > 0.35) codes.push(`LINER_OUT_${k}`);
   }
-  const thickness = (R.thickness + L.thickness) / 2;
-  if (thickness > p.guide.liner.thick + p.tol.thickOver) codes.push("LINER_THICK");
-  else if (thickness < p.guide.liner.thick - p.tol.thickUnder && thickness > 0) codes.push("LINER_THIN");
+  const thickness = (R.thickness + L.thickness) / 2, guideThick = (R.guideThick + L.guideThick) / 2;
+  if (thickness > guideThick + p.tol.thickOver) codes.push("LINER_THICK");
+  else if (thickness < guideThick - p.tol.thickUnder && thickness > 0) codes.push("LINER_THIN");
   const lrDiff = Math.abs(R.wingDev - L.wingDev - baseAsym);
   if (lrDiff > p.tol.lrDiff) codes.push("LINER_LR_DIFF");
   const avg = (a: number, b: number): number => (a + b) / 2;
@@ -276,7 +284,7 @@ export function linerResult(perEye: Record<Side, LinerEyeMetrics>, baseAsym = 0,
     coverage: avg(R.coverage, L.coverage),
     overflow: avg(R.overflow, L.overflow),
     wingDelta: avg(R.wingDrawn - R.wingGuide, L.wingDrawn - L.wingGuide),
-    thickDelta: thickness - p.guide.liner.thick,
+    thickDelta: thickness - guideThick,
   });
   return { present, score, codes, lrIndex: null, metrics: { perEye, lrDiff, thickness } };
 }
@@ -342,12 +350,14 @@ export interface LipStrip {
     offs: readonly number[];
     half: readonly ("upper" | "lower")[];
     side: readonly Side[];
+    /** 가이드 경계 오프셋 (입술 폭 비율, + 바깥). ② 가 이 룩에서 그린 값 */
+    offset: number;
   };
 }
 
 export function compareLip(base: LipStrip, cur: LipStrip, corr: LightCorr, p: ScoreParams = PARAMS): PartScore {
-  const { offs, half, side } = cur.meta;
-  const N = Math.min(base.lab.length, cur.lab.length), M = offs.length, off = p.guide.lip.offset;
+  const { offs, half, side, offset: off } = cur.meta;
+  const N = Math.min(base.lab.length, cur.lab.length), M = offs.length;
   const out = { upper: { n: 0, hit: 0 }, lower: { n: 0, hit: 0 } };
   const sideRows = { R: { n: 0, hit: 0 }, L: { n: 0, hit: 0 } };
   let inN = 0, inHit = 0, rowsHit = 0;
@@ -416,6 +426,8 @@ export interface IntensityInput {
   directionOk?: boolean;
   /** 룩 템플릿의 목표 밴드. 안 주면 PARAMS.band, null 이면 기준 없음(확인만) */
   band?: Band | null;
+  /** 쉐딩 화면의 하이라이트 영역 좌우 지수. 점수에는 안 들어가고 좌우 차 한 줄만 낸다 */
+  hi?: { L: { index: number }; R: { index: number } };
 }
 
 export interface IntensityScore extends PartScore {
@@ -428,8 +440,15 @@ export function intensityResult(partId: IntensityPartId, input: IntensityInput, 
   const codes: DiagCode[] = [];
   const lrDiff = R.index - L.index, lrIndex = { left: L.index, right: R.index };
   if (partId === "contour") {
+    // 쉐딩·하이라이트는 점수 없이 좌우 차만 알려 준다 (F-09 확인만). 하이라이트도 같은 규칙, 같은 임계
     if (Math.abs(lrDiff) >= 10) codes.push(lrDiff > 0 ? "CONTOUR_LR_R" : "CONTOUR_LR_L");
-    return { present, score: null, codes, lrIndex, verdict: null, metrics: {} };
+    const metrics: PartResult["metrics"] = {};
+    if (input.hi) {
+      const hiDiff = input.hi.R.index - input.hi.L.index;
+      if (Math.abs(hiDiff) >= 10) codes.push(hiDiff > 0 ? "CONTOUR_HI_R" : "CONTOUR_HI_L");
+      metrics.hiIndex = { left: input.hi.L.index, right: input.hi.R.index };
+    }
+    return { present, score: null, codes, lrIndex, verdict: null, metrics };
   }
   if (!present) return { present, score: null, codes, lrIndex, verdict: null, metrics: {} };
   const verdict = toneVerdict((L.index + R.index) / 2, band);
@@ -471,7 +490,7 @@ export function decide(partId: PartId, res: Pick<PartScore, "present" | "score">
 /** 한 줄 평: 숫자 없이. 코드 순서대로 최대 두 문장 */
 export function oneLiner(partId: PartId, decision: Decision, codes: readonly string[] = []): string {
   const texts = codes.map(diagText).filter((t): t is string => !!t);
-  if (partId === "contour") return CHECK_REASON_TEXT.contour + (texts[0] ? " " + texts[0] : "");
+  if (partId === "contour") return [CHECK_REASON_TEXT.contour, ...texts.slice(0, 2)].join(" ");   // 쉐딩 한 줄 + 하이라이트 한 줄까지
   if (decision.status === "check_only") return CHECK_REASON_TEXT[decision.reason ?? "faint"];
   if (!texts.length) return "잘 됐어요";
   return texts.slice(0, 2).join(". ");

@@ -1,8 +1,30 @@
 {
   "golden_version": "golden-v0",
-  "labels_version": "labels-v0",
-  "note": "촬영 세션 후 30장으로 채운다. 사진은 저장소 밖(DHE_DATA_DIR), 여기엔 경로·해시·person_id·라벨만.",
+  "labels_version": "labels-v1",
+  "note": "채점 평가용 시험지. 사진은 저장소 밖(DHE_DATA_DIR), 여기엔 경로·해시·person_id·라벨만. 양식은 ③(score_cli.mjs)과 2026-09-22 합의",
   "data_dir_env": "DHE_DATA_DIR",
   "split": { "rule": "person_id 단위. golden은 평가 전용, 학습에 쓰지 않는다" },
+  "label_values": {
+    "ok": "맞음 — 가이드 안에 잘 그림",
+    "slight": "조금 벗어남",
+    "off": "많이 벗어남"
+  },
+  "parts": ["brow", "liner", "lip", "shadow", "cheek"],
+  "parts_note": "쉐딩·하이라이트(contour)는 앱에서 항상 '확인만'이라 넣지 않는다. 섀도우·볼터치는 밴드가 없으면 채점기가 check_only 를 낸다",
+  "landmark_format": "사진과 같은 크기의 픽셀 좌표, MediaPipe Face Landmarker 478점 [[x, y], ...]. ⑤가 파이썬으로 뽑아 <사진>.lm.json 으로 둔다",
+  "item_fields": {
+    "id": "시험지 번호 — <person_id>_<화장>_<part>",
+    "person_id": "누구 사진인지 (학습·평가 분리 단위)",
+    "part": "parts 중 하나",
+    "source": "사진 출처 — ffhq-makeup · synthetic-off(일부러 틀리게 만든 사진) · self(자체 촬영) 등",
+    "look": "어느 룩 기준으로 채점하나 — rules/looks.json 의 id (daily·smoky…). 아직 템플릿 전이면 null, 채점기는 기본 룩(smoky)으로 재고 note 에 적는다",
+    "bare": "맨얼굴 사진 경로 (data_dir 기준 상대 경로, PNG)",
+    "makeup": "화장 사진 경로",
+    "bare_lm": "맨얼굴 얼굴 점 파일",
+    "makeup_lm": "화장 사진 얼굴 점 파일",
+    "sha256": "{ bare, makeup } 사진 지문 — 사진이 바뀌면 알 수 있게",
+    "labels": "{ a, b } 사람 2명이 따로 매긴 정답 (label_values 중 하나)",
+    "label": "최종 정답. a·b 가 같으면 그 값, 다르면 상의해 정함. 아직 없으면 null"
+  },
   "items": []
 }

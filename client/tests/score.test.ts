@@ -49,7 +49,8 @@ function linerStrip(hit: (i: number, offMm: number) => boolean): LinerStrip {
     tFromCorner.push(wing ? (((i - 59) / 20) * 4) / EYE_MM : -1 / EYE_MM);
     rows.push(OFFS_MM.map((o) => (hit(i, o) ? INK : SKIN)));
   }
-  return { lab: rows, meta: { offs: OFFS_MM.map((o) => o / EYE_MM), isWing, tFromCorner, wingLen: 4 / EYE_MM } };
+  // 가이드 두께 1.2mm — 원래 채점기 상수였지만 이제 ② 가 룩마다 주는 값이라 샘플 meta 로 들어온다
+  return { lab: rows, meta: { offs: OFFS_MM.map((o) => o / EYE_MM), isWing, tFromCorner, wingLen: 4 / EYE_MM, thick: 1.2 / EYE_MM } };
 }
 const bareStrip = linerStrip(() => false);
 const eyeRes = (hit: (i: number, offMm: number) => boolean) => compareLinerEye(bareStrip, linerStrip(hit), noCorr);
@@ -168,7 +169,7 @@ describe("입술", () => {
       side.push(i % 2 ? "R" : "L");
       rows.push(OFFS_MM.map((o) => (hit(h, o) ? INK : SKIN)));
     }
-    return { lab: rows, meta: { offs: OFFS_MM.map((o) => o / LIP_MM), half, side } };
+    return { lab: rows, meta: { offs: OFFS_MM.map((o) => o / LIP_MM), half, side, offset: 0.5 / LIP_MM } };
   }
   const bareLip = lipStrip(() => false);
   const lip = (hit: Parameters<typeof lipStrip>[0]) => compareLip(bareLip, lipStrip(hit), noCorr);
@@ -229,6 +230,13 @@ describe("강도 부위", () => {
     expect(decide("contour", r)).toMatchObject({ status: "check_only", reason: "contour" });
     expect(oneLiner("contour", decide("contour", r), r.codes)).toBe("확인하고 넘어가세요. 오른쪽이 조금 진해요");
     expect(oneLiner("contour", decide("contour", r), [])).toBe("확인하고 넘어가세요.");
+    // 하이라이트도 같은 규칙으로 좌우만 본다. 점수는 여전히 없고, 쉐딩·하이라이트 한 줄씩
+    const h = intensityResult("contour", { ...mk(30, 45), hi: { L: { index: 40 }, R: { index: 20 } } });
+    expect(h.score).toBeNull();
+    expect(h.codes).toEqual(["CONTOUR_LR_R", "CONTOUR_HI_L"]);
+    expect(h.metrics.hiIndex).toEqual({ left: 40, right: 20 });
+    expect(oneLiner("contour", decide("contour", h), h.codes)).toBe("확인하고 넘어가세요. 오른쪽이 조금 진해요 왼쪽 하이라이트가 조금 밝아요");
+    expect(intensityResult("contour", { ...mk(30, 30), hi: { L: { index: 40 }, R: { index: 35 } } }).codes).toEqual([]);
   });
 
   it("I6 밴드 없는 룩 → 점수 null → 확인만(기준 없음)", () => {

@@ -7,8 +7,9 @@ import {
   tileState,
   tiles,
 } from "@core/look-view";
-import { CONTOUR_PRODUCTS, LOOKS } from "@core/looks";
-import type { JobStatus, LookJob, Versions } from "@core/types";
+import { CONTOUR_PRODUCTS, LOOKS, SUMMARY_TEMPLATE } from "@core/looks";
+import { computeSummary, DEFAULT_TEMPLATE } from "@core/review";
+import type { JobStatus, LookJob, PartId, PartResult, Versions } from "@core/types";
 
 const ver: Versions = {
   app: "test",
@@ -115,5 +116,54 @@ describe("전체 완성 예상", () => {
     expect(fullRenderUrl(jobs, null)).toBeNull();
     expect(fullRenderUrl(jobs, "smoky")).toBeNull();
     expect(fullRenderUrl(jobs, "rose")).toBeNull();
+  });
+});
+
+function part(partId: PartId, over: Partial<PartResult> = {}): PartResult {
+  return {
+    partId,
+    status: "passed",
+    score: 80,
+    diagnosisCodes: [],
+    diagnosis: "",
+    checkReason: null,
+    lrIndex: null,
+    metrics: {},
+    attempts: 1,
+    updatedAt: 0,
+    ...over,
+  };
+}
+
+describe("합산 설정 — 전 룩 공통 (결정 2026-09-22)", () => {
+  it("rules/looks.json 에서 온다 — 코드에 숫자를 박지 않는다", () => {
+    expect(SUMMARY_TEMPLATE.weights.brow).toBeTypeOf("number");
+    expect(SUMMARY_TEMPLATE.harmonyRange?.maxDeltaAb).toBeTypeOf("number");
+  });
+
+  it("③ 의 기본값과 같다 — 코드에서 옮겨 왔고 숫자는 안 바꿨다", () => {
+    expect(SUMMARY_TEMPLATE.weights).toEqual(DEFAULT_TEMPLATE.weights);
+    expect(SUMMARY_TEMPLATE.harmonyRange).toEqual(DEFAULT_TEMPLATE.harmonyRange);
+    expect([...SUMMARY_TEMPLATE.partIds]).toEqual([...DEFAULT_TEMPLATE.partIds]);
+  });
+
+  it("룩마다 따로 두지 않는다 — 룩 객체에 가중치가 없어야 한다", () => {
+    for (const l of LOOKS) {
+      expect(l).not.toHaveProperty("weights");
+      expect(l).not.toHaveProperty("harmonyRange");
+    }
+  });
+
+  it("룩 5부위를 전부 덮는다", () => {
+    for (const p of SUMMARY_TEMPLATE.partIds) {
+      expect(SUMMARY_TEMPLATE.weights[p], `${p} 가중치 없음`).toBeTypeOf("number");
+    }
+  });
+
+  it("이걸로 합산하면 가중 평균이 나온다", () => {
+    const parts = SUMMARY_TEMPLATE.partIds.map((partId) => part(partId, { score: 80 }));
+    const s = computeSummary(parts, SUMMARY_TEMPLATE);
+    expect(s.total).toBe(80);
+    expect(s.measuredCount).toBe(SUMMARY_TEMPLATE.partIds.length);
   });
 });
