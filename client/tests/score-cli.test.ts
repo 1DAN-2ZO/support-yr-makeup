@@ -5,10 +5,13 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
 import { PNG } from "pngjs";
 import { beforeAll, describe, expect, it } from "vitest";
 import type { RgbaImage } from "@core/color";
+import { lookById } from "@core/looks";
 import { scorePart } from "@core/score-part";
+import type { GuideSource } from "@core/score-part";
 import { BARE, LMS, guide, image, linerPaint, lipPaint, made } from "./helpers/synth-face";
 
 const CLI = fileURLToPath(new URL("../../eval/score/score_cli.mjs", import.meta.url));
@@ -16,6 +19,7 @@ const CLI = fileURLToPath(new URL("../../eval/score/score_cli.mjs", import.meta.
 interface Row {
   id: string | null;
   part: string | null;
+  look: string | null;
   label: string | null;
   pred: string | null;
   score: number | null;
@@ -32,11 +36,21 @@ function runCli(payload: unknown): { rows: Row[]; stderr: string; status: number
   return { rows: JSON.parse(r.stdout) as Row[], stderr: r.stderr, status: r.status };
 }
 
+const sha: Record<string, string> = {};
 function savePng(path: string, im: RgbaImage): void {
   const png = new PNG({ width: im.w, height: im.h });
   png.data = Buffer.from(im.data as Uint8ClampedArray);
-  writeFileSync(path, PNG.sync.write(png));
+  const bytes = PNG.sync.write(png);
+  writeFileSync(path, bytes);
+  sha[path.split(/[\\/]/).pop()!] = createHash("sha256").update(bytes).digest("hex");
 }
+
+/** 앱 쪽 채점을 시험지와 같은 룩 두께로: 시험용 가이드는 0.045 인데 CLI 는 룩(looks.json)의 두께로 잰다 */
+const appGuideFor = (look: string): GuideSource => (partId, f) => {
+  const g = guide(partId, f);
+  const thick = lookById(look).parts.liner?.thick;
+  return partId === "liner" && g.liner && thick ? { liner: { ...g.liner, thick } } : g;
+};
 
 let dir: string;
 beforeAll(() => {
@@ -58,16 +72,42 @@ describe("score_cli.mjs", () => {
     expect(runCli({ items: [], data_dir: dir }).rows).toEqual([]);
   });
 
-  it("가이드대로 그린 라이너 → scored · pred ok · 앱의 scorePart 와 같은 점수", () => {
+  it("가이드대로 그린 라이너 → scored · pred ok · 앱의 scorePart 와 같은 점수 · look 이 비면 smoky", () => {
     const { rows } = runCli({ items: [item("a", "liner", "liner.png")], data_dir: dir });
     expect(rows).toHaveLength(1);
     const r = rows[0]!;
-    expect(r).toMatchObject({ id: "a", part: "liner", label: "ok", status: "scored", pred: "ok", check_reason: null, codes: [], error: null });
-    expect(r.score).toBeGreaterThanOrEqual(90);
-    // 평가가 앱과 같은 것을 재는가: TS 쪽 scorePart(시험용 가이드) 와 CLI(guide-poc.mjs) 점수가 같다
-    const app = scorePart("liner", BARE, made(linerPaint()), guide).result;
+    expect(r).toMatchObject({ id: "a", part: "liner", look: "smoky", label: "ok", status: "scored", pred: "ok", check_reason: null, error: null });
+    expect(r.score).toBeGreaterThanOrEqual(85);
+    // 평가가 앱과 같은 것을 재는가: TS 쪽 scorePart(같은 룩 두께) 와 CLI(guide-poc.mjs) 점수가 같다
+    const app = scorePart("liner", BARE, made(linerPaint()), appGuideFor("smoky")).result;
     expect(r.score).toBe(app.score);
+    expect(r.codes).toEqual(app.codes);
     expect(r.ms).toBeGreaterThan(0);
+  });
+
+  it("look 을 주면 그 룩의 라이너 두께로 잰다 — 같은 그림이 룩에 따라 다르게 판정된다", () => {
+    const { rows } = runCli({ items: [item("d", "liner", "liner.png", { look: "daily" }), item("s", "liner", "liner.png", { look: "smoky" })], data_dir: dir });
+    expect(rows.map((r) => r.look)).toEqual(["daily", "smoky"]);
+    for (const [row, look] of [[rows[0]!, "daily"], [rows[1]!, "smoky"]] as const) {
+      const app = scorePart("liner", BARE, made(linerPaint()), appGuideFor(look)).result;
+      expect(row.score, look).toBe(app.score);
+      expect(row.codes, look).toEqual(app.codes);
+    }
+  });
+
+  it("sha256 이 적혀 있으면 대조한다 — 맞으면 채점, 다르면 error, 없으면 검사 안 함", () => {
+    const ok = { bare: sha["bare.png"], makeup: sha["liner.png"] };
+    const { rows } = runCli({
+      items: [
+        item("match", "liner", "liner.png", { sha256: ok }),
+        item("changed", "liner", "liner.png", { sha256: { ...ok, makeup: "0".repeat(64) } }),
+        item("partial", "liner", "liner.png", { sha256: { bare: ok.bare } }),
+      ],
+      data_dir: dir,
+    });
+    expect(rows[0]?.status).toBe("scored");
+    expect(rows[1]?.error).toMatch(/지문 불일치 \(makeup\)/);
+    expect(rows[2]?.status).toBe("scored");
   });
 
   it("맨얼굴을 화장 사진으로 → check_only(faint) · pred null · 점수 없음", () => {
@@ -96,15 +136,17 @@ describe("score_cli.mjs", () => {
         item("nofile", "liner", "missing.png"),
         item("short", "liner", "liner.png", { makeup_lm: "lm-short.json" }),
         { id: "nopart", bare: "bare.png", makeup: "liner.png", bare_lm: "lm.json", makeup_lm: "lm.json" },
+        item("nolook", "liner", "liner.png", { look: "no-such-look" }),
       ],
       data_dir: dir,
     });
-    expect(rows.map((r) => r.id)).toEqual(["ok", "nofile", "short", "nopart"]);
+    expect(rows.map((r) => r.id)).toEqual(["ok", "nofile", "short", "nopart", "nolook"]);
     expect(rows[0]?.status).toBe("scored");
     expect(rows[1]?.error).toMatch(/파일 없음/);
     expect(rows[2]?.error).toMatch(/478/);
     expect(rows[3]?.error).toMatch(/'part'/);
+    expect(rows[4]?.error).toMatch(/없는 룩/);
     expect(rows.slice(1).every((r) => r.pred === null && r.score === null)).toBe(true);
-    expect(stderr).toMatch(/오류 3/);
+    expect(stderr).toMatch(/오류 4/);
   });
 });

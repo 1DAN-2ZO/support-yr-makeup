@@ -6,17 +6,19 @@
  *   stdout  [{"id", "part", "label", "pred", "score", "status", "check_reason", "codes", "ms", "error"}]
  *   stderr  진행·요약 (stdout 은 JSON 만)
  *
- * 항목 하나 (초안 — ⑤ 와 합의 중. 경로는 data_dir 기준 상대 경로):
- *   { "id": "ffhq_0001_liner", "person_id": "ffhq_0001", "part": "liner",
+ * 항목 하나 (양식은 eval/golden/manifest.json item_fields — ⑤ 와 2026-09-22 합의. 경로는 data_dir 기준 상대 경로):
+ *   { "id": "ffhq_0001_liner", "person_id": "ffhq_0001", "part": "liner", "look": "smoky",
  *     "bare": "ffhq/0001_bare.png", "makeup": "ffhq/0001_makeup.png",
  *     "bare_lm": "ffhq/0001_bare.lm.json", "makeup_lm": "ffhq/0001_makeup.lm.json",
- *     "label": "ok" }
+ *     "sha256": { "bare": "…", "makeup": "…" }, "label": "ok" }
  *   - 사진은 PNG. 랜드마크는 MediaPipe 478점 JSON — [{x,y}] 또는 [[x,y]], 픽셀 또는 0~1 정규화 둘 다 받는다
  *     (전부 0~1 이면 정규화로 보고 사진 크기를 곱한다). Node 에서는 MediaPipe 가 안 돌아서 ⑤ 가 파이썬으로 뽑는다
+ *   - look: rules/looks.json 의 id. 라이너 두께 등 잣대가 룩을 따라간다. 비어 있으면 기본 룩(smoky)으로 재고 행의 look 에 적는다
+ *   - sha256: 있으면 사진 파일 지문을 대조한다. 다르면 그 행은 error (사진이 바뀐 것)
  *   - label: ok | slight | off (3단계, #64). 없으면 null
  *
  * 채점 코드는 client/src/core/score-part.ts 를 esbuild 로 묶어서 그대로 쓴다 — 평가가 앱과 다른 것을 재면 안 된다.
- * 가이드 기하는 ② 의 guides.ts 가 나올 때까지 guide-poc.mjs (POC 값) 를 쓴다.
+ * 가이드 기하는 ② 의 guides.ts 가 나올 때까지 guide-poc.mjs (POC 값 + 룩별 라이너 두께) 를 쓴다.
  *
  * 혼자 돌려 보기:  echo '{"items":[...],"data_dir":"..."}' | node eval/score/score_cli.mjs
  */
@@ -33,6 +35,15 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..", "..");
 const CLIENT = join(ROOT, "client");
 const require = createRequire(pathToFileURL(join(CLIENT, "package.json")));
+
+/** 룩 템플릿 전이라 시험지의 look 이 비어 있을 때 재는 룩 (⑤ 와 합의). 결과 행 look 에 그대로 적힌다 */
+const DEFAULT_LOOK = "smoky";
+const LOOKS = JSON.parse(readFileSync(join(ROOT, "rules", "looks.json"), "utf8")).looks;
+function lookParts(id) {
+  const look = LOOKS.find((l) => l.id === id);
+  if (!look) throw new Error(`rules/looks.json 에 없는 룩: ${id}`);
+  return look.parts;
+}
 
 /** 점수(0~100) → 사람 판정 3단계. 초안 — E-1 첫 결과를 보고 ⑤ 와 정한다 */
 const FOLD = { ok: 80, slight: 50 };
@@ -99,20 +110,34 @@ function need(item, key) {
   return v;
 }
 
-function scoreItem(core, guide, item, dataDir) {
+/** 시험지에 지문이 적혀 있으면 사진이 그대로인지 대조한다. 사진이 바뀌면 정답이 더는 그 사진의 정답이 아니다 */
+function checkSha(item, which, path) {
+  const want = item.sha256?.[which];
+  if (typeof want !== "string" || !want) return;
+  const got = createHash("sha256").update(readFileSync(path)).digest("hex");
+  if (got.toLowerCase() !== want.toLowerCase()) throw new Error(`사진 지문 불일치 (${which}): ${item[which]}`);
+}
+
+function scoreItem(core, guides, item, dataDir) {
   const at = (rel) => {
     const p = resolve(dataDir, rel);
     if (!existsSync(p) || !statSync(p).isFile()) throw new Error(`파일 없음: ${p}`);
     return p;
   };
   const part = need(item, "part");
-  const bareIm = readPng(at(need(item, "bare")));
-  const makeIm = readPng(at(need(item, "makeup")));
+  const look = typeof item.look === "string" && item.look ? item.look : DEFAULT_LOOK;
+  const guide = guides.for(look);
+  const barePath = at(need(item, "bare")), makePath = at(need(item, "makeup"));
+  checkSha(item, "bare", barePath);
+  checkSha(item, "makeup", makePath);
+  const bareIm = readPng(barePath);
+  const makeIm = readPng(makePath);
   const base = core.frameOf(bareIm, readLandmarks(at(need(item, "bare_lm")), bareIm));
   const { frame, fit, biasPx } = core.alignedFrame(base, makeIm, readLandmarks(at(need(item, "makeup_lm")), makeIm));
   const { result, ctx } = core.scorePart(part, base, frame, guide, { alignResidual: fit.residual });
   const d = core.decide(part, result, ctx);
   return {
+    look,
     pred: d.status === "scored" ? foldLabel(d.score) : null,
     score: d.score,
     status: d.status,
@@ -133,14 +158,16 @@ async function main() {
     return;
   }
   const core = await loadCore();
-  const guide = makePocGuide(core.LM);
+  // 룩마다 가이드 하나 (라이너 두께가 룩을 따라간다). 같은 룩은 다시 만들지 않는다
+  const cache = new Map();
+  const guides = { for: (look) => cache.get(look) ?? cache.set(look, makePocGuide(core.LM, lookParts(look))).get(look) };
   const out = [];
   let errors = 0;
   for (const item of items) {
     const t0 = performance.now();
-    const row = { id: item.id ?? null, part: item.part ?? null, label: item.label ?? null, pred: null, score: null, status: null, check_reason: null, codes: [], ms: 0, error: null };
+    const row = { id: item.id ?? null, part: item.part ?? null, look: null, label: item.label ?? null, pred: null, score: null, status: null, check_reason: null, codes: [], ms: 0, error: null };
     try {
-      Object.assign(row, scoreItem(core, guide, item, dataDir));
+      Object.assign(row, scoreItem(core, guides, item, dataDir));
     } catch (e) {
       row.error = e instanceof Error ? e.message : String(e);
       errors++;
@@ -151,7 +178,8 @@ async function main() {
   process.stdout.write(JSON.stringify(out) + "\n");
   const scored = out.filter((r) => r.status === "scored").length;
   const checkOnly = out.filter((r) => r.status === "check_only").length;
-  process.stderr.write(`score_cli: ${out.length}개 — 점수 ${scored} · 확인만 ${checkOnly} · 오류 ${errors}\n`);
+  const looks = [...new Set(out.map((r) => r.look).filter(Boolean))].join(",");
+  process.stderr.write(`score_cli: ${out.length}개 — 점수 ${scored} · 확인만 ${checkOnly} · 오류 ${errors} · 룩 ${looks || "-"}\n`);
 }
 
 main().catch((e) => {
