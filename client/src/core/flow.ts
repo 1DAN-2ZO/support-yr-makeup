@@ -118,6 +118,8 @@ export const SHOT_TEXT = {
   left: "고개를 왼쪽으로 조금 더",
   right: "고개를 오른쪽으로 조금 더",
   back: "너무 돌렸어요. 조금만 돌아오세요",
+  wrong_left: "반대쪽이에요. 왼쪽으로 돌려 주세요",
+  wrong_right: "반대쪽이에요. 오른쪽으로 돌려 주세요",
   open: "눈을 떠 주세요",
   close: "눈을 감아 주세요",
   near: "조금 더 가까이",
@@ -159,7 +161,14 @@ export interface ShotMeasure {
   stableCount?: number;
 }
 
-/** 얼굴 크기 허용 범위 (얼굴 폭 / 프레임 폭) */
+/** 45° 차례에 반대쪽으로 이만큼(°) 넘게 돌리면 "반대쪽이에요" */
+export const WRONG_SIDE_DEG = 15;
+
+/**
+ * 얼굴 크기 허용 범위 (얼굴 폭 / 프레임 **짧은 변**). 폰 세로는 짧은 변 = 폭이라 그대로.
+ * 2026-09-23 iPad 가로(1920×1080)에서 긴 변으로 나눠 정면도 0.28 에 걸치고, 45° 는 보이는 얼굴 폭이 줄어 늘 "가까이" 에 막혔다
+ * → 짧은 변으로 나누고, 45° 장은 하한을 보지 않는다 (크기는 눈 폭 조건이 본다. 가까운 눈은 45° 에도 줄지 않는다)
+ */
 export const FACE_RATIO = { min: 0.28, max: 0.75 } as const;
 /** 얼굴 전체가 프레임 안에 있어야 하는 최소 여백 (짧은 변의 3%). 2026-09-21 폰 실측: 턱·이마가 잘린 장이 통과해서 추가 */
 export const FACE_INSET_MIN = 0.03;
@@ -183,8 +192,9 @@ export function shotGate(shotId: ShotId, m: ShotMeasure, limits: CaptureLimits =
   if (m.foreheadOccluded) return fail("visible", "occluded");
   if (m.yaw < shot.yaw[0] || m.yaw > shot.yaw[1]) {
     if (shot.id.startsWith("front")) return fail("angle", "front");
-    if (shot.id === "left_45") return fail("angle", m.yaw > shot.yaw[1] ? "left" : "back");
-    return fail("angle", m.yaw < shot.yaw[0] ? "right" : "back");
+    // 반대로 돌렸을 때 "조금 더" 라고 하면 그쪽으로 더 돌린다 (2026-09-23 iPad: 왼쪽 45° 차례에 yaw +84 까지, 20초)
+    if (shot.id === "left_45") return fail("angle", m.yaw >= WRONG_SIDE_DEG ? "wrong_left" : m.yaw > shot.yaw[1] ? "left" : "back");
+    return fail("angle", m.yaw <= -WRONG_SIDE_DEG ? "wrong_right" : m.yaw < shot.yaw[0] ? "right" : "back");
   }
   if (Math.abs(m.pitch) > limits.pitch + 5) return fail("angle", "front");
   const closed = m.closedA && m.closedB;
@@ -192,7 +202,7 @@ export function shotGate(shotId: ShotId, m: ShotMeasure, limits: CaptureLimits =
   if (shot.eyes === "open" && !open) return fail("eyes", "open");
   if (shot.eyes === "closed" && !closed) return fail("eyes", "close");
   if (typeof m.faceRatio === "number") {
-    if (m.faceRatio < FACE_RATIO.min) return fail("size", "near");
+    if (shot.id.startsWith("front") && m.faceRatio < FACE_RATIO.min) return fail("size", "near");
     if (m.faceRatio > FACE_RATIO.max) return fail("size", "far");
   }
   if (typeof m.eyeWidthPx === "number" && m.eyeWidthPx < limits.eyeMinPx) return fail("size", "near");

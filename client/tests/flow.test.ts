@@ -146,6 +146,14 @@ describe("S 촬영 4장 게이트", () => {
     expect(shotGate("front_open", { ...OK, eyeWidthPx: 80 }).ok).toBe(true);
     // 얼굴 비율은 맞아도 눈 폭이 작으면 막는다 (저해상도 프레임)
     expect(shotGate("front_open", { ...OK, faceRatio: 0.39, eyeWidthPx: 55 }).firstFail).toBe("size");
+    // 반대쪽으로 돌리면 "조금 더" 가 아니라 "반대쪽이에요" (2026-09-23 iPad)
+    expect(shotGate("left_45", { ...OK, yaw: 40 }).text).toBe("반대쪽이에요. 왼쪽으로 돌려 주세요");
+    expect(shotGate("left_45", { ...OK, yaw: 5 }).text).toBe("고개를 왼쪽으로 조금 더");
+    expect(shotGate("right_45", { ...OK, yaw: -40 }).text).toBe("반대쪽이에요. 오른쪽으로 돌려 주세요");
+    expect(shotGate("right_45", { ...OK, yaw: -5 }).text).toBe("고개를 오른쪽으로 조금 더");
+    // 45° 는 보이는 얼굴 폭이 줄어도 "가까이" 로 막지 않는다 — 눈 폭만 본다 (2026-09-23 iPad)
+    expect(shotGate("left_45", { ...OK, yaw: -40, faceRatio: 0.2, eyeWidthPx: 100 }).ok).toBe(true);
+    expect(shotGate("right_45", { ...OK, yaw: 40, faceRatio: 0.2, eyeWidthPx: 60 }).firstFail).toBe("size");
     const { baselineL: _b, ...first } = OK;
     expect(shotGate("front_open", { ...first, foreheadL: 12.3 })).toMatchObject({ firstFail: "bright", text: "조금 더 밝은 곳으로" });
     expect(shotGate("front_open", { ...first, foreheadL: 39.9 }).firstFail).toBe("bright");

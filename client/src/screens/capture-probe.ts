@@ -16,7 +16,7 @@ import type { GateFail, Pt } from "@core/types";
 import { createLogger, memorySink } from "@core/log";
 import { createCaptureEvents } from "@core/capture-events";
 import { foreheadStep, startForeheadTrack } from "@core/occlusion";
-import { applyCameraLocks, lockReportRow, requestWakeLock } from "@screens/camera-locks";
+import { applyCameraLocks, applyUltraWideZoom, lockReportRow, requestWakeLock } from "@screens/camera-locks";
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -73,6 +73,8 @@ interface ProbeResult {
   occlusionCalib: Record<string, ProbeResult["foreheadJump"]>;
   /** 이마 급변(가림, #144): 창(300ms) 안 이마 ΔE 의 분포와 가림으로 본 프레임 수. 임계 FOREHEAD_JUMP 확정용 */
   foreheadJump: { n: number; p50: number; p90: number; p99: number; max: number; occludedFrames: number };
+  /** 장별로 화면에 뜬 막힘 문구 횟수와 그동안 본 yaw·pitch 범위 — 안 찍힌 장도 남는다 (2026-09-23 iPad 45° 가 왜 막혔는지) */
+  gateLog: Partial<Record<ShotId, { texts: Record<string, number>; yaw: [number, number]; pitch: [number, number]; eyeWidthPx: [number, number]; faceRatio: [number, number] }>>;
   faceShapeBurst: { count: number; seconds: number; frames: { yawLm: number; eyeWidthPx: number; sharpness: number; faceRatio: number }[] } | null;
   events: string[];
 }
@@ -113,6 +115,7 @@ const state = {
   burstResult: null as ProbeResult["faceShapeBurst"],
   /** 첫 장 셔터 뒤 얼굴형 프레임을 마저 모으는 중 (확인 화면은 그 뒤) */
   burstWait: null as { shotId: ShotId; at: ShotAt; cv: HTMLCanvasElement; shotAt: number } | null,
+  gateLog: {} as ProbeResult["gateLog"],
   fj: startForeheadTrack(),
   fjAll: [] as number[],
   fjRecent: [] as { t: number; v: number }[],
@@ -248,6 +251,9 @@ async function start(): Promise<void> {
     state.lockRow = lockReportRow(navigator.userAgent, rep);
     const caps = (track.getCapabilities?.() ?? {}) as { zoom?: { min?: number; max?: number; step?: number } };
     state.zoom = caps.zoom && typeof caps.zoom.max === "number" ? { min: caps.zoom.min ?? 1, max: caps.zoom.max, step: caps.zoom.step ?? 0 } : null;
+    // iPhone·iPad 초광각이면 카메라 앱 1배처럼 확대 (2026-09-23)
+    state.zoomApplied = await applyUltraWideZoom(track as unknown as Parameters<typeof applyUltraWideZoom>[0]);
+    $<HTMLButtonElement>("zoom").textContent = state.zoomApplied ? "확대 끄기" : "확대 1.5배";
   }
   await requestWakeLock(navigator.wakeLock as unknown as Parameters<typeof requestWakeLock>[0]);
   state.runStart = performance.now();
@@ -290,7 +296,7 @@ function frame(): void {
     const foreheadL = flab?.L;
     let fj = { jump: 0, occluded: false };
     if (flab) {
-      const r = foreheadStep(state.fj, t0, flab);
+      const r = foreheadStep(state.fj, t0, flab, { yaw, pitch: ang.pitch });
       state.fj = r.track; fj = r;
       state.fjAll.push(r.jump);
       if (r.occluded) state.fjOccluded += 1;
@@ -301,11 +307,11 @@ function frame(): void {
     Object.assign(m, {
       yaw, pitch: ang.pitch,
       closedA: hasBs ? blinkA > 0.5 : earA < 0.12, closedB: hasBs ? blinkB > 0.5 : earB < 0.12,
-      faceRatio: faceW / sw, faceInset: inset, eyeWidthPx: eyeWidthPxOf(lm), sharpness: sharpnessOf(video, crop),
+      faceRatio: faceW / Math.min(sw, sh), faceInset: inset, eyeWidthPx: eyeWidthPxOf(lm), sharpness: sharpnessOf(video, crop),
     });
     if (foreheadL !== undefined) m.foreheadL = foreheadL;
     if (state.baselineL !== undefined) m.baselineL = state.baselineL;
-    at = { yawLm: r1(yaw), yawMatRow: r1(-my.row), yawMatCol: r1(-my.col), pitchLm: r1(ang.pitch), blinkA: r2(blinkA), blinkB: r2(blinkB), earA: r2(earA), earB: r2(earB), faceRatio: r2(faceW / sw), faceInset: r2(inset), sharpness: r1(m.sharpness ?? 0), foreheadL: r1(foreheadL ?? 0), irisPx: r1(irisPxOf(lm)), eyeWidthPx: r1(eyeWidthPxOf(lm)), foreheadJump: r1(fj.jump), foreheadJumpMax2s: r1(Math.max(0, ...state.fjRecent.map((x) => x.v))), foreheadOccluded: fj.occluded };
+    at = { yawLm: r1(yaw), yawMatRow: r1(-my.row), yawMatCol: r1(-my.col), pitchLm: r1(ang.pitch), blinkA: r2(blinkA), blinkB: r2(blinkB), earA: r2(earA), earB: r2(earB), faceRatio: r2(faceW / Math.min(sw, sh)), faceInset: r2(inset), sharpness: r1(m.sharpness ?? 0), foreheadL: r1(foreheadL ?? 0), irisPx: r1(irisPxOf(lm)), eyeWidthPx: r1(eyeWidthPxOf(lm)), foreheadJump: r1(fj.jump), foreheadJumpMax2s: r1(Math.max(0, ...state.fjRecent.map((x) => x.v))), foreheadOccluded: fj.occluded };
   }
   if (state.calib) { calibFrame(t0, at); return; }
   if (!shotId) { shakeFrame(t0, at); return; }
@@ -317,6 +323,7 @@ function frame(): void {
   m.stableCount = state.stable;
   const gate = shotGate(shotId, m);
   if (!gate.ok && gate.firstFail) state.blocked[gate.firstFail] = (state.blocked[gate.firstFail] ?? 0) + 1;
+  if (at) logGate(shotId, gate.ok ? "통과" : gate.text, at);
   gateEl.textContent = `${NAME[shotId]} — ${gate.text}`;
   gateEl.classList.toggle("ready", gate.ok);
   const ms = performance.now() - t0;
@@ -503,6 +510,7 @@ async function finish(): Promise<void> {
     consent: state.consent, shots, lockRow: state.lockRow, zoom: state.zoom,
     faceShapeBurst: state.burstResult,
     occlusionCalib: state.calibDone,
+    gateLog: state.gateLog,
     foreheadJump: jumpStats(state.fjAll, state.fjOccluded),
     zoomApplied: state.zoomApplied,
     shake: state.shake.phase === "done" ? { still: stats(state.shake.still), shaky: stats(state.shake.shaky), frontOpenSharpness: state.shots.front_open?.rec.at.sharpness ?? null, irisPx: stats(state.shake.iris) } : null,
@@ -515,6 +523,13 @@ async function finish(): Promise<void> {
     sent = r.ok ? `PC 저장됨: ${await r.text()}` : `저장 실패 ${r.status}`;
   } catch (e) { sent = `저장 실패: ${String(e)}`; }
   outEl.textContent = `${sent}\n\n1-2 표 한 줄:\n${row}\n\n장별:\n${shots.map((s) => `${NAME[s.shot]}: 이마 급변(2초 최대) ${s.at.foreheadJumpMax2s}, ${s.seconds}s (+확인 ${s.confirmSeconds}s), 거부 ${s.rejected}, 막힘 ${JSON.stringify(s.blocked)}, yaw lm ${s.at.yawLm} / col ${s.at.yawMatCol}, 여백 ${s.at.faceInset}, 선명 ${s.at.sharpness}, L* ${s.at.foreheadL}`).join("\n")}`;
+}
+function logGate(shot: ShotId, text: string, at: ShotAt): void {
+  const span = (r: [number, number] | undefined, v: number): [number, number] => (r ? [Math.min(r[0], v), Math.max(r[1], v)] : [v, v]);
+  const g = state.gateLog[shot] ?? { texts: {}, yaw: [at.yawLm, at.yawLm], pitch: [at.pitchLm, at.pitchLm], eyeWidthPx: [at.eyeWidthPx, at.eyeWidthPx], faceRatio: [at.faceRatio, at.faceRatio] };
+  g.texts[text] = (g.texts[text] ?? 0) + 1;
+  g.yaw = span(g.yaw, at.yawLm); g.pitch = span(g.pitch, at.pitchLm); g.eyeWidthPx = span(g.eyeWidthPx, at.eyeWidthPx); g.faceRatio = span(g.faceRatio, at.faceRatio);
+  state.gateLog[shot] = g;
 }
 function jumpStats(v: readonly number[], occludedFrames: number): ProbeResult["foreheadJump"] {
   const s = [...v].sort((a, b) => a - b);

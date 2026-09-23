@@ -10,13 +10,14 @@ function run(labs: readonly Lab[], dt = 33): { occ: boolean[]; jumps: number[]; 
   let tr = startForeheadTrack();
   const occ: boolean[] = [], jumps: number[] = [];
   labs.forEach((lab, i) => {
-    const r = foreheadStep(tr, i * dt, lab);
+    const r = foreheadStep(tr, i * dt, lab, pose);
     tr = r.track; occ.push(r.occluded); jumps.push(r.jump);
   });
   return { occ, jumps, tr };
 }
+const pose = { yaw: 0, pitch: 0 };
 const skin: Lab = { L: 65, a: 12, b: 16 };
-const hand: Lab = { L: 50, a: 18, b: 20 };   // 손·그림자: 어둡고 붉다
+const hand: Lab = { L: 40, a: 18, b: 20 };   // 손·그림자: 어둡고 붉다
 const rep = (lab: Lab, n: number): Lab[] => Array.from({ length: n }, () => lab);
 
 describe("foreheadStep", () => {
@@ -43,15 +44,27 @@ describe("foreheadStep", () => {
   });
 
   it("불이 확 켜진 뒤 새 값에서 settleMs 넘게 가만하면 풀림 (조명 변화로 봄)", () => {
-    const bright: Lab = { ...skin, L: 80 };
+    const bright: Lab = { ...skin, L: 90 };
     const n = Math.ceil((FOREHEAD_JUMP.settleMs + 500) / 33);
     const { occ } = run([...rep(skin, 10), ...rep(bright, n)]);
     expect(occ[15]).toBe(true);
     expect(occ.at(-1)).toBe(false);
   });
 
+  it("고개를 돌리면서 이마 빛이 확 바뀌면 가림 아님 (2026-09-23 iPad 45° 오탐)", () => {
+    let tr = startForeheadTrack();
+    const occ: boolean[] = [];
+    for (let i = 0; i < 40; i++) {
+      const yaw = Math.min(40, i * 4);           // 0 → 40° 로 돌린다
+      const lab = yaw > 20 ? hand : skin;        // 돌다가 이마 빛이 확 바뀜
+      const r = foreheadStep(tr, i * 33, lab, { yaw, pitch: 0 });
+      tr = r.track; occ.push(r.occluded);
+    }
+    expect(occ.some(Boolean)).toBe(false);
+  });
+
   it("가린 채 손이 계속 움직이면 풀리지 않는다", () => {
-    const moving = Array.from({ length: 150 }, (_, i) => (i % 20 < 10 ? hand : { L: 40, a: 20, b: 22 }));
+    const moving = Array.from({ length: 150 }, (_, i) => (i % 20 < 10 ? hand : { L: 30, a: 20, b: 22 }));
     const { occ } = run([...rep(skin, 10), ...moving]);
     expect(occ.at(-1)).toBe(true);
   });
