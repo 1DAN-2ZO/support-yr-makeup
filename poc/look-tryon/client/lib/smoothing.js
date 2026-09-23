@@ -1,6 +1,6 @@
 // One Euro Filter — app.js(v2)에서 실사용 검증된 그대로. 매 프레임 독립 추정되는 랜드마크의
 // 프레임간 떨림(jitter)을 줄인다. 느리게 움직일 땐 많이 부드럽게, 빠르게 움직일 땐 덜 부드럽게
-// (지연 최소화) 자동 조절. app-webgl.js(C4)에서도 동일 기법 재사용 — 중복 구현 금지.
+// (지연 최소화) 자동 조절.
 
 class LowPassFilter {
   reset() { this.y = null; this.s = null; }
