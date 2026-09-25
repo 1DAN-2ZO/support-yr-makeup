@@ -47,6 +47,7 @@ precision highp float;
 uniform sampler2D uVideo;
 uniform sampler2D uMul;
 uniform sampler2D uCol;
+uniform sampler2D uLight;
 uniform vec2 uTexel;
 uniform float uRadius;
 uniform float uBeauty;
@@ -78,6 +79,8 @@ void main() {
     vec3 shifted = clamp(c.rgb + (dot(col, LUMA) - dot(c.rgb, LUMA)), 0.0, 1.0);
     col = mix(col, shifted, c.a);
   }
+  vec4 l = texture(uLight, vAtlas);   // 하이라이트: 밝히기(screen)
+  col = 1.0 - (1.0 - col) * (1.0 - l.rgb * l.a);
   o = vec4(col, 1.0);
 }`;
 
@@ -128,6 +131,7 @@ export class MakeupGl {
   private tVideo: WebGLTexture;
   private tMul: WebGLTexture;
   private tCol: WebGLTexture;
+  private tLight: WebGLTexture;
   private verts = new Float32Array(468 * 4);
 
   constructor(private canvas: HTMLCanvasElement) {
@@ -146,6 +150,7 @@ export class MakeupGl {
     this.tVideo = texture(gl);
     this.tMul = texture(gl);
     this.tCol = texture(gl);
+    this.tLight = texture(gl);
     // 캔버스 무늬는 알파를 곱하지 않은 채로 받는다 — 셰이더가 색과 세기를 따로 쓴다
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
   }
@@ -164,7 +169,7 @@ export class MakeupGl {
   }
 
   /** 얼굴이 없으면 f 를 null 로 — 배경만 그린다 */
-  render(src: TexImageSource, w: number, h: number, mul: HTMLCanvasElement, col: HTMLCanvasElement, f: GlFrame | null): void {
+  render(src: TexImageSource, w: number, h: number, mul: HTMLCanvasElement, col: HTMLCanvasElement, light: HTMLCanvasElement, f: GlFrame | null): void {
     const gl = this.gl;
     if (this.canvas.width !== w || this.canvas.height !== h) { this.canvas.width = w; this.canvas.height = h; }
     gl.viewport(0, 0, w, h);
@@ -182,6 +187,7 @@ export class MakeupGl {
 
     this.upload(this.tMul, mul);
     this.upload(this.tCol, col);
+    this.upload(this.tLight, light);
     for (let i = 0; i < 468; i++) {
       const p = f.lm[i]!, r = f.ref[i]!;
       this.verts.set([p.x, p.y, r.x, r.y], i * 4);
@@ -201,6 +207,7 @@ export class MakeupGl {
     this.bindUnit(this.mesh, "uVideo", 0, this.tVideo);
     this.bindUnit(this.mesh, "uMul", 1, this.tMul);
     this.bindUnit(this.mesh, "uCol", 2, this.tCol);
+    this.bindUnit(this.mesh, "uLight", 3, this.tLight);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.iBuf);
     gl.drawElements(gl.TRIANGLES, FACE_TRIANGLES.length * 3, gl.UNSIGNED_SHORT, 0);
     gl.disableVertexAttribArray(aPos);

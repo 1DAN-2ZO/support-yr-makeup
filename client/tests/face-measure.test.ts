@@ -1,7 +1,7 @@
 // 얼굴 측정 (논문 기술 A) 검증
 // 개인화의 입력이 되는 연속값들. 분류하지 않고 잰다 (Alashkar 2017: 눈 모양 6분류 자동 정확도 61%).
 import { describe, expect, it } from "vitest";
-import { measureFace, IRIS_MM } from "@core/face-measure";
+import { measureFace, IPD_MM } from "@core/face-measure";
 import { LM } from "@core/landmarks";
 import { face, tiltHead } from "./helpers/measure-face";
 
@@ -57,16 +57,17 @@ describe("얼굴 측정 — 눈 가로세로 비 (ILoveEye)", () => {
   });
 });
 
-describe("얼굴 측정 — mm 환산 (Jung 2020 각막 지름 11.3 mm)", () => {
-  it("홍채 지름이 20px 이면 1px = 11.3/20 mm", () => {
+describe("얼굴 측정 — mm 환산 (Jung 2020 동공 사이 거리 62.2 mm)", () => {
+  it("동공 사이가 170px 이면 1px = 62.2/170 mm", () => {
+    // 동공 사이 거리가 자다 — 홍채 지름은 MediaPipe 가 12% 작게 잡아 쓰지 않는다 (2026-09-16 결정)
     const m = measureFace(face({ iris: 20 }));
-    expect(IRIS_MM).toBe(11.3);
-    expect(m.mmPerPx).toBeCloseTo(11.3 / 20, 6);
+    expect(IPD_MM).toBe(62.2);
+    expect(m.mmPerPx).toBeCloseTo(62.2 / 170, 6);   // 가짜 얼굴의 두 동공은 170px 떨어져 있다
   });
 
-  it("홍채 점이 뭉개져 있으면 환산하지 않는다", () => {
+  it("두 동공 점이 겹쳐 있으면 환산하지 않는다", () => {
     const lm = face();
-    for (const i of [...LM.eyeA.iris, ...LM.eyeB.iris]) lm[i] = { x: 300, y: 300 };
+    lm[LM.eyeA.iris[0]] = lm[LM.eyeB.iris[0]] = { x: 300, y: 300 };
     expect(measureFace(lm).mmPerPx).toBeNull();
   });
 });
@@ -119,5 +120,30 @@ describe("얼굴 측정 — 크기와 무관", () => {
     expect(b.faceAspect).toBeCloseTo(a.faceAspect, 6);
     expect(b.brow.R.curvature).toBeCloseTo(a.brow.R.curvature, 6);
     expect(b.mmPerPx!).toBeCloseTo(a.mmPerPx! / 2, 6);
+  });
+});
+
+describe("얼굴 측정 — 눈두덩 (섀도 범위 개인화, Morikawa 2015)", () => {
+  it("윗눈꺼풀 꼭대기 → 눈썹 아랫선 거리 ÷ 눈 폭", () => {
+    // 가짜 얼굴: 눈꺼풀 꼭대기 y=232, 눈썹 아랫선 가운데 y=211, 눈 폭 90
+    const m = measureFace(face());
+    expect(m.eye.R.lidGapRatio).toBeCloseTo(21 / 90, 6);
+    expect(m.eye.L.lidGapRatio).toBeCloseTo(21 / 90, 6);
+  });
+
+  it("고개를 기울여도 같다", () => {
+    expect(measureFace(tiltHead(face(), 10)).eye.R.lidGapRatio).toBeCloseTo(21 / 90, 6);
+  });
+});
+
+describe("얼굴 측정 — 입술 (입술 모양 개인화, 김우섭 2005 · Seo 2023)", () => {
+  it("윗입술 ÷ 아랫입술 두께, 입술 높이 ÷ 입 너비", () => {
+    const m = measureFace(face({ lip: { upper: 7, lower: 10, width: 100 } }));
+    expect(m.lip.upperLowerRatio).toBeCloseTo(0.7, 6);
+    expect(m.lip.heightWidthRatio).toBeCloseTo(17 / 100, 6);
+  });
+
+  it("아랫입술이 없으면(0) 비율을 내지 않는다", () => {
+    expect(measureFace(face({ lip: { upper: 7, lower: 0, width: 100 } })).lip.upperLowerRatio).toBeNull();
   });
 });

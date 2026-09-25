@@ -12,10 +12,11 @@
  * R = 이미지 왼쪽 눈(eyeA) = 피험자 오른쪽. 진단 문구 "오른쪽 꼬리가…" 가 여기 묶여 있어 뒤집으면 반대로 안내한다.
  */
 
+import { contourOutline } from "./contour";
 import { faceAxis, mmPerPx } from "./face-measure";
 import { LM, at } from "./landmarks";
 import type { LookPart, LookPartId } from "./looks";
-import type { BrowArch, LinerStyle, PersonalPlan } from "./personalize";
+import { PLAN_RULES, type BrowArch, type LinerStyle, type PersonalPlan } from "./personalize";
 import type { GuideSource, PartGeometry } from "./score-part";
 import type { Side } from "./score";
 import type { Baseline, Pt } from "./types";
@@ -199,9 +200,9 @@ export interface BrowPlan {
 }
 
 /**
- * 표준 눈썹 (논문 기술 C-1). 기준값 mm 를 홍채 지름으로 px 로 바꿔 이 얼굴 위에 세운다.
+ * 표준 눈썹 (논문 기술 C-1). 기준값 mm 를 동공 사이 거리로 px 로 바꿔 이 얼굴 위에 세운다.
  * 위·아래는 화면이 아니라 얼굴 기준(눈동자 선에 수직) — 고개를 기울여도 얼굴에 붙어 있다.
- * mm 를 모르면(홍채 점이 뭉개짐) null.
+ * mm 를 모르면(동공 점이 겹침) null.
  *
  * 논문에 없는 부분은 우리 가정이다:
  *  - 바깥 눈꼬리 위 두께 = 가장 높은 곳의 두께
@@ -253,11 +254,44 @@ export function planGuide(lookParts: Partial<Record<LookPartId, LookPart>> = {},
   const base = lookGuide(lookParts, plan?.liner.plan.style);
   if (!plan) return base;
   return (partId, f): PartGeometry => {
+    const P = (i: number): Pt => at(f.lm, i);
     if (partId === "shadow") return { regions: shadowRegions(f, GUIDE_PARAMS.shadow.rangeRatio * plan.shadow.range) };
     if (partId === "brow") {
       const b = browStandard(f, plan.brow);
       return b ? { regions: { R: b.R.outline, L: b.L.outline } } : {};
     }
+    if (partId === "liner") {
+      const g = base(partId, f).liner!;
+      return { liner: { ...g, thick: g.thick * plan.linerThick.scale } };
+    }
+    if (partId === "lip") {
+      const g = base(partId, f);
+      return plan.lip.overline > 0 ? { lip: { ...g.lip!, upperOverline: plan.lip.overline } } : g;
+    }
+    if (partId === "cheek") {
+      // 볼: 얼굴 위쪽(눈동자 선에 수직)으로 옮기고, 타원 크기에 배율
+      const c = GUIDE_PARAMS.cheek, faceW = f.unit.face, u = faceAxis(f.lm);
+      const shift = plan.blush.position === "higher" ? PLAN_RULES.blushShift : plan.blush.position === "lower" ? -PLAN_RULES.blushShift : 0;
+      const up = { x: u.y, y: -u.x };
+      return {
+        regions: both(({ cheek, face, sign }) =>
+          ellipse(add(mix(P(cheek), P(face), c.toward), mul(up, shift * faceW)), faceW * c.rx * plan.blush.size, faceW * c.ry * plan.blush.size, sign * c.tilt)),
+      };
+    }
+    if (partId === "contour") return { contour: contourOutline(f.lm, plan.faceShape ?? "oval", { tZone: plan.highlight.tZone }) };
     return base(partId, f);
   };
+}
+
+/**
+ * 입술 바깥 윤곽 (LM.lipsOuter 순서). overline > 0 이면 윗입술을 가운데에서 가장 많이, 입꼬리에서 0 이 되게 올린다.
+ * 올리는 양 = overline × 윗입술 두께(0 ↔ 13), 방향 = 입 안쪽(13) → 윗입술 바깥(0).
+ */
+export function lipOutline(lm: readonly Pt[], overline = 0): Pt[] {
+  const pts = LM.lipsOuter.map((i) => at(lm, i));
+  if (!(overline > 0)) return pts;
+  const top = at(lm, 0), inner = at(lm, 13);
+  const d = norm(sub(top, inner)), lift = overline * Math.hypot(top.x - inner.x, top.y - inner.y);
+  const upper = LM.lipsOuter.indexOf(291);   // 0..upper 가 윗입술 (61 → 0 → 291)
+  return pts.map((p, k) => (k <= upper ? add(p, mul(d, lift * Math.sin((Math.PI * k) / upper))) : p));
 }

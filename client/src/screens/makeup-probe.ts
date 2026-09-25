@@ -9,12 +9,14 @@
 import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 import { unitScale } from "@core/baseline";
 import { measureFace } from "@core/face-measure";
-import { GUIDE_PARAMS, browStandard, linerOutline, planGuide } from "@core/guides";
+import { contourOutline } from "@core/contour";
+import { faceAxis } from "@core/face-measure";
+import { GUIDE_PARAMS, browStandard, linerOutline, lipOutline, planGuide } from "@core/guides";
 import { guideOutline } from "@core/overlay";
 import type { SampleFrame } from "@core/sampling";
 import { LM, at, dist } from "@core/landmarks";
 import { LOOKS } from "@core/looks";
-import { droopDeg, planLiner, resolvePlan, type LinerStyle, type PersonalPlan } from "@core/personalize";
+import { PLAN_RULES, droopDeg, planLiner, resolvePlan, type LinerStyle, type PersonalPlan } from "@core/personalize";
 import type { Pt } from "@core/types";
 import { buildVlmPrompt } from "@core/vlm-prompt";
 import { MakeupGl } from "./makeup-gl";
@@ -49,7 +51,8 @@ function showPlan(p: PersonalPlan): void {
   const lines = [
     `라이너: ${p.liner.plan.style} (${p.liner.source})`,
     `얼굴형: ${p.brow.faceShape ?? "모름"} → 눈썹 높이 ${p.brow.heightMm} mm · 미간 ${p.brow.glabellaMm} mm · 굽기 ${p.brow.arch} (${p.brow.source})`,
-    `섀도 범위 ×${p.shadow.range} (${p.shadow.source})`,
+    `섀도 범위 ×${p.shadow.range.toFixed(2)} (${p.shadow.source}) · 라이너 두께 ×${p.linerThick.scale}`,
+    `입술 오버라인 ${p.lip.overline.toFixed(2)} (${p.lip.source}) · 볼 ${p.blush.position} ×${p.blush.size} · T존 ${p.highlight.tZone ? "켬" : "끔"}`,
     `진하기 ${JSON.stringify(p.intensity)}`,
     ...Object.entries(p.rationale).map(([k, v]) => `근거 ${k}: ${v}`),
     ...(p.rejected.length ? ["거절: " + p.rejected.join(" / ")] : []),
@@ -63,7 +66,7 @@ if (!ctx2d || !offCtx) throw new Error("캔버스 2D 를 쓸 수 없음");
 const g: CanvasRenderingContext2D = ctx2d;
 const o: CanvasRenderingContext2D = offCtx;
 
-type Part = "brow" | "shadow" | "liner" | "cheek" | "lip";
+type Part = "brow" | "shadow" | "liner" | "cheek" | "lip" | "contour" | "highlight";
 /** blur 는 얼굴 폭 대비 번짐 — 섀도·볼은 넓게, 라이너는 거의 없이 */
 const PARTS: { id: Part; name: string; blur: number }[] = [
   { id: "brow", name: "눈썹", blur: 0.004 },
@@ -71,9 +74,15 @@ const PARTS: { id: Part; name: string; blur: number }[] = [
   { id: "liner", name: "라이너", blur: 0.0015 },
   { id: "cheek", name: "볼", blur: 0.03 },
   { id: "lip", name: "입술", blur: 0.003 },
+  { id: "contour", name: "쉐딩", blur: 0.025 },
+  { id: "highlight", name: "하이라이트", blur: 0.025 },
 ];
 
 interface Tpl { name: string; color: Partial<Record<Part, string>>; lipEdge?: string; alpha: Partial<Record<Part, number>>; linerThick: number }
+
+/** 쉐딩·하이라이트는 룩에 없다(얼굴형 규칙 부위, F-04) — 얹어 보기용 기본 색 */
+const CONTOUR_COLORS = { contour: "#a07a66", highlight: "#fff3e6" };
+const CONTOUR_ALPHA = { contour: 0.35, highlight: 0.45 };
 
 const hex = (c: readonly number[]): string => "#" + c.map((v) => Math.round(v).toString(16).padStart(2, "0")).join("");
 
@@ -81,15 +90,15 @@ const TEMPLATES: Tpl[] = [
   // 사진에서 뽑은 템플릿 (스크래치패드 extract.py 결과). 관찰색이라 보통 합성 + 불투명도로 얹는다. 불투명도는 눈대중 시작값
   {
     name: "사진 추출 (플럼 스모키)",
-    color: { brow: "#8b7371", shadow: "#4e3e44", liner: "#1a1217", cheek: "#dec0bd", lip: "#b31540" },
+    color: { brow: "#8b7371", shadow: "#4e3e44", liner: "#1a1217", cheek: "#dec0bd", lip: "#b31540", ...CONTOUR_COLORS },
     lipEdge: "#c26375",
-    alpha: { brow: 0.45, shadow: 0.55, liner: 0.9, cheek: 0.35, lip: 0.75 },
+    alpha: { brow: 0.45, shadow: 0.55, liner: 0.9, cheek: 0.35, lip: 0.75, ...CONTOUR_ALPHA },
     linerThick: 0.045,
   },
   ...LOOKS.map((l): Tpl => ({
     name: l.name,
-    color: Object.fromEntries(Object.entries(l.parts).flatMap(([k, p]) => (p?.color ? [[k, hex(p.color)]] : []))),
-    alpha: Object.fromEntries(Object.entries(l.parts).map(([k, p]) => [k, p?.alpha ?? p?.alphaR ?? 0.5])),
+    color: { ...CONTOUR_COLORS, ...Object.fromEntries(Object.entries(l.parts).flatMap(([k, p]) => (p?.color ? [[k, hex(p.color)]] : []))) },
+    alpha: { ...CONTOUR_ALPHA, ...Object.fromEntries(Object.entries(l.parts).map(([k, p]) => [k, p?.alpha ?? p?.alphaR ?? 0.5])) },
     linerThick: l.parts.liner?.thick ?? GUIDE_PARAMS.liner.thick,
   })),
 ];
@@ -156,6 +165,7 @@ function path(ctx: CanvasRenderingContext2D, pts: readonly Pt[]): void {
 const renderSel = $<HTMLSelectElement>("render");
 const FILTER_BLEND: Record<Part, GlobalCompositeOperation[]> = {
   brow: ["multiply"], liner: ["multiply"], shadow: ["multiply"], cheek: ["multiply"], lip: ["multiply", "color"],
+  contour: ["multiply"], highlight: ["screen"],   // 하이라이트는 밝힌다
 };
 const natural = (): boolean => renderSel.value !== "sticker";
 const meshMode = (): boolean => renderSel.value === "mesh";
@@ -166,6 +176,8 @@ const glcv = $<HTMLCanvasElement>("glcv");
 const beautyIn = $<HTMLInputElement>("beauty");
 const atlasMul = document.createElement("canvas");
 const atlasCol = document.createElement("canvas");
+const atlasLight = document.createElement("canvas");
+const aLight = atlasLight.getContext("2d")!;
 const aMul = atlasMul.getContext("2d")!;
 const aCol = atlasCol.getContext("2d")!;
 let glr: MakeupGl | null = null;
@@ -216,6 +228,7 @@ function paint(blurPx: number, alpha: number, draw: (ctx: CanvasRenderingContext
   draw(o);
   if (meshMode()) {
     // 무늬에는 색과 세기만 담는다 — 섞는 건 셰이더가 한다
+    if (blends.includes("screen")) { aLight.globalAlpha = alpha; aLight.drawImage(off, 0, 0); return; }
     aMul.globalAlpha = alpha;
     aMul.drawImage(off, 0, 0);
     if (blends.includes("color")) { aCol.globalAlpha = alpha * 0.5; aCol.drawImage(off, 0, 0); }
@@ -268,7 +281,7 @@ function drawMakeup(lm: readonly Pt[], style: LinerStyle): void {
   for (const p of PARTS) {
     const s = sliders.get(p.id)!, color = t.color[p.id];
     if (!color || !s.on.checked) continue;
-    const alpha = Math.min(1, Number(s.input.value) * (plan?.intensity[p.id] ?? 1));
+    const alpha = Math.min(1, Number(s.input.value) * (p.id === "contour" || p.id === "highlight" ? 1 : (plan?.intensity[p.id] ?? 1)));
     const soft = natural();
     paint(p.blur * faceW * (soft ? 1.6 : 1), alpha, (ctx) => {
       ctx.fillStyle = color;
@@ -300,13 +313,17 @@ function drawMakeup(lm: readonly Pt[], style: LinerStyle): void {
         }
         if (soft) return;
       } else if (p.id === "liner") {
-        const outline = linerOutline({ lm, unit }, t.linerThick, style);
+        const outline = linerOutline({ lm, unit }, t.linerThick * (plan?.linerThick.scale ?? 1), style);
         path(ctx, outline.R);
         path(ctx, outline.L);
       } else if (p.id === "cheek") {
-        const c = GUIDE_PARAMS.cheek;
+        // 볼: 계획의 위치(얼굴 위쪽으로 blushShift)·크기 배율 — guides.ts planGuide 의 cheek 과 같은 계산
+        const c0 = GUIDE_PARAMS.cheek, sz = plan?.blush.size ?? 1;
+        const c = { ...c0, rx: c0.rx * sz, ry: c0.ry * sz };
+        const ax = faceAxis(lm), shift = plan?.blush.position === "higher" ? PLAN_RULES.blushShift : plan?.blush.position === "lower" ? -PLAN_RULES.blushShift : 0;
         for (const { cheek, face, sign } of SIDES) {
-          const ctr = mix(P(cheek), P(face), c.toward);
+          const c1 = mix(P(cheek), P(face), c.toward);
+          const ctr = { x: c1.x + ax.y * shift * faceW, y: c1.y - ax.x * shift * faceW };
           if (soft) {
             // 가운데에서 바깥으로 사라지는 블러셔 — 타원 모양은 좌표를 늘려서 만든다
             ctx.save();
@@ -329,7 +346,7 @@ function drawMakeup(lm: readonly Pt[], style: LinerStyle): void {
           ctx.ellipse(ctr.x, ctr.y, faceW * c.rx, faceW * c.ry, (sign * c.tilt * Math.PI) / 180, 0, Math.PI * 2);
         }
         if (soft) return;
-      } else {
+      } else if (p.id === "lip") {
         // 입술: 바깥 테두리 − 안쪽(입 벌린 자리). 가운데 → 가장자리 그라데이션
         const inner = LIP_INNER.map(P);
         if (t.lipEdge) {
@@ -339,10 +356,14 @@ function drawMakeup(lm: readonly Pt[], style: LinerStyle): void {
           grad.addColorStop(1, t.lipEdge);
           ctx.fillStyle = grad;
         }
-        path(ctx, LM.lipsOuter.map(P));
+        path(ctx, lipOutline(lm, plan?.lip.overline ?? 0));
         path(ctx, inner);
         ctx.fill("evenodd");
         return;
+      } else {
+        // 쉐딩·하이라이트: 계획의 얼굴형 규칙 밴드 (모르면 계란형), T존은 계획대로
+        const bands = contourOutline(lm, plan?.faceShape ?? "oval", { tZone: plan?.highlight.tZone ?? true });
+        for (const b of p.id === "contour" ? bands.shading : bands.highlight) path(ctx, b);
       }
       ctx.fill();
     }, soft ? FILTER_BLEND[p.id] : undefined);
@@ -435,28 +456,30 @@ function tick(): void {
   if (lmNow) {
     const lm: Pt[] = lmNow;
     const ruleStyle = linerStyle(lm);
-    plan = proposal === undefined ? null : resolvePlan(measureFace(lm), {}, proposal);
-    if (plan) showPlan(plan); else if (planShown) planEl.textContent = planShown = "";
-    const style = plan ? plan.liner.plan.style : ruleStyle;
+    // VLM 제안이 없어도 규칙 계획으로 늘 개인화한다 (라이너 스타일만 여러 프레임 중앙값 규칙 — 한 프레임은 흔들린다)
+    plan = resolvePlan(measureFace(lm), {}, proposal);
+    showPlan(plan);
+    const style = proposal === undefined ? ruleStyle : plan.liner.plan.style;
     if (meshMode()) {
       const ref = stillLm ?? (liveRef ??= lm.map((p) => ({ ...p })));
-      if (atlasMul.width !== w || atlasMul.height !== h) { atlasMul.width = atlasCol.width = w; atlasMul.height = atlasCol.height = h; }
+      if (atlasMul.width !== w || atlasMul.height !== h) { atlasMul.width = atlasCol.width = atlasLight.width = w; atlasMul.height = atlasCol.height = atlasLight.height = h; }
       aMul.clearRect(0, 0, w, h);
       aCol.clearRect(0, 0, w, h);
+      aLight.clearRect(0, 0, w, h);
       if (!bare) drawMakeup(ref, style);
       glr ??= new MakeupGl(glcv);
-      glr.render(stillLm ? still : video, w, h, atlasMul, atlasCol, { lm, ref, beauty: bare ? 0 : Number(beautyIn.value), radius: unitScale(lm).face * 0.012 });
+      glr.render(stillLm ? still : video, w, h, atlasMul, atlasCol, atlasLight, { lm, ref, beauty: bare ? 0 : Number(beautyIn.value), radius: unitScale(lm).face * 0.012 });
     } else {
       if (!bare) drawMakeup(lm, style);
       if (linesChk.checked) drawBrowLines(lm);
     }
     glcv.hidden = !meshMode();
     cv.hidden = meshMode();
-    drawGuide(lm, w, h, plan ?? resolvePlan(measureFace(lm)));
+    drawGuide(lm, w, h, plan);
     if (!statusEl.textContent?.startsWith("VLM")) statusEl.textContent = `라이너 꼬리: ${style}${bare ? " · 맨얼굴" : ""}${stillLm ? " · 찍은 사진" : ""}`;
   } else {
     statusEl.innerHTML = `<span class="warn">얼굴을 찾지 못했어요</span>`;
-    if (meshMode() && glr) glr.render(video, w, h, atlasMul, atlasCol, null);
+    if (meshMode() && glr) glr.render(video, w, h, atlasMul, atlasCol, atlasLight, null);
   }
   requestAnimationFrame(tick);
 }

@@ -2,12 +2,12 @@
 // VLM 출력은 믿지 않는 JSON 이다. 모양이 틀리거나 측정과 모순되면 그 항목만 규칙값으로 되돌린다.
 import { describe, expect, it } from "vitest";
 import type { EyeMeasure, FaceMeasure } from "@core/face-measure";
-import { BROW_ADJUST_SCALE, JKSC_BROW_ADJUST_MM, resolvePlan } from "@core/personalize";
+import { BROW_ADJUST_SCALE, JKSC_BROW_ADJUST_MM, PLAN_RULES, resolvePlan } from "@core/personalize";
 import type { FaceShape } from "@core/types";
 
-function measure(ab = -4): FaceMeasure {
-  const eye = (): EyeMeasure => ({ tiltDeg: 8, alphaDeg: 30 + ab / 2, betaDeg: 30 - ab / 2, outerCornerDown: ab > 0, aspect: 3, heightRatio: 1 / 3 });
-  return { rollDeg: 0, eye: { R: eye(), L: eye() }, brow: { R: { curvature: 0.1 }, L: { curvature: 0.1 } }, faceAspect: 0.85, mmPerPx: 0.5 };
+function measure(ab = -4, o: { lidGap?: number; lipRatio?: number | null } = {}): FaceMeasure {
+  const eye = (): EyeMeasure => ({ tiltDeg: 8, alphaDeg: 30 + ab / 2, betaDeg: 30 - ab / 2, outerCornerDown: ab > 0, aspect: 3, heightRatio: 1 / 3, lidGapRatio: o.lidGap ?? 0.55 });
+  return { rollDeg: 0, eye: { R: eye(), L: eye() }, brow: { R: { curvature: 0.1 }, L: { curvature: 0.1 } }, lip: { upperLowerRatio: o.lipRatio === undefined ? 0.8 : o.lipRatio, heightWidthRatio: 0.4 }, faceAspect: 0.85, mmPerPx: 0.5 };
 }
 const model = (label: FaceShape["label"], confidence = 0.9): FaceShape => ({ label, confidence, method: "model", version: "t" });
 
@@ -121,5 +121,94 @@ describe("개인화 계획 — 믿을 수 없는 얼굴형은 쓰지 않는다 (
   it("규칙 판정(method rule, 정확도 22%)은 확신도와 상관없이 믿지 않는다", () => {
     const rule: FaceShape = { label: "round", confidence: 1, method: "rule", version: "faceshape-rule-v1" };
     expect(resolvePlan(measure(), { faceShape: rule }).brow.faceShape).toBeNull();
+  });
+});
+
+describe("개인화 계획 — 나머지 부위 (규칙값)", () => {
+  it("가정값은 한 곳에 모여 있다", () => {
+    expect(PLAN_RULES).toEqual({
+      lidGapStd: 0.55, shadowGain: 0.5, lidGapTol: 0.05,
+      lipTarget: 0.8, lipOverlineMax: 0.3,
+      intensityCap: { brow: 1, liner: 1.15, shadow: 1.15 }, intensityMeanCap: 1.15,
+      blushShift: 0.03,
+    });
+  });
+
+  it("제안이 없으면 새 항목도 기본: 입술 오버라인 0, T존 하이라이트 켬, 볼 표준, 라이너 두께 1", () => {
+    const p = resolvePlan(measure());
+    expect(p.faceShape).toBeNull();
+    expect(p.lip).toEqual({ overline: 0, source: "rule" });
+    expect(p.highlight).toEqual({ tZone: true, source: "rule" });
+    expect(p.blush).toEqual({ position: "standard", size: 1, source: "rule" });
+    expect(p.linerThick).toEqual({ scale: 1, source: "rule" });
+  });
+
+  it("섀도: 눈두덩이 넓으면 범위를 넓히고 좁으면 줄인다 (0.8~1.2)", () => {
+    expect(resolvePlan(measure(-4, { lidGap: 0.66 })).shadow.range).toBeCloseTo(1 + 0.5 * (0.66 / 0.55 - 1), 6);
+    expect(resolvePlan(measure(-4, { lidGap: 0.44 })).shadow.range).toBeCloseTo(1 + 0.5 * (0.44 / 0.55 - 1), 6);
+    expect(resolvePlan(measure(-4, { lidGap: 2 })).shadow.range).toBe(1.2);
+    expect(resolvePlan(measure(-4, { lidGap: 0.1 })).shadow.range).toBe(0.8);
+  });
+
+  it("입술: 윗입술이 얇으면(비 < 0.8) 윗입술 가운데를 올린다 — 모자란 만큼의 절반, 최대 0.3", () => {
+    // 비 0.64 → 목표까지 윗입술을 0.8/0.64 − 1 = 25% 늘려야 한다 → 절반 12.5%
+    expect(resolvePlan(measure(-4, { lipRatio: 0.64 })).lip.overline).toBeCloseTo(0.125, 6);
+    expect(resolvePlan(measure(-4, { lipRatio: 0.2 })).lip.overline).toBe(0.3);
+    expect(resolvePlan(measure(-4, { lipRatio: 0.9 })).lip.overline).toBe(0);
+    expect(resolvePlan(measure(-4, { lipRatio: null })).lip.overline).toBe(0);
+  });
+
+  it("얼굴형이 정해지면 계획 맨 위에도 둔다 (눈썹·쉐딩이 같이 쓴다)", () => {
+    expect(resolvePlan(measure(), { faceShape: model("round") }).faceShape).toBe("round");
+  });
+});
+
+describe("개인화 계획 — 나머지 부위 (VLM 제안 거르기)", () => {
+  it("섀도: 측정과 반대 방향이면 거절 — 눈두덩이 넓은데 줄이자거나, 좁은데 넓히자", () => {
+    const wide = resolvePlan(measure(-4, { lidGap: 0.66 }), {}, { shadow: { range: 0.9 } });
+    expect(wide.shadow.source).toBe("rule");
+    expect(wide.rejected.join()).toMatch(/눈두덩/);
+    const narrow = resolvePlan(measure(-4, { lidGap: 0.44 }), {}, { shadow: { range: 1.1 } });
+    expect(narrow.shadow.source).toBe("rule");
+    expect(resolvePlan(measure(-4, { lidGap: 0.44 }), {}, { shadow: { range: 0.85 } }).shadow).toEqual({ range: 0.85, source: "vlm" });
+  });
+
+  it("입술: 0~0.3 이면 받고, 윗입술이 이미 목표 이상인데 올리자면 거절", () => {
+    expect(resolvePlan(measure(-4, { lipRatio: 0.7 }), {}, { lip: { overline: 0.1 } }).lip).toEqual({ overline: 0.1, source: "vlm" });
+    const thick = resolvePlan(measure(-4, { lipRatio: 0.9 }), {}, { lip: { overline: 0.1 } });
+    expect(thick.lip).toEqual({ overline: 0, source: "rule" });
+    expect(thick.rejected.join()).toMatch(/윗입술/);
+    expect(resolvePlan(measure(), {}, { lip: { overline: 0.5 } }).lip.source).toBe("rule");
+  });
+
+  it("진하기: 눈썹은 올리지 않고(1 까지), 라이너·섀도는 1.15 까지 — 넘으면 그 부위만 뺀다", () => {
+    const p = resolvePlan(measure(), {}, { intensity: { brow: 1.1, liner: 1.2, shadow: 1.1, lip: 1.2 } });
+    expect(p.intensity).toEqual({ shadow: 1.1, lip: 1.2 });   // 평균 1.15 — 전체 상한 안
+    expect(p.rejected.join()).toMatch(/brow/);
+    expect(p.rejected.join()).toMatch(/liner/);
+  });
+
+  it("진하기: 받은 배율의 평균이 1.15 를 넘으면 1 보다 큰 쪽을 같은 비율로 줄인다 (전체가 진해지지 않게)", () => {
+    const p = resolvePlan(measure(), {}, { intensity: { lip: 1.3, cheek: 1.3, shadow: 1.15 } });
+    const vals = Object.values(p.intensity);
+    expect(vals.reduce((a, b) => a + b, 0) / vals.length).toBeCloseTo(1.15, 6);
+    expect(p.rejected.join()).toMatch(/전체/);
+  });
+
+  it("하이라이트: T존을 끄자는 제안(번들거리는 피부)은 받는다", () => {
+    expect(resolvePlan(measure(), {}, { highlight: { tZone: false } }).highlight).toEqual({ tZone: false, source: "vlm" });
+    expect(resolvePlan(measure(), {}, { highlight: { tZone: "no" } }).highlight.source).toBe("rule");
+  });
+
+  it("볼: 위치(higher/standard/lower)·크기(0.8~1.2)만 받는다", () => {
+    expect(resolvePlan(measure(), {}, { blush: { position: "higher", size: 0.9 } }).blush).toEqual({ position: "higher", size: 0.9, source: "vlm" });
+    const bad = resolvePlan(measure(), {}, { blush: { position: "chin", size: 2 } });
+    expect(bad.blush).toEqual({ position: "standard", size: 1, source: "rule" });
+    expect(bad.rejected.length).toBe(2);
+  });
+
+  it("라이너 두께: 0.8~1.2 배만 받는다", () => {
+    expect(resolvePlan(measure(), {}, { linerThick: { scale: 0.9 } }).linerThick).toEqual({ scale: 0.9, source: "vlm" });
+    expect(resolvePlan(measure(), {}, { linerThick: { scale: 1.5 } }).linerThick.source).toBe("rule");
   });
 });

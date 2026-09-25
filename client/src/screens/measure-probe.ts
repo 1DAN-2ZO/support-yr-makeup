@@ -9,7 +9,7 @@
 
 import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 import { unitScale } from "@core/baseline";
-import { IRIS_MM, measureFace, type FaceMeasure } from "@core/face-measure";
+import { IPD_MM, measureFace, type FaceMeasure } from "@core/face-measure";
 import { linerOutline } from "@core/guides";
 import { LM, at, dist } from "@core/landmarks";
 import { planLiner, type LinerAdapt, type LinerReason, type LinerStyle } from "@core/personalize";
@@ -72,7 +72,7 @@ const ROWS: Row[] = [
     const r = eyeWidth(lm, LM.eyeA), l = eyeWidth(lm, LM.eyeB);
     return Math.max(r, l) > 0 ? Math.min(r, l) / Math.max(r, l) : null;
   } },
-  { key: "iris", label: "홍채 지름", unit: " px", digits: 1, ref: `${IRIS_MM} mm로 가정해 mm 환산 (Jung 2020)`, get: (m) => (m.mmPerPx == null ? null : IRIS_MM / m.mmPerPx) },
+  { key: "ipd", label: "동공 사이", unit: " px", digits: 1, ref: `${IPD_MM} mm로 가정해 mm 환산 (Jung 2020, 사람마다 ±5%)`, get: (m) => (m.mmPerPx == null ? null : IPD_MM / m.mmPerPx) },
 ];
 
 // ── 표 ──────────────────────────────────────────────

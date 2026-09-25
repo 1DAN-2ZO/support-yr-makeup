@@ -5,7 +5,8 @@
  * 분류가 틀리면 틀린 모양을 가르치게 된다. 값을 재서 연속적으로 쓰면 경계에서 튀지 않는다.
  *
  * 비율값(기울기·가로세로 비·굽은 정도)은 사진 크기와 무관하다. 길이를 mm 로 써야 할 때만
- * 홍채 지름을 자로 삼는다(mmPerPx).
+ * 동공 사이 거리를 자로 삼는다(mmPerPx). 홍채 지름은 쓰지 않는다 — MediaPipe 홍채가 사람 라벨보다
+ * 12% 작게 잡혀 척도에서 뺀 결정(2026-09-16, data-needs C-5)이 있다. 동공 중심은 홍채 둘레보다 안정적이다.
  *
  * R = 이미지 왼쪽 눈(eyeA) = 피험자 오른쪽. guides.ts 와 같은 규칙.
  */
@@ -15,10 +16,11 @@ import type { Side } from "./score";
 import type { Pt } from "./types";
 
 /**
- * 홍채(각막) 지름 mm — 사진 속 길이를 mm 로 바꾸는 자.
- * 20대 한국 여성 827명의 평균값으로 Jung 외(2020)가 사진 크기 보정에 쓴 값.
+ * 동공 사이 거리(IPD) mm — 사진 속 길이를 mm 로 바꾸는 자.
+ * Jung 외(2020) 20대 한국 여성: 쌍꺼풀 62.8 ± 3.6, 외꺼풀 61.6 ± 3.1 → 두 값의 가운데.
+ * 사람마다 약 ±5% 차이가 난다 — mm 값은 그만큼의 오차를 안고 쓴다.
  */
-export const IRIS_MM = 11.3;
+export const IPD_MM = 62.2;
 
 export interface EyeMeasure {
   /** 눈꼬리 기울기(°): 안쪽 → 바깥 눈꼬리 선이 수평과 이루는 각. 바깥이 높으면 + (Jung 2020: 한국 20대 여성 약 8.4~8.8°) */
@@ -33,6 +35,15 @@ export interface EyeMeasure {
   aspect: number;
   /** 눈 높이 ÷ 눈 폭 — 라이너 두께를 눈 높이에 맞출 때 쓴다 (Jung 2020: 외꺼풀은 눈 높이가 작다) */
   heightRatio: number;
+  /** 눈두덩: 윗눈꺼풀 꼭대기 → 눈썹 아랫선(가운데) 거리 ÷ 눈 폭. 섀도 범위 개인화에 쓴다 */
+  lidGapRatio: number;
+}
+
+export interface LipMeasure {
+  /** 윗입술 ÷ 아랫입술 붉은 부분 두께 (가운데에서). 아랫입술이 0 이면 null */
+  upperLowerRatio: number | null;
+  /** 입술 높이(위 + 아래) ÷ 입 너비 */
+  heightWidthRatio: number;
 }
 
 export interface BrowMeasure {
@@ -45,9 +56,10 @@ export interface FaceMeasure {
   rollDeg: number;
   eye: Record<Side, EyeMeasure>;
   brow: Record<Side, BrowMeasure>;
+  lip: LipMeasure;
   /** 얼굴 폭 ÷ 이마 윗점~턱 끝 (Zhao 2019). 1 에 가까울수록 둥글다. 이마 윗점은 머리선이 아니라 논문 값과 직접 비교하지 않는다 */
   faceAspect: number;
-  /** 1px 이 몇 mm 인가. 홍채 점이 뭉개져 있으면 null */
+  /** 1px 이 몇 mm 인가 (동공 사이 거리 자). 동공 점이 겹쳐 있으면 null */
   mmPerPx: number | null;
 }
 
@@ -90,7 +102,9 @@ export function faceAxis(lm: readonly Pt[]): Pt {
   return { x: v.x / len, y: v.y / len };
 }
 
-function measureEye(lm: readonly Pt[], eye: typeof LM.eyeA | typeof LM.eyeB, axis: Pt): EyeMeasure {
+type BrowIdx = { readonly upper: readonly number[]; readonly lower: readonly number[] };
+
+function measureEye(lm: readonly Pt[], eye: typeof LM.eyeA | typeof LM.eyeB, brow: BrowIdx, axis: Pt): EyeMeasure {
   const o = at(lm, eye.outer), i = at(lm, eye.inner);
   const w = dist(o, i);
   const up = farthest(o, i, eye.upper.map((k) => at(lm, k)));
@@ -107,10 +121,28 @@ function measureEye(lm: readonly Pt[], eye: typeof LM.eyeA | typeof LM.eyeB, axi
     outerCornerDown: alphaDeg > betaDeg,
     aspect: h > 0 ? w / h : Infinity,
     heightRatio: w > 0 ? h / w : 0,
+    lidGapRatio: w > 0 ? lidGap(lm, up.p, brow, axis) / w : 0,
   };
 }
 
-function measureBrow(lm: readonly Pt[], brow: { readonly upper: readonly number[]; readonly lower: readonly number[] }): BrowMeasure {
+/** 윗눈꺼풀 꼭대기에서 눈썹 아랫선 가운데까지, 얼굴 위쪽(눈동자 선에 수직) 방향 거리 */
+function lidGap(lm: readonly Pt[], apex: Pt, brow: BrowIdx, axis: Pt): number {
+  const b = at(lm, brow.lower[Math.floor(brow.lower.length / 2)]!);
+  const up = { x: axis.y, y: -axis.x };
+  return (b.x - apex.x) * up.x + (b.y - apex.y) * up.y;
+}
+
+/** 입술 가운데 두께: 0(윗입술 바깥)·13(안)·14(안)·17(아랫입술 바깥), 입꼬리 61·291 */
+function measureLip(lm: readonly Pt[]): LipMeasure {
+  const upper = dist(at(lm, 0), at(lm, 13)), lower = dist(at(lm, 14), at(lm, 17));
+  const width = dist(at(lm, 61), at(lm, 291));
+  return {
+    upperLowerRatio: lower > 0 ? upper / lower : null,
+    heightWidthRatio: width > 0 ? (upper + lower) / width : 0,
+  };
+}
+
+function measureBrow(lm: readonly Pt[], brow: BrowIdx): BrowMeasure {
   const mid = brow.upper.map((k, n) => {
     const u = at(lm, k), l = at(lm, brow.lower[n]!);
     return { x: (u.x + l.x) / 2, y: (u.y + l.y) / 2 };
@@ -120,16 +152,10 @@ function measureBrow(lm: readonly Pt[], brow: { readonly upper: readonly number[
   return { curvature: len > 0 ? farthest(a, b, mid.slice(1, -1)).d / len : 0 };
 }
 
-/** 홍채 둘레 네 점(마주 보는 두 쌍)의 평균 지름 */
-function irisDiameter(lm: readonly Pt[], iris: readonly number[]): number {
-  const p = iris.map((k) => at(lm, k));
-  return (dist(p[1]!, p[3]!) + dist(p[2]!, p[4]!)) / 2;
-}
-
-/** 1px 이 몇 mm 인가 — 두 홍채 지름의 평균을 11.3 mm 로 본다. 홍채 점이 뭉개져 있으면 null */
+/** 1px 이 몇 mm 인가 — 두 동공 중심 사이를 62.2 mm 로 본다. 동공 점이 겹쳐 있으면 null */
 export function mmPerPx(lm: readonly Pt[]): number | null {
-  const iris = (irisDiameter(lm, LM.eyeA.iris) + irisDiameter(lm, LM.eyeB.iris)) / 2;
-  return iris >= 1 ? IRIS_MM / iris : null;
+  const ipd = dist(at(lm, LM.eyeA.iris[0]), at(lm, LM.eyeB.iris[0]));
+  return ipd >= 1 ? IPD_MM / ipd : null;
 }
 
 export function measureFace(lm: readonly Pt[]): FaceMeasure {
@@ -137,8 +163,9 @@ export function measureFace(lm: readonly Pt[]): FaceMeasure {
   const axis = faceAxis(lm);
   return {
     rollDeg: (Math.atan2(axis.y, axis.x) * 180) / Math.PI,
-    eye: { R: measureEye(lm, LM.eyeA, axis), L: measureEye(lm, LM.eyeB, axis) },
+    eye: { R: measureEye(lm, LM.eyeA, LM.browA, axis), L: measureEye(lm, LM.eyeB, LM.browB, axis) },
     brow: { R: measureBrow(lm, LM.browA), L: measureBrow(lm, LM.browB) },
+    lip: measureLip(lm),
     faceAspect: faceH > 0 ? dist(at(lm, LM.faceL), at(lm, LM.faceR)) / faceH : 0,
     mmPerPx: mmPerPx(lm),
   };

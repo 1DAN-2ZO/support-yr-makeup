@@ -8,8 +8,8 @@ import type { Pt } from "@core/types";
 import { face, tiltHead } from "./helpers/measure-face";
 
 const frame = (lm: Pt[]) => ({ lm, unit: unitScale(lm) });
-/** 가짜 얼굴의 홍채는 20px → 1 mm = 20/11.3 px */
-const S = 20 / 11.3;
+/** 가짜 얼굴의 두 동공은 170px 떨어져 있다 → 1 mm = 170/62.2 px (동공 사이 거리 자) */
+const S = 170 / 62.2;
 const d = (a: Pt, b: Pt) => Math.hypot(a.x - b.x, a.y - b.y);
 
 describe("표준 눈썹 — 기준값 (JKSC 2023)", () => {
@@ -17,9 +17,9 @@ describe("표준 눈썹 — 기준값 (JKSC 2023)", () => {
     expect(STANDARD_BROW_MM).toEqual({ pupilToTop: 22.05, innerToTop: 22.85, outerToTop: 23.38, lidToBottom: 13.7, headThick: 10.8, glabella: 28.8 });
   });
 
-  it("홍채 점이 뭉개져 mm 를 모르면 만들지 않는다", () => {
+  it("두 동공 점이 겹쳐 mm 를 모르면 만들지 않는다", () => {
     const lm = face();
-    for (const i of [...LM.eyeA.iris, ...LM.eyeB.iris]) lm[i] = { x: 300, y: 300 };
+    lm[LM.eyeA.iris[0]] = lm[LM.eyeB.iris[0]] = { x: 300, y: 300 };
     expect(browStandard(frame(lm))).toBeNull();
   });
 });
@@ -87,9 +87,10 @@ describe("표준 눈썹 — 고개 기울기·크기와 무관", () => {
     expect(d(b.R.head.top, b.L.head.top)).toBeCloseTo(28.8 * S, 6);
   });
 
-  it("홍채가 크게 찍히면(가까이) 같은 mm 가 더 많은 px", () => {
-    const b = browStandard(frame(face({ iris: 40 })))!;
-    expect(b.R.peak.top.y).toBeCloseTo(250 - 22.05 * (40 / 11.3), 6);
+  it("얼굴이 크게 찍히면(가까이) 같은 mm 가 더 많은 px", () => {
+    const big = face().map((p) => ({ x: p.x * 2, y: p.y * 2 }));
+    const b = browStandard(frame(big))!;
+    expect(b.R.peak.top.y).toBeCloseTo(500 - 22.05 * 2 * S, 6);
   });
 });
 

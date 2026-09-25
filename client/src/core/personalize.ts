@@ -102,7 +102,31 @@ export const FACE_SHAPES: readonly FaceShapeLabel[] = ["oval", "round", "square"
 const INTENSITY_PARTS: readonly LookPartId[] = ["brow", "liner", "shadow", "cheek", "lip"];
 
 /** 받아 주는 범위. 벗어나면 그 항목만 규칙값 — 가정값이다 */
-export const PLAN_LIMITS = { shadowRange: [0.8, 1.2], intensity: [0.7, 1.3], rationaleMax: 40 } as const;
+export const PLAN_LIMITS = {
+  shadowRange: [0.8, 1.2], intensity: [0.7, 1.3], rationaleMax: 40,
+  lipOverline: [0, 0.3], blushSize: [0.8, 1.2], linerThick: [0.8, 1.2],
+} as const;
+
+/**
+ * 개인화 규칙의 가정값 — 전부 여기 한 곳. 사용자 실험(#84)으로 맞춘다.
+ *   lidGapStd      눈두덩(윗눈꺼풀 꼭대기 → 눈썹 아랫선) ÷ 눈 폭의 표준. 13.7 mm(JKSC) ÷ 24.8 mm(Jung 눈 폭 평균)
+ *   shadowGain     표준에서 벗어난 비율의 몇 배만큼 섀도 범위를 바꿀지
+ *   lidGapTol      섀도 제안의 방향을 따지지 않는 표준 둘레(±5%)
+ *   lipTarget      윗입술 ÷ 아랫입술 목표. 오버라인은 모자란 만큼의 절반, 최대 lipOverlineMax
+ *   intensityCap   부위별 진하기 배율 상한 — 눈썹은 올리지 않고, 눈 화장은 조금만
+ *   intensityMeanCap  받은 배율의 평균 상한 — 전체가 한꺼번에 진해지지 않게
+ *   blushShift     볼 위치 higher/lower 가 옮기는 거리 (얼굴 폭 비율)
+ */
+export const PLAN_RULES = {
+  lidGapStd: 0.55, shadowGain: 0.5, lidGapTol: 0.05,
+  lipTarget: 0.8, lipOverlineMax: 0.3,
+  intensityCap: { brow: 1, liner: 1.15, shadow: 1.15 } as Partial<Record<LookPartId, number>>,
+  intensityMeanCap: 1.15,
+  blushShift: 0.03,
+};
+
+export type BlushPosition = "higher" | "standard" | "lower";
+export const BLUSH_POSITIONS: readonly BlushPosition[] = ["higher", "standard", "lower"];
 
 /** 굽기 기본값 (Zhao 2019: 둥근 얼굴일수록 굽은 눈썹, JKSC 와 같은 방향) */
 const archOf = (s: FaceShapeLabel | null): BrowArch => (s === "round" ? "arched" : s === "oblong" ? "flatter" : "standard");
@@ -117,8 +141,18 @@ export interface BrowPlanValues {
 }
 
 export interface PersonalPlan {
+  /** 얼굴형 — 눈썹 조정과 쉐딩·하이라이트 자리가 같이 쓴다. 믿을 만한 판정이 없으면 null */
+  faceShape: FaceShapeLabel | null;
   liner: LinerDecision;
+  /** 라이너 두께 배율 (룩 두께에 곱한다) */
+  linerThick: { scale: number; source: "rule" | "vlm" };
   brow: BrowPlanValues;
+  /** 윗입술 가운데를 올리는 양 — 지금 윗입술 두께의 비율. 0 이면 입술선 그대로 */
+  lip: { overline: number; source: "rule" | "vlm" };
+  /** 볼: 위치(얼굴 폭의 blushShift 만큼 위·아래)와 크기 배율 */
+  blush: { position: BlushPosition; size: number; source: "rule" | "vlm" };
+  /** 하이라이트: T존(이마 가운데~콧대)에도 넣을지. 번들거리는 피부면 끈다 */
+  highlight: { tZone: boolean; source: "rule" | "vlm" };
   /** 섀도 높이 배율 (guides 의 rangeRatio 에 곱한다) */
   shadow: { range: number; source: "rule" | "vlm" };
   /** 부위별 진하기 배율. 없는 부위는 1 */
@@ -175,22 +209,72 @@ export function resolvePlan(
   const adj = shape ? JKSC_BROW_ADJUST_MM[shape] : { height: 0, glabella: 0 };
   const brow: BrowPlanValues = { faceShape: shape, source: browSource, heightMm: adj.height * BROW_ADJUST_SCALE, glabellaMm: adj.glabella * BROW_ADJUST_SCALE, arch };
 
-  // 섀도 범위
-  let shadow: PersonalPlan["shadow"] = { range: 1, source: "rule" };
+  // 섀도 범위 — 규칙: 눈두덩이 넓으면 넓게, 좁으면 좁게. 제안이 측정과 반대 방향이면 거절
+  const R = PLAN_RULES, [s0, s1] = PLAN_LIMITS.shadowRange;
+  const gap = (m.eye.R.lidGapRatio + m.eye.L.lidGapRatio) / 2;
+  const clampTo = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+  let shadow: PersonalPlan["shadow"] = { range: clampTo(1 + R.shadowGain * (gap / R.lidGapStd - 1), s0, s1), source: "rule" };
   if (isObj(q.shadow) && q.shadow.range !== undefined) {
-    if (inRange(q.shadow.range, PLAN_LIMITS.shadowRange)) shadow = { range: q.shadow.range, source: "vlm" };
-    else rejected.push(`섀도 범위: ${String(q.shadow.range)} 는 ${PLAN_LIMITS.shadowRange.join("~")} 밖`);
+    const v = q.shadow.range;
+    if (!inRange(v, PLAN_LIMITS.shadowRange)) rejected.push(`섀도 범위: ${String(v)} 는 ${s0}~${s1} 밖`);
+    else if (v < 1 && gap > R.lidGapStd * (1 + R.lidGapTol)) rejected.push("섀도 범위: 눈두덩이 넓은데 줄이자고 함");
+    else if (v > 1 && gap < R.lidGapStd * (1 - R.lidGapTol)) rejected.push("섀도 범위: 눈두덩이 좁은데 넓히자고 함");
+    else shadow = { range: v, source: "vlm" };
   }
 
-  // 진하기 — 부위별
+  // 입술 — 규칙: 윗입술이 목표보다 얇으면 모자란 만큼의 절반을 올린다
+  const lr = m.lip.upperLowerRatio;
+  let lip: PersonalPlan["lip"] = { overline: lr != null && lr > 0 && lr < R.lipTarget ? Math.min(R.lipOverlineMax, (R.lipTarget / lr - 1) / 2) : 0, source: "rule" };
+  if (isObj(q.lip) && q.lip.overline !== undefined) {
+    const v = q.lip.overline;
+    if (!inRange(v, PLAN_LIMITS.lipOverline)) rejected.push(`입술: 오버라인 ${String(v)} 는 ${PLAN_LIMITS.lipOverline.join("~")} 밖`);
+    else if (v > 0 && lr != null && lr >= R.lipTarget) rejected.push("입술: 윗입술이 이미 충분한데 올리자고 함");
+    else lip = { overline: v, source: "vlm" };
+  }
+
+  // 진하기 — 부위별 범위·상한, 그다음 전체 평균 상한
   const intensity: PersonalPlan["intensity"] = {};
   if (isObj(q.intensity)) {
     for (const [k, v] of Object.entries(q.intensity)) {
       const part = INTENSITY_PARTS.find((s) => s === k);
+      const cap = part ? R.intensityCap[part] : undefined;
       if (!part) rejected.push(`진하기: 모르는 부위 ${k}`);
       else if (!inRange(v, PLAN_LIMITS.intensity)) rejected.push(`진하기: ${k} ${String(v)} 는 ${PLAN_LIMITS.intensity.join("~")} 밖`);
+      else if (cap !== undefined && v > cap) rejected.push(`진하기: ${k} 는 ${cap} 까지`);
       else intensity[part] = v;
     }
+    const vals = Object.values(intensity) as number[];
+    const mean = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 1;
+    if (mean > R.intensityMeanCap) {
+      const over = vals.reduce((a, v) => a + Math.max(0, v - 1), 0);
+      const base = vals.reduce((a, v) => a + (v > 1 ? 1 : v), 0);
+      const k = (R.intensityMeanCap * vals.length - base) / over;
+      for (const key of Object.keys(intensity) as LookPartId[]) {
+        const v = intensity[key]!;
+        if (v > 1) intensity[key] = 1 + (v - 1) * k;
+      }
+      rejected.push(`진하기: 전체가 너무 진해 ${R.intensityMeanCap} 평균으로 줄임`);
+    }
+  }
+
+  // 하이라이트·볼·라이너 두께 — 측정으로 따질 것이 없어 모양·범위만 본다
+  let highlight: PersonalPlan["highlight"] = { tZone: true, source: "rule" };
+  if (isObj(q.highlight) && q.highlight.tZone !== undefined) {
+    if (typeof q.highlight.tZone === "boolean") highlight = { tZone: q.highlight.tZone, source: "vlm" };
+    else rejected.push("하이라이트: tZone 은 true/false");
+  }
+  let blush: PersonalPlan["blush"] = { position: "standard", size: 1, source: "rule" };
+  if (isObj(q.blush)) {
+    const pos = q.blush.position === undefined ? "standard" : BLUSH_POSITIONS.find((s) => s === (q.blush as Record<string, unknown>).position);
+    const size = q.blush.size === undefined ? 1 : q.blush.size;
+    if (!pos) rejected.push(`볼: 모르는 위치 ${String(q.blush.position)}`);
+    if (!inRange(size, PLAN_LIMITS.blushSize)) rejected.push(`볼: 크기 ${String(size)} 는 ${PLAN_LIMITS.blushSize.join("~")} 밖`);
+    if (pos && inRange(size, PLAN_LIMITS.blushSize)) blush = { position: pos, size, source: "vlm" };
+  }
+  let linerThick: PersonalPlan["linerThick"] = { scale: 1, source: "rule" };
+  if (isObj(q.linerThick) && q.linerThick.scale !== undefined) {
+    if (inRange(q.linerThick.scale, PLAN_LIMITS.linerThick)) linerThick = { scale: q.linerThick.scale, source: "vlm" };
+    else rejected.push(`라이너 두께: ${String(q.linerThick.scale)} 는 ${PLAN_LIMITS.linerThick.join("~")} 밖`);
   }
 
   // 근거 문장 — 숫자 없음(F-09), 짧게
@@ -205,5 +289,5 @@ export function resolvePlan(
     }
   }
 
-  return { liner, brow, shadow, intensity, rationale, rejected };
+  return { faceShape: shape, liner, linerThick, brow, lip, blush, highlight, shadow, intensity, rationale, rejected };
 }

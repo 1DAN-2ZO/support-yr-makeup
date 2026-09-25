@@ -31,6 +31,8 @@ export interface PartGeometry {
   lip?: {
     /** 경계 오프셋 (입술 폭 비율, + 바깥) */
     offset: number;
+    /** 개인화: 윗입술 가운데를 올리는 양 (윗입술 두께 비율). 채점은 아직 쓰지 않는다 — 화면 테두리(lipOutline)만 */
+    upperOverline?: number;
   };
   /** 섀도우·볼터치 영역 다각형, 좌우 하나씩 */
   regions?: Record<Side, readonly Pt[]>;

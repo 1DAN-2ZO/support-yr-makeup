@@ -12,8 +12,8 @@ import { BARE, LMS } from "./helpers/synth-face";
 
 /** α − β 만 바꾼 측정값. 나머지는 개인화 규칙이 보지 않는 값이다 */
 function measure(abR: number, abL: number = abR): FaceMeasure {
-  const eye = (ab: number): EyeMeasure => ({ tiltDeg: 8, alphaDeg: 30 + ab / 2, betaDeg: 30 - ab / 2, outerCornerDown: ab > 0, aspect: 3, heightRatio: 1 / 3 });
-  return { rollDeg: 0, eye: { R: eye(abR), L: eye(abL) }, brow: { R: { curvature: 0.1 }, L: { curvature: 0.1 } }, faceAspect: 0.85, mmPerPx: 0.5 };
+  const eye = (ab: number): EyeMeasure => ({ tiltDeg: 8, alphaDeg: 30 + ab / 2, betaDeg: 30 - ab / 2, outerCornerDown: ab > 0, aspect: 3, heightRatio: 1 / 3, lidGapRatio: 0.55 });
+  return { rollDeg: 0, eye: { R: eye(abR), L: eye(abL) }, brow: { R: { curvature: 0.1 }, L: { curvature: 0.1 } }, lip: { upperLowerRatio: 0.8, heightWidthRatio: 0.4 }, faceAspect: 0.85, mmPerPx: 0.5 };
 }
 
 const deg = (a: Pt, b: Pt): number => (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;

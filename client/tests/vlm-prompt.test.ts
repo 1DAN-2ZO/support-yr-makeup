@@ -6,8 +6,8 @@ import { PLAN_LIMITS } from "@core/personalize";
 import { buildVlmPrompt } from "@core/vlm-prompt";
 
 function measure(ab: number): FaceMeasure {
-  const eye = (): EyeMeasure => ({ tiltDeg: 8.4, alphaDeg: 30 + ab / 2, betaDeg: 30 - ab / 2, outerCornerDown: ab > 0, aspect: 2.9, heightRatio: 0.34 });
-  return { rollDeg: 0, eye: { R: eye(), L: eye() }, brow: { R: { curvature: 0.15 }, L: { curvature: 0.16 } }, faceAspect: 0.82, mmPerPx: 0.3 };
+  const eye = (): EyeMeasure => ({ tiltDeg: 8.4, alphaDeg: 30 + ab / 2, betaDeg: 30 - ab / 2, outerCornerDown: ab > 0, aspect: 2.9, heightRatio: 0.34, lidGapRatio: 0.55 });
+  return { rollDeg: 0, eye: { R: eye(), L: eye() }, brow: { R: { curvature: 0.15 }, L: { curvature: 0.16 } }, lip: { upperLowerRatio: 0.8, heightWidthRatio: 0.4 }, faceAspect: 0.82, mmPerPx: 0.3 };
 }
 const look = lookById("smoky")!;
 
@@ -50,5 +50,25 @@ describe("VLM 프롬프트 — 얼굴형의 결과를 알려 준다", () => {
     expect(p).toContain("oblong → 눈썹 낮게, 미간 좁게");
     expect(p).toContain("round → 눈썹 높게, 미간 좁게");
     expect(p).toContain("square → 눈썹 그대로, 미간 그대로");
+  });
+});
+
+describe("VLM 프롬프트 — 모든 부위", () => {
+  it("새 측정값(눈두덩·입술 비)과 규칙이 정한 값을 알려 준다", () => {
+    const p = buildVlmPrompt(measure(-4), look);
+    expect(p).toMatch(/눈두덩/);
+    expect(p).toMatch(/윗입술 ÷ 아랫입술: 0\.80/);
+  });
+
+  it("새로 정할 것(입술 오버라인·볼·T존·라이너 두께)과 허용 범위를 관문 상수에서 적는다", () => {
+    const p = buildVlmPrompt(measure(-4), look);
+    for (const k of ["lip.overline", "blush.position", "blush.size", "highlight.tZone", "linerThick.scale", "higher", "lower"]) expect(p).toContain(k);
+    expect(p).toContain(`${PLAN_LIMITS.lipOverline[0]}~${PLAN_LIMITS.lipOverline[1]}`);
+    expect(p).toContain(`${PLAN_LIMITS.blushSize[0]}~${PLAN_LIMITS.blushSize[1]}`);
+    expect(p).toContain(`${PLAN_LIMITS.linerThick[0]}~${PLAN_LIMITS.linerThick[1]}`);
+  });
+
+  it("진하기 상한(눈썹·눈 화장)을 알려 준다 — 모르고 올리면 늘 거절당한다", () => {
+    expect(buildVlmPrompt(measure(-4), look)).toMatch(/brow 1.*liner 1\.15.*shadow 1\.15/s);
   });
 });

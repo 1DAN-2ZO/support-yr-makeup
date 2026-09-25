@@ -5,6 +5,7 @@
  * 테두리는 채점이 쓴 기하(PartGeometry) + 랜드마크에서 만든다 — 채점이 본 자리와 화면의 선이 같아야 한다.
  */
 
+import { lipOutline } from "./guides";
 import { LM, at } from "./landmarks";
 import type { PartGeometry } from "./score-part";
 import type { PartId, Pt } from "./types";
@@ -35,7 +36,8 @@ export function guideOutline(partId: PartId, lm: readonly Pt[], g: PartGeometry)
       else for (const b of [LM.browA, LM.browB]) polys.push([...b.upper.map(P), ...b.lower.map(P).reverse()]);
       break;
     case "lip":
-      polys.push(LM.lipsOuter.map(P));
+      // 개인화 오버라인이 있으면 올린 입술선 (없으면 지금 입술 윤곽 그대로)
+      polys.push(lipOutline(lm, g.lip?.upperOverline ?? 0));
       break;
     case "shadow":
     case "cheek":
