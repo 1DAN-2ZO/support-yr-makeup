@@ -14,6 +14,7 @@
 
 import { LM, at } from "./landmarks";
 import type { LookPart, LookPartId } from "./looks";
+import type { LinerStyle } from "./personalize";
 import type { GuideSource, PartGeometry } from "./score-part";
 import type { Side } from "./score";
 import type { Baseline, Pt } from "./types";
@@ -32,6 +33,12 @@ export const GUIDE_PARAMS = {
   contour: { rx: 0.13, ry: 0.05, tilt: -30, down: 0.06, toward: 0.35 },
   highlight: { rx: 0.09, ry: 0.035, tilt: -20, up: 0.05, toward: 0.2 },
 } as const;
+
+/**
+ * 개인화한 라이너의 꼬리 치수 (ILoveEye 2022, 자연스러운 날개 라이너 표본을 잰 값).
+ * 개인화하지 않은 경로는 GUIDE_PARAMS.liner(30°, 15%)를 그대로 쓴다 — 기본값을 바꿀지는 ② 의 결정(B1).
+ */
+export const PERSONAL_LINER = { wingedDeg: 15, length: 0.12 } as const;
 
 /** 랜드마크와 기준 길이만 있으면 된다 — 화면에서는 이미지 없이 부른다 */
 export type GuideFrame = { lm: readonly Pt[]; unit: Baseline["unit"] };
@@ -61,8 +68,13 @@ const SIDES = [
 type SideSpec = (typeof SIDES)[number];
 const both = <T>(fn: (s: SideSpec) => T): Record<Side, T> => ({ R: fn(SIDES[0]), L: fn(SIDES[1]) });
 
-/** 꼬리 선 [눈꼬리, 꼬리 끝]: 눈 축(안쪽→바깥)에서 wingAngle 만큼 화면 위로, 길이는 눈 폭 × wing */
-function wingOf(f: GuideFrame, eye: SideSpec["eye"]): readonly [Pt, Pt] {
+/**
+ * 꼬리 선 [눈꼬리, 꼬리 끝].
+ * 스타일이 없으면: 눈 축(안쪽→바깥)에서 wingAngle 만큼 화면 위로, 길이는 눈 폭 × wing (지금까지의 가이드).
+ * 스타일이 있으면: ILoveEye 의 세 스타일. 방향을 화면이 아니라 눈에 대고 정한다 — 고개를 기울여도 같은 모양.
+ */
+function wingOf(f: GuideFrame, eye: SideSpec["eye"], style?: LinerStyle): readonly [Pt, Pt] {
+  if (style) return personalWing(f, eye, style);
   const outer = at(f.lm, eye.outer), inner = at(f.lm, eye.inner);
   const v = norm(sub(outer, inner)), a = (GUIDE_PARAMS.liner.wingAngle * Math.PI) / 180;
   const dir = norm(add(mul(v, Math.cos(a)), { x: 0, y: -Math.sin(a) }));
@@ -73,14 +85,42 @@ function wingOf(f: GuideFrame, eye: SideSpec["eye"]): readonly [Pt, Pt] {
  * 채점용 가이드. 룩을 고르면 라이너 두께가 따라간다 (#44 — 두께가 상수면 룩 선택이 채점에 영향이 없었다).
  * @param lookParts 고른 룩의 parts (looks.json). 비어 있으면 기본 치수
  */
-export function lookGuide(lookParts: Partial<Record<LookPartId, LookPart>> = {}): GuideSource {
+/**
+ * 개인화한 꼬리 (ILoveEye 2022). 길이는 모두 눈 폭 × 12%.
+ *   winged — 눈 축에서 윗눈꺼풀 쪽으로 15°
+ *   extend — 눈 축을 곧게 연장
+ *   drop   — 윗눈꺼풀 꼭대기 → 눈꼬리 선을 연장
+ * "위" 는 화면 위가 아니라 윗눈꺼풀이 있는 쪽이다 — 고개를 기울여도 같은 모양이 나온다.
+ */
+function personalWing(f: GuideFrame, eye: SideSpec["eye"], style: LinerStyle): readonly [Pt, Pt] {
+  const outer = at(f.lm, eye.outer), inner = at(f.lm, eye.inner);
+  const v = norm(sub(outer, inner));
+  // 윗눈꺼풀 꼭대기 = 눈 축에서 가장 먼 윗눈꺼풀 점
+  const off = (p: Pt) => Math.abs((p.x - inner.x) * v.y - (p.y - inner.y) * v.x);
+  const apex = eye.upper.map((i) => at(f.lm, i)).reduce((a, b) => (off(b) > off(a) ? b : a));
+  let n = { x: -v.y, y: v.x };                                   // 눈 축에 수직
+  if (n.x * (apex.x - outer.x) + n.y * (apex.y - outer.y) < 0) n = mul(n, -1);   // 윗눈꺼풀 쪽으로
+  const a = (PERSONAL_LINER.wingedDeg * Math.PI) / 180;
+  const dir =
+    style === "winged" ? add(mul(v, Math.cos(a)), mul(n, Math.sin(a)))
+    : style === "extend" ? v
+    : norm(sub(outer, apex));
+  return [outer, add(outer, mul(dir, PERSONAL_LINER.length * f.unit.eye))] as const;
+}
+
+/**
+ * 채점용 가이드.
+ * @param lookParts 고른 룩의 parts (looks.json). 비어 있으면 기본 치수
+ * @param linerStyle 개인화한 라이너 스타일(personalize.ts). 없으면 지금까지의 꼬리 — 개인화하지 않은 채점은 바뀌지 않는다
+ */
+export function lookGuide(lookParts: Partial<Record<LookPartId, LookPart>> = {}, linerStyle?: LinerStyle): GuideSource {
   const t = lookParts.liner?.thick;
   const linerThick = t && t > 0 ? t : GUIDE_PARAMS.liner.thick;
   return (partId, f): PartGeometry => {
     const P = (i: number): Pt => at(f.lm, i);
     const faceW = f.unit.face;
 
-    if (partId === "liner") return { liner: { wing: both(({ eye }) => wingOf(f, eye)), thick: linerThick } };
+    if (partId === "liner") return { liner: { wing: both(({ eye }) => wingOf(f, eye, linerStyle)), thick: linerThick } };
     if (partId === "lip") return { lip: { offset: GUIDE_PARAMS.lip.offset } };
     if (partId === "shadow") {
       return {
@@ -115,7 +155,7 @@ export function lookGuide(lookParts: Partial<Record<LookPartId, LookPart>> = {})
  * 순서: 속눈썹 선(안쪽 → 바깥) → 꼬리 끝 → 위 테두리(바깥 → 안쪽). 닫힌 다각형으로 그리면 된다.
  * 두께 띠를 속눈썹 선에서 **위로** 잡는 뜻은 채점과 맞춰야 한다 (#153).
  */
-export function linerOutline(f: GuideFrame, thick: number): Record<Side, Pt[]> {
+export function linerOutline(f: GuideFrame, thick: number, linerStyle?: LinerStyle): Record<Side, Pt[]> {
   return both(({ eye }) => {
     const lid = eye.upper.map((i) => at(f.lm, i)).reverse();   // 안쪽 → 바깥
     const off = thick * f.unit.eye;
@@ -125,6 +165,6 @@ export function linerOutline(f: GuideFrame, thick: number): Record<Side, Pt[]> {
       if (n.y > 0) n = mul(n, -1);                       // 화면 위쪽(y 가 작아지는 쪽)으로
       return add(p, mul(n, off));
     });
-    return [...lid, wingOf(f, eye)[1], ...top.reverse()];
+    return [...lid, wingOf(f, eye, linerStyle)[1], ...top.reverse()];
   });
 }
