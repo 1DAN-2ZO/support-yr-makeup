@@ -30,6 +30,41 @@ export class OneEuroFilter {
   }
 }
 
+// 단순 지수이동평균(EMA) — guide 브랜치(poc/full/lib/gate.js Smoother)와 동일한 방식. One Euro Filter
+// 대비 포인트당 곱셈 두 번뿐이라 계산이 가볍고, 속도 추정·적응형 cutoff가 없어 위상 지연도 적다
+// (대신 정지 시 미세 떨림은 One Euro보다 더 남는다 — 선/점처럼 얇은 걸 그릴 땐 잘 안 띄고, 색을 칠하는
+// 용도엔 오히려 거슬릴 수 있어 용도에 따라 LandmarkSmoother와 골라 쓴다).
+export class EmaSmoother {
+  constructor(trackedIdx, { smoothZ = false, alpha = 0.5 } = {}) {
+    this.trackedIdx = trackedIdx;
+    this.smoothZ = smoothZ;
+    this.alpha = alpha;
+    this.prev = new Map();
+    this.wasLost = true;
+  }
+  setAlpha(alpha) { this.alpha = alpha; }
+  reset() { this.prev.clear(); }
+  // lm: 랜드마크 없음(null)이면 wasLost만 갱신. 있으면 새 배열(원본 불변) 반환. tMs는 인터페이스를
+  // LandmarkSmoother와 맞추려고 받지만 EMA 자체는 프레임 간격을 안 쓴다(guide와 동일).
+  smooth(lm, _tMs) {
+    if (!lm) { this.wasLost = true; return null; }
+    if (this.wasLost) this.reset(); // 다시 잡혔을 때 이전 위치로 확 당겨지는 것 방지
+    this.wasLost = false;
+    const out = lm.slice();
+    const a = this.alpha;
+    for (const i of this.trackedIdx) {
+      const cur = lm[i];
+      const p = this.prev.get(i);
+      const next = p
+        ? { x: p.x + a * (cur.x - p.x), y: p.y + a * (cur.y - p.y), z: this.smoothZ ? p.z + a * (cur.z - p.z) : cur.z }
+        : { x: cur.x, y: cur.y, z: cur.z };
+      this.prev.set(i, next);
+      out[i] = next;
+    }
+    return out;
+  }
+}
+
 // 지정한 인덱스 집합의 랜드마크(x,y[,z])에 필터를 걸어주는 헬퍼.
 export class LandmarkSmoother {
   constructor(trackedIdx, { smoothZ = false, minCutoff, beta } = {}) {
