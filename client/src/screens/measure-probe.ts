@@ -8,8 +8,11 @@
  */
 
 import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
+import { unitScale } from "@core/baseline";
 import { IRIS_MM, measureFace, type FaceMeasure } from "@core/face-measure";
+import { linerOutline } from "@core/guides";
 import { LM, at, dist } from "@core/landmarks";
+import { planLiner, type LinerAdapt, type LinerReason, type LinerStyle } from "@core/personalize";
 import type { Pt } from "@core/types";
 
 const $ = <T extends HTMLElement>(id: string): T => {
@@ -25,6 +28,8 @@ const rowsEl = $("rows");
 const startBtn = $<HTMLButtonElement>("start");
 const freezeBtn = $<HTMLButtonElement>("freeze");
 const copyBtn = $<HTMLButtonElement>("copy");
+const styleSel = $<HTMLSelectElement>("style");
+const adaptSel = $<HTMLSelectElement>("adapt");
 const ctx2d = cv.getContext("2d");
 if (!ctx2d) throw new Error("캔버스 2D 를 쓸 수 없음");
 const g: CanvasRenderingContext2D = ctx2d;
@@ -87,6 +92,37 @@ for (const r of ROWS) {
   cells.set(r.key, v);
 }
 
+// 라이너 개인화 결과 줄 (논문 기술 B)
+const styleRow = document.createElement("tr");
+const styleName = document.createElement("td");
+styleName.textContent = "라이너 스타일";
+const styleCell = document.createElement("td");
+styleCell.className = "v";
+styleCell.textContent = "—";
+const styleRef = document.createElement("td");
+styleRef.className = "ref";
+styleRef.textContent = "처진 눈(α−β 평균 > 2°)이 아니면 Winged, 처진 눈이면 룩 설정에 따라 Extend / Drop (ILoveEye). 꼬리 15°, 눈 폭의 12%";
+styleRow.append(styleName, styleCell, styleRef);
+rowsEl.prepend(styleRow);
+
+const REASON: Record<LinerReason, string> = {
+  not_down: "처진 눈 아님",
+  down_follow: "처진 눈 + 따라감",
+  down_correct: "처진 눈 + 보정",
+};
+const STYLE_NAME: Record<LinerStyle, string> = { winged: "Winged", extend: "Extend", drop: "Drop" };
+
+/** 지금 그릴 스타일. 자동이면 규칙 — 흔들림을 줄이려고 한 프레임이 아니라 중앙값 α−β 로 정한다 */
+function currentPlan(m: FaceMeasure): { style: LinerStyle; why: string } {
+  if (styleSel.value !== "auto") return { style: styleSel.value as LinerStyle, why: "직접 고름" };
+  const abR = shown["abR"], abL = shown["abL"];
+  const src: FaceMeasure = abR != null && abL != null
+    ? { ...m, eye: { R: { ...m.eye.R, alphaDeg: abR, betaDeg: 0 }, L: { ...m.eye.L, alphaDeg: abL, betaDeg: 0 } } }
+    : m;
+  const plan = planLiner(src, adaptSel.value as LinerAdapt);
+  return { style: plan.style, why: REASON[plan.reason] };
+}
+
 const history: Record<string, number>[] = [];
 let shown: Record<string, number | null> = {};
 let frozen = false;
@@ -142,9 +178,19 @@ function dot(p: Pt, color: string, r = 3): void {
   g.fill();
 }
 
-function drawOverlay(lm: readonly Pt[]): void {
+function drawOverlay(lm: readonly Pt[], style: LinerStyle): void {
   const P = (i: number): Pt => at(lm, i);
   const lw = Math.max(1.5, cv.width / 640);
+  // 라이너: 개인화 윤곽(주황)과 기존 꼬리(회색 점선). 윤곽 = [속눈썹 선 9점(안쪽→바깥), 꼬리 끝, 위 테두리]
+  const frame = { lm, unit: unitScale(lm) };
+  const personal = linerOutline(frame, 0.045, style);
+  const base = linerOutline(frame, 0.045);
+  const tipAt = LM.eyeA.upper.length;
+  for (const side of ["R", "L"] as const) {
+    const poly = personal[side];
+    line([...poly, poly[0]!], "#fb923c", lw * 1.5);
+    line([base[side][tipAt - 1]!, base[side][tipAt]!], "#6b7280", lw, [5, 4]);
+  }
   // 얼굴 폭·높이
   line([P(LM.faceL), P(LM.faceR)], "#9ca3af", lw, [6, 6]);
   line([P(LM.forehead), P(LM.chin)], "#9ca3af", lw, [6, 6]);
@@ -204,8 +250,10 @@ function tick(): void {
     const lm: Pt[] = face.map((p) => ({ x: p.x * w, y: p.y * h }));
     const m = measureFace(lm);
     if (!frozen) record(m, lm);
-    drawOverlay(lm);
     render();
+    const plan = currentPlan(m);
+    drawOverlay(lm, plan.style);
+    if (!frozen) styleCell.textContent = `${STYLE_NAME[plan.style]}  (${plan.why})`;
   }
   frames++;
   const now = performance.now();
@@ -261,7 +309,7 @@ copyBtn.addEventListener("click", () => {
     const v = shown[r.key];
     values[r.label] = v == null ? null : Number(v.toFixed(r.digits + 1));
   }
-  const text = JSON.stringify({ 시각: new Date().toISOString(), 프레임수: history.length, 값: values }, null, 2);
+  const text = JSON.stringify({ 시각: new Date().toISOString(), 프레임수: history.length, 라이너: styleCell.textContent, 룩설정: adaptSel.value, 값: values }, null, 2);
   navigator.clipboard.writeText(text).then(
     () => { statusEl.textContent = "값을 복사했어요. 대화창에 붙여 넣어 주세요."; },
     () => { window.prompt("아래 값을 복사해 주세요", text); },
