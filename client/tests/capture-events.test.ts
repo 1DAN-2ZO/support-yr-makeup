@@ -82,6 +82,35 @@ describe("capture events", () => {
     expect(m.events.at(-1)).toMatchObject({ name: "capture", shot: "left_45", ok: false, retry: 1 });
   });
 
+  // ---- 2026-09-22 iPhone 실측 뒤 추가: 조건이 계속 바뀌어도 오래 막히면 한 줄 ----
+  it("slow: 조건이 3초 안에 계속 바뀌어도 5초 막히면 가장 오래 막힌 조건으로 한 번", () => {
+    const { m, ev } = setup({ stuckMs: 3000, slowMs: 5000 });
+    // 각도 2초 → 크기 1초 → 각도 1초 → 얼굴 1초 … 어느 조건도 3초를 못 채운다
+    const seq: [number, "angle" | "size" | "face"][] = [[0, "angle"], [2000, "size"], [3000, "angle"], [4000, "face"], [4500, "size"]];
+    for (const [t, r] of seq) expect(ev.blocked("left_45", r, t)).toBe(false);
+    expect(ev.blocked("left_45", "size", 5000)).toBe(true);
+    // 누적: angle 2000+1000=3000, size 1000+500=1500, face 500 → angle
+    expect(m.events).toHaveLength(1);
+    expect(m.events[0]).toMatchObject({ name: "capture", shot: "left_45", ok: false, reason: "angle" });
+    // 같은 구간에서 5초 규칙은 다시 안 찍는다. 한 조건이 3초를 채우면 그건 3초 규칙대로 찍는다 (size 는 4500 부터)
+    for (let t = 5100; t < 7500; t += 100) expect(ev.blocked("left_45", "size", t)).toBe(false);
+    expect(m.events).toHaveLength(1);
+    expect(ev.blocked("left_45", "size", 7500)).toBe(true);
+    expect(m.events.at(-1)).toMatchObject({ reason: "size" });
+  });
+
+  it("slow: 3초 규칙으로 이미 찍었으면 5초 규칙은 안 찍는다, 장이 바뀌면 새로 센다", () => {
+    const { m, ev } = setup({ stuckMs: 3000, slowMs: 5000 });
+    ev.blocked("right_45", "bright", 0);
+    expect(ev.blocked("right_45", "bright", 3000)).toBe(true);
+    for (let t = 3100; t < 9000; t += 100) ev.blocked("right_45", "bright", t);
+    expect(m.events).toHaveLength(1);
+    ev.blocked("front_open", "angle", 9000);
+    ev.blocked("front_open", "size", 11000);
+    expect(ev.blocked("front_open", "angle", 14000)).toBe(true);   // 9000 부터 5초
+    expect(m.events.at(-1)).toMatchObject({ shot: "front_open", reason: "size" });   // size 3000 > angle 2000
+  });
+
   it("faceLost: 1초 이상만 landmark_lost 로 찍는다", () => {
     const { m, ev } = setup();
     ev.faceLost(400);

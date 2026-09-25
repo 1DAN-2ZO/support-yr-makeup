@@ -12,6 +12,7 @@ export interface CameraCaps {
   focusMode?: string[];
   width?: { min?: number; max?: number };
   height?: { min?: number; max?: number };
+  zoom?: { min?: number; max?: number; step?: number };
 }
 
 export interface TrackLike {
@@ -75,6 +76,32 @@ export async function releaseCameraLocks(track: TrackLike): Promise<void> {
 export function lockReportRow(ua: string, r: LockReport): string {
   const mark = (v: LockReport["whiteBalance"]): string => (v === "locked" ? "O" : v === "failed" ? "실패" : "X");
   return `| ${ua} | ${r.label || "-"} | ${r.capsSupported ? "O" : "X"} | ${mark(r.whiteBalance)} | ${mark(r.exposure)} | ${mark(r.focus)} | ${r.maxWidth ?? "-"}×${r.maxHeight ?? "-"} |`;
+}
+
+// ---------- 초광각 전면 카메라 확대 ----------
+
+/**
+ * iPhone·iPad 전면은 초광각(센터 스테이지용) 하나뿐이고, 기본 카메라 앱은 가운데를 잘라 "1배" 로 보여 주지만
+ * 웹(getUserMedia)은 넓은 원본을 준다 → 얼굴이 작아 "조금 더 가까이" 에 오래 막힌다.
+ * 트랙 이름이 초광각이고 zoom 을 지원하면 ULTRA_WIDE_ZOOM 배로 확대한다.
+ * 2026-09-23 iPad 실측(1.5배): 눈 폭 82 → 92~110px, "가까이" 1124 → 19 프레임, 선명도 984~1837(하한 150)
+ */
+export const ULTRA_WIDE_ZOOM = 1.5;
+const ULTRA_WIDE_LABEL = /ultra\s*wide|울트라\s*와이드|초광각/i;
+
+/** 확대할 배율. 초광각이 아니거나 zoom 이 없으면 null */
+export function ultraWideZoom(track: TrackLike): number | null {
+  if (!ULTRA_WIDE_LABEL.test(track.label ?? "")) return null;
+  const z = track.getCapabilities?.().zoom;
+  if (!z || typeof z.max !== "number" || z.max < ULTRA_WIDE_ZOOM) return null;
+  return Math.max(z.min ?? 1, ULTRA_WIDE_ZOOM);
+}
+
+/** 초광각이면 확대를 건다. 건 배율, 안 걸었거나 실패하면 null */
+export async function applyUltraWideZoom(track: TrackLike): Promise<number | null> {
+  const z = ultraWideZoom(track);
+  if (z === null) return null;
+  try { await track.applyConstraints({ advanced: [{ zoom: z }] }); return z; } catch { return null; }
 }
 
 // ---------- 화면 꺼짐 방지 ----------
