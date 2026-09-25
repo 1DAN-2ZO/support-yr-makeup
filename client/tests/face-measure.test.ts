@@ -168,6 +168,25 @@ describe("얼굴 측정 — 눈썹 굽은 정도 (Zhao 2019)", () => {
   });
 });
 
+describe("얼굴 측정 — 고개 기울기와 무관", () => {
+  /** 얼굴 전체를 (300, 300) 을 중심으로 deg 만큼 돌린다. 화면에서 시계 방향이 + */
+  const tiltHead = (lm: Pt[], deg: number): Pt[] => {
+    const t = (deg * Math.PI) / 180;
+    return lm.map((p) => ({ x: 300 + (p.x - 300) * Math.cos(t) - (p.y - 300) * Math.sin(t), y: 300 + (p.x - 300) * Math.sin(t) + (p.y - 300) * Math.cos(t) }));
+  };
+
+  it("고개를 10° 기울여도 눈꼬리 기울기는 그대로다 — 눈동자를 잇는 선이 수평 기준", () => {
+    const m = measureFace(tiltHead(face({ eye: { tilt: 7 } }), 10));
+    expect(m.eye.R.tiltDeg).toBeCloseTo(7, 6);
+    expect(m.eye.L.tiltDeg).toBeCloseTo(7, 6);
+  });
+
+  it("고개 기울기는 따로 알려 준다", () => {
+    expect(measureFace(tiltHead(face(), 10)).rollDeg).toBeCloseTo(10, 6);
+    expect(measureFace(face()).rollDeg).toBeCloseTo(0, 6);
+  });
+});
+
 describe("얼굴 측정 — 크기와 무관", () => {
   it("사진을 두 배로 키워도 비율값은 같고 mm 환산만 바뀐다", () => {
     const base = face({ eye: { tilt: 7 }, browRise: 9 });

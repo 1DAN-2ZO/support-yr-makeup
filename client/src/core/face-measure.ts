@@ -41,6 +41,8 @@ export interface BrowMeasure {
 }
 
 export interface FaceMeasure {
+  /** 고개 기울기(°): 두 눈동자를 잇는 선이 화면 수평과 이루는 각. 화면에서 시계 방향이 +. 눈꼬리 기울기는 이만큼 되돌려 잰다 */
+  rollDeg: number;
   eye: Record<Side, EyeMeasure>;
   brow: Record<Side, BrowMeasure>;
   /** 얼굴 폭 ÷ 이마 윗점~턱 끝 (Zhao 2019). 1 에 가까울수록 둥글다. 이마 윗점은 머리선이 아니라 논문 값과 직접 비교하지 않는다 */
@@ -72,15 +74,34 @@ function farthest(a: Pt, b: Pt, pts: readonly Pt[]): { p: Pt; d: number } {
   return best;
 }
 
-function measureEye(lm: readonly Pt[], eye: typeof LM.eyeA | typeof LM.eyeB): EyeMeasure {
+/**
+ * 얼굴의 수평 방향(단위 벡터, 이미지 왼쪽 → 오른쪽). 두 눈동자를 잇는 선.
+ * 눈동자 점이 뭉개져 있으면 두 안쪽 눈꼬리를 잇는 선.
+ * 고개를 기울인 채 찍어도 눈꼬리 기울기가 흔들리지 않게 여기에 대고 잰다 — 표준 사진(Jung 2020)과 달리 사용자는 고개를 똑바로 두지 않는다.
+ */
+function faceAxis(lm: readonly Pt[]): Pt {
+  const pick = (a: number, b: number): Pt => {
+    const p = at(lm, a), q = at(lm, b);
+    return { x: q.x - p.x, y: q.y - p.y };
+  };
+  let v = pick(LM.eyeA.iris[0], LM.eyeB.iris[0]);
+  if (Math.hypot(v.x, v.y) < 1) v = pick(LM.eyeA.inner, LM.eyeB.inner);
+  const len = Math.hypot(v.x, v.y) || 1;
+  return { x: v.x / len, y: v.y / len };
+}
+
+function measureEye(lm: readonly Pt[], eye: typeof LM.eyeA | typeof LM.eyeB, axis: Pt): EyeMeasure {
   const o = at(lm, eye.outer), i = at(lm, eye.inner);
   const w = dist(o, i);
   const up = farthest(o, i, eye.upper.map((k) => at(lm, k)));
   const down = farthest(o, i, eye.lower.map((k) => at(lm, k)));
   const h = up.d + down.d;
   const alphaDeg = angleAt(o, up.p, i), betaDeg = angleAt(o, down.p, i);
+  // 얼굴 좌표로 옮긴다: 가로 = axis, 세로 = axis 를 90° 돌린 것(이미지처럼 아래가 +)
+  const dx = i.x - o.x, dy = i.y - o.y;
+  const along = dx * axis.x + dy * axis.y, across = -dx * axis.y + dy * axis.x;
   return {
-    tiltDeg: (Math.atan2(i.y - o.y, Math.abs(o.x - i.x)) * 180) / Math.PI,
+    tiltDeg: (Math.atan2(across, Math.abs(along)) * 180) / Math.PI,
     alphaDeg,
     betaDeg,
     outerCornerDown: alphaDeg > betaDeg,
@@ -108,8 +129,10 @@ function irisDiameter(lm: readonly Pt[], iris: readonly number[]): number {
 export function measureFace(lm: readonly Pt[]): FaceMeasure {
   const iris = (irisDiameter(lm, LM.eyeA.iris) + irisDiameter(lm, LM.eyeB.iris)) / 2;
   const faceH = dist(at(lm, LM.forehead), at(lm, LM.chin));
+  const axis = faceAxis(lm);
   return {
-    eye: { R: measureEye(lm, LM.eyeA), L: measureEye(lm, LM.eyeB) },
+    rollDeg: (Math.atan2(axis.y, axis.x) * 180) / Math.PI,
+    eye: { R: measureEye(lm, LM.eyeA, axis), L: measureEye(lm, LM.eyeB, axis) },
     brow: { R: measureBrow(lm, LM.browA), L: measureBrow(lm, LM.browB) },
     faceAspect: faceH > 0 ? dist(at(lm, LM.faceL), at(lm, LM.faceR)) / faceH : 0,
     mmPerPx: iris >= 1 ? IRIS_MM / iris : null,
