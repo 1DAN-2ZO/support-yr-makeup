@@ -76,8 +76,16 @@ function resample(poly: readonly Pt[], N: number, up: boolean): PathSample[] {
   return out;
 }
 
+/** 눈 감김 (EAR: 위·아래 눈꺼풀 거리 / 눈 폭). poc guides.js eyeClosed 와 같은 식·임계 */
+export function eyeClosed(lm: readonly Pt[], side: Side): boolean {
+  const [u, l, c] = side === "R" ? [[159, 158], [145, 153], [33, 133]] : [[386, 385], [374, 380], [263, 362]];
+  const ear = (dist(at(lm, u[0]!), at(lm, l[0]!)) + dist(at(lm, u[1]!), at(lm, l[1]!))) / (2 * dist(at(lm, c[0]!), at(lm, c[1]!)));
+  return ear < 0.15;
+}
+
 /**
  * 아이라이너 스트립 (한쪽 눈): 속눈썹 선 + 꼬리 선을 따라 80행, 법선 방향 25칸. + 가 위쪽.
+ * 선 아래(−)는 눈을 뜨고 있으면 눈알이다 — meta.eyeOpen 으로 표시해서 채점이 그 칸을 뺀다.
  * wing = 가이드의 꼬리 선 [눈꼬리, 꼬리 끝], thick = 가이드 선 두께 (눈 폭 비율) — 둘 다 ② 가 이 룩에서 그린 값.
  * R = 이미지 왼쪽 눈(eyeA) = 피험자 오른쪽
  */
@@ -93,7 +101,7 @@ export function sampleLiner(f: SampleFrame, side: Side, wing: readonly [Pt, Pt],
     isWing.push(s.t > lidLen);
     tFromCorner.push((s.t - lidLen) / ue);
   }
-  return { lab, meta: { offs: LINER_OFFS, isWing, tFromCorner, wingLen: dist(wing[0], wing[1]) / ue, thick } };
+  return { lab, meta: { offs: LINER_OFFS, isWing, tFromCorner, wingLen: dist(wing[0], wing[1]) / ue, thick, eyeOpen: !eyeClosed(f.lm, side) } };
 }
 
 /** 눈썹 격자 세로 위치. 0~1 이 테두리 안, 그 밖은 바깥 띠 */

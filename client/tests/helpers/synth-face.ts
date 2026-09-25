@@ -117,13 +117,23 @@ export const inHighlight = (s: Side) => { const poly = geomOf("contour").contour
 /** 가운데(콧대) 하이라이트 밴드 */
 export const inNoseHighlight = () => { const poly = geomOf("contour").contour!.highlight[2]!; return (x: number, y: number) => pointInPoly(x, y, poly); };
 
-/** 속눈썹 선 + 꼬리를 폭 4px 로 그린다. lift 는 꼬리 끝을 위로 올리는 양(px) */
+/** 속눈썹 선 바로 위 피부에 폭 4px 로 그린다 (선 아래는 눈알이라 못 그린다). lift 는 꼬리 끝을 위로 올리는 양(px) */
 export function linerPaint(lift: Partial<Record<Side, number>> = {}, sides: readonly Side[] = ["R", "L"]): Paint {
+  const up = (p: Pt): Pt => ({ x: p.x, y: p.y - 2 });
   const paths = sides.map((s) => {
     const [, end] = geomOf("liner").liner!.wing[s];
-    return [...eyeOf(s).upper.map(P).reverse(), { x: end.x, y: end.y - (lift[s] ?? 0) }];
+    return [...eyeOf(s).upper.map(P).reverse().map(up), up({ x: end.x, y: end.y - (lift[s] ?? 0) })];
   });
   return (x, y) => (paths.some((path) => distToPath(x, y, path) <= 2) ? INK : null);
+}
+/** 눈알: 속눈썹 선 아래 3~12px 띠 (홍채가 움직인 것처럼 색을 바꾸는 데 쓴다) */
+export function eyeballPaint(color: Rgb, sides: readonly Side[] = ["R", "L"]): Paint {
+  // 눈알은 눈 양 끝 사이에만 있다 — 끝점 둘레까지 칠하면 꼬리 밑(피부)에 걸린다
+  const eyes = sides.map((s) => {
+    const xs = [P(eyeOf(s).outer).x, P(eyeOf(s).inner).x];
+    return { path: eyeOf(s).upper.map(P).reverse(), x0: Math.min(...xs) + 4, x1: Math.max(...xs) - 4 };
+  });
+  return (x, y) => (eyes.some((e) => x > e.x0 && x < e.x1 && distToPath(x, y - 7, e.path) <= 4.5) ? color : null);
 }
 export const browPaint: Paint = (x, y) => {
   for (const b of [LM.browA, LM.browB]) if (pointInPoly(x, y, [...b.upper.map(P), ...b.lower.map(P).reverse()])) return BROWN;
