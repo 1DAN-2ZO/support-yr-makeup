@@ -9,6 +9,7 @@
  */
 
 import type { Baseline, FaceShape, GateFail, GateResult, PartId, PartResult, PartStatus } from "./types";
+import type { PersonalPlan } from "./personalize";
 import { LOOK_PART_IDS, PART_IDS } from "./types";
 
 // ---------- 화면 순서 ----------
@@ -199,6 +200,11 @@ export interface Session {
   baseline: Baseline | null;
   faceShape: FaceShape | null;
   lookId: string | null;
+  /**
+   * 개인화 계획 (VLM 제안 → 관문). 예상도(2-b)·화면 4 테두리·채점이 모두 이것을 읽는다 — 개인화된 얼굴이 정답.
+   * 촬영 뒤 한 번 정해 둔다. 없으면 기준 사진으로 규칙 계획을 쓴다(main.ts activePlan)
+   */
+  plan: PersonalPlan | null;
   currentPart: PartId | null;
   parts: SessionPart[];
   startedAt: number;
@@ -214,6 +220,7 @@ export function createSession(now: () => number = Date.now): Session {
     baseline: null,
     faceShape: null,
     lookId: null,
+    plan: null,
     currentPart: null,
     parts: PART_ORDER.map((partId) => ({
       partId,
@@ -324,6 +331,8 @@ export interface SessionDraft {
   baseline: { foreheadL: number; unit: Baseline["unit"]; scleraLab: Baseline["scleraLab"]; faceShape: FaceShape } | null;
   faceShape: FaceShape | null;
   lookId: string | null;
+  /** 계획은 모양·배율·근거 문장뿐이라 얼굴 데이터가 아니다 — 복원해도 같은 정답으로 채점하려고 남긴다 */
+  plan: PersonalPlan | null;
   currentPart: PartId | null;
   parts: (PartResult & { captured: boolean })[];
   startedAt: number;
@@ -340,6 +349,7 @@ export function stripImages(s: Session): SessionDraft {
       : null,
     faceShape: s.faceShape,
     lookId: s.lookId,
+    plan: s.plan,
     currentPart: s.currentPart,
     parts: s.parts.map(({ captured, ...rest }) => ({ ...rest, captured: !!captured })),
     startedAt: s.startedAt,

@@ -12,9 +12,10 @@
  * R = 이미지 왼쪽 눈(eyeA) = 피험자 오른쪽. 진단 문구 "오른쪽 꼬리가…" 가 여기 묶여 있어 뒤집으면 반대로 안내한다.
  */
 
+import { faceAxis, mmPerPx } from "./face-measure";
 import { LM, at } from "./landmarks";
 import type { LookPart, LookPartId } from "./looks";
-import type { LinerStyle } from "./personalize";
+import type { BrowArch, LinerStyle, PersonalPlan } from "./personalize";
 import type { GuideSource, PartGeometry } from "./score-part";
 import type { Side } from "./score";
 import type { Baseline, Pt } from "./types";
@@ -40,6 +41,19 @@ export const GUIDE_PARAMS = {
  */
 export const PERSONAL_LINER = { wingedDeg: 15, length: 0.12 } as const;
 
+/**
+ * 표준형 눈썹 기준값 mm (장소쌍·최민령 2023, JKSC — 선행 연구 정리값).
+ * 두께만 논문 표(9.8)가 아니라 +1 mm: 여섯 얼굴형 모두 전문가가 +1 mm 를 골랐다 — 얼굴형과 무관하게 기준이 얇았던 것으로 읽는다.
+ * 얼굴형에 따른 높이·미간 조정(±4 mm)은 여기 넣지 않는다 — 얼굴 비율이 카메라 거리에 따라 흔들려 보류(C-2).
+ */
+export const STANDARD_BROW_MM = { pupilToTop: 22.05, innerToTop: 22.85, outerToTop: 23.38, lidToBottom: 13.7, headThick: 10.8, glabella: 28.8 } as const;
+
+/** 굽기 조정: arched 면 가장 높은 곳을 이만큼(mm) 올리고 flatter 면 내린다. 논문 값이 아니라 우리 가정값 (Zhao 2019 는 방향만 준다) */
+export const BROW_ARCH_MM = 1;
+
+/** 표준 눈썹 조정 — personalize.ts 의 계획(BrowPlanValues)에서 온다 */
+export interface BrowAdjust { heightMm: number; glabellaMm: number; arch: BrowArch }
+
 /** 랜드마크와 기준 길이만 있으면 된다 — 화면에서는 이미지 없이 부른다 */
 export type GuideFrame = { lm: readonly Pt[]; unit: Baseline["unit"] };
 
@@ -62,8 +76,8 @@ function ellipse(c: Pt, rx: number, ry: number, deg: number, n = 28): Pt[] {
 }
 
 const SIDES = [
-  { key: "R" as Side, eye: LM.eyeA, brow: LM.browA, cheek: LM.cheekA, face: LM.faceL, sign: -1 },
-  { key: "L" as Side, eye: LM.eyeB, brow: LM.browB, cheek: LM.cheekB, face: LM.faceR, sign: 1 },
+  { key: "R" as Side, eye: LM.eyeA, brow: LM.browA, cheek: LM.cheekA, face: LM.faceL, ala: LM.alaA, sign: -1 },
+  { key: "L" as Side, eye: LM.eyeB, brow: LM.browB, cheek: LM.cheekB, face: LM.faceR, ala: LM.alaB, sign: 1 },
 ] as const;
 type SideSpec = (typeof SIDES)[number];
 const both = <T>(fn: (s: SideSpec) => T): Record<Side, T> => ({ R: fn(SIDES[0]), L: fn(SIDES[1]) });
@@ -108,6 +122,16 @@ function personalWing(f: GuideFrame, eye: SideSpec["eye"], style: LinerStyle): r
   return [outer, add(outer, mul(dir, PERSONAL_LINER.length * f.unit.eye))] as const;
 }
 
+/** 섀도 영역: 윗눈꺼풀 → 눈썹 아랫선 쪽으로 ratio 만큼. 순서는 눈꺼풀 점들 → 위 테두리(거꾸로) */
+function shadowRegions(f: GuideFrame, ratio: number): Record<Side, Pt[]> {
+  const P = (i: number): Pt => at(f.lm, i);
+  return both(({ eye, brow }) => {
+    const lid = eye.upper.map(P), browLo = brow.lower.map(P);
+    const top = lid.map((p, i) => mix(p, browLo[Math.min(browLo.length - 1, Math.round((i / (lid.length - 1)) * (browLo.length - 1)))]!, ratio));
+    return [...lid, ...top.reverse()];
+  });
+}
+
 /**
  * 채점용 가이드.
  * @param lookParts 고른 룩의 parts (looks.json). 비어 있으면 기본 치수
@@ -122,15 +146,7 @@ export function lookGuide(lookParts: Partial<Record<LookPartId, LookPart>> = {},
 
     if (partId === "liner") return { liner: { wing: both(({ eye }) => wingOf(f, eye, linerStyle)), thick: linerThick } };
     if (partId === "lip") return { lip: { offset: GUIDE_PARAMS.lip.offset } };
-    if (partId === "shadow") {
-      return {
-        regions: both(({ eye, brow }) => {
-          const lid = eye.upper.map(P), browLo = brow.lower.map(P);
-          const top = lid.map((p, i) => mix(p, browLo[Math.min(browLo.length - 1, Math.round((i / (lid.length - 1)) * (browLo.length - 1)))]!, GUIDE_PARAMS.shadow.rangeRatio));
-          return [...lid, ...top.reverse()];
-        }),
-      };
-    }
+    if (partId === "shadow") return { regions: shadowRegions(f, GUIDE_PARAMS.shadow.rangeRatio) };
     if (partId === "cheek") {
       const c = GUIDE_PARAMS.cheek;
       return { regions: both(({ cheek, face, sign }) => ellipse(mix(P(cheek), P(face), c.toward), faceW * c.rx, faceW * c.ry, sign * c.tilt)) };
@@ -167,4 +183,81 @@ export function linerOutline(f: GuideFrame, thick: number, linerStyle?: LinerSty
     });
     return [...lid, wingOf(f, eye, linerStyle)[1], ...top.reverse()];
   });
+}
+
+export interface BrowPlan {
+  /** 앞머리 (미간 쪽 끝) */
+  head: { top: Pt; bottom: Pt };
+  /** 가장 높은 곳 — 윗점은 동공 위, 아랫점은 윗눈꺼풀 꼭대기 위 */
+  peak: { top: Pt; bottom: Pt };
+  /** 바깥 눈꼬리 위 */
+  outer: { top: Pt; bottom: Pt };
+  /** 꼬리 끝 (위아래가 만나는 점) */
+  tail: Pt;
+  /** 닫힌 윤곽: 윗선(앞머리 → 꼬리) → 아랫선(꼬리 → 앞머리) */
+  outline: Pt[];
+}
+
+/**
+ * 표준 눈썹 (논문 기술 C-1). 기준값 mm 를 홍채 지름으로 px 로 바꿔 이 얼굴 위에 세운다.
+ * 위·아래는 화면이 아니라 얼굴 기준(눈동자 선에 수직) — 고개를 기울여도 얼굴에 붙어 있다.
+ * mm 를 모르면(홍채 점이 뭉개짐) null.
+ *
+ * 논문에 없는 부분은 우리 가정이다:
+ *  - 바깥 눈꼬리 위 두께 = 가장 높은 곳의 두께
+ *  - 꼬리 끝 = 콧방울 → 바깥 눈꼬리 연장선 위(흔한 메이크업 규칙), 높이는 앞머리 **가운데**.
+ *    흔히 "앞머리 아랫선과 꼬리 끝이 수평" 이라 하지만, 논문 두께(10.8 mm)로는 꼬리가 눈꼬리 쪽으로 급히 떨어졌다
+ *
+ * adj(개인화): 전체를 heightMm 만큼 올리고, 미간을 glabellaMm 만큼 넓히고, 굽기에 따라 가장 높은 곳을 옮긴다.
+ * 꼬리 끝은 옮긴 앞머리 가운데 높이로 다시 구한다 — 콧방울 선 위에 남는다.
+ */
+export function browStandard(f: GuideFrame, adj?: BrowAdjust): Record<Side, BrowPlan> | null {
+  const mm = mmPerPx(f.lm);
+  if (mm == null) return null;
+  const B = STANDARD_BROW_MM, px = (v: number) => v / mm;
+  const P = (i: number): Pt => at(f.lm, i);
+  const u = faceAxis(f.lm);                 // 얼굴 가로 (이미지 왼쪽 → 오른쪽)
+  const up = { x: u.y, y: -u.x };           // 이마 쪽
+  const mid = mix(P(LM.eyeA.inner), P(LM.eyeB.inner), 0.5);
+  const height = (p: Pt) => (p.x - mid.x) * up.x + (p.y - mid.y) * up.y;
+  const place = (along: number, h: number): Pt => add(mid, add(mul(u, along), mul(up, h)));
+  const lift = px(adj?.heightMm ?? 0);
+  const arch = adj?.arch === "arched" ? px(BROW_ARCH_MM) : adj?.arch === "flatter" ? -px(BROW_ARCH_MM) : 0;
+  const halfGlabella = px(B.glabella + (adj?.glabellaMm ?? 0)) / 2;
+  const plans = both(({ eye, ala, sign }): BrowPlan | null => {
+    const outer = P(eye.outer), pupil = P(eye.iris[0]), a = P(ala);
+    const apex = eye.upper.map(P).reduce((p, q) => (height(q) > height(p) ? q : p));
+    const headTop = height(P(eye.inner)) + px(B.innerToTop) + lift;
+    const head = { top: place(sign * halfGlabella, headTop), bottom: place(sign * halfGlabella, headTop - px(B.headThick)) };
+    const peak = { top: add(pupil, mul(up, px(B.pupilToTop) + lift + arch)), bottom: add(apex, mul(up, px(B.lidToBottom) + lift + arch)) };
+    const oTop = add(outer, mul(up, px(B.outerToTop) + lift));
+    const out = { top: oTop, bottom: add(oTop, mul(up, height(peak.bottom) - height(peak.top))) };
+    const span = height(outer) - height(a);
+    if (Math.abs(span) < 1e-6) return null;
+    const tail = mix(a, outer, (headTop - px(B.headThick) / 2 - height(a)) / span);
+    return { head, peak, outer: out, tail, outline: [head.top, peak.top, out.top, tail, out.bottom, peak.bottom, head.bottom] };
+  });
+  return plans.R && plans.L ? { R: plans.R, L: plans.L } : null;
+}
+
+/**
+ * 개인화 가이드 — 개인화 계획이 가이드와 채점의 정답이 된다 (결정 2026-09-25: 개인화된 얼굴이 정답).
+ * 예상도(2-b)·화면 4 테두리·채점이 **같은 계획**을 읽어야 한다 — 계획은 세션에 한 번 정해 둔다(session.plan).
+ *
+ * 계획이 바꾸는 것: 라이너 꼬리 스타일, 섀도 범위 배율, 눈썹 정답 영역(표준 눈썹 + 얼굴형 조정).
+ * 계획이 없으면 lookGuide 그대로 — 개인화 전 점수가 바뀌지 않는다.
+ *
+ * 아직 채점이 쓰지 않는 것 (③ 결정): 눈썹 영역(채점은 지금 랜드마크 눈썹을 본다), 진하기 배율(강도 밴드 #153).
+ */
+export function planGuide(lookParts: Partial<Record<LookPartId, LookPart>> = {}, plan?: PersonalPlan | null): GuideSource {
+  const base = lookGuide(lookParts, plan?.liner.plan.style);
+  if (!plan) return base;
+  return (partId, f): PartGeometry => {
+    if (partId === "shadow") return { regions: shadowRegions(f, GUIDE_PARAMS.shadow.rangeRatio * plan.shadow.range) };
+    if (partId === "brow") {
+      const b = browStandard(f, plan.brow);
+      return b ? { regions: { R: b.R.outline, L: b.L.outline } } : {};
+    }
+    return base(partId, f);
+  };
 }

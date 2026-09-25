@@ -228,3 +228,15 @@ describe("P 세션", () => {
     expect(s2.parts[0]!.status).toBe("passed");
   });
 });
+
+describe("세션 — 개인화 계획 (예상도·가이드·채점이 같은 계획을 읽는다)", () => {
+  it("새 세션에는 계획이 없다", () => {
+    expect(createSession().plan).toBeNull();
+  });
+
+  it("draft 에 계획이 그대로 남는다 — 복원해도 같은 정답으로 채점", () => {
+    const plan = { liner: { plan: { style: "extend", reason: "down_correct" }, source: "vlm" }, brow: { faceShape: "round", source: "vlm", heightMm: 2, glabellaMm: -2, arch: "arched" }, shadow: { range: 1.1, source: "vlm" }, intensity: { lip: 0.9 }, rationale: { lip: "입술을 덜어냈어요" }, rejected: [] } as const;
+    const s: Session = { ...createSession(), plan: JSON.parse(JSON.stringify(plan)) };
+    expect(JSON.parse(JSON.stringify(stripImages(s))).plan).toEqual(plan);
+  });
+});

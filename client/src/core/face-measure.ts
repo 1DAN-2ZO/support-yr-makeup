@@ -79,7 +79,7 @@ function farthest(a: Pt, b: Pt, pts: readonly Pt[]): { p: Pt; d: number } {
  * 눈동자 점이 뭉개져 있으면 두 안쪽 눈꼬리를 잇는 선.
  * 고개를 기울인 채 찍어도 눈꼬리 기울기가 흔들리지 않게 여기에 대고 잰다 — 표준 사진(Jung 2020)과 달리 사용자는 고개를 똑바로 두지 않는다.
  */
-function faceAxis(lm: readonly Pt[]): Pt {
+export function faceAxis(lm: readonly Pt[]): Pt {
   const pick = (a: number, b: number): Pt => {
     const p = at(lm, a), q = at(lm, b);
     return { x: q.x - p.x, y: q.y - p.y };
@@ -126,8 +126,13 @@ function irisDiameter(lm: readonly Pt[], iris: readonly number[]): number {
   return (dist(p[1]!, p[3]!) + dist(p[2]!, p[4]!)) / 2;
 }
 
-export function measureFace(lm: readonly Pt[]): FaceMeasure {
+/** 1px 이 몇 mm 인가 — 두 홍채 지름의 평균을 11.3 mm 로 본다. 홍채 점이 뭉개져 있으면 null */
+export function mmPerPx(lm: readonly Pt[]): number | null {
   const iris = (irisDiameter(lm, LM.eyeA.iris) + irisDiameter(lm, LM.eyeB.iris)) / 2;
+  return iris >= 1 ? IRIS_MM / iris : null;
+}
+
+export function measureFace(lm: readonly Pt[]): FaceMeasure {
   const faceH = dist(at(lm, LM.forehead), at(lm, LM.chin));
   const axis = faceAxis(lm);
   return {
@@ -135,6 +140,6 @@ export function measureFace(lm: readonly Pt[]): FaceMeasure {
     eye: { R: measureEye(lm, LM.eyeA, axis), L: measureEye(lm, LM.eyeB, axis) },
     brow: { R: measureBrow(lm, LM.browA), L: measureBrow(lm, LM.browB) },
     faceAspect: faceH > 0 ? dist(at(lm, LM.faceL), at(lm, LM.faceR)) / faceH : 0,
-    mmPerPx: iris >= 1 ? IRIS_MM / iris : null,
+    mmPerPx: mmPerPx(lm),
   };
 }

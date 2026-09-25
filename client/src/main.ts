@@ -19,7 +19,9 @@ import {
   type ScreenId,
   type Session,
 } from "./core/flow";
-import { pocGuide } from "./core/guide-poc";
+import { measureFace } from "./core/face-measure";
+import { planGuide } from "./core/guides";
+import { resolvePlan, type PersonalPlan } from "./core/personalize";
 import type { CaptureBundle } from "./core/types";
 import { checkSecureContext, readEnv, type SecureCheck } from "./core/secure-context";
 import { createSessionStore, indexedDbBackend, memoryBackend } from "./core/session-store";
@@ -54,6 +56,12 @@ function el(id: string): HTMLElement {
 
 async function boot(): Promise<void> {
   let session: Session = createSession();
+  /**
+   * 지금 세션의 개인화 계획. VLM 계획이 세션에 있으면 그것, 없으면 기준 사진을 재서 규칙 계획.
+   * 같은 기준 사진이면 늘 같은 계획이 나온다 — 예상도·가이드·채점이 어긋나지 않는다.
+   */
+  const activePlan = (): PersonalPlan | null =>
+    session.plan ?? (session.baseline ? resolvePlan(measureFace(session.baseline.lm), { faceShape: session.baseline.faceShape }) : null);
 
   // 로그는 세션과 같은 IndexedDB 를 쓴다 — DB 를 두 벌 만들지 않는다.
   // 끝내기(sessionStore.clearAll)가 키를 전부 지우므로 로그도 같이 지워진다 (F-11).
@@ -129,8 +137,8 @@ async function boot(): Promise<void> {
       getBaseline: () => session.baseline,
       // 화면 4(②) 가 확인받기 순간의 프레임 묶음을 parts[].captured 에 둔다 (CaptureBundle)
       getCapture: (part) => (session.parts.find((p) => p.partId === part)?.captured as CaptureBundle | null) ?? null,
-      // 고른 룩의 치수(라이너 두께)로 채점한다. ② guides.ts 가 오면 여기만 바뀐다
-      guide: () => pocGuide(lookById(session.lookId).parts),
+      // 고른 룩 + 개인화 계획으로 채점한다 — 개인화된 얼굴이 정답 (결정 2026-09-25)
+      guide: () => planGuide(lookById(session.lookId).parts, activePlan()),
       getStatus: (part) => session.parts.find((p) => p.partId === part)?.status ?? "in_progress",
       apply: (part, outcome) => {
         session = applyResult(session, part, outcome);

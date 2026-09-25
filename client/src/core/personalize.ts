@@ -12,6 +12,8 @@
  */
 
 import type { FaceMeasure } from "./face-measure";
+import type { LookPartId } from "./looks";
+import type { FaceShape, FaceShapeLabel } from "./types";
 
 export type LinerStyle = "winged" | "drop" | "extend";
 export const LINER_STYLES: readonly LinerStyle[] = ["winged", "drop", "extend"];
@@ -68,4 +70,140 @@ export function resolveLiner(m: FaceMeasure, adapt: LinerAdapt = "correct", prop
   if (!style) return { ...rule, rejected: `모르는 스타일: ${proposal.style}` };
   if (style === "drop" && !isDown(m)) return { ...rule, rejected: "처진 눈이 아닌데 drop 을 제안함" };
   return { plan: { style, reason: reasonOf(m, style) }, source: "vlm" };
+}
+
+// ── 개인화 계획 전체 (VLM 제안 → 검증 관문) ────────────────────────────
+
+/**
+ * 얼굴형별 표준 눈썹 조정 mm (장소쌍·최민령 2023, JKSC — 전문가 30명이 가장 많이 고른 값).
+ * height: 눈과 눈썹 사이 간격(+ 면 높게), glabella: 미간 너비(− 면 좁게).
+ * ⑤ 의 5분류로 옮겼다: oblong = 긴형, heart = 역삼각형. 논문의 다이아몬드형은 ⑤ 분류에 없다.
+ */
+export const JKSC_BROW_ADJUST_MM: Record<FaceShapeLabel, { height: number; glabella: number }> = {
+  oblong: { height: -4, glabella: -4 },
+  heart: { height: 0, glabella: 0 },
+  square: { height: 0, glabella: 0 },
+  oval: { height: 4, glabella: -4 },
+  round: { height: 4, glabella: -4 },
+};
+
+/**
+ * 논문 조정값에 곱하는 배율. 논문도 "4 mm 면 인상이 크게 바뀐다" 고 경고하고, 얼굴형 판정이 5번에 1번은 틀린다(⑤ 81.5%).
+ * 틀렸을 때 티가 덜 나게 절반으로 시작한다 — 우리 가정값, 사용자 실험(#84)으로 확인.
+ */
+export const BROW_ADJUST_SCALE = 0.5;
+
+/** ⑤ 모델 판정을 VLM 보다 앞세우는 확신도 */
+export const FACESHAPE_TRUST = 0.6;
+
+export type BrowArch = "flatter" | "standard" | "arched";
+export const BROW_ARCHES: readonly BrowArch[] = ["flatter", "standard", "arched"];
+export const FACE_SHAPES: readonly FaceShapeLabel[] = ["oval", "round", "square", "oblong", "heart"];
+const INTENSITY_PARTS: readonly LookPartId[] = ["brow", "liner", "shadow", "cheek", "lip"];
+
+/** 받아 주는 범위. 벗어나면 그 항목만 규칙값 — 가정값이다 */
+export const PLAN_LIMITS = { shadowRange: [0.8, 1.2], intensity: [0.7, 1.3], rationaleMax: 40 } as const;
+
+/** 굽기 기본값 (Zhao 2019: 둥근 얼굴일수록 굽은 눈썹, JKSC 와 같은 방향) */
+const archOf = (s: FaceShapeLabel | null): BrowArch => (s === "round" ? "arched" : s === "oblong" ? "flatter" : "standard");
+
+export interface BrowPlanValues {
+  faceShape: FaceShapeLabel | null;
+  source: "rule" | "vlm";
+  /** 표준 눈썹에서 옮길 mm (이미 BROW_ADJUST_SCALE 적용) */
+  heightMm: number;
+  glabellaMm: number;
+  arch: BrowArch;
+}
+
+export interface PersonalPlan {
+  liner: LinerDecision;
+  brow: BrowPlanValues;
+  /** 섀도 높이 배율 (guides 의 rangeRatio 에 곱한다) */
+  shadow: { range: number; source: "rule" | "vlm" };
+  /** 부위별 진하기 배율. 없는 부위는 1 */
+  intensity: Partial<Record<LookPartId, number>>;
+  /** 부위별 근거 한 줄 (화면 3). 숫자 없음 (F-09) */
+  rationale: Partial<Record<LookPartId, string>>;
+  /** 거절한 제안과 이유 — 로그와 프롬프트 개선에 쓴다 */
+  rejected: string[];
+}
+
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const inRange = (v: unknown, [lo, hi]: readonly [number, number]): v is number => typeof v === "number" && Number.isFinite(v) && v >= lo && v <= hi;
+
+/**
+ * 개인화 계획. 규칙값을 먼저 세우고, VLM 제안(믿지 않는 JSON)은 항목별로 측정·규칙과 대조해 받거나 거절한다.
+ * 한 항목이 틀려도 나머지는 살린다. 제안이 JSON 객체가 아니면 통째로 규칙값.
+ */
+export function resolvePlan(
+  m: FaceMeasure,
+  opts: { adapt?: LinerAdapt; faceShape?: FaceShape | null } = {},
+  proposal?: unknown,
+): PersonalPlan {
+  const rejected: string[] = [];
+  const p = proposal === undefined ? {} : isObj(proposal) ? proposal : null;
+  if (p === null) rejected.push("제안이 JSON 객체가 아님");
+  const q = p ?? {};
+
+  // 라이너 — 기존 관문
+  const lp = isObj(q.liner) && typeof q.liner.style === "string" ? { style: q.liner.style } : undefined;
+  const liner = resolveLiner(m, opts.adapt, lp);
+  if (liner.rejected) rejected.push(`라이너: ${liner.rejected}`);
+
+  // 얼굴형 — ⑤ 모델이 확신하면 그것, 아니면 VLM, 둘 다 없으면 모름.
+  // 개인화가 채점의 정답이 되므로 믿을 수 없는 판정(규칙 22%, 확신 낮은 모델)으로는 눈썹을 옮기지 않는다
+  const fs = opts.faceShape;
+  const trusted = fs && fs.method === "model" && fs.confidence >= FACESHAPE_TRUST ? fs.label : null;
+  let shape: FaceShapeLabel | null = trusted;
+  let browSource: "rule" | "vlm" = "rule";
+  if (isObj(q.faceShape)) {
+    const label = FACE_SHAPES.find((s) => isObj(q.faceShape) && s === q.faceShape.label);
+    if (!label) rejected.push(`얼굴형: 모르는 이름 ${String(q.faceShape.label)}`);
+    else if (trusted && label !== trusted) rejected.push(`얼굴형: ⑤ 판정(${trusted})과 다름 — ${label}`);
+    else if (!trusted) { shape = label; browSource = "vlm"; }
+  }
+
+  // 눈썹 굽기 — 얼굴형과 반대 방향이면 거절
+  let arch = archOf(shape);
+  if (isObj(q.brow) && q.brow.arch !== undefined) {
+    const a = BROW_ARCHES.find((s) => isObj(q.brow) && s === q.brow.arch);
+    if (!a) rejected.push(`눈썹 굽기: 모르는 값 ${String(q.brow.arch)}`);
+    else if ((shape === "oblong" && a === "arched") || (shape === "round" && a === "flatter")) rejected.push(`눈썹 굽기: ${shape} 에 ${a} 는 반대 방향`);
+    else { arch = a; browSource = "vlm"; }
+  }
+  const adj = shape ? JKSC_BROW_ADJUST_MM[shape] : { height: 0, glabella: 0 };
+  const brow: BrowPlanValues = { faceShape: shape, source: browSource, heightMm: adj.height * BROW_ADJUST_SCALE, glabellaMm: adj.glabella * BROW_ADJUST_SCALE, arch };
+
+  // 섀도 범위
+  let shadow: PersonalPlan["shadow"] = { range: 1, source: "rule" };
+  if (isObj(q.shadow) && q.shadow.range !== undefined) {
+    if (inRange(q.shadow.range, PLAN_LIMITS.shadowRange)) shadow = { range: q.shadow.range, source: "vlm" };
+    else rejected.push(`섀도 범위: ${String(q.shadow.range)} 는 ${PLAN_LIMITS.shadowRange.join("~")} 밖`);
+  }
+
+  // 진하기 — 부위별
+  const intensity: PersonalPlan["intensity"] = {};
+  if (isObj(q.intensity)) {
+    for (const [k, v] of Object.entries(q.intensity)) {
+      const part = INTENSITY_PARTS.find((s) => s === k);
+      if (!part) rejected.push(`진하기: 모르는 부위 ${k}`);
+      else if (!inRange(v, PLAN_LIMITS.intensity)) rejected.push(`진하기: ${k} ${String(v)} 는 ${PLAN_LIMITS.intensity.join("~")} 밖`);
+      else intensity[part] = v;
+    }
+  }
+
+  // 근거 문장 — 숫자 없음(F-09), 짧게
+  const rationale: PersonalPlan["rationale"] = {};
+  if (isObj(q.rationale)) {
+    for (const [k, v] of Object.entries(q.rationale)) {
+      const part = INTENSITY_PARTS.find((s) => s === k);
+      if (!part || typeof v !== "string") rejected.push(`근거: ${k} 모양이 틀림`);
+      else if (/\d/.test(v)) rejected.push(`근거: ${k} 에 숫자가 있음`);
+      else if (v.length > PLAN_LIMITS.rationaleMax) rejected.push(`근거: ${k} 가 너무 김`);
+      else rationale[part] = v.trim();
+    }
+  }
+
+  return { liner, brow, shadow, intensity, rationale, rejected };
 }
