@@ -1,5 +1,5 @@
 // 랜드마크 폴리곤(점 목록)을 픽셀 마스크(0..1 커버리지)로 래스터화. 브라우저 Canvas 2D 필요(Node 불가).
-// extractLayer(lib/extractLayer.js)가 기대하는 마스크 형식({width,height,data:Float32Array})을 만든다.
+// deltaLayer.js가 기대하는 마스크 형식({width,height,data:Float32Array})을 만든다.
 
 export function rasterizePolygon(polygonPts, width, height) {
   const cv = document.createElement("canvas");

@@ -1,5 +1,4 @@
-// 3점 대응 아핀 변형. app.js(v2 Canvas2D 워핑)와 bakeLayer.js(C4 UV 굽기) 둘 다 쓰는 공용 함수 —
-// 중복 구현 금지, 여기 하나만.
+// 3점 대응 아핀 변형. app.js(v2 Canvas2D 워핑)가 쓰는 공용 함수 — 중복 구현 금지, 여기 하나만.
 
 // src 3점 -> dst 3점 을 만족하는 2x3 아핀 행렬 [a,b,c,d,e,f] (Canvas2D setTransform 순서)
 export function solveAffine(src, dst) {

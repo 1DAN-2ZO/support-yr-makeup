@@ -8,6 +8,11 @@
  2. 결과 Lab에서 그 편향을 차감 (이마가 프레임 밖이라 추정 불가면 레이어 없음)
  3. 부위 마스크 안에서 원본과 보정된 결과의 ΔE(CIE76) 계산, layer_de_threshold 미만은 알파 0
 
+부위별 임계값(2026-09-25, #tuning): CIE76은 어둡고 채도 낮은 색 변화(눈썹·스모키 아이섀도우)를 밝고
+진한 변화(립스틱)보다 작게 잰다. 전체 부위 공통 임계값(layer_de_threshold=6)으로는 눈썹·아이섀도우가
+거의 안 잡힌다 — client POC round-trip 검증(2026-09-24)에서 실측. `PART_DE_OVERRIDE`로 눈썹·눈섀도우만
+임계값·풀알파 기준을 낮춘다. 시작값이라 실사진 회귀 테스트로 재조정 필요.
+
 인코딩(RGBA, uint8):
   R = ΔL * 1.275 + 128  (ΔL -100..100 -> 0..255)
   G = Δa + 128,  B = Δb + 128   (Δ는 편향 보정 후 결과 - 원본, 0 변화 = 128)
@@ -30,8 +35,18 @@ log = logging.getLogger(__name__)
 
 # 모델 서버가 id_image를 리사이즈하는 크기 = 결과 이미지 크기
 ALIGNED_SIZE = 512
-# 알파가 1.0(불투명)이 되는 ΔE
+# 알파가 1.0(불투명)이 되는 ΔE (부위별 override가 없는 부위의 기본값)
 _ALPHA_FULL_DE = 40.0
+
+# 부위별 (임계값, 풀알파 ΔE) override — 없는 부위는 layer_de_threshold/_ALPHA_FULL_DE(전역 기본값)를 쓴다.
+# 눈썹·눈섀도우만 둘 다 낮춰서: ① 더 작은 ΔE에서도 알파가 생기고(임계값↓) ② 같은 ΔE라도 더 빨리
+# 불투명해진다(풀알파 기준↓) — 어두운 색 변화가 CIE76에서 작게 재지는 걸 이중으로 보정한다.
+PART_DE_OVERRIDE: dict[str, tuple[float, float]] = {
+    "browR": (3.0, 20.0),
+    "browL": (3.0, 20.0),
+    "eyeR": (3.0, 20.0),
+    "eyeL": (3.0, 20.0),
+}
 
 # sRGB(D65) <-> XYZ, client/lib/color.js와 같은 행렬·백색점
 _M = np.array([[0.4124, 0.3576, 0.1805], [0.2126, 0.7152, 0.0722], [0.0193, 0.1192, 0.9505]])
@@ -62,8 +77,12 @@ def extract_layer_from_arrays(
     """source/result: HxWx3 uint8, masks: 부위 -> HxW bool, forehead: 편향 추정용 bool. 반환 HxWx4 uint8.
 
     forehead가 없거나 비면(이마가 프레임 밖) None — 전역 편향 보정 없이 뽑으면 diffusion 색조가 통째로
-    가짜 화장이 되므로, 가짜 레이어보다 클라이언트의 3점 아핀 폴백이 낫다."""
-    thr = settings.layer_de_threshold if threshold is None else threshold
+    가짜 화장이 되므로, 가짜 레이어보다 클라이언트의 3점 아핀 폴백이 낫다.
+
+    threshold: 넘기면 PART_DE_OVERRIDE에 없는 부위(=전역 기본값 자리)에만 적용된다. 눈썹·눈섀도우처럼
+    override가 있는 부위는 이 인자와 무관하게 항상 자기 값을 쓴다(호출부가 실수로 전체를 흐리게
+    만들 수 없게)."""
+    thr_default = settings.layer_de_threshold if threshold is None else threshold
     lab_s = _rgb2lab(source_rgb)
     lab_r = _rgb2lab(result_rgb)
 
@@ -75,10 +94,13 @@ def extract_layer_from_arrays(
     delta = diff - bias  # 편향 보정된 결과 - 원본
     de = np.linalg.norm(delta, axis=-1)
 
-    mask = np.zeros(de.shape, dtype=bool)
-    for m in masks.values():
-        mask |= m
-    alpha = np.where(mask & (de >= thr), np.clip(de / _ALPHA_FULL_DE, 0, 1) * 255, 0)
+    # 부위마다 다른 (임계값, 풀알파 ΔE)를 적용해야 해서 전체를 한 마스크로 합치지 않고 부위별로 돈다.
+    # 부위가 겹치면(눈섀도우 밴드가 눈썹 쪽으로 번지는 경우 등) 더 진하게 나온 쪽을 남긴다.
+    alpha = np.zeros(de.shape, dtype=np.float64)
+    for part_id, m in masks.items():
+        part_thr, part_full_de = PART_DE_OVERRIDE.get(part_id, (thr_default, _ALPHA_FULL_DE))
+        part_alpha = np.where(m & (de >= part_thr), np.clip(de / part_full_de, 0, 1) * 255, 0)
+        alpha = np.maximum(alpha, part_alpha)
 
     out = np.empty((*de.shape, 4), dtype=np.uint8)
     out[..., 0] = np.clip(np.round(delta[..., 0] * 1.275 + 128), 0, 255)
