@@ -40,8 +40,11 @@ for (let d = -3; d <= 3 + 1e-6; d += 0.25) OFFS_MM.push(+d.toFixed(3));
 const lab = (L: number, a: number, b: number): Lab => ({ L, a, b });
 const SKIN = lab(62, 12, 14), INK = lab(18, 4, 4);
 
-/** 라이너 스트립: 80행 (0~59 눈꺼풀, 60~79 꼬리 0~4mm). hit(i, offMm) 가 true 면 화장색 */
-function linerStrip(hit: (i: number, offMm: number) => boolean): LinerStrip {
+/**
+ * 라이너 스트립: 80행 (0~59 눈꺼풀, 60~79 꼬리 0~4mm). hit(i, offMm) 가 true 면 화장색.
+ * 원래 POC 검증은 선 위·아래 대칭으로 그렸다 — 눈을 감은 프레임(eyeOpen false)으로 두면 그 조건이 그대로 성립한다
+ */
+function linerStrip(hit: (i: number, offMm: number) => boolean, eyeOpen = false): LinerStrip {
   const rows: Lab[][] = [], isWing: boolean[] = [], tFromCorner: number[] = [];
   for (let i = 0; i < 80; i++) {
     const wing = i >= 60;
@@ -50,7 +53,7 @@ function linerStrip(hit: (i: number, offMm: number) => boolean): LinerStrip {
     rows.push(OFFS_MM.map((o) => (hit(i, o) ? INK : SKIN)));
   }
   // 가이드 두께 1.2mm — 원래 채점기 상수였지만 이제 ② 가 룩마다 주는 값이라 샘플 meta 로 들어온다
-  return { lab: rows, meta: { offs: OFFS_MM.map((o) => o / EYE_MM), isWing, tFromCorner, wingLen: 4 / EYE_MM, thick: 1.2 / EYE_MM } };
+  return { lab: rows, meta: { offs: OFFS_MM.map((o) => o / EYE_MM), isWing, tFromCorner, wingLen: 4 / EYE_MM, thick: 1.2 / EYE_MM, eyeOpen } };
 }
 const bareStrip = linerStrip(() => false);
 const eyeRes = (hit: (i: number, offMm: number) => boolean) => compareLinerEye(bareStrip, linerStrip(hit), noCorr);
@@ -113,6 +116,26 @@ describe("아이라이너", () => {
     expect(r.present).toBe(false);
     expect(r.score).toBeNull();
     expect(decide("liner", r)).toMatchObject({ status: "check_only", reason: "faint" });
+  });
+
+  it("L9 눈을 뜨고 있으면 속눈썹 선 아래(눈알)는 안 본다 — 홍채가 움직여도 두께·번짐이 안 흔들린다", () => {
+    // 선 위쪽 0~1.2mm 에 그린 라이너 + 눈알(선 아래 0.5mm 부터)이 프레임마다 다른 색
+    const skinLiner = (_i: number, o: number): boolean => o >= 0 && o <= 1.2;
+    const eyeball = (row: Lab[], i: number): Lab[] => row.map((c, j) => (i < 60 && OFFS_MM[j]! < -0.5 ? lab(30 + (i % 7) * 5, 5, -20) : c));
+    const clean = compareLinerEye(linerStrip(() => false, true), linerStrip(skinLiner, true), noCorr);
+    const moved = linerStrip(skinLiner, true);
+    moved.lab = moved.lab.map(eyeball);
+    const noisy = compareLinerEye(linerStrip(() => false, true), moved, noCorr);
+    expect(noisy.thickness).toBe(clean.thickness);
+    expect(noisy.overflow).toBe(clean.overflow);
+    expect(noisy.coverage).toBe(clean.coverage);
+    expect(linerResult({ R: noisy, L: noisy }).codes).toEqual([]);
+    // 눈을 감은 프레임이면 아래는 피부라 그대로 본다 → 같은 변화가 번짐으로 잡힌다
+    const closed = linerStrip(skinLiner);
+    closed.lab = closed.lab.map(eyeball);
+    expect(compareLinerEye(linerStrip(() => false), closed, noCorr).overflow).toBeGreaterThan(0.3);
+    // 한 프레임만 감았으면(맨얼굴은 뜸) 아래를 비교할 수 없으니 역시 안 본다
+    expect(compareLinerEye(linerStrip(() => false, true), closed, noCorr).overflow).toBe(0);
   });
 
   it("L8 조명 보정: 이마 L 이 20% 어두워져도 같은 판정", () => {
