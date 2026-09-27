@@ -81,21 +81,21 @@ function thumb(cv: HTMLCanvasElement | null, w = 160): HTMLCanvasElement {
 }
 
 /**
- * 찍혔다는 신호: 진동(Android) + 눈 감는 장은 짧은 "삑"(iOS 는 진동이 없다).
- * 눈을 감고 있으면 번쩍임을 못 본다 — 언제 떠도 되는지 몰라 한참 감고 있게 된다 (2026-09-28 Android 실기기)
+ * 찍혔다는 신호: 짧은 소리 + 진동. 눈 감는 장은 높은 "삑", 나머지는 낮은 "톡".
+ * 눈을 감고 있으면 번쩍임을 못 봐서 언제 떠야 할지 모른다 (2026-09-28 Android 실기기).
+ * 진동은 기기 진동 세기 설정을 따라 안 느껴지기도 해서(같은 날 Android: 소리만 들림) 소리를 모든 장에 낸다. iOS 는 진동이 없다.
  */
 let audio: AudioContext | null = null;
-function shutterCue(beep: boolean): void {
-  try { navigator.vibrate?.(120); } catch { /* 지원 안 함 */ }
-  if (!beep) return;
+function shutterCue(eyesClosed: boolean): void {
+  try { navigator.vibrate?.(200); } catch { /* 지원 안 함 */ }
   try {
     audio ??= new AudioContext();
     const o = audio.createOscillator(), g = audio.createGain();
-    o.frequency.value = 880;
+    o.frequency.value = eyesClosed ? 880 : 520;
     g.gain.value = 0.15;
     o.connect(g).connect(audio.destination);
     o.start();
-    o.stop(audio.currentTime + 0.15);
+    o.stop(audio.currentTime + (eyesClosed ? 0.15 : 0.08));
   } catch { /* 소리 못 냄 — 진동·번쩍임만 */ }
 }
 
