@@ -80,6 +80,25 @@ function thumb(cv: HTMLCanvasElement | null, w = 160): HTMLCanvasElement {
   return c;
 }
 
+/**
+ * 찍혔다는 신호: 진동(Android) + 눈 감는 장은 짧은 "삑"(iOS 는 진동이 없다).
+ * 눈을 감고 있으면 번쩍임을 못 본다 — 언제 떠도 되는지 몰라 한참 감고 있게 된다 (2026-09-28 Android 실기기)
+ */
+let audio: AudioContext | null = null;
+function shutterCue(beep: boolean): void {
+  try { navigator.vibrate?.(120); } catch { /* 지원 안 함 */ }
+  if (!beep) return;
+  try {
+    audio ??= new AudioContext();
+    const o = audio.createOscillator(), g = audio.createGain();
+    o.frequency.value = 880;
+    g.gain.value = 0.15;
+    o.connect(g).connect(audio.destination);
+    o.start();
+    o.stop(audio.currentTime + 0.15);
+  } catch { /* 소리 못 냄 — 진동·번쩍임만 */ }
+}
+
 export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
   return {
     mount(ctx: ScreenContext<S>) {
@@ -139,6 +158,7 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
         ok.type = "button";
         ok.addEventListener("click", () => {
           ctx.log.log({ name: "button", button: "capture_guide_ok" });
+          try { audio ??= new AudioContext(); void audio.resume(); } catch { /* */ }   // iOS 는 탭할 때 소리를 열어 둬야 나중에 난다
           showCamera();
         });
         row.append(ok);
@@ -271,6 +291,7 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
           const cv = grabFrame(video);
           flash.hidden = false;
           setTimeout(() => (flash.hidden = true), 250);
+          shutterCue(id === "front_closed");
           const data: ShotData = { cv, lm, w, h, forehead };
           if (id === "front_open") setFront(data);
           deps.setShot(id, data);

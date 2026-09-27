@@ -11,7 +11,8 @@ import type { GateResult } from "./types";
 /** 단계 안내 (정의서 1-1 표 1-3) */
 export const STEP_TEXT: Record<ShotId, string> = {
   front_open: "정면을 보고 눈을 떠 주세요",
-  front_closed: "정면 그대로 눈을 감아 주세요",
+  // 눈을 감으면 화면이 안 보인다 → 찍히면 진동·소리로 알린다 (2026-09-28 Android 실기기: "눈감고 찍는게 힘들었어")
+  front_closed: "눈을 감고 기다리세요. 진동이 오면 떠도 돼요",
   left_45: "고개를 왼쪽으로 45° 돌려 주세요",
   right_45: "고개를 오른쪽으로 45° 돌려 주세요",
 };
