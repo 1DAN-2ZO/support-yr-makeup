@@ -1,11 +1,15 @@
 /**
  * 진입점 — 껍데기를 세우고 각 모듈의 화면을 등록한다.
  *
- * 지금은 등록된 화면이 없어서 전부 자리표시가 뜬다. 각 모듈이 자기 화면을 올리면
- * 여기 `registerAll()` 에 한 줄씩 추가된다. 그 외에는 이 파일을 고칠 일이 없다.
+ * 각 모듈이 자기 화면을 올리면 여기 `registerAll()` 에 한 줄씩 추가된다.
+ *
+ * 세션 draft (①, 1-11 · F-07): 세션이 바뀔 때마다 `set()` 이 IndexedDB 에 저장하고, 켤 때 `restore()` 가 되살린다.
+ * 사진·랜드마크는 draft 에 없다 — 기준 랜드마크는 쌩얼 사진에서 다시 찾는다 (core/restore.ts).
  */
 
 import { createLogger } from "./core/log";
+import { createCaptureEvents, type CaptureEvents } from "./core/capture-events";
+import { planRestore, rebuildBaseline, toCapture } from "./core/restore";
 import { createLogStore } from "./core/log-store";
 import { emptyJobSource, type LookJobSource } from "./core/look-jobs";
 import {
@@ -15,6 +19,7 @@ import {
   nextPart,
   setCurrentPart,
   setScreen,
+  stripImages,
   toReviewParts,
   type ScreenId,
   type Session,
@@ -22,10 +27,13 @@ import {
 import { pocGuide } from "./core/guide-poc";
 import type { CaptureBundle } from "./core/types";
 import { checkSecureContext, readEnv, type SecureCheck } from "./core/secure-context";
-import { createSessionStore, indexedDbBackend, memoryBackend } from "./core/session-store";
+import { createSessionStore, indexedDbBackend, memoryBackend, type SessionStore } from "./core/session-store";
 import { getVersions } from "./core/versions";
 import { lookById, SUMMARY_TEMPLATE } from "./core/looks";
+import { captureScreen, type CaptureDeps } from "./screens/capture";
+import { consentScreen, deniedScreen, type ConsentDeps } from "./screens/consent";
 import { doneScreen, type DoneDeps } from "./screens/done";
+import { landmarksFromImage } from "./screens/landmarker";
 import { fullRenderScreen } from "./screens/fullrender";
 import { looksScreen } from "./screens/looks";
 import { processingScreen, type ProcessingDeps } from "./screens/processing";
@@ -66,6 +74,19 @@ async function boot(): Promise<void> {
     { sid, screen: session.screen, part: session.currentPart, ver: getVersions() },
     logStore.sink,
   );
+  const events = createCaptureEvents(log);
+
+  // 세션을 바꾸는 곳은 전부 여기로 — 바뀔 때마다 draft 저장 (앱이 꺼져도 돌아오게, F-07)
+  // 동의 전·거부·끝은 저장하지 않는다: 되살릴 게 없고, 끝내기(clearAll) 뒤에 키가 다시 생기면 안 된다 (F-11)
+  let saving: Promise<void> = Promise.resolve();
+  const set = (next: Session): void => {
+    session = next;
+    if (NO_DRAFT.includes(session.screen)) return;
+    const draft = stripImages(session);
+    saving = saving.then(() => sessionStore.saveDraft(draft)).catch(() => {});
+  };
+
+  session = await restore(sessionStore, events, session);
 
   const shell = createShell<Session>({
     root: el("screen"),
@@ -75,10 +96,10 @@ async function boot(): Promise<void> {
     getSession: () => session,
     read: (s) => ({ screen: s.screen, currentPart: s.currentPart, parts: s.parts }),
     setScreen: (to: ScreenId) => {
-      session = setScreen(session, to);
+      set(setScreen(session, to));
     },
     setPart: (p) => {
-      session = setCurrentPart(session, p);
+      set(setCurrentPart(session, p));
     },
     orientation: () =>
       window.matchMedia("(orientation: landscape)").matches ? "landscape" : "portrait",
@@ -100,10 +121,28 @@ async function boot(): Promise<void> {
   registerAll(
     shell,
     {
+      setConsent: (ok) => set({ ...session, consent: ok }),
+      onConsent: (ok) => events.consent(ok),
+    },
+    {
+      getShots: () => session.shots,
+      setShot: (id, data) => {
+        const shots = { ...session.shots };
+        if (data) shots[id] = data;
+        else delete shots[id];
+        set({ ...session, shots });
+      },
+      getBaseline: () => session.baseline,
+      setBaseline: (b) => set({ ...session, baseline: b, faceShape: b?.faceShape ?? null }),
+      saveBare: (blob) => sessionStore.saveImage("bare", blob),
+      events,
+      next: "processing",
+    },
+    {
       jobs: lookJobs,
       getLookId: () => session.lookId,
       setLookId: (lookId: string) => {
-        session = { ...session, lookId };
+        set({ ...session, lookId });
       },
     },
     {
@@ -116,6 +155,7 @@ async function boot(): Promise<void> {
       store: {
         loadImage: (k) => sessionStore.loadImage(k),
         async clearAll() {
+          await saving;   // 저장 중인 draft 가 지운 뒤에 써지지 않게
           const r = await sessionStore.clearAll();
           clearRemaining = r.remaining;
           return r;
@@ -133,10 +173,10 @@ async function boot(): Promise<void> {
       guide: () => pocGuide(lookById(session.lookId).parts),
       getStatus: (part) => session.parts.find((p) => p.partId === part)?.status ?? "in_progress",
       apply: (part, outcome) => {
-        session = applyResult(session, part, outcome);
+        set(applyResult(session, part, outcome));
       },
       skip: (part) => {
-        session = applySkip(session, part);
+        set(applySkip(session, part));
       },
       nextPart: (after) => nextPart(session, after),
     },
@@ -145,7 +185,7 @@ async function boot(): Promise<void> {
       remaining: () => clearRemaining,
       // 세션을 통째로 새로 만든다 — 앞 세션 값이 하나도 안 남게
       restart: () => {
-        session = createSession();
+        set(createSession());
         clearRemaining = 0;
         shell.render();
       },
@@ -180,20 +220,54 @@ interface LookDeps {
 
 function registerAll(
   shell: ReturnType<typeof createShell<Session>>,
+  consent: ConsentDeps,
+  capture: CaptureDeps,
   look: LookDeps,
   review: ReviewDeps,
   result: ResultDeps,
   processing: ProcessingDeps,
   done: DoneDeps,
 ): void {
+  shell.register("consent", consentScreen<Session>(consent));
+  shell.register("denied", deniedScreen<Session>());
+  shell.register("capture", captureScreen<Session>(capture));
   shell.register("processing", processingScreen<Session>(processing));
   shell.register("looks", looksScreen<Session>(look));
   shell.register("fullrender", fullRenderScreen<Session>(look));
   shell.register("result", resultScreen<Session>(result));
   shell.register("review", reviewScreen<Session>(review));
   shell.register("done", doneScreen<Session>(done));
-  // 남은 것: ① consent·denied·capture · ② guide·live
+  // 남은 것: ② guide·live
   // 등록 안 된 화면은 담당 모듈을 알려주는 자리표시가 뜬다
+}
+
+const NO_DRAFT: readonly ScreenId[] = ["consent", "denied", "done"];
+
+/**
+ * 켤 때 draft 가 있으면 되살린다 (1-11). 규칙은 core/restore.ts.
+ * 촬영 뒤 화면이면 쌩얼 사진에서 기준 랜드마크를 다시 찾고, 못 찾으면 촬영부터.
+ */
+async function restore(store: SessionStore, events: CaptureEvents, fresh: Session): Promise<Session> {
+  const loaded = await store.loadDraft();
+  if (!loaded.draft) {
+    if (loaded.reason === "expired") events.restore(false, false);
+    return fresh;
+  }
+  const plan = planRestore(loaded.draft);
+  if (plan.kind === "fresh") return fresh;
+  if (plan.kind === "capture") {
+    events.restore(true, false);
+    return plan.session;
+  }
+  const bare = await store.loadImage("bare");
+  const blob = bare instanceof Blob ? bare : bare ? new Blob([bare]) : null;
+  const found = blob ? await landmarksFromImage(blob).catch(() => null) : null;
+  if (!blob || !found) {
+    events.restore(false, !!blob);
+    return toCapture(plan.session);
+  }
+  events.restore(true, true);
+  return { ...plan.session, baseline: rebuildBaseline(plan.baseline, found, blob) };
 }
 
 void boot();

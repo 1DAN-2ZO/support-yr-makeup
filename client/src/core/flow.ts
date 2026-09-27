@@ -422,7 +422,8 @@ export interface SessionDraft {
   consent: boolean;
   shots: Partial<Record<ShotId, boolean>>;
   faceShapeFrames: number;
-  baseline: { foreheadL: number; unit: Baseline["unit"]; scleraLab: Baseline["scleraLab"]; faceShape: FaceShape } | null;
+  /** w·h: 촬영 프레임 크기 — 복원 때 줄여 저장한 쌩얼 사진에서 찾은 랜드마크를 이 크기로 되돌린다 (restore.ts) */
+  baseline: { foreheadL: number; unit: Baseline["unit"]; scleraLab: Baseline["scleraLab"]; faceShape: FaceShape; w: number; h: number } | null;
   faceShape: FaceShape | null;
   lookId: string | null;
   currentPart: PartId | null;
@@ -438,7 +439,7 @@ export function stripImages(s: Session): SessionDraft {
     shots: Object.fromEntries(Object.entries(s.shots).map(([k, v]) => [k, !!v])) as Partial<Record<ShotId, boolean>>,
     faceShapeFrames: s.faceShapeFrames.length,
     baseline: s.baseline
-      ? { foreheadL: s.baseline.foreheadL, unit: s.baseline.unit, scleraLab: s.baseline.scleraLab, faceShape: s.baseline.faceShape }
+      ? { foreheadL: s.baseline.foreheadL, unit: s.baseline.unit, scleraLab: s.baseline.scleraLab, faceShape: s.baseline.faceShape, w: s.baseline.w, h: s.baseline.h }
       : null,
     faceShape: s.faceShape,
     lookId: s.lookId,

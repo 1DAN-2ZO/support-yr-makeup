@@ -136,3 +136,30 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
 @media (prefers-reduced-motion: reduce) {
   .wait-bar span { animation: none; width: 100%; opacity: 0.5; }
 }
+
+/* 화면 1 동의·촬영 (모듈 1) */
+.consent { padding-top: 32px; }
+.capture-guide ul { padding-left: 20px; }
+.capture-guide li { margin: 6px 0; }
+.cam-step { margin: 0 0 8px; font-weight: 600; }
+.cam { position: relative; width: 100%; max-width: 480px; margin: 0 auto; aspect-ratio: 3 / 4; overflow: hidden; border-radius: 12px; background: #000; }
+.cam-video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+.cam-oval {
+  position: absolute; left: 50%; top: 46%; width: 62%; height: 70%; transform: translate(-50%, -50%);
+  border: 3px dashed rgba(255, 255, 255, 0.8); border-radius: 50%; pointer-events: none;
+}
+.cam-oval.ready { border-style: solid; border-color: var(--accent); }
+.cam-flash { position: absolute; inset: 0; background: #fff; opacity: 0.7; }
+.cam-flash[hidden] { display: none; }
+.cam-gate { min-height: 1.5em; margin: 12px 0 4px; text-align: center; font-size: 17px; }
+.cam-gate.ready { color: var(--accent); font-weight: 600; }
+.cam-hint { margin: 0; text-align: center; color: var(--muted); font-size: 13px; }
+.cam-hint[hidden] { display: none; }
+.cam-progress { display: flex; gap: 6px; justify-content: center; list-style: none; padding: 0; margin: 12px 0 0; }
+.cam-progress li { width: 40px; height: 6px; border-radius: 3px; background: var(--line); }
+.cam-progress li.on { background: var(--accent); }
+.shot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; list-style: none; padding: 0; }
+.shot-cell { display: flex; flex-direction: column; gap: 4px; }
+.shot-thumb { width: 100%; height: auto; border-radius: 8px; background: var(--line); }
+.shot-name { font-size: 13px; }
+.shot-retake { padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--ink); font: inherit; font-size: 13px; }
