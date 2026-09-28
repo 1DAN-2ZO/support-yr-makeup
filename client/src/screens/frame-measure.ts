@@ -43,9 +43,11 @@ export function foreheadLabOf(src: Src, lm: readonly Pt[], sw: number, sh: numbe
   return foreheadLab({ data: im.data, w, h }, lm.map((p) => ({ x: p.x * k, y: p.y * k }))) ?? undefined;
 }
 
-export function grabFrame(src: Src): HTMLCanvasElement {
+/** 지금 프레임을 캔버스로. maxSide 를 주면 긴 변을 그만큼으로 줄인다 (얼굴형 프레임 5장 — 메모리) */
+export function grabFrame(src: Src, maxSide = Infinity): HTMLCanvasElement {
+  const k = Math.min(1, maxSide / Math.max(src.videoWidth, src.videoHeight));
   const cv = document.createElement("canvas");
-  cv.width = src.videoWidth; cv.height = src.videoHeight;
-  cv.getContext("2d")?.drawImage(src, 0, 0);
+  cv.width = Math.round(src.videoWidth * k); cv.height = Math.round(src.videoHeight * k);
+  cv.getContext("2d")?.drawImage(src, 0, 0, cv.width, cv.height);
   return cv;
 }

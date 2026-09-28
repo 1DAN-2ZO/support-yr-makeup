@@ -6,11 +6,13 @@
 
 import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 
+/** wasm: dev 는 node_modules 그대로, 빌드는 vite.config.ts 의 mediapipe-wasm 플러그인이 dist 에 복사한 곳 */
+const WASM_BASE = import.meta.env.DEV ? "/node_modules/@mediapipe/tasks-vision/wasm" : `${import.meta.env.BASE_URL}mediapipe/wasm`;
 const LOCAL_MODEL = "/models/face_landmarker.task";
 const CDN_MODEL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
 
 export async function createLandmarker(mode: "VIDEO" | "IMAGE"): Promise<FaceLandmarker> {
-  const files = await FilesetResolver.forVisionTasks("/node_modules/@mediapipe/tasks-vision/wasm");
+  const files = await FilesetResolver.forVisionTasks(WASM_BASE);
   const modelPath = await fetch(LOCAL_MODEL, { method: "HEAD" })
     .then((r) => (r.ok && !(r.headers.get("content-type") ?? "").includes("text/html") ? LOCAL_MODEL : CDN_MODEL))
     .catch(() => CDN_MODEL);

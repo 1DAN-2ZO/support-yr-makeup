@@ -15,7 +15,8 @@ import type { Baseline, Pt } from "./types";
 
 export type RestorePlan =
   | { kind: "fresh" }
-  | { kind: "capture"; session: Session }
+  /** lostShots: 찍어 두었는데 사진이 없어 다시 찍어야 하는 장 수 */
+  | { kind: "capture"; session: Session; lostShots: number }
   /** 기준 랜드마크를 다시 찾아 rebuildBaseline 으로 채워야 한다 */
   | { kind: "resume"; session: Session; baseline: NonNullable<SessionDraft["baseline"]> };
 
@@ -24,8 +25,11 @@ const BEFORE_CAPTURE: readonly SessionDraft["screen"][] = ["consent", "denied", 
 export function planRestore(draft: SessionDraft | null, now: () => number = Date.now): RestorePlan {
   if (!draft || !draft.consent || BEFORE_CAPTURE.includes(draft.screen)) return { kind: "fresh" };
   const fresh = createSession(now);
-  if (draft.screen === "capture" || !draft.baseline) {
-    return { kind: "capture", session: { ...fresh, consent: true, screen: "capture", startedAt: draft.startedAt } };
+  // 예전 draft 에는 baseline.w·h 가 없다 → 랜드마크를 촬영 크기로 못 되돌리므로(NaN) 촬영부터 (#162 리뷰)
+  const sizeOk = !!draft.baseline && Number.isFinite(draft.baseline.w) && Number.isFinite(draft.baseline.h) && draft.baseline.w > 0 && draft.baseline.h > 0;
+  if (draft.screen === "capture" || !sizeOk) {
+    const lostShots = Object.values(draft.shots).filter(Boolean).length;
+    return { kind: "capture", session: { ...fresh, consent: true, screen: "capture", startedAt: draft.startedAt }, lostShots };
   }
   const shots: Partial<Record<ShotId, unknown>> = {};
   for (const [k, v] of Object.entries(draft.shots)) if (v) shots[k as ShotId] = true;
@@ -41,7 +45,7 @@ export function planRestore(draft: SessionDraft | null, now: () => number = Date
     parts: draft.parts.map((p) => ({ ...p, captured: null })),
     startedAt: draft.startedAt,
   };
-  return { kind: "resume", session, baseline: draft.baseline };
+  return { kind: "resume", session, baseline: draft.baseline! };
 }
 
 /** 기준을 못 되살렸을 때: 동의는 두고 촬영부터 */

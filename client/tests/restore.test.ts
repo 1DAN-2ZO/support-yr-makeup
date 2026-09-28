@@ -34,6 +34,7 @@ describe("planRestore", () => {
     expect(p.kind).toBe("capture");
     if (p.kind !== "capture") return;
     expect(p.session).toMatchObject({ screen: "capture", consent: true, shots: {}, baseline: null, startedAt: 500 });
+    expect(p.lostShots).toBe(1);   // 찍어 둔 1장을 잃었다 → restore ok=false
   });
 
   it("R3 촬영 뒤면 같은 화면·같은 부위, 점수는 남고 확인받기 사진만 빠진다", () => {
@@ -51,6 +52,14 @@ describe("planRestore", () => {
   it("R4 촬영 뒤 화면인데 기준이 없으면 촬영부터", () => {
     const p = planRestore(roundTrip({ ...afterCapture(), baseline: null }));
     expect(p.kind).toBe("capture");
+  });
+
+  it("R4b 예전 draft(baseline.w·h 없음)면 랜드마크를 되돌릴 수 없어 촬영부터", () => {
+    const d = roundTrip(afterCapture());
+    const old = { ...d, baseline: { ...d.baseline!, w: undefined as unknown as number, h: undefined as unknown as number } };
+    const p = planRestore(JSON.parse(JSON.stringify(old)) as typeof d);
+    expect(p.kind).toBe("capture");
+    if (p.kind === "capture") expect(p.lostShots).toBe(4);
   });
 
   it("R5 rebuildBaseline 은 저장된 척도를 그대로 쓰고 랜드마크만 새로 (촬영 크기로 되돌려)", () => {

@@ -7,6 +7,7 @@
  *  - 정면 눈 뜸을 찍으면 기준(Baseline)을 만들고 쌩얼 사진을 IndexedDB 에 저장한다 (1-7 "bare").
  *    정면을 다시 찍으면 기준을 다시 만들고 나머지 장의 랜드마크를 새 기준에 맞춘다 (1-11, baseline.retakeFront).
  *  - 홈으로 나갔다 오면(카메라가 꺼짐) 화면을 다시 그려 남은 장부터 이어서 찍는다.
+ *  - 정면 눈 뜸을 찍을 때 앞뒤 정면 프레임 5장을 조용히 같이 모은다 (F-02 얼굴형 입력, FACE_SHAPE_BURST, #159). 모자라면 셔터 뒤 1.5초 더
  *  - 얼굴형 분류(⑤)는 아직 없다 → faceShape 는 자리값(confidence 0). ⑤ 가 오면 buildBaseline 입력만 바뀐다.
  */
 
@@ -16,7 +17,7 @@ import type { CaptureEvents } from "@core/capture-events";
 import { STEP_TEXT, runStep, startRun, type RunState } from "@core/capture-run";
 import { buildBaseline, retakeFront } from "@core/baseline";
 import { eyeWidthPxOf, eyesClosed, faceCropOf, faceInsetOf, faceRatioOf, yawFromLandmarks } from "@core/capture-measure";
-import { CAPTURE_GUIDE, SHOTS, nextShot, type ShotId, type ShotMeasure } from "@core/flow";
+import { CAPTURE_GUIDE, SHOTS, burstShot, burstStep, nextShot, shotGate, startBurst, type BurstState, type ShotId, type ShotMeasure } from "@core/flow";
 import { foreheadStep, startForeheadTrack } from "@core/occlusion";
 import type { Baseline, FaceShape, Pt } from "@core/types";
 import type { ScreenId } from "@core/screens";
@@ -41,8 +42,10 @@ export interface CaptureDeps {
   setShot: (id: ShotId, data: ShotData | null) => void;
   getBaseline: () => Baseline | null;
   setBaseline: (b: Baseline | null) => void;
-  /** 쌩얼 사진 저장 (session-store "bare") */
-  saveBare: (blob: Blob) => Promise<void>;
+  /** 쌩얼 사진 저장 (session-store "bare"). 인코딩이 끝나기 전에 넘긴다 — 끝내기가 저장까지 기다릴 수 있게 */
+  saveBare: (blob: Promise<Blob>) => Promise<void>;
+  /** 얼굴형 판단용 정면 프레임 (F-02). 메모리에만 */
+  setFaceShapeFrames: (frames: HTMLCanvasElement[]) => void;
   events: CaptureEvents;
   /** 4장 뒤 "룩 고르러 가기" 가 가는 곳 */
   next: ScreenId;
@@ -130,6 +133,7 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
             ctx.log.log({ name: "button", button: `retake:${s.id}` });
             deps.events.retake(s.id);
             deps.setShot(s.id, null);
+            if (s.id === "front_open") deps.setFaceShapeFrames([]);
             showCamera();
           });
           li.append(b);
@@ -198,6 +202,10 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
         let fj = startForeheadTrack();
         let lostSince: number | null = null;
         let busy = false;
+        // 얼굴형 프레임: 정면 눈 뜸을 아직 안 찍었을 때만 모은다. burstWait 이면 셔터 뒤 마저 모으는 중 (다음 장으로 안 넘어감)
+        let burst: BurstState | null = shots().front_open ? null : startBurst();
+        let burstFrames: HTMLCanvasElement[] = [];
+        let burstWait = false;
 
         stopCamera = () => {
           cancelAnimationFrame(raf);
@@ -240,7 +248,7 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
           if (!live() || !lmk || !stream) return;
           raf = requestAnimationFrame(frame);
           const shot = run.shot;
-          if (busy || video.readyState < 2 || !shot) return;
+          if (busy || video.readyState < 2 || (!shot && !burstWait)) return;
           const now = performance.now();
           const sw = video.videoWidth, sh = video.videoHeight;
           const res: FaceLandmarkerResult = lmk.detectForVideo(video, now);
@@ -275,6 +283,14 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
           } else if (lostSince === null) {
             lostSince = now;
           }
+          if (burst && !burst.done && (shot === "front_open" || burstWait)) {
+            const b = burstStep(burst, now, shotGate("front_open", { ...m, stableCount: Number.MAX_SAFE_INTEGER }).ok);
+            burst = b.state;
+            if (b.dropOldest) burstFrames.shift();
+            if (b.take) burstFrames.push(grabFrame(video, 1024));
+            if (burstWait && burst.done) finishBurst();
+          }
+          if (burstWait || !shot) return;   // 셔터 뒤 얼굴형 프레임을 마저 모으는 동안은 "찍을게요" 그대로
           const r = runStep(run, m, now);
           run = r.state;
           if (r.gate) deps.events.blocked(shot, r.gate.ok ? null : r.gate.firstFail, now);
@@ -297,10 +313,26 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
           deps.setShot(id, data);
           deps.events.shot(id, true, null);
           drawProgress();
+          busy = false;
+          if (id === "front_open" && burst) {
+            burst = burstShot(burst, performance.now());
+            if (!burst.done) { burstWait = true; return; }
+            finishBurst();
+            return;
+          }
+          nextStep();
+        }
+
+        function finishBurst(): void {
+          deps.setFaceShapeFrames(burstFrames);
+          burst = null; burstFrames = []; burstWait = false;
+          nextStep();
+        }
+
+        function nextStep(): void {
           run = startRun(shots(), performance.now());
           fj = startForeheadTrack();
           setStep();
-          busy = false;
           if (!run.shot) showDone();
         }
 
@@ -331,11 +363,12 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
         } else {
           deps.setBaseline(buildBaseline(input));
         }
-        encodeForStore(d.cv)
-          .then(async (e) => {
-            await deps.saveBare(e.blob);
+        const blob = encodeForStore(d.cv).then((e) => e.blob);
+        deps.saveBare(blob)
+          .then(async () => {
+            const bare = await blob;
             const b = deps.getBaseline();
-            if (b) deps.setBaseline({ ...b, bareImage: e.blob });
+            if (b) deps.setBaseline({ ...b, bareImage: bare });
           })
           .catch((e: unknown) => ctx.log.log({ name: "error", where: "capture", msg: `save_bare:${String(e).slice(0, 120)}` }));
       }

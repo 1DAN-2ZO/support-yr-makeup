@@ -86,6 +86,8 @@ async function boot(): Promise<void> {
     saving = saving.then(() => sessionStore.saveDraft(draft)).catch(() => {});
   };
 
+  // 복원 중에는 모델을 받느라 몇 초 걸린다 — 빈 화면 대신 한 줄 (shell.render 가 지운다)
+  el("screen").textContent = "준비하고 있어요…";
   session = await restore(sessionStore, events, session);
 
   const shell = createShell<Session>({
@@ -134,7 +136,13 @@ async function boot(): Promise<void> {
       },
       getBaseline: () => session.baseline,
       setBaseline: (b) => set({ ...session, baseline: b, faceShape: b?.faceShape ?? null }),
-      saveBare: (blob) => sessionStore.saveImage("bare", blob),
+      // 쌩얼 저장도 draft 와 같은 줄에 세운다 — 끝내기(clearAll)가 인코딩·저장이 끝날 때까지 기다린다 (#162 리뷰)
+      saveBare: (blob) => {
+        const done = saving.then(() => blob).then((b) => sessionStore.saveImage("bare", b));
+        saving = done.catch(() => {});
+        return done;
+      },
+      setFaceShapeFrames: (frames) => set({ ...session, faceShapeFrames: frames }),
       events,
       next: "processing",
     },
@@ -248,15 +256,14 @@ const NO_DRAFT: readonly ScreenId[] = ["consent", "denied", "done"];
  * 촬영 뒤 화면이면 쌩얼 사진에서 기준 랜드마크를 다시 찾고, 못 찾으면 촬영부터.
  */
 async function restore(store: SessionStore, events: CaptureEvents, fresh: Session): Promise<Session> {
+  // restore{ok}: 사용자가 하던 그대로 돌아왔나. 만료는 복원 시도가 아니라 정상 동작이라 찍지 않는다 (#162 리뷰 — "복원 성공률" 지표)
   const loaded = await store.loadDraft();
-  if (!loaded.draft) {
-    if (loaded.reason === "expired") events.restore(false, false);
-    return fresh;
-  }
+  if (!loaded.draft) return fresh;
   const plan = planRestore(loaded.draft);
   if (plan.kind === "fresh") return fresh;
   if (plan.kind === "capture") {
-    events.restore(true, false);
+    // 촬영 도중: 찍어 둔 장이 있었으면 사진을 잃은 것 → ok=false
+    events.restore(plan.lostShots === 0, false);
     return plan.session;
   }
   const bare = await store.loadImage("bare");

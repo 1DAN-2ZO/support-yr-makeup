@@ -1,7 +1,7 @@
 import { defineConfig } from "vite";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import type { Plugin } from "vite";
 
 /** 앱 버전 = git 짧은 해시. 로그·결과 카드에 찍힌다 (ai-pipeline-v6.md 3절) */
@@ -55,8 +55,24 @@ const probeSink: Plugin = {
   },
 };
 
+/**
+ * [빌드 전용] MediaPipe wasm 을 dist/mediapipe/wasm/ 으로 복사한다.
+ * dev 서버는 /node_modules/… 를 그대로 열어 주지만 빌드 결과물에는 없어서 얼굴 모델이 404 로 안 뜬다 (#162 ⑥ 리뷰).
+ * 경로는 screens/landmarker.ts 의 WASM_BASE 와 맞춘다.
+ */
+const mediapipeWasm: Plugin = {
+  name: "mediapipe-wasm",
+  apply: "build",
+  generateBundle() {
+    const dir = fileURLToPath(new URL("./node_modules/@mediapipe/tasks-vision/wasm/", import.meta.url));
+    for (const f of readdirSync(dir)) {
+      this.emitFile({ type: "asset", fileName: `mediapipe/wasm/${f}`, source: readFileSync(dir + f) });
+    }
+  },
+};
+
 export default defineConfig({
-  plugins: [probeSink],
+  plugins: [probeSink, mediapipeWasm],
   define: { __APP_VERSION__: JSON.stringify(appVersion()) },
   resolve: {
     alias: {
