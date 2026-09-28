@@ -83,6 +83,15 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   font-size: 9px; text-align: center; background: rgba(0, 0, 0, 0.45); color: #fff;
   border-radius: 0 0 8px 8px;
 }
+/* 룩을 누른 뒤 개인화 기다림 — 화면 위에 덮는다 */
+.personalizing {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 10;
+  width: min(92%, 360px); padding: 16px; border-radius: 16px; text-align: center;
+  background: var(--card); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.personalizing strong { display: block; font-size: 16px; }
+.personalizing p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+.personalizing .wait-bar { margin-top: 12px; }
 .look-detail { margin-top: 14px; background: var(--card); border: 1px solid #ebe7df; border-radius: 14px; padding: 14px; }
 .look-detail h2 { font-size: 15px; margin: 0 0 8px; }
 .look-detail ul { margin: 0; padding-left: 18px; }

@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createLogger, memorySink } from "@core/log";
 import { mutableJobSource } from "@core/look-jobs";
-import { CONTOUR_PRODUCTS, LOOKS } from "@core/looks";
+import { LOOKS } from "@core/looks";
 import type { JobStatus, LookJob, Versions } from "@core/types";
 import { fullRenderScreen } from "@screens/fullrender";
 import { looksScreen } from "@screens/looks";
@@ -45,14 +45,17 @@ function setup(jobs: LookJob[] = [], lookId: string | null = null) {
     goPart: vi.fn(),
     log: createLogger({ sid: "s1", screen: "looks", part: null, ver }, m.sink),
   };
+  let finish: (ok: boolean) => void = () => {};
+  const personalize = vi.fn((_id: string) => new Promise<void>((res, rej) => { finish = (ok) => (ok ? res() : rej(new Error("개인화 실패"))); }));
   const deps = {
     jobs: source,
     getLookId: () => state.lookId,
     setLookId: (id: string) => {
       state.lookId = id;
     },
+    personalize,
   };
-  return { root, ctx, go, deps, source, state, events: m.events };
+  return { root, ctx, go, deps, source, state, events: m.events, personalize, finish: (ok: boolean) => finish(ok) };
 }
 
 function cards(root: HTMLElement): HTMLButtonElement[] {
@@ -79,7 +82,6 @@ describe("화면 2 — 룩 선택", () => {
     expect(cs).toHaveLength(LOOKS.length);
     expect(cs.every((c) => c.disabled)).toBe(true);
     expect(root.querySelector(".look-thumb")?.textContent).toBe("로딩 중");
-    expect(byText(root, "이 룩으로 시작").disabled).toBe(true);
   });
 
   it("끝난 룩만 누를 수 있다", () => {
@@ -91,25 +93,40 @@ describe("화면 2 — 룩 선택", () => {
     expect(byId.get("coral")?.textContent).toContain("준비 중");
   });
 
-  it("고르면 제품 목록이 접힘 없이 전부 나온다 (F-04)", () => {
-    const { root, ctx, deps, state } = setup([job("daily", "done", "/r/daily.png")]);
+  it("누르면 그 룩을 고르고 '개인화 중입니다' — 끝나면 2-b(AR)로 간다 (2026-09-28 흐름)", async () => {
+    const { root, ctx, go, deps, state, personalize, finish } = setup([job("daily", "done", "/r/daily.png")]);
     looksScreen<null>(deps).mount(ctx);
     (cards(root)[0] as HTMLButtonElement).click();
-
     expect(state.lookId).toBe("daily");
-    const items = root.querySelectorAll(".look-detail li");
-    const look = LOOKS[0];
-    expect(items).toHaveLength((look?.products.length ?? 0) + CONTOUR_PRODUCTS.length);
-    expect(root.querySelectorAll("details")).toHaveLength(0);
+    expect(personalize).toHaveBeenCalledWith("daily");
+    expect(root.querySelector(".personalizing")?.textContent).toContain("개인화 중입니다");
+    expect(go).not.toHaveBeenCalled();
+    finish(true);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(go).toHaveBeenCalledWith("fullrender");
   });
 
-  it("고른 다음에야 시작할 수 있고 2-b 로 간다", () => {
-    const { root, ctx, go, deps } = setup([job("daily", "done", "/r/daily.png")]);
+  it("개인화가 실패하면 룩 화면에 남고 다시 누르라고 말한다", async () => {
+    const { root, ctx, go, deps, finish } = setup([job("daily", "done", "/r/daily.png")]);
     looksScreen<null>(deps).mount(ctx);
-    expect(byText(root, "이 룩으로 시작").disabled).toBe(true);
     (cards(root)[0] as HTMLButtonElement).click();
-    byText(root, "이 룩으로 시작").click();
-    expect(go).toHaveBeenCalledWith("fullrender");
+    finish(false);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(go).not.toHaveBeenCalled();
+    expect(root.querySelector(".personalizing")).toBeNull();
+    expect(root.textContent).toContain("다시 눌러");
+  });
+
+  it("개인화 중에 다른 룩을 누르면 마지막에 누른 룩으로 간다", async () => {
+    const { root, ctx, go, deps, state, personalize, finish } = setup([job("daily", "done", "/r/d.png"), job("smoky", "done", "/r/s.png")]);
+    looksScreen<null>(deps).mount(ctx);
+    (cards(root)[0] as HTMLButtonElement).click();
+    (cards(root)[1] as HTMLButtonElement).click();
+    expect(state.lookId).toBe("smoky");
+    expect(personalize).toHaveBeenLastCalledWith("smoky");
+    finish(true);                                   // 마지막 요청(smoky)이 끝남
+    await new Promise((r) => setTimeout(r, 0));
+    expect(go).toHaveBeenCalledTimes(1);
   });
 
   it("나중에 도착한 룩이 화면에 들어온다", () => {
