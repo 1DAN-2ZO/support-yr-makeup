@@ -1,38 +1,93 @@
 /**
- * 화면 2-b — 전체 완성 예상 (F-04). 모듈 ⑥.
+ * 화면 2-b — AR 완성 예상 (F-04). 모듈 ⑥. (2026-09-28 흐름: 룩을 누름 → 개인화 → 여기)
  *
- * 고른 룩을 다 했을 때 어떤 얼굴이 되는지 한 장으로 보여 준다.
- * 이 그림은 세션 내내 남는다 — 부위별 완성본(화면 3)과 리뷰(화면 6)에서 다시 쓴다.
+ * 전면 카메라에 고른 룩을 **이 얼굴에 맞게 개인화해서** 입혀 보여 준다.
+ *  - 모양: 개인화 계획(personalize.ts) — 가이드·채점과 같은 계획이다
+ *  - 그리기: 기준 얼굴(카메라에서 처음 잡힌 얼굴)에 화장 층을 한 번 그리고(makeup-paint.ts),
+ *    매 프레임 얼굴 그물(삼각형 852개)로 지금 얼굴에 휘어 피부와 섞는다(makeup-gl.ts, WebGL2)
+ *  - 카메라·WebGL 을 못 쓰면 서버가 만든 그림(Stable-Makeup)을 보여 준다. 흐름은 막지 않는다
  *
- * 그림이 아직 없거나 실패해도 흐름은 막지 않는다. 가이드는 그림 없이도 돌아간다.
+ * 근거 한 줄(개인화 계획의 rationale)과 쓰는 제품을 같이 보여 주고, "화장하러 가기" 로 부위 반복을 시작한다.
+ * 사진은 저장하지 않는다 — 카메라 영상은 이 화면 안에서만 쓴다.
  */
 
+import { measureFace } from "../core/face-measure";
 import { lookById } from "../core/looks";
 import type { LookJobSource } from "../core/look-jobs";
-import { fullRenderUrl } from "../core/look-view";
+import { fullRenderUrl, lookDetail } from "../core/look-view";
+import { resolvePlan, type PersonalPlan } from "../core/personalize";
+import type { Pt } from "../core/types";
+import { createLandmarker } from "./landmarker";
+import { MakeupGl } from "./makeup-gl";
+import { paintLookOf, paintMakeup } from "./makeup-paint";
 import type { Screen, ScreenContext } from "./shell";
 
 export interface FullRenderDeps {
   jobs: LookJobSource;
   getLookId: () => string | null;
+  /** 룩 화면에서 만든 이 룩의 개인화 계획 (core/plan-queue.ts). 없으면 카메라 얼굴로 규칙 계획을 만든다 */
+  getPlan?: (lookId: string) => PersonalPlan | null;
 }
 
 export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
   return {
     mount(ctx: ScreenContext<S>) {
+      const lookId = deps.getLookId();
+      const look = lookById(lookId);
+      const plan = lookId && deps.getPlan ? deps.getPlan(lookId) : null;
+      let alive = true;
+      let live = false;
+
       const wrap = document.createElement("div");
       wrap.className = "fullrender";
       ctx.root.append(wrap);
 
-      function draw(): void {
-        const lookId = deps.getLookId();
+      const h = document.createElement("h1");
+      h.textContent = `${look.name} — 내 얼굴에 입혀 봤어요`;
+      const stage = document.createElement("div");
+      stage.className = "ar-stage";
+      const note = document.createElement("p");
+      note.className = "muted";
+      wrap.append(h, stage, note);
+
+      const why = Object.values(plan?.rationale ?? {}).filter((t): t is string => !!t);
+      if (why.length) {
+        const ul = document.createElement("ul");
+        ul.className = "ar-why";
+        for (const t of why) {
+          const li = document.createElement("li");
+          li.textContent = t;
+          ul.append(li);
+        }
+        wrap.append(ul);
+      }
+      if (lookId) wrap.append(products(lookId));
+
+      const row = document.createElement("div");
+      row.className = "btns";
+      const go = document.createElement("button");
+      go.type = "button";
+      go.className = "primary";
+      go.textContent = "화장하러 가기";
+      go.addEventListener("click", () => {
+        ctx.log.log({ name: "button", button: "guide_start" });
+        ctx.go("guide");
+      });
+      const back = document.createElement("button");
+      back.type = "button";
+      back.className = "secondary";
+      back.textContent = "다른 룩 보기";
+      back.addEventListener("click", () => {
+        ctx.log.log({ name: "button", button: "look_change" });
+        ctx.go("looks");
+      });
+      row.append(go, back);
+      wrap.append(row);
+
+      /** 카메라가 아직이거나 못 쓸 때: 서버 그림 */
+      function drawFallback(): void {
+        if (live) return;
         const url = fullRenderUrl(deps.jobs.current(), lookId);
-        wrap.textContent = "";
-
-        const h = document.createElement("h1");
-        h.textContent = `${lookById(lookId).name} — 다 하면 이런 얼굴`;
-        wrap.append(h);
-
         const figure = document.createElement("div");
         figure.className = "full-img" + (url ? "" : " empty");
         if (url) {
@@ -43,43 +98,105 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
         } else {
           figure.textContent = "준비 중";
         }
-        wrap.append(figure);
-
-        const note = document.createElement("p");
-        note.className = "muted";
+        stage.replaceChildren(figure);
         // 완성 예상은 참고다. 실제 결과가 이것과 다르다고 점수가 깎이지 않는다
-        note.textContent = url
-          ? "참고용 그림이에요. 순서대로 하나씩 따라가 볼게요."
-          : "그림은 아직이지만 그대로 시작할 수 있어요.";
-        wrap.append(note);
-
-        const row = document.createElement("div");
-        row.className = "row";
-
-        const back = document.createElement("button");
-        back.type = "button";
-        back.textContent = "다른 룩 보기";
-        back.addEventListener("click", () => {
-          ctx.log.log({ name: "button", button: "look_change" });
-          ctx.go("looks");
-        });
-
-        const go = document.createElement("button");
-        go.type = "button";
-        go.className = "primary";
-        go.textContent = "시작";
-        go.addEventListener("click", () => {
-          ctx.log.log({ name: "button", button: "guide_start" });
-          ctx.go("guide");
-        });
-
-        row.append(back, go);
-        wrap.append(row);
+        note.textContent = url ? "참고용 그림이에요. 순서대로 하나씩 따라가 볼게요." : "그림은 아직이지만 그대로 시작할 수 있어요.";
       }
 
-      const stop = deps.jobs.subscribe(draw);
-      draw();
-      return stop;
+      const stopJobs = deps.jobs.subscribe(drawFallback);
+      drawFallback();
+
+      // ── AR ───────────────────────────────────────────
+      let raf = 0;
+      let stream: MediaStream | null = null;
+      let closeLandmarker: (() => void) | null = null;
+      if (typeof navigator !== "undefined" && typeof navigator.mediaDevices?.getUserMedia === "function") void startAr();
+
+      async function startAr(): Promise<void> {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+          if (!alive) return stopStream();
+          const video = document.createElement("video");
+          video.muted = true;
+          video.playsInline = true;
+          video.srcObject = stream;
+          await video.play();
+          const lmk = await createLandmarker("VIDEO");
+          closeLandmarker = () => lmk.close();
+          if (!alive) return cleanup();
+
+          const canvas = document.createElement("canvas");
+          canvas.className = "ar-canvas";
+          const gl = new MakeupGl(canvas);
+          const mk = () => document.createElement("canvas");
+          const atlas = { mul: mk(), col: mk(), light: mk() }, off = mk();
+          const paintLook = paintLookOf(look);
+          let ref: Pt[] | null = null;
+
+          const tick = (): void => {
+            if (!alive) return;
+            const w = video.videoWidth, hh = video.videoHeight;
+            if (w && hh) {
+              const face = lmk.detectForVideo(video, performance.now()).faceLandmarks[0];
+              const lm = face && face.length >= 478 ? face.map((p) => ({ x: p.x * w, y: p.y * hh })) : null;
+              if (lm && !ref) {
+                // 기준 얼굴: 처음 잡힌 얼굴. 화장 층은 여기에 한 번만 그린다 (계획은 정해져 있다)
+                ref = lm;
+                for (const c of [atlas.mul, atlas.col, atlas.light, off]) { c.width = w; c.height = hh; }
+                const p = plan ?? resolvePlan(measureFace(ref));
+                paintMakeup({ mul: atlas.mul.getContext("2d")!, col: atlas.col.getContext("2d")!, light: atlas.light.getContext("2d")! }, off, ref, paintLook, p, p.liner.plan.style);
+              }
+              gl.render(video, w, hh, atlas.mul, atlas.col, atlas.light, lm && ref ? { lm, ref, beauty: 0.3, radius: w * 0.004 } : null);
+              if (!live) {
+                live = true;
+                stage.replaceChildren(canvas);
+                note.textContent = "카메라에 비친 내 얼굴이에요. 고개를 돌려 봐도 따라가요.";
+              }
+            }
+            raf = requestAnimationFrame(tick);
+          };
+          raf = requestAnimationFrame(tick);
+        } catch (e) {
+          // 카메라 거부·WebGL 없음 — 서버 그림으로 둔다
+          ctx.log.log({ name: "error", where: "ar", msg: e instanceof Error ? e.message : String(e) });
+          cleanup(false);
+        }
+      }
+
+      function stopStream(): void {
+        stream?.getTracks().forEach((t) => t.stop());
+        stream = null;
+      }
+
+      function cleanup(all = true): void {
+        cancelAnimationFrame(raf);
+        stopStream();
+        closeLandmarker?.();
+        closeLandmarker = null;
+        if (all) alive = false;
+      }
+
+      return () => {
+        cleanup();
+        stopJobs();
+      };
     },
   };
+}
+
+/** 쓰는 제품 — 접기 없이 전부 (F-04). 룩 화면에서 옮겨 왔다 */
+function products(lookId: string): HTMLElement {
+  const { look, products: list } = lookDetail(lookId);
+  const box = document.createElement("section");
+  box.className = "look-detail";
+  const h = document.createElement("h2");
+  h.textContent = `${look.name} — 쓰는 것`;
+  const ul = document.createElement("ul");
+  for (const p of list) {
+    const li = document.createElement("li");
+    li.textContent = p;
+    ul.append(li);
+  }
+  box.append(h, ul);
+  return box;
 }

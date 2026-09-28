@@ -2,7 +2,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createLogger, memorySink } from "@core/log";
 import { mutableJobSource } from "@core/look-jobs";
-import { LOOKS } from "@core/looks";
+import { CONTOUR_PRODUCTS, LOOKS } from "@core/looks";
+import type { PersonalPlan } from "@core/personalize";
 import type { JobStatus, LookJob, Versions } from "@core/types";
 import { fullRenderScreen } from "@screens/fullrender";
 import { looksScreen } from "@screens/looks";
@@ -167,7 +168,7 @@ describe("화면 2 — 룩 선택", () => {
   });
 });
 
-describe("화면 2-b — 전체 완성 예상", () => {
+describe("화면 2-b — AR 완성 예상 (카메라를 못 열면 서버 그림)", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
   });
@@ -179,14 +180,29 @@ describe("화면 2-b — 전체 완성 예상", () => {
     expect(root.querySelector("h1")?.textContent).toContain(LOOKS[0]?.name ?? "");
   });
 
-  it("그림이 없어도 시작을 막지 않는다", () => {
+  it("그림이 없어도 '화장하러 가기' 로 부위 반복을 시작한다", () => {
     const { root, ctx, go, deps } = setup([job("daily", "running")], "daily");
     fullRenderScreen<null>(deps).mount(ctx);
     expect(root.querySelector(".full-img")?.textContent).toBe("준비 중");
-    const start = byText(root, "시작");
+    const start = byText(root, "화장하러 가기");
     expect(start.disabled).toBe(false);
     start.click();
     expect(go).toHaveBeenCalledWith("guide");
+  });
+
+  it("개인화 근거 문장과 쓰는 제품을 보여 준다 (제품 목록은 룩 화면에서 옮겨 옴)", () => {
+    const { root, ctx, deps } = setup([job("daily", "done", "/r/daily.png")], "daily");
+    const plan = { rationale: { liner: "눈꼬리가 올라가 있어서 꼬리를 위로 뺐어요" } } as unknown as PersonalPlan;
+    fullRenderScreen<null>({ ...deps, getPlan: () => plan }).mount(ctx);
+    expect(root.querySelector(".ar-why")?.textContent).toContain("눈꼬리가 올라가 있어서");
+    const items = root.querySelectorAll(".look-detail li");
+    expect(items).toHaveLength((LOOKS[0]?.products.length ?? 0) + CONTOUR_PRODUCTS.length);
+  });
+
+  it("계획이 없으면 근거 줄을 그리지 않는다", () => {
+    const { root, ctx, deps } = setup([job("daily", "done", "/r/daily.png")], "daily");
+    fullRenderScreen<null>({ ...deps, getPlan: () => null }).mount(ctx);
+    expect(root.querySelector(".ar-why")).toBeNull();
   });
 
   it("다른 룩 보기로 화면 2 로 돌아간다", () => {
