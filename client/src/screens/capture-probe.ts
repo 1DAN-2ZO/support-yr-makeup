@@ -5,13 +5,15 @@
  *  - 5프레임 연속 통과 → 자동 촬영 → 찍힌 사진을 크게 보여 주고 "다음 / 다시 찍기" (한 장씩 확인)
  *  - 끝내기 → 기록 JSON 을 dev 서버(/__probe) 로 보내 PC 의 client/.probe/ 에 저장 (사진·좌표는 안 보냄)
  */
-import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
+import type { FaceLandmarker } from "@mediapipe/tasks-vision";
 import type { FaceLandmarkerResult } from "@mediapipe/tasks-vision";
 import { CAPTURE_GUIDE, CAPTURE_LIMITS, SHOTS, burstShot, burstStep, nextShot, shotGate, startBurst } from "@core/flow";
 import type { BurstState } from "@core/flow";
 import type { ShotId, ShotMeasure } from "@core/flow";
-import { FACE_L, FACE_R, foreheadLab } from "@core/color";
-import type { Lab } from "@core/color";
+import { FACE_L, FACE_R, labDrift } from "@core/color";
+import { LO_A, LO_B, UP_A, UP_B, ear, eyeWidthPxOf, faceInsetOf, irisPxOf, yawFromLandmarks, yawFromMatrix } from "@core/capture-measure";
+import { foreheadLabOf, sharpnessOf } from "@screens/frame-measure";
+import { createLandmarker } from "@screens/landmarker";
 import type { GateFail, Pt } from "@core/types";
 import { createLogger, memorySink } from "@core/log";
 import { createCaptureEvents } from "@core/capture-events";
@@ -34,7 +36,7 @@ const confirmEl = $("confirm");
 const confirmCv = $<HTMLCanvasElement>("confirmCv");
 
 // ---------- 기록 ----------
-interface ShotAt { yawLm: number; yawMatRow: number; yawMatCol: number; pitchLm: number; blinkA: number; blinkB: number; earA: number; earB: number; faceRatio: number; faceInset: number; sharpness: number; foreheadL: number; irisPx: number; eyeWidthPx: number; foreheadJump: number; foreheadJumpMax2s: number; foreheadOccluded: boolean }
+interface ShotAt { yawLm: number; yawMatRow: number; yawMatCol: number; pitchLm: number; blinkA: number; blinkB: number; earA: number; earB: number; faceRatio: number; faceInset: number; sharpness: number; foreheadL: number; foreheadA: number; foreheadB: number; irisPx: number; eyeWidthPx: number; foreheadJump: number; foreheadJumpMax2s: number; foreheadOccluded: boolean }
 interface ShotRecord {
   shot: ShotId;
   /** 이 장을 찍기 시작한 뒤 자동 촬영까지 초 */
@@ -71,6 +73,8 @@ interface ProbeResult {
   /** 얼굴형 판단용 정면 프레임: 모은 장수, 셔터 뒤 더 기다린 초(0 이면 셔터 전에 다 참), 장별 값 (사진은 안 보냄) */
   /** 가림 측정: 상태 이름 → 3초 동안 이마 급변 ΔE 분포 (임계 FOREHEAD_JUMP.jumpDE 확정용) */
   occlusionCalib: Record<string, ProbeResult["foreheadJump"]>;
+  /** 1-4: 확정된 장들의 이마 L*a*b* 변동 폭(정면 눈 뜸 기준 최대 ΔE). 두 장 미만이면 null */
+  labDrift: { rangeL: number; rangeA: number; rangeB: number; maxDeltaE: number } | null;
   /** 이마 급변(가림, #144): 창(300ms) 안 이마 ΔE 의 분포와 가림으로 본 프레임 수. 임계 FOREHEAD_JUMP 확정용 */
   foreheadJump: { n: number; p50: number; p90: number; p99: number; max: number; occludedFrames: number };
   /** 장별로 화면에 뜬 막힘 문구 횟수와 그동안 본 yaw·pitch 범위 — 안 찍힌 장도 남는다 (2026-09-23 iPad 45° 가 왜 막혔는지) */
@@ -126,68 +130,12 @@ const mem = memorySink();
 const logger = createLogger({ sid: `probe-${Date.now()}`, screen: "consent", part: null, ver: { app: "probe", score: "-", look: "-", faceshape: "-", transfer: "-" } }, mem.sink);
 const events = createCaptureEvents(logger);
 
-// ---------- 측정 도우미 ----------
+// ---------- 측정 도우미 (core/capture-measure · screens/frame-measure) ----------
 const pt = (lm: readonly Pt[], i: number): Pt => {
   const p = lm[i];
   if (!p) throw new Error(`랜드마크 ${i} 없음`);
   return p;
 };
-function yawFromLandmarks(lm: readonly Pt[]): { yaw: number; pitch: number } {
-  const l = pt(lm, FACE_L), r = pt(lm, FACE_R), n = pt(lm, 1), top = pt(lm, 10), chin = pt(lm, 152);
-  return { yaw: ((n.x - l.x) / (r.x - l.x) - 0.5) * 90, pitch: ((n.y - top.y) / (chin.y - top.y) - 0.55) * 90 };
-}
-/** 행렬 yaw 두 해석. 1-2 Android 실측: column-major 가 랜드마크와 부호가 맞음 */
-function yawFromMatrix(data: readonly number[]): { row: number; col: number } {
-  const R = (r: number, c: number): number => data[r * 4 + c] ?? 0;
-  const C = (r: number, c: number): number => data[c * 4 + r] ?? 0;
-  const deg = (v: number): number => (v * 180) / Math.PI;
-  return { row: deg(Math.atan2(R(0, 2), R(2, 2))), col: deg(Math.atan2(C(0, 2), C(2, 2))) };
-}
-function ear(lm: readonly Pt[], up: readonly number[], lo: readonly number[], outer: number, inner: number): number {
-  const w = Math.hypot(pt(lm, outer).x - pt(lm, inner).x, pt(lm, outer).y - pt(lm, inner).y) || 1;
-  let h = 0;
-  for (let i = 0; i < up.length; i++) h += Math.hypot(pt(lm, up[i] ?? 0).x - pt(lm, lo[i] ?? 0).x, pt(lm, up[i] ?? 0).y - pt(lm, lo[i] ?? 0).y);
-  return h / up.length / w;
-}
-const UP_A = [246, 161, 160, 159, 158, 157, 173], LO_A = [7, 163, 144, 145, 153, 154, 155];
-const UP_B = [466, 388, 387, 386, 385, 384, 398], LO_B = [249, 390, 373, 374, 380, 381, 382];
-/** 랜드마크 전체(468점)가 프레임 가장자리에서 얼마나 떨어져 있나 — 짧은 변 대비 비율. 밖이면 음수 */
-function faceInsetOf(lm: readonly Pt[], sw: number, sh: number): number {
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (let i = 0; i < 468; i++) { const p = pt(lm, i); if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x; if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y; }
-  return Math.min(minX, minY, sw - maxX, sh - maxY) / Math.min(sw, sh);
-}
-
-const tiny = document.createElement("canvas");
-const tctx = tiny.getContext("2d", { willReadFrequently: true });
-function sharpnessOf(src: HTMLVideoElement, crop: { x: number; y: number; w: number; h: number }): number {
-  if (!tctx) return 0;
-  const w = 96, h = Math.max(8, Math.round((96 * crop.h) / crop.w));
-  tiny.width = w; tiny.height = h;
-  tctx.drawImage(src, crop.x, crop.y, crop.w, crop.h, 0, 0, w, h);
-  const d = tctx.getImageData(0, 0, w, h).data;
-  const g = new Float32Array(w * h);
-  for (let i = 0; i < w * h; i++) g[i] = 0.299 * (d[i * 4] ?? 0) + 0.587 * (d[i * 4 + 1] ?? 0) + 0.114 * (d[i * 4 + 2] ?? 0);
-  let sum = 0, sum2 = 0, n = 0;
-  for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
-    const i = y * w + x;
-    const v = 4 * (g[i] ?? 0) - (g[i - 1] ?? 0) - (g[i + 1] ?? 0) - (g[i - w] ?? 0) - (g[i + w] ?? 0);
-    sum += v; sum2 += v * v; n++;
-  }
-  const mean = sum / n;
-  return sum2 / n - mean * mean;
-}
-const small = document.createElement("canvas");
-const sctx = small.getContext("2d", { willReadFrequently: true });
-function foreheadLabOf(src: HTMLVideoElement, lm: readonly Pt[], sw: number, sh: number): Lab | undefined {
-  if (!sctx) return undefined;
-  const w = 320, h = Math.round((sh * w) / sw), k = w / sw;
-  small.width = w; small.height = h;
-  sctx.drawImage(src, 0, 0, w, h);
-  const im = sctx.getImageData(0, 0, w, h);
-  const lab = foreheadLab({ data: im.data, w, h }, lm.map((p) => ({ x: p.x * k, y: p.y * k })));
-  return lab ?? undefined;
-}
 
 // ---------- 동의 → 카메라 ----------
 function showConsent(): void {
@@ -226,16 +174,7 @@ $<HTMLButtonElement>("deny").onclick = () => {
 async function start(): Promise<void> {
   outEl.textContent = "모델 로딩 중…";
   const t0 = performance.now();
-  const files = await FilesetResolver.forVisionTasks("/node_modules/@mediapipe/tasks-vision/wasm");
-  // 모델: 로컬 사본(client/public/models/, 저장소에 안 넣음)이 있으면 그것, 없으면 MediaPipe 공식 CDN
-  const LOCAL_MODEL = "/models/face_landmarker.task";
-  const CDN_MODEL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
-  const modelPath = await fetch(LOCAL_MODEL, { method: "HEAD" }).then((r) => (r.ok && !(r.headers.get("content-type") ?? "").includes("text/html") ? LOCAL_MODEL : CDN_MODEL)).catch(() => CDN_MODEL);
-  const opts = (delegate: "GPU" | "CPU") => ({
-    baseOptions: { modelAssetPath: modelPath, delegate },
-    runningMode: "VIDEO" as const, numFaces: 1, outputFaceBlendshapes: true, outputFacialTransformationMatrixes: true,
-  });
-  state.lm = await FaceLandmarker.createFromOptions(files, opts("GPU")).catch(() => FaceLandmarker.createFromOptions(files, opts("CPU")));
+  state.lm = await createLandmarker("VIDEO");
   state.modelMs = Math.round(performance.now() - t0);
   // 1080p 요청: 720p 에서는 얼굴이 작아(iPhone 초광각 얼굴비 0.30~0.44) 눈 폭 80px 조건을 못 채울 것으로 보여 올렸다 (2026-09-22 확인 측정)
   const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
@@ -311,7 +250,7 @@ function frame(): void {
     });
     if (foreheadL !== undefined) m.foreheadL = foreheadL;
     if (state.baselineL !== undefined) m.baselineL = state.baselineL;
-    at = { yawLm: r1(yaw), yawMatRow: r1(-my.row), yawMatCol: r1(-my.col), pitchLm: r1(ang.pitch), blinkA: r2(blinkA), blinkB: r2(blinkB), earA: r2(earA), earB: r2(earB), faceRatio: r2(faceW / Math.min(sw, sh)), faceInset: r2(inset), sharpness: r1(m.sharpness ?? 0), foreheadL: r1(foreheadL ?? 0), irisPx: r1(irisPxOf(lm)), eyeWidthPx: r1(eyeWidthPxOf(lm)), foreheadJump: r1(fj.jump), foreheadJumpMax2s: r1(Math.max(0, ...state.fjRecent.map((x) => x.v))), foreheadOccluded: fj.occluded };
+    at = { yawLm: r1(yaw), yawMatRow: r1(-my.row), yawMatCol: r1(-my.col), pitchLm: r1(ang.pitch), blinkA: r2(blinkA), blinkB: r2(blinkB), earA: r2(earA), earB: r2(earB), faceRatio: r2(faceW / Math.min(sw, sh)), faceInset: r2(inset), sharpness: r1(m.sharpness ?? 0), foreheadL: r1(foreheadL ?? 0), foreheadA: r1(flab?.a ?? 0), foreheadB: r1(flab?.b ?? 0), irisPx: r1(irisPxOf(lm)), eyeWidthPx: r1(eyeWidthPxOf(lm)), foreheadJump: r1(fj.jump), foreheadJumpMax2s: r1(Math.max(0, ...state.fjRecent.map((x) => x.v))), foreheadOccluded: fj.occluded };
   }
   if (state.calib) { calibFrame(t0, at); return; }
   if (!shotId) { shakeFrame(t0, at); return; }
@@ -351,18 +290,6 @@ function calibFrame(t0: number, at: ShotAt | null): void {
   state.calibDone[c.label] = jumpStats(c.jumps, c.occluded);
   state.calib = null;
   outEl.textContent = `가림 측정 끝: ${c.label} ${JSON.stringify(state.calibDone[c.label])}`;
-}
-
-/** 눈 폭(px) — 눈 안쪽 끝~바깥 끝(33·133, 263·362) 중 큰 쪽. 얼굴 크기 조건 (impl-screen1-5 "눈 폭 ≥ 80px") */
-function eyeWidthPxOf(lm: readonly Pt[]): number {
-  const d = (a: number, b: number): number => Math.hypot(pt(lm, a).x - pt(lm, b).x, pt(lm, a).y - pt(lm, b).y);
-  return Math.max(d(33, 133), d(263, 362));
-}
-/** 홍채 지름(px) — 기록만 한다 (게이트·척도에는 안 씀, 2026-09-16 결정). 468~477 은 홍채 점 */
-function irisPxOf(lm: readonly Pt[]): number {
-  if (lm.length < 478) return 0;
-  const d = (a: number, b: number): number => Math.hypot(pt(lm, a).x - pt(lm, b).x, pt(lm, a).y - pt(lm, b).y);
-  return (d(469, 471) + d(474, 476)) / 2;
 }
 
 // ---------- 흔들기 측정 (4장 뒤, 1-2 문제 12: 선명도 임계를 정하려고) ----------
@@ -513,16 +440,19 @@ async function finish(): Promise<void> {
     gateLog: state.gateLog,
     foreheadJump: jumpStats(state.fjAll, state.fjOccluded),
     zoomApplied: state.zoomApplied,
+    labDrift: shotsLabDrift(shots),
     shake: state.shake.phase === "done" ? { still: stats(state.shake.still), shaky: stats(state.shake.shaky), frontOpenSharpness: state.shots.front_open?.rec.at.sharpness ?? null, irisPx: stats(state.shake.iris) } : null,
     events: mem.lines,
   };
   const row = `| ${shortUa()} | ${result.startedAt.slice(0, 10)} | ${result.captureSeconds} | ${state.retakes.front_open} | ${state.retakes.front_closed} | ${state.retakes.left_45} | ${state.retakes.right_45} | 좌 ${shots.find((s) => s.shot === "left_45")?.at.yawLm ?? "-"} / 우 ${shots.find((s) => s.shot === "right_45")?.at.yawLm ?? "-"} | 프레임 ${result.frameW}×${result.frameH} · ${result.frameMsAvg}ms/프레임 |`;
+  const d = result.labDrift;
+  const row14 = d ? `| (사람) | (조명) | ${r1(d.rangeL)} | ${r1(d.rangeA)} | ${r1(d.rangeB)} | ${r1(d.maxDeltaE)} | ${shortUa()} |` : "(장이 2장 미만이라 못 구함)";
   let sent = "";
   try {
     const r = await fetch("/__probe", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(result) });
     sent = r.ok ? `PC 저장됨: ${await r.text()}` : `저장 실패 ${r.status}`;
   } catch (e) { sent = `저장 실패: ${String(e)}`; }
-  outEl.textContent = `${sent}\n\n1-2 표 한 줄:\n${row}\n\n장별:\n${shots.map((s) => `${NAME[s.shot]}: 이마 급변(2초 최대) ${s.at.foreheadJumpMax2s}, ${s.seconds}s (+확인 ${s.confirmSeconds}s), 거부 ${s.rejected}, 막힘 ${JSON.stringify(s.blocked)}, yaw lm ${s.at.yawLm} / col ${s.at.yawMatCol}, 여백 ${s.at.faceInset}, 선명 ${s.at.sharpness}, L* ${s.at.foreheadL}`).join("\n")}`;
+  outEl.textContent = `${sent}\n\n1-2 표 한 줄:\n${row}\n\n1-4 표 한 줄 (사람·조명 칸은 직접):\n${row14}\n\n장별:\n${shots.map((s) => `${NAME[s.shot]}: 이마 급변(2초 최대) ${s.at.foreheadJumpMax2s}, ${s.seconds}s (+확인 ${s.confirmSeconds}s), 거부 ${s.rejected}, 막힘 ${JSON.stringify(s.blocked)}, yaw lm ${s.at.yawLm} / col ${s.at.yawMatCol}, 여백 ${s.at.faceInset}, 선명 ${s.at.sharpness}, L*a*b* ${s.at.foreheadL}/${s.at.foreheadA}/${s.at.foreheadB}`).join("\n")}`;
 }
 function logGate(shot: ShotId, text: string, at: ShotAt): void {
   const span = (r: [number, number] | undefined, v: number): [number, number] => (r ? [Math.min(r[0], v), Math.max(r[1], v)] : [v, v]);
@@ -530,6 +460,13 @@ function logGate(shot: ShotId, text: string, at: ShotAt): void {
   g.texts[text] = (g.texts[text] ?? 0) + 1;
   g.yaw = span(g.yaw, at.yawLm); g.pitch = span(g.pitch, at.pitchLm); g.eyeWidthPx = span(g.eyeWidthPx, at.eyeWidthPx); g.faceRatio = span(g.faceRatio, at.faceRatio);
   state.gateLog[shot] = g;
+}
+/** 1-4: 정면 눈 뜸을 첫 장으로 두고(SHOTS 순서) 이마 L*a*b* 폭. 이마를 못 잰 장(L*=0)은 뺀다 */
+function shotsLabDrift(shots: readonly ShotRecord[]): ProbeResult["labDrift"] {
+  const labs = SHOTS.map((s) => shots.find((r) => r.shot === s.id)?.at)
+    .filter((at): at is ShotAt => !!at && at.foreheadL > 0)
+    .map((at) => ({ L: at.foreheadL, a: at.foreheadA, b: at.foreheadB }));
+  return labDrift(labs);
 }
 function jumpStats(v: readonly number[], occludedFrames: number): ProbeResult["foreheadJump"] {
   const s = [...v].sort((a, b) => a - b);
