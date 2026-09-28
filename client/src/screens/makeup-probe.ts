@@ -370,20 +370,38 @@ function drawMakeup(lm: readonly Pt[], style: LinerStyle): void {
   }
 }
 
-/**
- * 랜드마크 떨림 줄이기 — 스티커처럼 보이는 큰 이유가 화장이 얼굴 위에서 파르르 떠는 것이다.
- * 조금 움직일 땐 많이 누르고(떨림), 크게 움직일 땐 바로 따라간다(끌림 없음).
- */
-let smooth: Pt[] | null = null;
-function smoothLm(cur: Pt[], faceW: number): Pt[] {
-  if (!smooth || smooth.length !== cur.length) return (smooth = cur);
-  let move = 0;
-  for (let i = 0; i < cur.length; i += 8) move += Math.hypot(cur[i]!.x - smooth[i]!.x, cur[i]!.y - smooth[i]!.y);
-  move /= Math.ceil(cur.length / 8);
-  const k = Math.min(1, 0.25 + move / (0.02 * faceW));
-  const prev = smooth;
-  return (smooth = cur.map((p, i) => ({ x: prev[i]!.x + (p.x - prev[i]!.x) * k, y: prev[i]!.y + (p.y - prev[i]!.y) * k })));
+// ── 설정 받기 (JSON) ────────────────────────────────
+// 화면에서 조정한 값(부위 켜기·진하기·색, 피부 보정, 입히기, 눈썹 모양, 룩)과 그때 쓰인 개인화 계획을 파일로 내려받는다.
+// 사진·얼굴 점은 넣지 않는다 — 숫자 설정만.
+function settingsJson(): string {
+  const t = currentTpl();
+  const parts = Object.fromEntries(PARTS.map((p) => {
+    const s = sliders.get(p.id)!;
+    return [p.id, { name: p.name, on: s.on.checked && !s.on.disabled, intensity: Number(s.input.value), color: t.color[p.id] ?? null, blur: p.blur }];
+  }));
+  return JSON.stringify({
+    savedAt: new Date().toISOString(),
+    look: t.name,
+    render: renderSel.value,
+    beauty: Number(beautyIn.value),
+    browShape: browShapeSel.value,
+    linerThick: t.linerThick,
+    parts,
+    rules: { guide: GUIDE_PARAMS, plan: PLAN_RULES },
+    plan,
+  }, null, 2);
 }
+
+$("exportJson").addEventListener("click", () => {
+  const blob = new Blob([settingsJson()], { type: "application/json" });
+  const a = document.createElement("a");
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  a.href = URL.createObjectURL(blob);
+  a.download = `makeup-settings-${stamp}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  $("exportMsg").textContent = `받음: ${a.download}`;
+});
 
 // ── 루프 ────────────────────────────────────────────
 let landmarker: FaceLandmarker | null = null;
@@ -449,7 +467,7 @@ function tick(): void {
     g.drawImage(video, 0, 0, w, h);
     face = landmarker.detectForVideo(video, performance.now()).faceLandmarks[0];
     const raw = face && face.length >= 478 ? face.map((p) => ({ x: p.x * w, y: p.y * h })) : null;
-    lastLm = raw ? smoothLm(raw, unitScale(raw).face) : null;
+    lastLm = raw;   // 스무딩 없음 (2026-09-28 요청)
     shotBtn.disabled = !lastLm;
   }
   const lmNow = stillLm ?? lastLm;
