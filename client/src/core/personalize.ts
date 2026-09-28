@@ -88,11 +88,10 @@ export const JKSC_BROW_ADJUST_MM: Record<FaceShapeLabel, { height: number; glabe
 };
 
 /**
- * 논문 조정값에 곱하는 배율 — **지금은 0: 얼굴형으로 눈썹을 옮기지 않고 표준 눈썹만 쓴다** (#166, 2026-09-28).
- * JKSC 2023(전문가 설문)은 둥근형·계란형을 "올려라" 하지만, Morikawa 2015(인상 실험)는 눈썹이 눈에 가까울수록 좋게 봤다.
- * 두 근거가 방향이 부딪히고, JKSC 값은 그렇게 그린 얼굴을 시험한 적이 없다. 사용자 실험(#84)으로 방향이 정해지면 다시 켠다.
+ * 논문 조정값에 곱하는 배율. 논문도 "4 mm 면 인상이 크게 바뀐다" 고 경고하고, 얼굴형 판정이 5번에 1번은 틀린다(⑤ 81.5%).
+ * 틀렸을 때 티가 덜 나게 절반으로 시작한다 — 우리 가정값, 사용자 실험(#84)으로 확인.
  */
-export const BROW_ADJUST_SCALE = 0;
+export const BROW_ADJUST_SCALE = 0.5;
 
 /** ⑤ 모델 판정을 VLM 보다 앞세우는 확신도 */
 export const FACESHAPE_TRUST = 0.6;
@@ -130,8 +129,7 @@ export type BlushPosition = "higher" | "standard" | "lower";
 export const BLUSH_POSITIONS: readonly BlushPosition[] = ["higher", "standard", "lower"];
 
 /** 굽기 기본값 (Zhao 2019: 둥근 얼굴일수록 굽은 눈썹, JKSC 와 같은 방향) */
-/** 굽기 — 지금은 늘 표준 (Zhao 2019 는 표본·조건이 약하다, #166). 켤 때는 둥근형 → arched, 긴형 → flatter */
-const archOf = (_s: FaceShapeLabel | null): BrowArch => "standard";
+const archOf = (s: FaceShapeLabel | null): BrowArch => (s === "round" ? "arched" : s === "oblong" ? "flatter" : "standard");
 
 export interface BrowPlanValues {
   faceShape: FaceShapeLabel | null;
@@ -200,11 +198,16 @@ export function resolvePlan(
     else if (!trusted) { shape = label; browSource = "vlm"; }
   }
 
-  // 눈썹 굽기 — 지금은 표준 눈썹만 쓴다 (#166). 제안은 받지 않는다
-  const arch = archOf(shape);
-  if (isObj(q.brow) && q.brow.arch !== undefined && q.brow.arch !== "standard") rejected.push("눈썹 굽기: 지금은 표준 눈썹만 쓴다");
+  // 눈썹 굽기 — 얼굴형과 반대 방향이면 거절
+  let arch = archOf(shape);
+  if (isObj(q.brow) && q.brow.arch !== undefined) {
+    const a = BROW_ARCHES.find((s) => isObj(q.brow) && s === q.brow.arch);
+    if (!a) rejected.push(`눈썹 굽기: 모르는 값 ${String(q.brow.arch)}`);
+    else if ((shape === "oblong" && a === "arched") || (shape === "round" && a === "flatter")) rejected.push(`눈썹 굽기: ${shape} 에 ${a} 는 반대 방향`);
+    else { arch = a; browSource = "vlm"; }
+  }
   const adj = shape ? JKSC_BROW_ADJUST_MM[shape] : { height: 0, glabella: 0 };
-  const brow: BrowPlanValues = { faceShape: shape, source: browSource, heightMm: adj.height * BROW_ADJUST_SCALE + 0, glabellaMm: adj.glabella * BROW_ADJUST_SCALE + 0, arch };   // + 0: 배율 0 일 때 −0 이 안 나오게
+  const brow: BrowPlanValues = { faceShape: shape, source: browSource, heightMm: adj.height * BROW_ADJUST_SCALE, glabellaMm: adj.glabella * BROW_ADJUST_SCALE, arch };
 
   // 섀도 범위 — 규칙: 눈두덩이 넓으면 넓게, 좁으면 좁게. 제안이 측정과 반대 방향이면 거절
   const R = PLAN_RULES, [s0, s1] = PLAN_LIMITS.shadowRange;

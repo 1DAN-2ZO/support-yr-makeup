@@ -56,8 +56,8 @@ export function placeBrow(lm: Pt[], brow: { readonly upper: readonly number[]; r
 
 export interface FaceSpec {
   eye?: Partial<EyeSpec>; iris?: number; faceW?: number; faceH?: number; browRise?: number;
-  /** 입술: 윗입술 가운데 두께·아랫입술 두께·입 너비 px, peak = 큐피드 활 봉우리 → 입 가운데(구열점) 높이 px (없으면 upper + 1) */
-  lip?: { upper: number; lower: number; width: number; peak?: number };
+  /** 입술: 윗입술·아랫입술 붉은 부분 두께 px, 입 너비 px */
+  lip?: { upper: number; lower: number; width: number };
 }
 
 export function face(spec: FaceSpec = {}): Pt[] {
@@ -80,9 +80,6 @@ export function face(spec: FaceSpec = {}): Pt[] {
   lm[13] = { x: 300, y: 420 };                       // 윗입술 안쪽 가운데
   lm[14] = { x: 300, y: 422 };                       // 아랫입술 안쪽 가운데
   lm[17] = { x: 300, y: 422 + lip.lower };           // 아랫입술 바깥 가운데
-  const peak = lip.peak ?? lip.upper + 1;             // 구열점(입 가운데) y = 421
-  lm[37] = { x: 285, y: 421 - peak };                // 큐피드 활 봉우리 (이미지 왼쪽)
-  lm[267] = { x: 315, y: 421 - peak };               // 큐피드 활 봉우리 (이미지 오른쪽)
   lm[61] = { x: 300 - lip.width / 2, y: 421 };       // 입꼬리
   lm[291] = { x: 300 + lip.width / 2, y: 421 };
   lm[LM.alaA] = { x: 270, y: 370 };   // 콧방울 바깥 — 눈썹 꼬리 끝을 정하는 선의 출발점

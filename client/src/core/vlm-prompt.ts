@@ -8,12 +8,17 @@
 
 import type { FaceMeasure } from "./face-measure";
 import type { Look, LookPartId } from "./looks";
-import { BLUSH_POSITIONS, FACE_SHAPES, LINER_STYLES, PLAN_LIMITS, PLAN_RULES, droopDeg, planLiner, resolvePlan } from "./personalize";
+import { BLUSH_POSITIONS, BROW_ARCHES, FACE_SHAPES, JKSC_BROW_ADJUST_MM, LINER_STYLES, PLAN_LIMITS, PLAN_RULES, droopDeg, planLiner, resolvePlan } from "./personalize";
 import type { FaceShape } from "./types";
 
 const PART_NAME: Record<LookPartId, string> = { brow: "눈썹", liner: "아이라이너", shadow: "섀도", cheek: "블러셔", lip: "입술" };
 const hex = (c: readonly number[]): string => "#" + c.map((v) => Math.round(v).toString(16).padStart(2, "0")).join("");
 const f1 = (v: number): string => v.toFixed(1);
+const dir = (v: number, up: string, down: string): string => (v > 0 ? up : v < 0 ? down : "그대로");
+/** 얼굴형을 고르면 눈썹이 어떻게 바뀌는지 — VLM 이 모르고 "그대로 뒀어요" 라고 쓰지 않게 (JKSC 표에서) */
+const shapeEffects = (): string =>
+  FACE_SHAPES.map((s) => { const a = JKSC_BROW_ADJUST_MM[s]; return `${s} → 눈썹 ${dir(a.height, "높게", "낮게")}, 미간 ${dir(a.glabella, "넓게", "좁게")}`; }).join(" / ");
+
 export function buildVlmPrompt(m: FaceMeasure, look: Look, faceShape?: FaceShape | null): string {
   const droop = droopDeg(m);
   const rule = planLiner(m);
@@ -45,7 +50,8 @@ ${faceShape ? `- 얼굴형 판정: ${faceShape.label} (확신도 ${faceShape.con
 - liner.style: ${LINER_STYLES.join(" | ")}
   winged = 꼬리를 눈 축에서 위로 올림 / extend = 눈 축을 곧게 연장 / drop = 윗눈꺼풀 선을 따라 내림(처진 눈에만)
 - faceShape.label: ${FACE_SHAPES.join(" | ")}
-  고르면 쉐딩·하이라이트 자리만 바뀝니다. 눈썹은 표준 눈썹 그대로입니다(얼굴형으로 옮기지 않음)
+  고르면 표준 눈썹이 이렇게 바뀝니다: ${shapeEffects()}
+- brow.arch: ${BROW_ARCHES.join(" | ")} (긴 얼굴은 평평하게, 둥근 얼굴은 굽게가 기본)
 - shadow.range: ${s0}~${s1} (섀도 높이 배율, 1 = 템플릿 그대로. 눈두덩이 좁으면 작게)
 - intensity: 부위별 ${i0}~${i1} (진하기 배율, 1 = 템플릿 그대로). 바꿀 부위만. 상한: ${caps} — 넘으면 거절된다. 평균도 ${PLAN_RULES.intensityMeanCap} 이하로
 - lip.overline: ${PLAN_LIMITS.lipOverline[0]}~${PLAN_LIMITS.lipOverline[1]} (윗입술 가운데를 윗입술 두께의 몇 배만큼 올릴지. 윗입술이 이미 목표 이상이면 0)
@@ -56,5 +62,5 @@ ${faceShape ? `- 얼굴형 판정: ${faceShape.label} (확신도 ${faceShape.con
 
 ## 답
 JSON 하나만 답하세요. 설명이나 코드 블록 없이:
-{"liner":{"style":"..."},"linerThick":{"scale":1},"faceShape":{"label":"..."},"shadow":{"range":1},"lip":{"overline":0},"blush":{"position":"standard","size":1},"highlight":{"tZone":true},"intensity":{"lip":1},"rationale":{"liner":"...","brow":"..."}}`;
+{"liner":{"style":"..."},"linerThick":{"scale":1},"faceShape":{"label":"..."},"brow":{"arch":"..."},"shadow":{"range":1},"lip":{"overline":0},"blush":{"position":"standard","size":1},"highlight":{"tZone":true},"intensity":{"lip":1},"rationale":{"liner":"...","brow":"..."}}`;
 }
