@@ -22,17 +22,15 @@ describe("개인화 계획 — 제안이 없을 때", () => {
     expect(p.rejected).toEqual([]);
   });
 
-  it("⑤ 얼굴형 판정이 있으면 JKSC 표 × 0.5 로 눈썹 높이·미간을 정한다", () => {
-    expect(BROW_ADJUST_SCALE).toBe(0.5);
+  it("얼굴형으로 눈썹을 옮기지 않는다 — 표준 눈썹만 (#166: JKSC 와 Morikawa 가 방향이 부딪힌다)", () => {
+    expect(BROW_ADJUST_SCALE).toBe(0);
     expect(JKSC_BROW_ADJUST_MM).toEqual({ oblong: { height: -4, glabella: -4 }, heart: { height: 0, glabella: 0 }, square: { height: 0, glabella: 0 }, oval: { height: 4, glabella: -4 }, round: { height: 4, glabella: -4 } });
     const p = resolvePlan(measure(), { faceShape: model("round") });
-    expect(p.brow).toMatchObject({ faceShape: "round", source: "rule", heightMm: 2, glabellaMm: -2 });
+    expect(p.brow).toMatchObject({ faceShape: "round", source: "rule", heightMm: 0, glabellaMm: 0 });
   });
 
-  it("굽기 기본값은 얼굴형을 따른다 (Zhao 2019): 둥근형 → 굽게, 긴형 → 평평하게", () => {
-    expect(resolvePlan(measure(), { faceShape: model("round") }).brow.arch).toBe("arched");
-    expect(resolvePlan(measure(), { faceShape: model("oblong") }).brow.arch).toBe("flatter");
-    expect(resolvePlan(measure(), { faceShape: model("square") }).brow.arch).toBe("standard");
+  it("굽기도 표준 그대로 — 얼굴형과 상관없이 standard", () => {
+    for (const s of ["round", "oblong", "square"] as const) expect(resolvePlan(measure(), { faceShape: model(s) }).brow.arch).toBe("standard");
   });
 });
 
@@ -47,11 +45,11 @@ describe("개인화 계획 — VLM 제안 받기", () => {
       rationale: { liner: "눈꼬리가 올라간 눈이라 꼬리를 곧게 뺐어요" },
     });
     expect(p.liner.source).toBe("vlm");
-    expect(p.brow).toMatchObject({ faceShape: "oblong", source: "vlm", heightMm: -2, glabellaMm: -2, arch: "flatter" });
+    expect(p.brow).toMatchObject({ faceShape: "oblong", source: "vlm", heightMm: 0, glabellaMm: 0, arch: "standard" });
     expect(p.shadow).toEqual({ range: 1.1, source: "vlm" });
     expect(p.intensity).toEqual({ lip: 0.8, cheek: 1.2 });
     expect(p.rationale.liner).toBe("눈꼬리가 올라간 눈이라 꼬리를 곧게 뺐어요");
-    expect(p.rejected).toEqual([]);
+    expect(p.rejected).toEqual(["눈썹 굽기: 지금은 표준 눈썹만 쓴다"]);
   });
 
   it("JSON 이 아니거나 엉뚱한 모양이면 통째로 규칙값", () => {
@@ -88,12 +86,10 @@ describe("개인화 계획 — VLM 제안 거르기 (항목별로, 나머지는 
     expect(p.brow).toMatchObject({ faceShape: "round", source: "vlm" });
   });
 
-  it("눈썹 굽기: 얼굴형과 반대 방향이면 거절 (Zhao 2019) — 긴형에 더 굽게, 둥근형에 더 평평하게", () => {
-    const a = resolvePlan(measure(), { faceShape: model("oblong") }, { brow: { arch: "arched" } });
-    expect(a.brow.arch).toBe("flatter");
-    const b = resolvePlan(measure(), { faceShape: model("round") }, { brow: { arch: "flatter" } });
-    expect(b.brow.arch).toBe("arched");
-    expect(b.rejected.join()).toMatch(/굽기/);
+  it("눈썹 굽기 제안은 받지 않는다 — 지금은 표준 눈썹만", () => {
+    const p = resolvePlan(measure(), { faceShape: model("round") }, { brow: { arch: "arched" } });
+    expect(p.brow.arch).toBe("standard");
+    expect(p.rejected.join()).toMatch(/표준 눈썹/);
   });
 
   it("섀도 범위: 0.8~1.2 밖이면 거절", () => {
