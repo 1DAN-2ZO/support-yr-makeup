@@ -373,12 +373,9 @@ function drawMakeup(lm: readonly Pt[], style: LinerStyle): void {
 /**
  * 랜드마크 떨림 줄이기 — 스티커처럼 보이는 큰 이유가 화장이 얼굴 위에서 파르르 떠는 것이다.
  * 조금 움직일 땐 많이 누르고(떨림), 크게 움직일 땐 바로 따라간다(끌림 없음).
- * 끄면 움직임을 늦지 않게 따라가지만 떨린다 — 화면의 "떨림 줄이기" 칸으로 비교한다.
  */
-const smoothOn = $<HTMLInputElement>("smoothOn");
 let smooth: Pt[] | null = null;
 function smoothLm(cur: Pt[], faceW: number): Pt[] {
-  if (!smoothOn.checked) return (smooth = cur);
   if (!smooth || smooth.length !== cur.length) return (smooth = cur);
   let move = 0;
   for (let i = 0; i < cur.length; i += 8) move += Math.hypot(cur[i]!.x - smooth[i]!.x, cur[i]!.y - smooth[i]!.y);
