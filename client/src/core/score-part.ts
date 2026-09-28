@@ -14,8 +14,9 @@ import { LM, at } from "./landmarks";
 import type { SampleFrame } from "./sampling";
 import { frameOf, sampleBrow, sampleForehead, sampleLiner, sampleLip, sampleRegion } from "./sampling";
 import type { Band, DecideContext, LightCorr, PartScore, ScoreParams, Side, SimilarityFit } from "./score";
-import { PARAMS, alignToBaseline, browResult, compareLinerEye, compareLip, compareRegion, intensityIndex, intensityResult, lightCorr, linerResult, makeupBiasPx, noCorr } from "./score";
-import type { PartId, Pt } from "./types";
+import { PARAMS, alignToBaseline, browResult, compareLinerEye, compareLip, compareRegion, intensityIndex, intensityResult, lightCorr, linerResult, makeupBiasPx, noCorr, oneLiner, toOutcome } from "./score";
+import type { ScoreOutcome } from "./flow";
+import type { CheckReason, PartId, Pt } from "./types";
 
 /**
  * 채점이 가이드에서 받아야 하는 모양. 그 프레임의 좌표(px)로.
@@ -170,4 +171,65 @@ function regionOf(guide: GuideSource, partId: PartId, f: SampleFrame, s: Side): 
   const r = guide(partId, f).regions?.[s];
   if (!r) throw new Error(`가이드에 ${partId} 영역이 없다 (${s})`);
   return r;
+}
+
+// ---------- 프레임 묶음 (3-3, #34) ----------
+
+/** 확인받기 묶음의 한 장. occluded: true 가림 · false 안 가림 · null 안 쟀음(쓴다) */
+export interface BundleInput {
+  im: RgbaImage;
+  pts: readonly Pt[];
+  occluded: boolean | null;
+}
+
+export interface BundleScore {
+  outcome: ScoreOutcome;
+  /** 대표 장의 번호 (화면에 사진·테두리를 그릴 장). 다 가려졌으면 null */
+  pick: number | null;
+  /** 대표 장을 기준 좌표로 맞춘 프레임 (테두리 그리기용) */
+  cur: SampleFrame | null;
+  used: number;
+  excluded: number;
+}
+
+/**
+ * 확인받기 3~5장을 각각 채점해 합친다.
+ *  - 가려진 장은 뺀다. 다 가려졌으면 확인만(hand)
+ *  - 점수 난 장이 절반 이상이면 점수 = 중앙값. 흔들린 한 장이 점수를 끌고 가지 않게 (이슈는 "평균" — 튀는 값에 강한 쪽을 골랐다)
+ *  - 아니면 확인만, 이유는 가장 많이 나온 것
+ *  - 한 줄 평·코드·사진은 대표 장(점수가 중앙값에 가장 가까운 장, 확인만이면 그 이유가 나온 첫 장)에서
+ */
+export function scoreBundle(partId: PartId, base: SampleFrame, frames: readonly BundleInput[], guide: GuideSource, opts: ScorePartOptions = {}, p: ScoreParams = PARAMS): BundleScore {
+  if (!frames.length) throw new Error("확인받기 프레임이 없다");
+  const kept = frames.map((f, i) => ({ f, i })).filter(({ f }) => f.occluded !== true);
+  const excluded = frames.length - kept.length;
+  if (!kept.length) {
+    const outcome: ScoreOutcome = {
+      decision: "check_only", score: null, diagnosisCodes: [], checkReason: "hand",
+      diagnosis: oneLiner(partId, { status: "check_only", reason: "hand", score: null }), lrIndex: null,
+      metrics: { frames: { used: 0, excluded } },
+    };
+    return { outcome, pick: null, cur: null, used: 0, excluded };
+  }
+  const each = kept.map(({ f, i }) => {
+    const { frame, fit } = alignedFrame(base, f.im, f.pts);
+    const { result, ctx } = scorePart(partId, base, frame, guide, { ...opts, alignResidual: fit.residual }, p);
+    return { i, cur: frame, out: toOutcome(partId, result, ctx, p) };
+  });
+  const scored = each.filter((e) => e.out.decision === "scored");
+  let pickE: (typeof each)[number];
+  let score: number | null = null;
+  if (scored.length * 2 >= each.length) {
+    const sorted = scored.map((e) => e.out.score!).sort((a, b) => a - b);
+    const k = sorted.length >> 1;
+    score = sorted.length % 2 ? sorted[k]! : Math.round((sorted[k - 1]! + sorted[k]!) / 2);
+    pickE = scored.reduce((a, e) => (Math.abs(e.out.score! - score!) < Math.abs(a.out.score! - score!) ? e : a));
+  } else {
+    const count = new Map<CheckReason, number>();
+    for (const e of each) if (e.out.decision === "check_only" && e.out.checkReason) count.set(e.out.checkReason, (count.get(e.out.checkReason) ?? 0) + 1);
+    const reason = [...count.entries()].sort((a, b) => b[1] - a[1])[0]![0];
+    pickE = each.find((e) => e.out.checkReason === reason)!;
+  }
+  const outcome: ScoreOutcome = { ...pickE.out, score, metrics: { ...pickE.out.metrics, frames: { used: each.length, excluded } } };
+  return { outcome, pick: pickE.i, cur: pickE.cur, used: each.length, excluded };
 }

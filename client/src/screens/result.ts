@@ -15,8 +15,8 @@ import type { RgbaImage } from "../core/color";
 import type { ScoreOutcome } from "../core/flow";
 import { guideOutline } from "../core/overlay";
 import { frameOf } from "../core/sampling";
-import { alignedFrame, scorePart, type GuideSource } from "../core/score-part";
-import { PART_NAME, toOutcome } from "../core/score";
+import { scoreBundle, type GuideSource } from "../core/score-part";
+import { PART_NAME } from "../core/score";
 import type { Baseline, CaptureBundle, PartId, PartStatus } from "../core/types";
 import type { Screen, ScreenContext } from "./shell";
 
@@ -53,8 +53,7 @@ export function resultScreen<S>(deps: ResultDeps): Screen<S> {
       wrap.append(line("result-part", PART_NAME[part]));
 
       const baseline = deps.getBaseline(), bundle = deps.getCapture(part);
-      const frame = bundle?.frames[bundle.frames.length - 1], pts = bundle?.pts[bundle.pts.length - 1];
-      if (!baseline?.bareImage || !frame || !pts) {
+      if (!baseline?.bareImage || !bundle || !bundle.frames.length || bundle.pts.length !== bundle.frames.length) {
         wrap.append(line("muted", "확인받기 결과가 없어요. 다시 확인받아 주세요"));
         wrap.append(buttons(ctx, deps, part, null));
         return;
@@ -77,14 +76,14 @@ export function resultScreen<S>(deps: ResultDeps): Screen<S> {
       void (async () => {
         let outcome: ScoreOutcome;
         try {
-          const [bareIm, curIm] = await Promise.all([toRgba(baseline.bareImage!), toRgba(frame)]);
+          // 확인받기 묶음 전체를 채점한다 (3-3): 가려진 장은 빼고, 점수는 중앙값, 사진은 대표 장
+          const [bareIm, ...ims] = await Promise.all([toRgba(baseline.bareImage!), ...bundle.frames.map((f) => toRgba(f))]);
           if (!alive) return;
           const guide = deps.guide();
           const base = frameOf(bareIm, baseline.lm);
-          const { frame: cur, fit } = alignedFrame(base, curIm, pts);
-          const { result, ctx: sctx } = scorePart(part, base, cur, guide, { alignResidual: fit.residual });
-          outcome = toOutcome(part, result, sctx);
-          drawOverlay(canvas, frame, curIm, guideOutline(part, cur.lm, guide(part, cur)));
+          const b = scoreBundle(part, base, ims.map((im, i) => ({ im, pts: bundle.pts[i]!, occluded: bundle.handOverlap[i] ?? null })), guide);
+          outcome = b.outcome;
+          if (b.pick !== null && b.cur) drawOverlay(canvas, bundle.frames[b.pick]!, ims[b.pick]!, guideOutline(part, b.cur.lm, guide(part, b.cur)));
           ctx.log.log({ name: "score", part, status: outcome.decision === "scored" ? "passed" : "check_only", check_reason: outcome.checkReason, ms: Math.round(performance.now() - t0) });
         } catch (e) {
           if (!alive) return;
