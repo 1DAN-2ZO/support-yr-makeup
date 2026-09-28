@@ -6,7 +6,7 @@
  * 기준 길이(unitScale)는 baseline.ts, 이마·눈 흰자 다각형은 color.ts 에 있다 (① 소유). 여기에 또 두지 않는다.
  */
 
-import type { Pt } from "./types";
+import type { PartId, Pt } from "./types";
 
 export const LM = {
   eyeA: { outer: 33, inner: 133, upper: [33, 246, 161, 160, 159, 158, 157, 173, 133], lower: [33, 7, 163, 144, 145, 153, 154, 155, 133], iris: [468, 469, 470, 471, 472] },
@@ -33,4 +33,23 @@ export function at(pts: readonly Pt[], i: number): Pt {
   const p = pts[i];
   if (!p) throw new Error(`랜드마크 ${i} 없음 (${pts.length}점)`);
   return p;
+}
+
+/** 부위마다 화면 안에 다 있어야 하는 점 (poc/full/lib/gate.js PART_POINTS 그대로) */
+export const PART_POINTS: Record<PartId, readonly number[]> = {
+  brow: [...LM.browA.upper, ...LM.browA.lower, ...LM.browB.upper, ...LM.browB.lower, LM.eyeA.outer, LM.eyeB.outer],
+  liner: [...LM.eyeA.upper, ...LM.eyeB.upper],
+  shadow: [...LM.eyeA.upper, ...LM.eyeB.upper, ...LM.browA.lower, ...LM.browB.lower],
+  lip: LM.lipsOuter,
+  cheek: [LM.cheekA, LM.cheekB, LM.faceL, LM.faceR],
+  contour: [...LM.jaw, LM.glabella],
+};
+
+/** 부위 점이 전부 프레임 안(가장자리 여백 2%)에 있나 — 화면 4 게이트 "부위 가시성" (정의서 3-3) */
+export function partVisible(partId: PartId, pts: readonly Pt[], w: number, h: number): boolean {
+  const mx = w * 0.02, my = h * 0.02;
+  return PART_POINTS[partId].every((i) => {
+    const p = at(pts, i);
+    return p.x > mx && p.x < w - mx && p.y > my && p.y < h - my;
+  });
 }
