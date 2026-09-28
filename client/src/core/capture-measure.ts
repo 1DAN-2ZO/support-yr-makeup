@@ -1,4 +1,5 @@
 /**
+ * (파일 이름: app-paper-techniques 브랜치의 개인화용 core/face-measure.ts 와 겹치지 않게 capture-measure 로 둔다, 2026-09-28)
  * 촬영 게이트용 얼굴 측정 (랜드마크만 쓰는 것). 프로브(capture-probe)와 화면 1(capture)이 같이 쓴다.
  * 픽셀이 필요한 선명도·이마 색은 `screens/frame-measure.ts`.
  * 순수 함수 — 좌표는 px.

@@ -11,7 +11,7 @@ import { CAPTURE_GUIDE, CAPTURE_LIMITS, SHOTS, burstShot, burstStep, nextShot, s
 import type { BurstState } from "@core/flow";
 import type { ShotId, ShotMeasure } from "@core/flow";
 import { FACE_L, FACE_R, labDrift } from "@core/color";
-import { LO_A, LO_B, UP_A, UP_B, ear, eyeWidthPxOf, faceInsetOf, irisPxOf, yawFromLandmarks, yawFromMatrix } from "@core/face-measure";
+import { LO_A, LO_B, UP_A, UP_B, ear, eyeWidthPxOf, faceInsetOf, irisPxOf, yawFromLandmarks, yawFromMatrix } from "@core/capture-measure";
 import { foreheadLabOf, sharpnessOf } from "@screens/frame-measure";
 import { createLandmarker } from "@screens/landmarker";
 import type { GateFail, Pt } from "@core/types";
@@ -130,7 +130,7 @@ const mem = memorySink();
 const logger = createLogger({ sid: `probe-${Date.now()}`, screen: "consent", part: null, ver: { app: "probe", score: "-", look: "-", faceshape: "-", transfer: "-" } }, mem.sink);
 const events = createCaptureEvents(logger);
 
-// ---------- 측정 도우미 (core/face-measure · screens/frame-measure) ----------
+// ---------- 측정 도우미 (core/capture-measure · screens/frame-measure) ----------
 const pt = (lm: readonly Pt[], i: number): Pt => {
   const p = lm[i];
   if (!p) throw new Error(`랜드마크 ${i} 없음`);

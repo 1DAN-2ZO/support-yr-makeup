@@ -2,7 +2,7 @@
  * 화면 1 — 맨얼굴 4장 자동 촬영 (F-01, 정의서 화면 1). 모듈 ①.
  *
  * 흐름: 촬영 안내(이마·귀·안경) → 카메라 → 장마다 조건 한 줄 → 조건이 안정되면 자동으로 찍음 → 4장 → 완료(썸네일·장별 다시 찍기) → 서버 처리.
- * 측정·조건은 프로브(capture-probe, 폰 실측 1-2)와 같은 코드다: core/face-measure · screens/frame-measure · core/capture-run.
+ * 측정·조건은 프로브(capture-probe, 폰 실측 1-2)와 같은 코드다: core/capture-measure · screens/frame-measure · core/capture-run.
  *
  *  - 정면 눈 뜸을 찍으면 기준(Baseline)을 만들고 쌩얼 사진을 IndexedDB 에 저장한다 (1-7 "bare").
  *    정면을 다시 찍으면 기준을 다시 만들고 나머지 장의 랜드마크를 새 기준에 맞춘다 (1-11, baseline.retakeFront).
@@ -15,7 +15,7 @@ import type { Lab } from "@core/color";
 import type { CaptureEvents } from "@core/capture-events";
 import { STEP_TEXT, runStep, startRun, type RunState } from "@core/capture-run";
 import { buildBaseline, retakeFront } from "@core/baseline";
-import { eyeWidthPxOf, eyesClosed, faceCropOf, faceInsetOf, faceRatioOf, yawFromLandmarks } from "@core/face-measure";
+import { eyeWidthPxOf, eyesClosed, faceCropOf, faceInsetOf, faceRatioOf, yawFromLandmarks } from "@core/capture-measure";
 import { CAPTURE_GUIDE, SHOTS, nextShot, type ShotId, type ShotMeasure } from "@core/flow";
 import { foreheadStep, startForeheadTrack } from "@core/occlusion";
 import type { Baseline, FaceShape, Pt } from "@core/types";
