@@ -24,7 +24,7 @@ import {
   type ScreenId,
   type Session,
 } from "./core/flow";
-import { pocGuide } from "./core/guide-poc";
+import { planGuide } from "./core/personal-guide";
 import { measureFace } from "./core/face-measure";
 import { resolvePlan, type PersonalPlan } from "./core/personalize";
 import { createPlanQueue } from "./core/plan-queue";
@@ -122,11 +122,17 @@ async function boot(): Promise<void> {
 
   // 룩별 개인화 계획 — 룩을 누를 때 한 번씩, 마지막에 누른 것 먼저 (2026-09-28 흐름).
   // 지금은 규칙 계획만. VLM 제안은 서버가 붙으면 resolvePlan 의 세 번째 인자로 넣는다 (사진이 밖으로 나가지 않는 학원 서버)
-  const plans = createPlanQueue<PersonalPlan>(async () => {
+  const rulePlan = (): PersonalPlan | null => {
     const b = session.baseline;
-    if (!b) throw new Error("기준 얼굴이 없습니다");
-    return resolvePlan(measureFace(b.lm), { faceShape: b.faceShape });
+    return b ? resolvePlan(measureFace(b.lm), { faceShape: b.faceShape }) : null;
+  };
+  const plans = createPlanQueue<PersonalPlan>(async () => {
+    const p = rulePlan();
+    if (!p) throw new Error("기준 얼굴이 없습니다");
+    return p;
   });
+  // 앱을 다시 켜면 큐가 비어 있다 — 규칙 계획은 같은 얼굴이면 같은 값이라 그 자리에서 다시 만든다 (AR·채점이 같은 기준)
+  const planFor = (lookId: string | null): PersonalPlan | null => (lookId ? plans.get(lookId) ?? rulePlan() : null);
 
   // 끝내기가 지우고 남은 키 수. 0 이어야 한다 (F-11)
   let clearRemaining = 0;
@@ -167,7 +173,7 @@ async function boot(): Promise<void> {
         set({ ...session, lookId });
       },
       personalize: (lookId) => plans.request(lookId).then(() => {}),
-      getPlan: (lookId) => plans.get(lookId) ?? null,
+      getPlan: (lookId) => planFor(lookId),
     },
     {
       getParts: () => toReviewParts(session),
@@ -195,8 +201,9 @@ async function boot(): Promise<void> {
       getBaseline: () => session.baseline,
       // 화면 4(②) 가 확인받기 순간의 프레임 묶음을 parts[].captured 에 둔다 (CaptureBundle)
       getCapture: (part) => (session.parts.find((p) => p.partId === part)?.captured as CaptureBundle | null) ?? null,
-      // 고른 룩의 치수(라이너 두께)로 채점한다. ② guides.ts 가 오면 여기만 바뀐다
-      guide: () => pocGuide(lookById(session.lookId).parts),
+      // 고른 룩을 이 얼굴에 맞춘 계획대로 채점한다 — 2-b AR 에서 본 모양과 같은 기준.
+      // 계획이 없으면(개인화 전·복원 직후) 룩 표준 모양 (planGuide(x, null) = lookGuide(x), plan-guide.test)
+      guide: () => planGuide(lookById(session.lookId).parts, planFor(session.lookId)),
       getStatus: (part) => session.parts.find((p) => p.partId === part)?.status ?? "in_progress",
       apply: (part, outcome) => {
         set(applyResult(session, part, outcome));
