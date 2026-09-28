@@ -370,6 +370,24 @@ function drawMakeup(lm: readonly Pt[], style: LinerStyle): void {
   }
 }
 
+/**
+ * 랜드마크 떨림 줄이기 — 스티커처럼 보이는 큰 이유가 화장이 얼굴 위에서 파르르 떠는 것이다.
+ * 조금 움직일 땐 많이 누르고(떨림), 크게 움직일 땐 바로 따라간다(끌림 없음).
+ * 끄면 움직임을 늦지 않게 따라가지만 떨린다 — 화면의 "떨림 줄이기" 칸으로 비교한다.
+ */
+const smoothOn = $<HTMLInputElement>("smoothOn");
+let smooth: Pt[] | null = null;
+function smoothLm(cur: Pt[], faceW: number): Pt[] {
+  if (!smoothOn.checked) return (smooth = cur);
+  if (!smooth || smooth.length !== cur.length) return (smooth = cur);
+  let move = 0;
+  for (let i = 0; i < cur.length; i += 8) move += Math.hypot(cur[i]!.x - smooth[i]!.x, cur[i]!.y - smooth[i]!.y);
+  move /= Math.ceil(cur.length / 8);
+  const k = Math.min(1, 0.25 + move / (0.02 * faceW));
+  const prev = smooth;
+  return (smooth = cur.map((p, i) => ({ x: prev[i]!.x + (p.x - prev[i]!.x) * k, y: prev[i]!.y + (p.y - prev[i]!.y) * k })));
+}
+
 // ── 루프 ────────────────────────────────────────────
 let landmarker: FaceLandmarker | null = null;
 let bare = false;
@@ -434,7 +452,7 @@ function tick(): void {
     g.drawImage(video, 0, 0, w, h);
     face = landmarker.detectForVideo(video, performance.now()).faceLandmarks[0];
     const raw = face && face.length >= 478 ? face.map((p) => ({ x: p.x * w, y: p.y * h })) : null;
-    lastLm = raw;   // 스무딩 없음 — 떨림 누르기가 움직임을 한 박자 늦게 따라가게 했다
+    lastLm = raw ? smoothLm(raw, unitScale(raw).face) : null;
     shotBtn.disabled = !lastLm;
   }
   const lmNow = stillLm ?? lastLm;
