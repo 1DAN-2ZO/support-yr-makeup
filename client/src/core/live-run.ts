@@ -19,6 +19,7 @@ import { partInRect } from "./landmarks";
 import { foreheadStep, startForeheadTrack, type ForeheadTrack } from "./occlusion";
 import { guideOutline, type Outline } from "./overlay";
 import type { GuideSource } from "./score-part";
+import { LandmarkSmoother } from "./smoothing";
 import type { GateResult, PartId, Pt } from "./types";
 
 /** 화면이 프레임마다 넣는 것. 픽셀 측정(선명·이마 색)은 화면이 한다 (screens/frame-measure) */
@@ -46,6 +47,8 @@ export interface LiveRunOptions {
   baseAb?: { a: number; b: number };
   /** 테두리 모양. 채점과 같은 것 */
   guide: GuideSource;
+  /** 테두리를 그릴 점에 One-Euro(④ smoothing.ts)를 건다. 기본 켬 — 떨림 비교(#23)용으로 끌 수 있다 */
+  smooth?: boolean;
   limits?: LiveLimits;
 }
 
@@ -78,6 +81,8 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
   let fj: ForeheadTrack = startForeheadTrack();
   let lastOk = false;
   let collector: ReturnType<typeof createBundleCollector<I>> | null = null;
+  // 그리기 전용. 게이트·묶음(채점)에는 원래 점을 쓴다 — 필터 지연이 채점 위치를 끌고 가지 않게
+  const smoother = opt.smooth === false ? null : new LandmarkSmoother(Array.from({ length: 478 }, (_, i) => i));
 
   return {
     step(f) {
@@ -85,6 +90,7 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
       let outline: Outline | null = null;
       let occluded: boolean | null = null;
       if (!f.lm) {
+        smoother?.smooth(null, f.t);
         const r = gateStep(stable, opt.partId, { faceDetected: false, yaw: 0, pitch: 0 }, limits);
         stable = r.stable;
         gate = r.gate;
@@ -106,7 +112,7 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
         }, limits);
         stable = r.stable;
         gate = r.gate;
-        outline = outlineOf(opt.partId, f.lm, opt.guide);
+        outline = outlineOf(opt.partId, smoother?.smooth(f.lm, f.t) ?? f.lm, opt.guide);
       }
       lastOk = gate.ok;
 

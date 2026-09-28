@@ -8,12 +8,19 @@
  * 카메라 여는 방식은 화면 1(capture.ts)과 같다: 1080p · 노출 고정 · 초광각 확대 · 화면 꺼짐 방지 · 홈 다녀오면 다시 켬.
  * 프레임 루프는 requestVideoFrameCallback (결정 A3 — 새 프레임에만 추론, 없으면 rAF).
  *
- * 아직 없는 것: 부위 확대·데드존·One-Euro(#23), 이벤트(#24), 표정 게이트(#27).
+ * 떨림 1차(#23): 영상 전체가 아니라 **부위 확대 창**(crop.cropSpec)만 캔버스에 그린다 (정의서 3-3).
+ *  - 창은 core/crop-follow — 얼굴 폭 3% 데드존 + 0.2~0.3초 미끄러짐, 크기는 거리가 20% 넘게 변할 때만
+ *  - 테두리 선은 live-run 의 One-Euro(④ smoothing.ts). 채점 묶음에는 원래 점
+ *  - 개발용: 주소에 `?jitter` 를 붙이면 화면 구석에 테두리 떨림(표준편차 px)이 뜬다(탭하면 0부터).
+ *    `?jitter&stab=0` 이면 데드존·One-Euro 를 끈 채로 잰다 → 적용 전후 비교
+ *
+ * 아직 없는 것: 이벤트(#24), 표정 게이트(#27).
  */
 
 import type { FaceLandmarker } from "@mediapipe/tasks-vision";
 import type { BundleOf } from "@core/capture-bundle";
-import { coverView } from "@core/crop";
+import { cropSpec, type Rect } from "@core/crop";
+import { clampRect, createCropFollow, jitterMeter } from "@core/crop-follow";
 import { lookGuide } from "@core/guides";
 import { createLiveRun, type LiveFrame } from "@core/live-run";
 import type { Logger } from "@core/log";
@@ -61,13 +68,30 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text = ""):
   return e;
 }
 
-/** 좌표는 비디오 프레임 px — 캔버스를 비디오와 같은 크기·같은 거울로 겹친다 */
-function drawOutline(cv: HTMLCanvasElement, o: Outline | null, w: number, h: number): void {
-  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+/** 창(영상 px) → 캔버스 px. 창이 영상 끝에 걸려 비율이 깨졌으면 여백을 둔다(contain) */
+interface ViewMap { s: number; ox: number; oy: number; crop: Rect }
+
+/** 확대 창만 거울로 그리고 그 위에 테두리 (선만, F-07) */
+function drawView(cv: HTMLCanvasElement, video: HTMLVideoElement, crop: Rect, o: Outline | null): ViewMap | null {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const W = Math.round(cv.clientWidth * dpr), H = Math.round(cv.clientHeight * dpr);
+  if (!W || !H) return null;
+  if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
   const g = cv.getContext("2d");
-  if (!g) return;
-  g.clearRect(0, 0, w, h);
-  if (o) strokeOutline(g, o, Math.max(2, w / 400));
+  if (!g) return null;
+  const s = Math.min(W / crop.w, H / crop.h), ox = (W - crop.w * s) / 2, oy = (H - crop.h * s) / 2;
+  g.fillStyle = "#000";
+  g.fillRect(0, 0, W, H);
+  g.save();
+  g.translate(W, 0);
+  g.scale(-1, 1);
+  g.translate(ox, oy);
+  g.scale(s, s);
+  g.translate(-crop.x, -crop.y);
+  g.drawImage(video, crop.x, crop.y, crop.w, crop.h, crop.x, crop.y, crop.w, crop.h);
+  if (o) strokeOutline(g, o, Math.max(2, W / 400) / s);
+  g.restore();
+  return { s, ox, oy, crop };
 }
 
 /**
@@ -125,10 +149,20 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
       }
 
       const stage = el("div", "cam live-cam");
-      const video = el("video", "cam-video");
+      // 영상은 숨겨 두고(재생은 계속) 확대 창만 캔버스에 그린다
+      const video = el("video", "live-src");
       video.playsInline = true; video.muted = true; video.autoplay = true;
-      const overlay = el("canvas", "cam-video live-overlay");
-      stage.append(video, overlay);
+      const view = el("canvas", "live-view");
+      stage.append(video, view);
+      // 개발용 떨림 재기 (#23 "적용 전후 30초 비교")
+      const q = new URLSearchParams(window.location.search);
+      const stab = q.get("stab") !== "0";
+      const meter = q.has("jitter") ? jitterMeter() : null;
+      const readout = el("p", "live-jitter");
+      if (meter) {
+        stage.append(readout);
+        readout.addEventListener("click", () => meter.reset());
+      }
       const line = el("p", "cam-gate", LIVE_TEXT.loading);
       const btn = el("button", "primary live-btn", LIVE_TEXT.button);
       btn.type = "button";
@@ -143,7 +177,12 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         baseline: { lm: baseline.lm, foreheadL: baseline.foreheadL },
         ...(baseAb ? { baseAb } : {}),
         guide: deps.getGuide?.() ?? lookGuide(deps.getLookParts()),
+        smooth: stab,
       });
+      let follow: ReturnType<typeof createCropFollow> | null = null;
+      let followAspect = 0;
+      let crop: Rect | null = null;
+      let lostSince: number | null = null;
 
       let alive = true;
       // 정리 함수가 세운다. alive 는 묶음을 넘길 때도 false 가 되므로 "화면을 떠났나" 는 이것으로 본다
@@ -191,18 +230,31 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         const sw = video.videoWidth, sh = video.videoHeight;
         const raw = lmk.detectForVideo(video, now).faceLandmarks[0];
         const lm = raw ? raw.map((p) => ({ x: p.x * sw, y: p.y * sh })) : null;
-        const f: LiveFrame<HTMLCanvasElement> = {
-          t: now, lm, w: sw, h: sh, image: () => grabFrame(video),
-          // object-fit: cover 로 잘린 양옆은 사용자에게 안 보인다 → 부위 가시성은 보이는 영역으로
-          view: coverView(sw, sh, stage.clientWidth, stage.clientHeight),
-        };
+        // 확대 창: 칸 비율이 바뀌면(방향 전환) 새로 잡는다. 얼굴을 3초 넘게 잃으면 옛 자리에서 미끄러져 오지 않게 새로 (3-9 자리 비움)
+        const aspect = view.clientWidth && view.clientHeight ? view.clientWidth / view.clientHeight : 3 / 4;
+        if (!follow || Math.abs(aspect - followAspect) > 0.01) { follow = createCropFollow(part!, aspect); followAspect = aspect; }
+        if (lm) {
+          lostSince = null;
+          crop = clampRect(stab ? follow.step(lm, now) : cropSpec(part!, lm, aspect), sw, sh);
+        } else {
+          lostSince ??= now;
+          if (now - lostSince > 3000) follow.reset();
+        }
+        const shown = crop ?? { x: 0, y: 0, w: sw, h: sh };
+        // 부위 가시성은 사용자에게 보이는 창 안에서 본다
+        const f: LiveFrame<HTMLCanvasElement> = { t: now, lm, w: sw, h: sh, image: () => grabFrame(video), view: shown };
         if (lm) {
           f.sharpness = sharpnessOf(video, faceCropOf(lm, sw, sh));
           const lab = foreheadLabOf(video, lm, sw, sh);
           if (lab) f.lab = lab;
         }
         const r = run.step(f);
-        drawOutline(overlay, r.outline, sw, sh);
+        const vm = drawView(view, video, shown, r.outline);
+        if (meter && vm && r.outline) {
+          // 사용자가 보는 캔버스 px 로 — 창이 움직인 것도 떨림에 들어간다
+          meter.push([...r.outline.polys.flat(), ...r.outline.lines.flat()].map((p) => ({ x: (p.x - vm.crop.x) * vm.s + vm.ox, y: (p.y - vm.crop.y) * vm.s + vm.oy })));
+          readout.textContent = `떨림 ${meter.std().toFixed(2)}px · ${meter.count()}프레임 · 보정 ${stab ? "켬" : "끔"}`;
+        }
 
         if (r.bundle?.status === "done") {
           alive = false;

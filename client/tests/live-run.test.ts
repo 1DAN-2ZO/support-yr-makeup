@@ -159,4 +159,29 @@ describe("live run", () => {
     const want = linerOutline({ lm: FACE, unit: unitScale(FACE) }, 0.08, { R: [FACE[LM.eyeA.outer]!, tipR], L: [FACE[LM.eyeB.outer]!, tipL] });
     expect(o.polys).toEqual([want.R, want.L]);
   });
+
+  it("L16 테두리는 One-Euro 로 부드럽게 — 가만히 있는데 점이 떨리면 선은 덜 떨린다 (#23)", () => {
+    const jittered = (i: number) => FACE.map((p) => ({ x: p.x + (i % 2 ? 3 : -3), y: p.y }));
+    const spread = (smooth: boolean) => {
+      const lr = createLiveRun<string>({ partId: "lip", baseline: { lm: FACE, foreheadL: SKIN.L }, guide: lookGuide({}), smooth });
+      const xs: number[] = [];
+      for (let i = 0; i < 60; i++) xs.push(lr.step(frame({ lm: jittered(i) })).outline!.polys[0]![0]!.x);
+      const tail = xs.slice(30);
+      return Math.max(...tail) - Math.min(...tail);
+    };
+    expect(spread(false)).toBeCloseTo(6, 6);
+    expect(spread(true)).toBeLessThan(6 * 0.5);
+  });
+
+  it("L17 채점으로 넘기는 묶음에는 필터 안 건 원래 점 (필터가 채점을 흔들지 않게)", () => {
+    const lr = run();
+    for (let i = 0; i < 5; i++) lr.step(frame());
+    lr.press();
+    const moved = FACE.map((p) => ({ x: p.x + 4, y: p.y }));
+    let last = null;
+    for (let i = 0; i < 5; i++) last = lr.step(frame({ lm: moved })).bundle;
+    expect(last?.status).toBe("done");
+    if (last?.status !== "done") return;
+    expect(last.bundle.pts[0]![0]).toEqual({ x: moved[0]!.x, y: moved[0]!.y });
+  });
 });
