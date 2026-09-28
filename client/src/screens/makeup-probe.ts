@@ -95,6 +95,22 @@ const TEMPLATES: Tpl[] = [
     alpha: { brow: 0.45, shadow: 0.55, liner: 0.9, cheek: 0.35, lip: 0.75, ...CONTOUR_ALPHA },
     linerThick: 0.045,
   },
+  // 사진에서 뽑은 템플릿 2 (스크래치패드 extract_tpl.py 결과, before.png/after.png). 랜드마크 폴리곤 평균색 + ΔE 근사 alpha
+  {
+    name: "사진 추출 2 (로즈 브라운)",
+    color: { brow: "#bd9694", shadow: "#a7837f", liner: "#644646", cheek: "#d5b2af", lip: "#af7879", ...CONTOUR_COLORS },
+    lipEdge: "#b98784",
+    alpha: { brow: 0.29, shadow: 0.47, liner: 0.32, cheek: 0.39, lip: 0.13, ...CONTOUR_ALPHA },
+    linerThick: 0.076,
+  },
+  // 사진에서 뽑은 템플릿 3 (스크래치패드 extract_tpl.py 결과, before2.png/after2.png)
+  {
+    name: "사진 추출 3 (윙드 라이너)",
+    color: { brow: "#b09495", shadow: "#977f80", liner: "#463a40", cheek: "#d2b7b8", lip: "#a98387", ...CONTOUR_COLORS },
+    lipEdge: "#ac8386",
+    alpha: { brow: 0.27, shadow: 0.51, liner: 0.39, cheek: 0.14, lip: 0.11, ...CONTOUR_ALPHA },
+    linerThick: 0.076,
+  },
   ...LOOKS.map((l): Tpl => ({
     name: l.name,
     color: { ...CONTOUR_COLORS, ...Object.fromEntries(Object.entries(l.parts).flatMap(([k, p]) => (p?.color ? [[k, hex(p.color)]] : []))) },
