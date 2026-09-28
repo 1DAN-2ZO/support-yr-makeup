@@ -30,10 +30,12 @@ import { checkSecureContext, readEnv, type SecureCheck } from "./core/secure-con
 import { createSessionStore, indexedDbBackend, memoryBackend, type SessionStore } from "./core/session-store";
 import { getVersions } from "./core/versions";
 import { lookById, SUMMARY_TEMPLATE } from "./core/looks";
+import { fullRenderUrl } from "./core/look-view";
 import { captureScreen, type CaptureDeps, type ShotData } from "./screens/capture";
 import { consentScreen, deniedScreen, type ConsentDeps } from "./screens/consent";
 import { doneScreen, type DoneDeps } from "./screens/done";
 import { landmarksFromImage } from "./screens/landmarker";
+import { guideScreen, type GuideDeps } from "./screens/guide";
 import { liveScreen, type LiveDeps } from "./screens/live";
 import { fullRenderScreen } from "./screens/fullrender";
 import { looksScreen } from "./screens/looks";
@@ -194,6 +196,14 @@ async function boot(): Promise<void> {
     { jobs: lookJobs },
     {
       getPart: () => session.currentPart,
+      firstPart: () => nextPart(session, null),
+      getBaseline: () => session.baseline,
+      getLook: () => lookById(session.lookId),
+      getFaceShape: () => session.faceShape,
+      fullRenderUrl: () => fullRenderUrl(lookJobs.current(), session.lookId),
+    },
+    {
+      getPart: () => session.currentPart,
       getBaseline: () => session.baseline,
       // 정면 장의 이마 a*·b* 는 메모리에만 있다 (복원하면 없음 → 색 조건 생략)
       getBaseAb: () => {
@@ -252,6 +262,7 @@ function registerAll(
   review: ReviewDeps,
   result: ResultDeps,
   processing: ProcessingDeps,
+  guide: GuideDeps,
   live: LiveDeps,
   done: DoneDeps,
 ): void {
@@ -264,8 +275,8 @@ function registerAll(
   shell.register("result", resultScreen<Session>(result));
   shell.register("review", reviewScreen<Session>(review));
   shell.register("done", doneScreen<Session>(done));
+  shell.register("guide", guideScreen<Session>(guide));
   shell.register("live", liveScreen<Session>(live));
-  // 남은 것: ② guide
   // 등록 안 된 화면은 담당 모듈을 알려주는 자리표시가 뜬다
 }
 

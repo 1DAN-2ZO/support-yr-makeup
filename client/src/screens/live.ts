@@ -16,11 +16,12 @@ import { createLiveRun, type LiveFrame } from "@core/live-run";
 import type { LookPart, LookPartId } from "@core/looks";
 import type { Outline } from "@core/overlay";
 import type { ScreenId } from "@core/screens";
-import type { Baseline, CaptureBundle, PartId, Pt } from "@core/types";
+import type { Baseline, CaptureBundle, PartId } from "@core/types";
 import { faceCropOf } from "@core/capture-measure";
 import { applyCameraLocks, applyUltraWideZoom, bindVisibility, requestWakeLock, type WakeLockSentinelLike } from "./camera-locks";
 import { foreheadLabOf, grabFrame, sharpnessOf } from "./frame-measure";
 import { createLandmarker } from "./landmarker";
+import { strokeOutline } from "./outline-draw";
 import type { Screen, ScreenContext } from "./shell";
 
 export interface LiveDeps {
@@ -46,8 +47,6 @@ export const LIVE_TEXT = {
   failed: "움직여서 못 찍었어요. 다시 눌러 주세요",
 } as const;
 
-const GUIDE_COLOR = "#3FD1C4";
-
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text = ""): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -55,26 +54,13 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text = ""):
   return e;
 }
 
-/** 테두리만 (면 채우기 없음, F-07). 좌표는 비디오 프레임 px — 캔버스를 비디오와 같은 크기·같은 거울로 겹친다 */
+/** 좌표는 비디오 프레임 px — 캔버스를 비디오와 같은 크기·같은 거울로 겹친다 */
 function drawOutline(cv: HTMLCanvasElement, o: Outline | null, w: number, h: number): void {
   if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
   const g = cv.getContext("2d");
   if (!g) return;
   g.clearRect(0, 0, w, h);
-  if (!o) return;
-  g.strokeStyle = GUIDE_COLOR;
-  g.lineWidth = Math.max(2, w / 400);
-  g.setLineDash([g.lineWidth * 3, g.lineWidth * 2]);
-  const path = (pts: readonly Pt[], close: boolean): void => {
-    if (pts.length < 2) return;
-    g.beginPath();
-    g.moveTo(pts[0]!.x, pts[0]!.y);
-    for (const p of pts.slice(1)) g.lineTo(p.x, p.y);
-    if (close) g.closePath();
-    g.stroke();
-  };
-  for (const p of o.polys) path(p, true);
-  for (const l of o.lines) path(l, false);
+  if (o) strokeOutline(g, o, Math.max(2, w / 400));
 }
 
 export function liveScreen<S>(deps: LiveDeps): Screen<S> {

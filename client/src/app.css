@@ -167,3 +167,11 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
 /* 화면 4 실시간 테두리 (②). 캔버스를 비디오와 같은 크기·같은 거울로 겹친다 (object-fit 까지 같게) */
 .live-cam { max-width: 720px; aspect-ratio: auto; height: 72vh; }
 .live-overlay { position: absolute; inset: 0; pointer-events: none; }
+
+/* 화면 3 부위 완성본 (②) */
+.guide-img { margin: 8px auto; max-width: 720px; text-align: center; }
+.guide-img.empty { padding: 48px 0; border-radius: 12px; background: var(--line); color: var(--muted); }
+.guide-canvas { width: 100%; height: auto; border-radius: 12px; }
+.guide-note { margin: 4px 0 0; font-size: 13px; }
+.guide-why { font-size: 17px; margin: 12px 0 4px; }
+.guide-need { margin: 0 0 8px; }
