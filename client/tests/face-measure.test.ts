@@ -137,10 +137,17 @@ describe("얼굴 측정 — 눈두덩 (섀도 범위 개인화, Morikawa 2015)",
 });
 
 describe("얼굴 측정 — 입술 (입술 모양 개인화, 김우섭 2005 · Seo 2023)", () => {
-  it("윗입술 ÷ 아랫입술 두께, 입술 높이 ÷ 입 너비", () => {
-    const m = measureFace(face({ lip: { upper: 7, lower: 10, width: 100 } }));
-    expect(m.lip.upperLowerRatio).toBeCloseTo(0.7, 6);
+  it("윗입술은 큐피드 활 봉우리에서 잰다 — 목표값(Hwang 2019)과 같은 기준 (#166)", () => {
+    // 가운데 두께 7, 봉우리 높이 8 → 가운데로 재면 0.7, 봉우리로 재면 0.8
+    const m = measureFace(face({ lip: { upper: 7, lower: 10, width: 100, peak: 8 } }));
+    expect(m.lip.upperLowerRatio).toBeCloseTo(0.8, 6);
     expect(m.lip.heightWidthRatio).toBeCloseTo(17 / 100, 6);
+  });
+
+  it("한국 20대 여성 평균 입술(김우섭 2005)은 목표와 거의 같다 — 평균 입술에 오버라인이 들어가지 않게", () => {
+    // 가운데 0.70 · 봉우리 0.83 · 아랫입술 1.02 cm → 봉우리 기준 0.81
+    const m = measureFace(face({ lip: { upper: 70, lower: 102, width: 425, peak: 83 } }));
+    expect(m.lip.upperLowerRatio).toBeCloseTo(83 / 102, 6);
   });
 
   it("아랫입술이 없으면(0) 비율을 내지 않는다", () => {

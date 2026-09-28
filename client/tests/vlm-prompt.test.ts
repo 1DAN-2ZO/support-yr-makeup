@@ -28,7 +28,7 @@ describe("VLM 프롬프트", () => {
 
   it("허용 값은 관문 상수에서 온다 — 둘이 어긋나면 VLM 이 늘 거절당한다", () => {
     const p = buildVlmPrompt(measure(-4), look);
-    for (const v of ["winged", "extend", "drop", "oval", "round", "square", "oblong", "heart", "flatter", "standard", "arched"]) expect(p).toContain(v);
+    for (const v of ["winged", "extend", "drop", "oval", "round", "square", "oblong", "heart"]) expect(p).toContain(v);
     expect(p).toContain(`${PLAN_LIMITS.shadowRange[0]}~${PLAN_LIMITS.shadowRange[1]}`);
     expect(p).toContain(`${PLAN_LIMITS.intensity[0]}~${PLAN_LIMITS.intensity[1]}`);
     expect(p).toContain(`${PLAN_LIMITS.rationaleMax}자`);
@@ -45,11 +45,11 @@ describe("VLM 프롬프트", () => {
 });
 
 describe("VLM 프롬프트 — 얼굴형의 결과를 알려 준다", () => {
-  it("얼굴형마다 눈썹이 어떻게 바뀌는지 JKSC 표에서 적는다 — 근거 문장이 실제 적용과 어긋나지 않게", () => {
+  it("얼굴형은 쉐딩·하이라이트만 바꾸고 눈썹은 표준 그대로라고 적는다 — 근거 문장이 실제 적용과 어긋나지 않게", () => {
     const p = buildVlmPrompt(measure(-4), look);
-    expect(p).toContain("oblong → 눈썹 낮게, 미간 좁게");
-    expect(p).toContain("round → 눈썹 높게, 미간 좁게");
-    expect(p).toContain("square → 눈썹 그대로, 미간 그대로");
+    expect(p).toMatch(/쉐딩·하이라이트 자리만 바뀝니다/);
+    expect(p).toMatch(/눈썹은 표준 눈썹 그대로/);
+    expect(p).not.toContain("brow.arch");
   });
 });
 

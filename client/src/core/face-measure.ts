@@ -40,7 +40,11 @@ export interface EyeMeasure {
 }
 
 export interface LipMeasure {
-  /** 윗입술 ÷ 아랫입술 붉은 부분 두께 (가운데에서). 아랫입술이 0 이면 null */
+  /**
+   * 윗입술 ÷ 아랫입술. 윗입술은 큐피드 활 봉우리(37·267) → 입 가운데(구열점, 13·14 가운데) 높이의 평균,
+   * 아랫입술은 가운데 두께(14 → 17). 목표값(Hwang 2019 0.8)이 봉우리 기준이라 같은 기준으로 잰다 (#166).
+   * 가운데(0 → 13)로 재면 한국 20대 평균이 0.69 라 대부분 "얇다" 로 잡혔다. 아랫입술이 0 이면 null
+   */
   upperLowerRatio: number | null;
   /** 입술 높이(위 + 아래) ÷ 입 너비 */
   heightWidthRatio: number;
@@ -132,13 +136,17 @@ function lidGap(lm: readonly Pt[], apex: Pt, brow: BrowIdx, axis: Pt): number {
   return (b.x - apex.x) * up.x + (b.y - apex.y) * up.y;
 }
 
-/** 입술 가운데 두께: 0(윗입술 바깥)·13(안)·14(안)·17(아랫입술 바깥), 입꼬리 61·291 */
-function measureLip(lm: readonly Pt[]): LipMeasure {
-  const upper = dist(at(lm, 0), at(lm, 13)), lower = dist(at(lm, 14), at(lm, 17));
+/** 입술: 봉우리 37·267, 구열점 = 13·14 가운데, 가운데 0·13·14·17, 입꼬리 61·291. 높이는 얼굴 위쪽(눈동자 선에 수직) 방향 */
+function measureLip(lm: readonly Pt[], axis: Pt): LipMeasure {
+  const up = { x: axis.y, y: -axis.x };
+  const s = { x: (at(lm, 13).x + at(lm, 14).x) / 2, y: (at(lm, 13).y + at(lm, 14).y) / 2 };
+  const rise = (i: number) => (at(lm, i).x - s.x) * up.x + (at(lm, i).y - s.y) * up.y;
+  const peak = (rise(37) + rise(267)) / 2;
+  const centre = dist(at(lm, 0), at(lm, 13)), lower = dist(at(lm, 14), at(lm, 17));
   const width = dist(at(lm, 61), at(lm, 291));
   return {
-    upperLowerRatio: lower > 0 ? upper / lower : null,
-    heightWidthRatio: width > 0 ? (upper + lower) / width : 0,
+    upperLowerRatio: lower > 0 ? peak / lower : null,
+    heightWidthRatio: width > 0 ? (centre + lower) / width : 0,
   };
 }
 
@@ -165,7 +173,7 @@ export function measureFace(lm: readonly Pt[]): FaceMeasure {
     rollDeg: (Math.atan2(axis.y, axis.x) * 180) / Math.PI,
     eye: { R: measureEye(lm, LM.eyeA, LM.browA, axis), L: measureEye(lm, LM.eyeB, LM.browB, axis) },
     brow: { R: measureBrow(lm, LM.browA), L: measureBrow(lm, LM.browB) },
-    lip: measureLip(lm),
+    lip: measureLip(lm, axis),
     faceAspect: faceH > 0 ? dist(at(lm, LM.faceL), at(lm, LM.faceR)) / faceH : 0,
     mmPerPx: mmPerPx(lm),
   };
