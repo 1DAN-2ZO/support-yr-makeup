@@ -117,6 +117,10 @@ async function boot(): Promise<void> {
     log.log({ name: "error", where: "boot", msg: `secure_context:${secure.reason}` });
   }
 
+  // 가이드 모양 한 곳 — 화면 3 테두리 · 화면 4 테두리 · 화면 5 채점이 같은 것을 쓴다 ("따라 그린 선 = 채점 기준").
+  // 지금은 고른 룩의 규칙 가이드. ⑥ 개인화 계획이 오면 여기만 바꾼다 (#167 리뷰)
+  const guideFor = () => lookGuide(lookById(session.lookId).parts);
+
   // ④ 의 서버가 붙으면 여기만 진짜 공급자로 바뀐다. 그때까지는 전부 "로딩 중"
   const lookJobs: LookJobSource = emptyJobSource();
 
@@ -182,8 +186,8 @@ async function boot(): Promise<void> {
       getBaseline: () => session.baseline,
       // 화면 4(②) 가 확인받기 순간의 프레임 묶음을 parts[].captured 에 둔다 (CaptureBundle)
       getCapture: (part) => (session.parts.find((p) => p.partId === part)?.captured as CaptureBundle | null) ?? null,
-      // 고른 룩의 치수(라이너 두께)로 채점한다. 화면 4 테두리와 같은 guides.ts
-      guide: () => lookGuide(lookById(session.lookId).parts),
+      // 화면 3·4 테두리와 같은 가이드로 채점한다
+      guide: guideFor,
       getStatus: (part) => session.parts.find((p) => p.partId === part)?.status ?? "in_progress",
       apply: (part, outcome) => {
         set(applyResult(session, part, outcome));
@@ -201,6 +205,7 @@ async function boot(): Promise<void> {
       getLook: () => lookById(session.lookId),
       getFaceShape: () => session.faceShape,
       fullRenderUrl: () => fullRenderUrl(lookJobs.current(), session.lookId),
+      getGuide: guideFor,
     },
     {
       getPart: () => session.currentPart,
@@ -211,6 +216,7 @@ async function boot(): Promise<void> {
         return f ? { a: f.a, b: f.b } : null;
       },
       getLookParts: () => lookById(session.lookId).parts,
+      getGuide: guideFor,
       setCapture: (part, bundle) => {
         set({ ...session, parts: session.parts.map((p) => (p.partId === part ? { ...p, captured: bundle } : p)) });
       },

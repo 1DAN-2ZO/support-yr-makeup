@@ -47,9 +47,14 @@ export const PART_POINTS: Record<PartId, readonly number[]> = {
 
 /** 부위 점이 전부 프레임 안(가장자리 여백 2%)에 있나 — 화면 4 게이트 "부위 가시성" (정의서 3-3) */
 export function partVisible(partId: PartId, pts: readonly Pt[], w: number, h: number): boolean {
-  const mx = w * 0.02, my = h * 0.02;
+  return partInRect(partId, pts, { x: 0, y: 0, w, h });
+}
+
+/** 부위 점이 전부 영역 r 안(여백 2%)에 있나. 화면에 실제로 보이는 영역(crop.coverView)으로 부른다 */
+export function partInRect(partId: PartId, pts: readonly Pt[], r: { x: number; y: number; w: number; h: number }): boolean {
+  const mx = r.w * 0.02, my = r.h * 0.02;
   return PART_POINTS[partId].every((i) => {
     const p = at(pts, i);
-    return p.x > mx && p.x < w - mx && p.y > my && p.y < h - my;
+    return p.x > r.x + mx && p.x < r.x + r.w - mx && p.y > r.y + my && p.y < r.y + r.h - my;
   });
 }

@@ -12,8 +12,13 @@
  */
 
 import type { FaceLandmarker } from "@mediapipe/tasks-vision";
+import type { BundleOf } from "@core/capture-bundle";
+import { coverView } from "@core/crop";
+import { lookGuide } from "@core/guides";
 import { createLiveRun, type LiveFrame } from "@core/live-run";
+import type { Logger } from "@core/log";
 import type { LookPart, LookPartId } from "@core/looks";
+import type { GuideSource } from "@core/score-part";
 import type { Outline } from "@core/overlay";
 import type { ScreenId } from "@core/screens";
 import type { Baseline, CaptureBundle, PartId } from "@core/types";
@@ -29,8 +34,10 @@ export interface LiveDeps {
   getBaseline: () => Baseline | null;
   /** 촬영 때 잰 기준 이마 a*·b* (화면 1 정면 장). 복원 뒤에는 없다 → 색 조건 생략 */
   getBaseAb: () => { a: number; b: number } | null;
-  /** 고른 룩의 parts — 라이너 두께 */
+  /** 고른 룩의 parts — getGuide 가 없을 때 기본 가이드(lookGuide)용 */
   getLookParts: () => Partial<Record<LookPartId, LookPart>>;
+  /** 테두리 모양 — 채점(화면 5)과 같은 것을 넘긴다. 없으면 lookGuide(getLookParts()). ⑥ 개인화 계획이 여기 꽂힌다 (#167 리뷰) */
+  getGuide?: () => GuideSource;
   /** 확인받기 묶음을 그 부위에 둔다 (화면 5 가 getCapture 로 읽는다) */
   setCapture: (part: PartId, bundle: CaptureBundle) => void;
   next: ScreenId;
@@ -61,6 +68,38 @@ function drawOutline(cv: HTMLCanvasElement, o: Outline | null, w: number, h: num
   if (!g) return;
   g.clearRect(0, 0, w, h);
   if (o) strokeOutline(g, o, Math.max(2, w / 400));
+}
+
+/**
+ * 확인받기 묶음 → 비트맵 → 세션 → 화면 5. 카메라 없이 테스트한다 (#167 리뷰).
+ *  - 바꾸는 사이 화면을 떠났으면(mounted false) 아무것도 안 한다 — 결과로 끌려가지 않게
+ *  - 바꾸다 실패하면(iOS 메모리 등) 화면 4 를 다시 연다 — 카메라·루프가 이미 꺼져 멈춰 있지 않게
+ */
+export async function deliverBundle<I>(b: BundleOf<I>, o: {
+  part: PartId;
+  toBitmap: (i: I) => Promise<ImageBitmap>;
+  mounted: () => boolean;
+  setCapture: LiveDeps["setCapture"];
+  go: (to: ScreenId) => void;
+  next: ScreenId;
+  log: Logger;
+}): Promise<"delivered" | "left" | "failed"> {
+  let frames: ImageBitmap[];
+  try {
+    frames = await Promise.all(b.frames.map((f) => o.toBitmap(f)));
+  } catch (e) {
+    if (!o.mounted()) return "left";
+    o.log.log({ name: "error", where: "live", msg: `bitmap:${String(e).slice(0, 120)}` });
+    o.go("live");
+    return "failed";
+  }
+  if (!o.mounted()) {
+    for (const f of frames) f.close?.();
+    return "left";
+  }
+  o.setCapture(o.part, { ...b, frames });
+  o.go(o.next);
+  return "delivered";
 }
 
 export function liveScreen<S>(deps: LiveDeps): Screen<S> {
@@ -103,10 +142,12 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         partId: part,
         baseline: { lm: baseline.lm, foreheadL: baseline.foreheadL },
         ...(baseAb ? { baseAb } : {}),
-        lookParts: deps.getLookParts(),
+        guide: deps.getGuide?.() ?? lookGuide(deps.getLookParts()),
       });
 
       let alive = true;
+      // 정리 함수가 세운다. alive 는 묶음을 넘길 때도 false 가 되므로 "화면을 떠났나" 는 이것으로 본다
+      let unmounted = false;
       let lmk: FaceLandmarker | null = null;
       let stream: MediaStream | null = null;
       let wake: WakeLockSentinelLike | null = null;
@@ -150,7 +191,11 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         const sw = video.videoWidth, sh = video.videoHeight;
         const raw = lmk.detectForVideo(video, now).faceLandmarks[0];
         const lm = raw ? raw.map((p) => ({ x: p.x * sw, y: p.y * sh })) : null;
-        const f: LiveFrame<HTMLCanvasElement> = { t: now, lm, w: sw, h: sh, image: () => grabFrame(video) };
+        const f: LiveFrame<HTMLCanvasElement> = {
+          t: now, lm, w: sw, h: sh, image: () => grabFrame(video),
+          // object-fit: cover 로 잘린 양옆은 사용자에게 안 보인다 → 부위 가시성은 보이는 영역으로
+          view: coverView(sw, sh, stage.clientWidth, stage.clientHeight),
+        };
         if (lm) {
           f.sharpness = sharpnessOf(video, faceCropOf(lm, sw, sh));
           const lab = foreheadLabOf(video, lm, sw, sh);
@@ -160,18 +205,12 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         drawOutline(overlay, r.outline, sw, sh);
 
         if (r.bundle?.status === "done") {
-          const b = r.bundle.bundle;
           alive = false;
           stopCamera();
-          void Promise.all(b.frames.map((cv) => createImageBitmap(cv)))
-            .then((frames) => {
-              deps.setCapture(part!, { ...b, frames });
-              ctx.go(deps.next);
-            })
-            .catch((e: unknown) => {
-              ctx.log.log({ name: "error", where: "live", msg: `bitmap:${String(e).slice(0, 120)}` });
-              line.textContent = LIVE_TEXT.failed;
-            });
+          void deliverBundle(r.bundle.bundle, {
+            part: part!, toBitmap: (cv) => createImageBitmap(cv), mounted: () => !unmounted,
+            setCapture: deps.setCapture, go: ctx.go, next: deps.next, log: ctx.log,
+          });
           return;
         }
         if (r.bundle?.status === "failed") {
@@ -194,11 +233,14 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         if (!alive) { m.close(); return; }
         lmk = m;
         // 1080p: 720p 에서는 iPhone 초광각 얼굴이 작다 (화면 1 과 같은 이유, 1-2 실측)
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
-        if (!alive) { stream.getTracks().forEach((t) => t.stop()); return; }
-        video.srcObject = stream;
+        const st = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+        if (!alive) { st.getTracks().forEach((t) => t.stop()); return; }
+        stream = st;
+        video.srcObject = st;
         await video.play();
-        const track = stream.getVideoTracks()[0];
+        // play 중에 떠나거나 숨으면 stopCamera 가 stream 을 비운다 — 오류가 아니라 그냥 멈춘다 (#167 리뷰)
+        if (!alive || stream !== st) return;
+        const track = st.getVideoTracks()[0];
         if (track) {
           // 자동 노출이 자리 잡은 뒤 잠근다 (1-3·1-8)
           await new Promise((r) => setTimeout(r, 1500));
@@ -211,6 +253,7 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
       }
 
       start().catch((e: unknown) => {
+        if (!alive) return;
         line.textContent = LIVE_TEXT.cameraFail;
         ctx.log.log({ name: "error", where: "live", msg: `camera:${String(e).slice(0, 120)}` });
       });
@@ -223,6 +266,7 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
 
       return () => {
         alive = false;
+        unmounted = true;
         unbind();
         stopCamera();
         lmk?.close();

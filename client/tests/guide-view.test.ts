@@ -1,7 +1,7 @@
 // 화면 3 (부위 완성본) 표시 규칙 · 부위 확대 박스 — 순수 함수 검증
 // 정의서 3-1: 3-2b 완성본 범위(부위 크롭), 3-3 확대(눈: 양 끝 + 여백 15%, 입술·볼: 부위 2~3배), 3-5 근거 한 줄, 3-6 필요한 것 한 줄
 import { describe, expect, it } from "vitest";
-import { cropSpec, scaleLm } from "@core/crop";
+import { coverView, cropSpec, scaleLm } from "@core/crop";
 import { partCard } from "@core/guide-view";
 import { LOOKS, LOOK_PART_ORDER, CONTOUR_RATIONALE } from "@core/looks";
 import { LM, PART_POINTS } from "@core/landmarks";
@@ -75,6 +75,19 @@ describe("cropSpec", () => {
     const ys = LM.lipsOuter.map((i) => thick[i]!.y);
     const r = cropSpec("lip", thick, 16 / 9);
     expect(r.h).toBeGreaterThanOrEqual((Math.max(...ys) - Math.min(...ys)) * 3 - 1e-9);
+  });
+});
+
+describe("coverView", () => {
+  it("V1 가로 영상을 세로 칸에 꽉 채우면(object-fit: cover) 양옆이 잘린다 — 보이는 부분만", () => {
+    // 1920×1080 영상을 3:4 칸에 → 세로 1080 을 다 쓰고 가로는 810 만 보인다
+    expect(coverView(1920, 1080, 300, 400)).toEqual({ x: 555, y: 0, w: 810, h: 1080 });
+  });
+  it("V2 비율이 같으면 다 보인다", () => {
+    expect(coverView(1280, 720, 640, 360)).toEqual({ x: 0, y: 0, w: 1280, h: 720 });
+  });
+  it("V3 칸 크기를 모르면(0) 전체", () => {
+    expect(coverView(1280, 720, 0, 0)).toEqual({ x: 0, y: 0, w: 1280, h: 720 });
   });
 });
 

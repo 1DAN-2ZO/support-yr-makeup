@@ -61,3 +61,14 @@ export function scaleLm(lm: readonly Pt[], from: { w: number; h: number }, to: {
   const kx = to.w / from.w, ky = to.h / from.h;
   return lm.map((p) => ({ x: p.x * kx, y: p.y * ky }));
 }
+
+/**
+ * object-fit: cover 로 칸을 꽉 채울 때 **실제로 보이는** 영상 영역(영상 px). 넘치는 쪽이 가운데 기준으로 잘린다.
+ * 화면 4 부위 가시성은 영상 전체가 아니라 이 영역으로 본다 (iPad 가로에서 양옆이 잘림, #167 리뷰). 칸 크기를 모르면 전체
+ */
+export function coverView(vw: number, vh: number, cw: number, ch: number): Rect {
+  if (cw <= 0 || ch <= 0 || vw <= 0 || vh <= 0) return { x: 0, y: 0, w: vw, h: vh };
+  const k = Math.max(cw / vw, ch / vh);
+  const w = cw / k, h = ch / k;
+  return { x: (vw - w) / 2, y: (vh - h) / 2, w, h };
+}

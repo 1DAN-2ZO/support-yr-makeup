@@ -2,7 +2,8 @@
 // 프레임마다: 게이트 한 줄 · 가이드 테두리 · (확인받기 뒤) 묶음 모으기
 import { describe, expect, it } from "vitest";
 import { createLiveRun, type LiveFrame } from "@core/live-run";
-import { linerOutline } from "@core/guides";
+import { linerOutline, lookGuide } from "@core/guides";
+import type { GuideSource } from "@core/score-part";
 import { unitScale } from "@core/baseline";
 import { LM } from "@core/landmarks";
 import type { Lab } from "@core/color";
@@ -14,8 +15,8 @@ const FACE: Pt[] = LMS.map((p, i) => (i === LM.chin ? { x: 300, y: 464 } : p));
 const SKIN: Lab = { L: 62, a: 12, b: 16 };
 const HAND: Lab = { L: 30, a: 20, b: 30 };   // 이마 ΔE 약 38 — 가림으로 잡힌다
 
-const run = (part: "liner" | "lip" = "liner") =>
-  createLiveRun<string>({ partId: part, baseline: { lm: FACE, foreheadL: SKIN.L }, lookParts: {} });
+const run = (part: "liner" | "lip" = "liner", guide: GuideSource = lookGuide({})) =>
+  createLiveRun<string>({ partId: part, baseline: { lm: FACE, foreheadL: SKIN.L }, guide });
 
 let clock = 0;
 const frame = (over: Partial<LiveFrame<string>> = {}): LiveFrame<string> => {
@@ -138,5 +139,24 @@ describe("live run", () => {
     const cut = FACE.map((p, i) => (i === LM.lipsOuter[0] ? { ...p, x: 2 } : p));
     const r = run("lip").step(frame({ lm: cut }));
     expect(r.gate.firstFail).toBe("visible");
+  });
+
+  it("L14 화면에 실제로 보이는 영역(view) 밖이면 안 보인다 — object-fit cover 로 양옆이 잘릴 때", () => {
+    // 입술 가장 왼쪽 점이 x=240. 보이는 영역을 x 250~ 로 자르면 입술이 잘린다
+    const r = run("lip").step(frame({ view: { x: 250, y: 0, w: 350, h: H } }));
+    expect(r.gate.firstFail).toBe("visible");
+    expect(run("lip").step(frame({ view: { x: 0, y: 0, w: W, h: H } })).gate.firstFail).not.toBe("visible");
+  });
+
+  it("L15 테두리는 넘겨받은 가이드를 따른다 — 라이너 두께·꼬리 끝 (⑥ 개인화 계획이 꽂히는 자리)", () => {
+    const tipR = { x: 150, y: 200 }, tipL = { x: 450, y: 200 };
+    const custom: GuideSource = (p, f) => (p === "liner"
+      ? { liner: { wing: { R: [FACE[LM.eyeA.outer]!, tipR], L: [FACE[LM.eyeB.outer]!, tipL] }, thick: 0.08 } }
+      : lookGuide({})(p, f));
+    const o = run("liner", custom).step(frame()).outline!;
+    expect(o.polys[0]).toContainEqual(tipR);
+    expect(o.polys[1]).toContainEqual(tipL);
+    const want = linerOutline({ lm: FACE, unit: unitScale(FACE) }, 0.08, { R: [FACE[LM.eyeA.outer]!, tipR], L: [FACE[LM.eyeB.outer]!, tipL] });
+    expect(o.polys).toEqual([want.R, want.L]);
   });
 });

@@ -39,9 +39,11 @@ describe("화면 3", () => {
     expect(go).toHaveBeenCalledWith("live");
   });
 
-  it("GS3 부위가 안 정해졌으면(2-b '시작'에서 바로) 첫 부위로", () => {
+  it("GS3 부위가 안 정해졌으면(2-b '시작'에서 바로) 첫 부위로 — mount 가 끝난 뒤에 (정리 함수가 덮이지 않게, #167 리뷰)", async () => {
     const { ctx, goPart, deps } = setup({ getPart: () => null });
     guideScreen<null>(deps).mount(ctx);
+    expect(goPart).not.toHaveBeenCalled();
+    await Promise.resolve();
     expect(goPart).toHaveBeenCalledWith("brow");
   });
 

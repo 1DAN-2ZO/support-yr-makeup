@@ -13,8 +13,10 @@
 
 import { cropSpec, scaleLm } from "@core/crop";
 import { partCard } from "@core/guide-view";
+import { lookGuide } from "@core/guides";
 import { outlineOf } from "@core/live-run";
 import type { Look } from "@core/looks";
+import type { GuideSource } from "@core/score-part";
 import { wantedOrientation } from "@core/screens";
 import type { Baseline, FaceShape, PartId } from "@core/types";
 import { strokeOutline } from "./outline-draw";
@@ -29,6 +31,8 @@ export interface GuideDeps {
   getFaceShape: () => FaceShape | null;
   /** 고른 룩의 전체 완성 예상 그림 (④). 아직 없으면 null */
   fullRenderUrl: () => string | null;
+  /** 테두리 모양 — 화면 4·5 와 같은 것. 없으면 lookGuide(getLook().parts). ⑥ 개인화 계획이 여기 꽂힌다 */
+  getGuide?: () => GuideSource;
 }
 
 export const GUIDE_TEXT = {
@@ -67,7 +71,7 @@ async function loadBare(b: Baseline["bareImage"]): Promise<Drawable | null> {
 }
 
 /** 부위 크롭 + 테두리, 거울로 */
-function drawPart(cv: HTMLCanvasElement, d: Drawable, part: PartId, baseline: Baseline, look: Look): boolean {
+function drawPart(cv: HTMLCanvasElement, d: Drawable, part: PartId, baseline: Baseline, guide: GuideSource): boolean {
   const aspect = wantedOrientation(part) === "landscape" ? 16 / 9 : 3 / 4;
   const lm = scaleLm(baseline.lm, { w: baseline.w, h: baseline.h }, { w: d.w, h: d.h });
   const crop = cropSpec(part, lm, aspect);
@@ -82,7 +86,7 @@ function drawPart(cv: HTMLCanvasElement, d: Drawable, part: PartId, baseline: Ba
   g.drawImage(d.img, crop.x, crop.y, crop.w, crop.h, 0, 0, cw, ch);
   g.scale(k, k);
   g.translate(-crop.x, -crop.y);
-  strokeOutline(g, outlineOf(part, lm, look.parts), Math.max(2, cw / 300) / k);
+  strokeOutline(g, outlineOf(part, lm, guide), Math.max(2, cw / 300) / k);
   g.restore();
   return true;
 }
@@ -95,7 +99,8 @@ export function guideScreen<S>(deps: GuideDeps): Screen<S> {
       const part = deps.getPart();
       if (!part) {
         const first = deps.firstPart();
-        if (first) ctx.goPart(first);
+        // mount 안에서 바로 다시 그리면 안쪽 화면의 정리 함수가 바깥 render 에 덮여 안 불린다 → 끝난 뒤로 미룬다 (#167 리뷰)
+        if (first) queueMicrotask(() => ctx.goPart(first));
         else wrap.append(el("p", "muted", GUIDE_TEXT.noPart));
         return;
       }
@@ -131,7 +136,7 @@ export function guideScreen<S>(deps: GuideDeps): Screen<S> {
           if (!alive) { d.close?.(); return; }
           shown = d;
           const cv = el("canvas", "guide-canvas");
-          if (!drawPart(cv, d, part, baseline, look)) return;
+          if (!drawPart(cv, d, part, baseline, deps.getGuide?.() ?? lookGuide(look.parts))) return;
           figure.textContent = "";
           figure.classList.remove("empty");
           figure.append(cv, el("p", "guide-note muted", GUIDE_TEXT.imageNote));
