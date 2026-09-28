@@ -66,7 +66,7 @@ if (!ctx2d || !offCtx) throw new Error("캔버스 2D 를 쓸 수 없음");
 const g: CanvasRenderingContext2D = ctx2d;
 const o: CanvasRenderingContext2D = offCtx;
 
-type Part = "brow" | "shadow" | "liner" | "cheek" | "lip" | "contour" | "highlight";
+type Part = "brow" | "shadow" | "liner" | "cheek" | "lip" | "contour" | "highlight" | "under" | "aegyo";
 /** blur 는 얼굴 폭 대비 번짐 — 섀도·볼은 넓게, 라이너는 거의 없이 */
 const PARTS: { id: Part; name: string; blur: number }[] = [
   { id: "brow", name: "눈썹", blur: 0.004 },
@@ -76,6 +76,8 @@ const PARTS: { id: Part; name: string; blur: number }[] = [
   { id: "lip", name: "입술", blur: 0.003 },
   { id: "contour", name: "쉐딩", blur: 0.025 },
   { id: "highlight", name: "하이라이트", blur: 0.025 },
+  { id: "under", name: "언더라인", blur: 0.002 },
+  { id: "aegyo", name: "애교살", blur: 0.02 },
 ];
 
 interface Tpl { name: string; color: Partial<Record<Part, string>>; lipEdge?: string; alpha: Partial<Record<Part, number>>; linerThick: number }
@@ -98,17 +100,17 @@ const TEMPLATES: Tpl[] = [
   // 사진에서 뽑은 템플릿 2 (스크래치패드 extract_tpl.py 결과, before.png/after.png). 랜드마크 폴리곤 평균색 + ΔE 근사 alpha
   {
     name: "사진 추출 2 (로즈 브라운)",
-    color: { brow: "#bd9694", shadow: "#a7837f", liner: "#644646", cheek: "#d5b2af", lip: "#af7879", ...CONTOUR_COLORS },
+    color: { brow: "#bd9694", shadow: "#a7837f", liner: "#644646", cheek: "#d5b2af", lip: "#af7879", under: "#a87c7a", aegyo: "#c49995", ...CONTOUR_COLORS },
     lipEdge: "#b98784",
-    alpha: { brow: 0.29, shadow: 0.47, liner: 0.32, cheek: 0.39, lip: 0.13, ...CONTOUR_ALPHA },
+    alpha: { brow: 0.29, shadow: 0.47, liner: 0.32, cheek: 0.39, lip: 0.13, under: 0.36, aegyo: 0.61, ...CONTOUR_ALPHA },
     linerThick: 0.076,
   },
-  // 사진에서 뽑은 템플릿 3 (스크래치패드 extract_tpl.py 결과, before2.png/after2.png)
+  // 사진에서 뽑은 템플릿 3 (스크래치패드 extract_tpl.py 결과, before2.png/after2.png). 언더라인·애교살 포함(#166 논의 뒤 추가)
   {
     name: "사진 추출 3 (윙드 라이너)",
-    color: { brow: "#b09495", shadow: "#977f80", liner: "#463a40", cheek: "#d2b7b8", lip: "#a98387", ...CONTOUR_COLORS },
+    color: { brow: "#b09495", shadow: "#977f80", liner: "#463a40", cheek: "#d2b7b8", lip: "#a98387", under: "#735b60", aegyo: "#b79697", ...CONTOUR_COLORS },
     lipEdge: "#ac8386",
-    alpha: { brow: 0.27, shadow: 0.51, liner: 0.39, cheek: 0.14, lip: 0.11, ...CONTOUR_ALPHA },
+    alpha: { brow: 0.27, shadow: 0.51, liner: 0.39, cheek: 0.14, lip: 0.11, under: 0.79, aegyo: 0.51, ...CONTOUR_ALPHA },
     linerThick: 0.076,
   },
   ...LOOKS.map((l): Tpl => ({
@@ -182,6 +184,7 @@ const renderSel = $<HTMLSelectElement>("render");
 const FILTER_BLEND: Record<Part, GlobalCompositeOperation[]> = {
   brow: ["multiply"], liner: ["multiply"], shadow: ["multiply"], cheek: ["multiply"], lip: ["multiply", "color"],
   contour: ["multiply"], highlight: ["screen"],   // 하이라이트는 밝힌다
+  under: ["multiply"], aegyo: ["screen"],   // 애교살은 하이라이트처럼 밝힌다
 };
 const natural = (): boolean => renderSel.value !== "sticker";
 const meshMode = (): boolean => renderSel.value === "mesh";
@@ -297,7 +300,8 @@ function drawMakeup(lm: readonly Pt[], style: LinerStyle): void {
   for (const p of PARTS) {
     const s = sliders.get(p.id)!, color = t.color[p.id];
     if (!color || !s.on.checked) continue;
-    const alpha = Math.min(1, Number(s.input.value) * (p.id === "contour" || p.id === "highlight" ? 1 : (plan?.intensity[p.id] ?? 1)));
+    const alpha = Math.min(1, Number(s.input.value) *
+      (p.id === "contour" || p.id === "highlight" || p.id === "under" || p.id === "aegyo" ? 1 : (plan?.intensity[p.id] ?? 1)));
     const soft = natural();
     paint(p.blur * faceW * (soft ? 1.6 : 1), alpha, (ctx) => {
       ctx.fillStyle = color;
@@ -376,6 +380,14 @@ function drawMakeup(lm: readonly Pt[], style: LinerStyle): void {
         path(ctx, inner);
         ctx.fill("evenodd");
         return;
+      } else if (p.id === "under" || p.id === "aegyo") {
+        // 언더라인·애교살: 아랫속눈썹 라인 → 볼 점 사이를 보간한 밴드(섀도와 같은 방식). 비율은 눈대중 시작값
+        const [lo, hi] = p.id === "under" ? [0, 0.1] : [0.1, 0.35];
+        for (const { eye, cheek } of SIDES) {
+          const lash = eye.lower.map(P), cPt = P(cheek);
+          const band = [...lash.map((q) => mix(q, cPt, lo)), ...lash.map((q) => mix(q, cPt, hi)).reverse()];
+          path(ctx, band);
+        }
       } else {
         // 쉐딩·하이라이트: 계획의 얼굴형 규칙 밴드 (모르면 계란형), T존은 계획대로
         const bands = contourOutline(lm, plan?.faceShape ?? "oval", { tZone: plan?.highlight.tZone ?? true });
