@@ -24,16 +24,17 @@ import {
   type ScreenId,
   type Session,
 } from "./core/flow";
-import { pocGuide } from "./core/guide-poc";
+import { lookGuide } from "./core/guides";
 import type { CaptureBundle } from "./core/types";
 import { checkSecureContext, readEnv, type SecureCheck } from "./core/secure-context";
 import { createSessionStore, indexedDbBackend, memoryBackend, type SessionStore } from "./core/session-store";
 import { getVersions } from "./core/versions";
 import { lookById, SUMMARY_TEMPLATE } from "./core/looks";
-import { captureScreen, type CaptureDeps } from "./screens/capture";
+import { captureScreen, type CaptureDeps, type ShotData } from "./screens/capture";
 import { consentScreen, deniedScreen, type ConsentDeps } from "./screens/consent";
 import { doneScreen, type DoneDeps } from "./screens/done";
 import { landmarksFromImage } from "./screens/landmarker";
+import { liveScreen, type LiveDeps } from "./screens/live";
 import { fullRenderScreen } from "./screens/fullrender";
 import { looksScreen } from "./screens/looks";
 import { processingScreen, type ProcessingDeps } from "./screens/processing";
@@ -179,8 +180,8 @@ async function boot(): Promise<void> {
       getBaseline: () => session.baseline,
       // 화면 4(②) 가 확인받기 순간의 프레임 묶음을 parts[].captured 에 둔다 (CaptureBundle)
       getCapture: (part) => (session.parts.find((p) => p.partId === part)?.captured as CaptureBundle | null) ?? null,
-      // 고른 룩의 치수(라이너 두께)로 채점한다. ② guides.ts 가 오면 여기만 바뀐다
-      guide: () => pocGuide(lookById(session.lookId).parts),
+      // 고른 룩의 치수(라이너 두께)로 채점한다. 화면 4 테두리와 같은 guides.ts
+      guide: () => lookGuide(lookById(session.lookId).parts),
       getStatus: (part) => session.parts.find((p) => p.partId === part)?.status ?? "in_progress",
       apply: (part, outcome) => {
         set(applyResult(session, part, outcome));
@@ -191,6 +192,20 @@ async function boot(): Promise<void> {
       nextPart: (after) => nextPart(session, after),
     },
     { jobs: lookJobs },
+    {
+      getPart: () => session.currentPart,
+      getBaseline: () => session.baseline,
+      // 정면 장의 이마 a*·b* 는 메모리에만 있다 (복원하면 없음 → 색 조건 생략)
+      getBaseAb: () => {
+        const f = (session.shots.front_open as ShotData | undefined)?.forehead;
+        return f ? { a: f.a, b: f.b } : null;
+      },
+      getLookParts: () => lookById(session.lookId).parts,
+      setCapture: (part, bundle) => {
+        set({ ...session, parts: session.parts.map((p) => (p.partId === part ? { ...p, captured: bundle } : p)) });
+      },
+      next: "result",
+    },
     {
       remaining: () => clearRemaining,
       // 세션을 통째로 새로 만든다 — 앞 세션 값이 하나도 안 남게
@@ -237,6 +252,7 @@ function registerAll(
   review: ReviewDeps,
   result: ResultDeps,
   processing: ProcessingDeps,
+  live: LiveDeps,
   done: DoneDeps,
 ): void {
   shell.register("consent", consentScreen<Session>(consent));
@@ -248,7 +264,8 @@ function registerAll(
   shell.register("result", resultScreen<Session>(result));
   shell.register("review", reviewScreen<Session>(review));
   shell.register("done", doneScreen<Session>(done));
-  // 남은 것: ② guide·live
+  shell.register("live", liveScreen<Session>(live));
+  // 남은 것: ② guide
   // 등록 안 된 화면은 담당 모듈을 알려주는 자리표시가 뜬다
 }
 
