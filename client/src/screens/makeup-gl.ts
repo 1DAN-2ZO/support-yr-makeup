@@ -48,9 +48,6 @@ uniform sampler2D uVideo;
 uniform sampler2D uMul;
 uniform sampler2D uCol;
 uniform sampler2D uLight;
-uniform sampler2D uMulS;   // 직접 그린 층 (화면 좌표) — 눈·눈썹·입술
-uniform sampler2D uColS;
-uniform sampler2D uLightS;
 uniform vec2 uTexel;
 uniform float uRadius;
 uniform float uBeauty;
@@ -75,13 +72,15 @@ void main() {
     }
     base = mix(base, sum / wsum, uBeauty);
   }
-  vec4 m = texture(uMul, vAtlas), ms = texture(uMulS, vScreen);
-  vec3 col = base * mix(vec3(1.0), m.rgb, m.a) * mix(vec3(1.0), ms.rgb, ms.a);
-  vec4 c = texture(uCol, vAtlas), cs = texture(uColS, vScreen);
-  col = mix(col, clamp(c.rgb + (dot(col, LUMA) - dot(c.rgb, LUMA)), 0.0, 1.0), c.a);
-  col = mix(col, clamp(cs.rgb + (dot(col, LUMA) - dot(cs.rgb, LUMA)), 0.0, 1.0), cs.a);
-  vec4 l = texture(uLight, vAtlas), ls = texture(uLightS, vScreen);   // 하이라이트: 밝히기(screen)
-  col = 1.0 - (1.0 - col) * (1.0 - l.rgb * l.a) * (1.0 - ls.rgb * ls.a);
+  vec4 m = texture(uMul, vAtlas);
+  vec3 col = base * mix(vec3(1.0), m.rgb, m.a);
+  vec4 c = texture(uCol, vAtlas);
+  if (c.a > 0.0) {
+    vec3 shifted = clamp(c.rgb + (dot(col, LUMA) - dot(c.rgb, LUMA)), 0.0, 1.0);
+    col = mix(col, shifted, c.a);
+  }
+  vec4 l = texture(uLight, vAtlas);   // 하이라이트: 밝히기(screen)
+  col = 1.0 - (1.0 - col) * (1.0 - l.rgb * l.a);
   o = vec4(col, 1.0);
 }`;
 
@@ -111,9 +110,6 @@ function texture(gl: WebGL2RenderingContext): WebGLTexture {
   return t;
 }
 
-/** 화장 층 세 장: 곱하기 · 색(입술) · 밝히기(하이라이트) */
-export interface Layers { mul: HTMLCanvasElement; col: HTMLCanvasElement; light: HTMLCanvasElement }
-
 export interface GlFrame {
   /** 지금 얼굴 점 (px) */
   lm: readonly Pt[];
@@ -136,7 +132,6 @@ export class MakeupGl {
   private tMul: WebGLTexture;
   private tCol: WebGLTexture;
   private tLight: WebGLTexture;
-  private tS: WebGLTexture[];
   private verts = new Float32Array(468 * 4);
 
   constructor(private canvas: HTMLCanvasElement) {
@@ -156,7 +151,6 @@ export class MakeupGl {
     this.tMul = texture(gl);
     this.tCol = texture(gl);
     this.tLight = texture(gl);
-    this.tS = [texture(gl), texture(gl), texture(gl)];
     // 캔버스 무늬는 알파를 곱하지 않은 채로 받는다 — 셰이더가 색과 세기를 따로 쓴다
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
   }
@@ -175,8 +169,7 @@ export class MakeupGl {
   }
 
   /** 얼굴이 없으면 f 를 null 로 — 배경만 그린다 */
-  /** atlas: 기준 얼굴에 그려 그물로 휘는 층 · direct: 지금 얼굴에 바로 그린 층(화면 좌표) */
-  render(src: TexImageSource, w: number, h: number, atlas: Layers, direct: Layers, f: GlFrame | null): void {
+  render(src: TexImageSource, w: number, h: number, mul: HTMLCanvasElement, col: HTMLCanvasElement, light: HTMLCanvasElement, f: GlFrame | null): void {
     const gl = this.gl;
     if (this.canvas.width !== w || this.canvas.height !== h) { this.canvas.width = w; this.canvas.height = h; }
     gl.viewport(0, 0, w, h);
@@ -192,12 +185,9 @@ export class MakeupGl {
     gl.disableVertexAttribArray(aBg);
     if (!f) return;
 
-    this.upload(this.tMul, atlas.mul);
-    this.upload(this.tCol, atlas.col);
-    this.upload(this.tLight, atlas.light);
-    this.upload(this.tS[0]!, direct.mul);
-    this.upload(this.tS[1]!, direct.col);
-    this.upload(this.tS[2]!, direct.light);
+    this.upload(this.tMul, mul);
+    this.upload(this.tCol, col);
+    this.upload(this.tLight, light);
     for (let i = 0; i < 468; i++) {
       const p = f.lm[i]!, r = f.ref[i]!;
       this.verts.set([p.x, p.y, r.x, r.y], i * 4);
@@ -218,9 +208,6 @@ export class MakeupGl {
     this.bindUnit(this.mesh, "uMul", 1, this.tMul);
     this.bindUnit(this.mesh, "uCol", 2, this.tCol);
     this.bindUnit(this.mesh, "uLight", 3, this.tLight);
-    this.bindUnit(this.mesh, "uMulS", 4, this.tS[0]!);
-    this.bindUnit(this.mesh, "uColS", 5, this.tS[1]!);
-    this.bindUnit(this.mesh, "uLightS", 6, this.tS[2]!);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.iBuf);
     gl.drawElements(gl.TRIANGLES, FACE_TRIANGLES.length * 3, gl.UNSIGNED_SHORT, 0);
     gl.disableVertexAttribArray(aPos);

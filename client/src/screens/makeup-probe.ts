@@ -178,19 +178,8 @@ const atlasMul = document.createElement("canvas");
 const atlasCol = document.createElement("canvas");
 const atlasLight = document.createElement("canvas");
 const aLight = atlasLight.getContext("2d")!;
-/**
- * 눈·눈썹·입술은 휘지 않고 매 프레임 지금 얼굴 점으로 직접 그린다.
- * MediaPipe 그물은 눈앞머리(안쪽 눈꼬리) 둘레 삼각형이 크고 성겨서, 기준 얼굴 무늬를 휘면 눈을 뜨고 감거나
- * 고개를 돌릴 때 라이너·섀도가 큰 삼각형에 끌려 눈을 못 따라갔다. 입술도 입을 벌리면 같은 문제다.
- * 넓고 흐린 부위(볼·쉐딩·하이라이트)만 그물로 휜다 — 모양이 부드러워 끌려도 티가 안 난다.
- */
-const DIRECT: ReadonlySet<Part> = new Set<Part>(["brow", "liner", "shadow", "lip"]);
-const screenMul = document.createElement("canvas"), screenCol = document.createElement("canvas"), screenLight = document.createElement("canvas");
-const sMul = screenMul.getContext("2d")!, sCol = screenCol.getContext("2d")!, sLight = screenLight.getContext("2d")!;
 const aMul = atlasMul.getContext("2d")!;
 const aCol = atlasCol.getContext("2d")!;
-/** paint() 가 쓰는 층 — 휘는 무늬 또는 직접 그리는 층 */
-let layer = { mul: aMul, col: aCol, light: aLight };
 let glr: MakeupGl | null = null;
 /** 무늬를 그린 기준 얼굴. 찍은 사진이 있으면 그것, 아니면 카메라를 켜고 처음 잡힌 얼굴 */
 let liveRef: Pt[] | null = null;
@@ -239,10 +228,10 @@ function paint(blurPx: number, alpha: number, draw: (ctx: CanvasRenderingContext
   draw(o);
   if (meshMode()) {
     // 무늬에는 색과 세기만 담는다 — 섞는 건 셰이더가 한다
-    if (blends.includes("screen")) { layer.light.globalAlpha = alpha; layer.light.drawImage(off, 0, 0); return; }
-    layer.mul.globalAlpha = alpha;
-    layer.mul.drawImage(off, 0, 0);
-    if (blends.includes("color")) { layer.col.globalAlpha = alpha * 0.5; layer.col.drawImage(off, 0, 0); }
+    if (blends.includes("screen")) { aLight.globalAlpha = alpha; aLight.drawImage(off, 0, 0); return; }
+    aMul.globalAlpha = alpha;
+    aMul.drawImage(off, 0, 0);
+    if (blends.includes("color")) { aCol.globalAlpha = alpha * 0.5; aCol.drawImage(off, 0, 0); }
     return;
   }
   blends.forEach((b, i) => {
@@ -284,14 +273,14 @@ function drawBrowLines(lm: readonly Pt[]): void {
   if (std) for (const s of ["R", "L"] as const) stroke(std[s].outline, "#fb923c");
 }
 
-function drawMakeup(lm: readonly Pt[], style: LinerStyle, only?: (p: Part) => boolean): void {
+function drawMakeup(lm: readonly Pt[], style: LinerStyle): void {
   const t = currentTpl();
   const P = (i: number): Pt => at(lm, i);
   const unit = unitScale(lm);
   const faceW = unit.face;
   for (const p of PARTS) {
     const s = sliders.get(p.id)!, color = t.color[p.id];
-    if (!color || !s.on.checked || (only && !only(p.id))) continue;
+    if (!color || !s.on.checked) continue;
     const alpha = Math.min(1, Number(s.input.value) * (p.id === "contour" || p.id === "highlight" ? 1 : (plan?.intensity[p.id] ?? 1)));
     const soft = natural();
     paint(p.blur * faceW * (soft ? 1.6 : 1), alpha, (ctx) => {
@@ -458,19 +447,13 @@ function tick(): void {
     const style = proposal === undefined ? ruleStyle : plan.liner.plan.style;
     if (meshMode()) {
       const ref = stillLm ?? (liveRef ??= lm.map((p) => ({ ...p })));
-      for (const c of [atlasMul, atlasCol, atlasLight, screenMul, screenCol, screenLight]) {
-        if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
-        c.getContext("2d")!.clearRect(0, 0, w, h);
-      }
-      if (!bare) {
-        layer = { mul: aMul, col: aCol, light: aLight };
-        drawMakeup(ref, style, (p) => !DIRECT.has(p));   // 기준 얼굴에 그려 그물로 휜다
-        layer = { mul: sMul, col: sCol, light: sLight };
-        drawMakeup(lm, style, (p) => DIRECT.has(p));     // 지금 얼굴에 바로 그린다
-        layer = { mul: aMul, col: aCol, light: aLight };
-      }
+      if (atlasMul.width !== w || atlasMul.height !== h) { atlasMul.width = atlasCol.width = atlasLight.width = w; atlasMul.height = atlasCol.height = atlasLight.height = h; }
+      aMul.clearRect(0, 0, w, h);
+      aCol.clearRect(0, 0, w, h);
+      aLight.clearRect(0, 0, w, h);
+      if (!bare) drawMakeup(ref, style);
       glr ??= new MakeupGl(glcv);
-      glr.render(stillLm ? still : video, w, h, { mul: atlasMul, col: atlasCol, light: atlasLight }, { mul: screenMul, col: screenCol, light: screenLight }, { lm, ref, beauty: bare ? 0 : Number(beautyIn.value), radius: unitScale(lm).face * 0.012 });
+      glr.render(stillLm ? still : video, w, h, atlasMul, atlasCol, atlasLight, { lm, ref, beauty: bare ? 0 : Number(beautyIn.value), radius: unitScale(lm).face * 0.012 });
     } else {
       if (!bare) drawMakeup(lm, style);
       if (linesChk.checked) drawBrowLines(lm);
@@ -481,7 +464,7 @@ function tick(): void {
     if (!statusEl.textContent?.startsWith("VLM")) statusEl.textContent = `라이너 꼬리: ${style}${bare ? " · 맨얼굴" : ""}${stillLm ? " · 찍은 사진" : ""}`;
   } else {
     statusEl.innerHTML = `<span class="warn">얼굴을 찾지 못했어요</span>`;
-    if (meshMode() && glr) glr.render(video, w, h, { mul: atlasMul, col: atlasCol, light: atlasLight }, { mul: screenMul, col: screenCol, light: screenLight }, null);
+    if (meshMode() && glr) glr.render(video, w, h, atlasMul, atlasCol, atlasLight, null);
   }
   requestAnimationFrame(tick);
 }
