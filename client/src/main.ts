@@ -163,7 +163,9 @@ async function boot(): Promise<void> {
       store: {
         loadImage: (k) => sessionStore.loadImage(k),
         async clearAll() {
-          await saving;   // 저장 중인 draft 가 지운 뒤에 써지지 않게
+          await saving;   // 저장 중인 draft·쌩얼이 지운 뒤에 써지지 않게
+          // 로그 저장소를 먼저 닫는다 — 안 닫으면 버퍼·시간 저장이 지운 뒤에 events 키를 다시 만든다
+          await logStore.clear();
           const r = await sessionStore.clearAll();
           clearRemaining = r.remaining;
           return r;
@@ -193,6 +195,7 @@ async function boot(): Promise<void> {
       remaining: () => clearRemaining,
       // 세션을 통째로 새로 만든다 — 앞 세션 값이 하나도 안 남게
       restart: () => {
+        logStore.reopen();
         set(createSession());
         clearRemaining = 0;
         shell.render();
