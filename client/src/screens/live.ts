@@ -14,7 +14,9 @@
  *  - 개발용: 주소에 `?jitter` 를 붙이면 화면 구석에 화면 흔들림·선 떨림(프레임당 px)이 뜬다(탭하면 0부터).
  *    `?jitter&stab=0` 이면 데드존·One-Euro 를 끈 채로 잰다 → 적용 전후 비교
  *
- * 아직 없는 것: 이벤트(#24), 표정 게이트(#27).
+ * 이벤트(#24): gate_fail · landmark_lost 는 core/live-events (화면 1 과 같은 규칙). screen_enter/leave 는 껍데기가 찍는다.
+ *
+ * 아직 없는 것: 표정 게이트(#27).
  */
 
 import type { FaceLandmarker } from "@mediapipe/tasks-vision";
@@ -22,6 +24,7 @@ import type { BundleOf } from "@core/capture-bundle";
 import { cropSpec, type Rect } from "@core/crop";
 import { clampRect, createCropFollow, jitterMeter } from "@core/crop-follow";
 import { lookGuide } from "@core/guides";
+import { createLiveEvents } from "@core/live-events";
 import { createLiveRun, type LiveFrame } from "@core/live-run";
 import type { Logger } from "@core/log";
 import type { LookPart, LookPartId } from "@core/looks";
@@ -180,6 +183,7 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         guide: deps.getGuide?.() ?? lookGuide(deps.getLookParts()),
         smooth: stab,
       });
+      const events = createLiveEvents(ctx.log);
       let follow: ReturnType<typeof createCropFollow> | null = null;
       let followAspect = 0;
       let crop: Rect | null = null;
@@ -231,6 +235,7 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         const sw = video.videoWidth, sh = video.videoHeight;
         const raw = lmk.detectForVideo(video, now).faceLandmarks[0];
         const lm = raw ? raw.map((p) => ({ x: p.x * sw, y: p.y * sh })) : null;
+        events.face(!!lm, now);
         // 확대 창: 칸 비율이 바뀌면(방향 전환) 새로 잡는다. 얼굴을 3초 넘게 잃으면 옛 자리에서 미끄러져 오지 않게 새로 (3-9 자리 비움)
         const aspect = view.clientWidth && view.clientHeight ? view.clientWidth / view.clientHeight : 3 / 4;
         if (!follow || Math.abs(aspect - followAspect) > 0.01) { follow = createCropFollow(part!, aspect); followAspect = aspect; }
@@ -276,6 +281,7 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
           return;
         }
         if (collecting) return;
+        events.gate(r.gate.ok ? null : r.gate.firstFail, now);
         // 실패 문구는 다시 통과할 때까지 그대로 둔다 — 게이트 문구가 바로 덮으면 왜 안 찍혔는지 못 본다
         if (line.textContent === LIVE_TEXT.failed && !r.gate.ok) return;
         line.textContent = r.gate.text;
