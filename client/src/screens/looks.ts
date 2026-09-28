@@ -61,7 +61,7 @@ export function looksScreen<S>(deps: LooksDeps): Screen<S> {
       function head(ts: readonly LookTile[]): HTMLElement {
         const el = document.createElement("div");
         const h = document.createElement("h1");
-        h.textContent = "어떤 느낌으로 할까요?";
+        h.textContent = "어떤 룩으로 할까요";
         const p = document.createElement("p");
         p.className = "muted";
         // 다 죽었을 때만 다른 말을 한다. 몇 개 남았는지 숫자로 재촉하지 않는다

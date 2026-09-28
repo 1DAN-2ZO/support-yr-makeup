@@ -173,9 +173,11 @@ function buttons<S>(ctx: ScreenContext<S>, deps: ResultDeps, part: PartId, outco
     goOn();
   });
 
-  const row = el("div", "row");
-  row.append(nextBtn, retry);
-  wrap.append(row, skip);
+  // POC: 다음 → 다시 확인받기 → 건너뛰기, 세로로 한 줄씩
+  retry.className = "secondary";
+  const row = el("div", "btns");
+  row.append(nextBtn, retry, skip);
+  wrap.append(row);
   return wrap;
 }
 
