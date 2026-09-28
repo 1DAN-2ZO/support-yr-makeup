@@ -87,28 +87,27 @@ export function clampRect(r: Rect, W: number, H: number): Rect {
 }
 
 /**
- * 떨림 재기 (#23 산출물 "적용 전후 표준편차"). 같은 점들을 프레임마다 넣으면
- * 점마다 위치의 표준편차(√(분산x+분산y), px)를 내고 그 평균을 돌려준다. 가만히 있을 때 잰다
+ * 떨림 재기 (#23 산출물 "적용 전후 비교"). 같은 점들을 프레임마다 넣으면 **프레임 사이에 튄 거리의 평균(px)** 을 낸다.
+ * 위치의 표준편차가 아니라 프레임 간 이동을 보는 이유: 30초 동안 몸이 천천히 흔들린 것까지 떨림으로 세지 않게
+ * (첫 측정에서 보정을 켠 쪽이 더 떨린다고 거꾸로 나왔다 — 데드존 안에서 천천히 움직인 얼굴을 떨림으로 셌다)
  */
-export function jitterMeter(): { push(pts: readonly Pt[]): void; std(): number; count(): number; reset(): void } {
-  let n = 0;
-  let sum: { x: number; y: number; xx: number; yy: number }[] = [];
+export function jitterMeter(): { push(pts: readonly Pt[]): void; perFrame(): number; count(): number; reset(): void } {
+  let prev: readonly Pt[] | null = null;
+  let frames = 0, steps = 0, total = 0;
   return {
     push(pts) {
-      if (sum.length !== pts.length) { sum = pts.map(() => ({ x: 0, y: 0, xx: 0, yy: 0 })); n = 0; }
-      pts.forEach((p, i) => { const s = sum[i]!; s.x += p.x; s.y += p.y; s.xx += p.x * p.x; s.yy += p.y * p.y; });
-      n++;
-    },
-    std() {
-      if (n < 2 || !sum.length) return 0;
-      let acc = 0;
-      for (const s of sum) {
-        const vx = Math.max(0, s.xx / n - (s.x / n) ** 2), vy = Math.max(0, s.yy / n - (s.y / n) ** 2);
-        acc += Math.sqrt(vx + vy);
+      if (prev && prev.length !== pts.length) { prev = null; frames = 0; steps = 0; total = 0; }
+      if (prev && pts.length) {
+        let d = 0;
+        pts.forEach((p, i) => { const q = prev![i]!; d += Math.hypot(p.x - q.x, p.y - q.y); });
+        total += d / pts.length;
+        steps++;
       }
-      return acc / sum.length;
+      prev = pts.map((p) => ({ x: p.x, y: p.y }));
+      frames++;
     },
-    count: () => n,
-    reset() { n = 0; sum = []; },
+    perFrame: () => (steps ? total / steps : 0),
+    count: () => frames,
+    reset() { prev = null; frames = 0; steps = 0; total = 0; },
   };
 }

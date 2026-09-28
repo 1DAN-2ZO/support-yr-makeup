@@ -87,12 +87,25 @@ describe("jitterMeter", () => {
   it("J1 안 움직이면 0", () => {
     const m = jitterMeter();
     for (let i = 0; i < 10; i++) m.push([{ x: 5, y: 5 }]);
-    expect(m.std()).toBe(0);
+    expect(m.perFrame()).toBe(0);
   });
-  it("J2 점들의 위치 표준편차(px) — ±2 로 오가면 2", () => {
+  it("J2 프레임마다 튄 거리의 평균(px) — ±2 로 오가면 한 프레임에 4씩", () => {
     const m = jitterMeter();
     for (let i = 0; i < 100; i++) m.push([{ x: i % 2 ? 2 : -2, y: 0 }, { x: 10, y: i % 2 ? 12 : 8 }]);
-    expect(m.std()).toBeCloseTo(2, 6);
+    expect(m.perFrame()).toBeCloseTo(4, 6);
     expect(m.count()).toBe(100);
+  });
+  it("J3 천천히 움직인 것(자연스러운 몸 흔들림)은 떨림으로 거의 안 센다 — 10초에 30px 이면 프레임당 0.1", () => {
+    const m = jitterMeter();
+    for (let i = 0; i < 300; i++) m.push([{ x: i * 0.1, y: 0 }]);
+    expect(m.perFrame()).toBeCloseTo(0.1, 6);
+  });
+  it("J4 점 개수가 바뀌면(부위 바뀜) 처음부터", () => {
+    const m = jitterMeter();
+    m.push([{ x: 0, y: 0 }]);
+    m.push([{ x: 9, y: 0 }]);
+    m.push([{ x: 0, y: 0 }, { x: 0, y: 0 }]);
+    expect(m.count()).toBe(1);
+    expect(m.perFrame()).toBe(0);
   });
 });

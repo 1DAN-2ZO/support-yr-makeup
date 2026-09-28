@@ -11,7 +11,7 @@
  * 떨림 1차(#23): 영상 전체가 아니라 **부위 확대 창**(crop.cropSpec)만 캔버스에 그린다 (정의서 3-3).
  *  - 창은 core/crop-follow — 얼굴 폭 3% 데드존 + 0.2~0.3초 미끄러짐, 크기는 거리가 20% 넘게 변할 때만
  *  - 테두리 선은 live-run 의 One-Euro(④ smoothing.ts). 채점 묶음에는 원래 점
- *  - 개발용: 주소에 `?jitter` 를 붙이면 화면 구석에 테두리 떨림(표준편차 px)이 뜬다(탭하면 0부터).
+ *  - 개발용: 주소에 `?jitter` 를 붙이면 화면 구석에 화면 흔들림·선 떨림(프레임당 px)이 뜬다(탭하면 0부터).
  *    `?jitter&stab=0` 이면 데드존·One-Euro 를 끈 채로 잰다 → 적용 전후 비교
  *
  * 아직 없는 것: 이벤트(#24), 표정 게이트(#27).
@@ -157,11 +157,12 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
       // 개발용 떨림 재기 (#23 "적용 전후 30초 비교")
       const q = new URLSearchParams(window.location.search);
       const stab = q.get("stab") !== "0";
-      const meter = q.has("jitter") ? jitterMeter() : null;
+      // 화면 흔들림 = 사진(확대 창) 자체가 튀는 것, 선 떨림 = 테두리가 얼굴 위에서 튀는 것. 둘 다 프레임당 px(캔버스)
+      const meter = q.has("jitter") ? { view: jitterMeter(), line: jitterMeter() } : null;
       const readout = el("p", "live-jitter");
       if (meter) {
         stage.append(readout);
-        readout.addEventListener("click", () => meter.reset());
+        readout.addEventListener("click", () => { meter.view.reset(); meter.line.reset(); });
       }
       const line = el("p", "cam-gate", LIVE_TEXT.loading);
       const btn = el("button", "primary live-btn", LIVE_TEXT.button);
@@ -251,9 +252,11 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         const r = run.step(f);
         const vm = drawView(view, video, shown, r.outline);
         if (meter && vm && r.outline) {
-          // 사용자가 보는 캔버스 px 로 — 창이 움직인 것도 떨림에 들어간다
-          meter.push([...r.outline.polys.flat(), ...r.outline.lines.flat()].map((p) => ({ x: (p.x - vm.crop.x) * vm.s + vm.ox, y: (p.y - vm.crop.y) * vm.s + vm.oy })));
-          readout.textContent = `떨림 ${meter.std().toFixed(2)}px · ${meter.count()}프레임 · 보정 ${stab ? "켬" : "끔"}`;
+          // 화면 흔들림: 영상의 고정된 한 점(가운데)이 캔버스에서 어디 찍히나 — 창이 움직이면 사진 전체가 튄다
+          meter.view.push([{ x: (sw / 2 - vm.crop.x) * vm.s + vm.ox, y: (sh / 2 - vm.crop.y) * vm.s + vm.oy }]);
+          // 선 떨림: 테두리를 창과 상관없이(확대 배율만) — 얼굴 위에서 선이 튀는 것
+          meter.line.push([...r.outline.polys.flat(), ...r.outline.lines.flat()].map((p) => ({ x: p.x * vm.s, y: p.y * vm.s })));
+          readout.textContent = `화면 흔들림 ${meter.view.perFrame().toFixed(2)}px · 선 떨림 ${meter.line.perFrame().toFixed(2)}px (프레임당) · ${meter.view.count()}프레임 · 보정 ${stab ? "켬" : "끔"}`;
         }
 
         if (r.bundle?.status === "done") {
