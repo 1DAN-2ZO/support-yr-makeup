@@ -191,3 +191,39 @@ describe("시간 저장 타이머", () => {
     expect(clearTimer).toHaveBeenCalledWith(7);
   });
 });
+
+describe("로그 저장 — 끝내기 뒤 잔존 0 (F-11, 1-12 #8)", () => {
+  it("clear 뒤에 들어온 이벤트는 저장하지 않는다 — flush 해도, 시간이 지나도 키가 다시 생기지 않는다", async () => {
+    const backend = memoryBackend();
+    const timer: { fire: (() => void) | null } = { fire: null };
+    const s = await createLogStore({ backend, flushAfterMs: 3000, setTimer: (fn) => { timer.fire = fn; return 1; }, clearTimer: () => { timer.fire = null; } });
+    const logger = createLogger({ sid: "s1", screen: "review", part: null, ver: getVersions() }, s.sink);
+    logger.log({ name: "consent", ok: true });
+    await s.flush();
+    await s.clear();
+    logger.log({ name: "session_end", completed: true } as never);   // 끝내기 뒤 화면 전환에서 찍히는 것들
+    timer.fire?.();
+    await s.flush();
+    expect(await backend.get(EVENTS_KEY)).toBeUndefined();
+    expect(s.pending()).toBe(0);
+  });
+
+  it("clear 전에 버퍼에 남아 있던 것도 지운다", async () => {
+    const { backend, s } = await store();
+    const logger = createLogger({ sid: "s1", screen: "review", part: null, ver: getVersions() }, s.sink);
+    logger.log({ name: "consent", ok: true });
+    await s.clear();
+    await s.flush();
+    expect(await backend.get(EVENTS_KEY)).toBeUndefined();
+  });
+
+  it("reopen 하면(새 세션) 다시 저장한다", async () => {
+    const { backend, s } = await store();
+    const logger = createLogger({ sid: "s1", screen: "consent", part: null, ver: getVersions() }, s.sink);
+    await s.clear();
+    s.reopen();
+    logger.log({ name: "consent", ok: true });
+    await s.flush();
+    expect(((await backend.get(EVENTS_KEY)) as unknown[]).length).toBe(1);
+  });
+});
