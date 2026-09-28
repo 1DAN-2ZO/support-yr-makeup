@@ -80,6 +80,28 @@ describe("화면 5 — 부위 결과", () => {
     expect(ctx.goPart).toHaveBeenCalledWith("shadow");
   });
 
+  it("확인받기 묶음 전체를 채점한다 — 가려진 장은 빼고, 점수는 안 가려진 장들로 (3-3)", async () => {
+    const good = image(linerPaint()), bad = image(linerPaint({ R: 14, L: 14 }));
+    const b: CaptureBundle = {
+      // 가려진(흔들린) 나쁜 장이 마지막 — 마지막 장만 채점하면 틀린 점수가 나온다
+      frames: [good, good, bad].map((im) => new FakeBitmap(im) as unknown as ImageBitmap),
+      pts: [LMS, LMS, LMS], handOverlap: [false, null, true], foreheadL: [70, 70, 70],
+    };
+    const only = setup("liner", good);
+    await scored(only.root);
+    const { root } = setup("liner", null, { getCapture: () => b });
+    await scored(root);
+    expect(root.querySelector(".result-score")?.textContent).toBe(only.root.querySelector(".result-score")?.textContent);
+  });
+
+  it("묶음이 전부 가려졌으면 확인만(가림)", async () => {
+    const good = image(linerPaint());
+    const b: CaptureBundle = { frames: [new FakeBitmap(good) as unknown as ImageBitmap], pts: [LMS], handOverlap: [true], foreheadL: [70] };
+    const { root, events } = setup("liner", null, { getCapture: () => b });
+    await scored(root);
+    expect(events.some((e) => e.name === "score" && (e as { check_reason?: string }).check_reason === "hand")).toBe(true);
+  });
+
   it("화면에 숫자는 점수 하나뿐 — 나머지 글에 숫자가 없다 (F-09)", async () => {
     const { root } = setup("liner", image(linerPaint()));
     await scored(root);
