@@ -48,7 +48,7 @@ export function looksScreen<S>(deps: LooksDeps): Screen<S> {
         wrap.textContent = "";
         wrap.append(head(ts));
         wrap.append(grid(ts, picked));
-        if (failed) wrap.append(note("개인화하지 못했어요. 룩을 다시 눌러 주세요"));
+        if (failed) wrap.append(note("개인화하지 못했어요. 화장을 다시 눌러 주세요"));
         if (wanted) wrap.append(busy());
       }
 
@@ -70,7 +70,7 @@ export function looksScreen<S>(deps: LooksDeps): Screen<S> {
       function head(ts: readonly LookTile[]): HTMLElement {
         const el = document.createElement("div");
         const h = document.createElement("h1");
-        h.textContent = "어떤 룩으로 할까요";
+        h.textContent = "어떤 화장으로 할까요";
         const p = document.createElement("p");
         p.className = "muted";
         // 다 죽었을 때만 다른 말을 한다. 몇 개 남았는지 숫자로 재촉하지 않는다

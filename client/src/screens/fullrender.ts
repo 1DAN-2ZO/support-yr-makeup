@@ -76,7 +76,7 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
       const back = document.createElement("button");
       back.type = "button";
       back.className = "secondary";
-      back.textContent = "다른 룩 보기";
+      back.textContent = "다른 화장 보기";
       back.addEventListener("click", () => {
         ctx.log.log({ name: "button", button: "look_change" });
         ctx.go("looks");

@@ -133,7 +133,7 @@ export const CHECK_REASON_TEXT: Record<CheckReason, string> = {
   align: "얼굴을 찾지 못해 재지 못했어요. 직접 보고 넘어가세요",
   hand: "손에 가려서 재지 못했어요. 직접 보고 넘어가세요",
   no_baseline: "맨얼굴 기준이 없어서 재지 못했어요. 직접 보고 넘어가세요",
-  no_band: "이 룩은 진하기 기준이 없어요. 직접 보고 넘어가세요",
+  no_band: "이 화장은 진하기 기준이 없어요. 직접 보고 넘어가세요",
   contour: "확인하고 넘어가세요.",
 };
 

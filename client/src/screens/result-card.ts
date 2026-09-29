@@ -69,7 +69,7 @@ export function cardLayout(input: CardInput): CardOp[] {
   ops.push({ op: "bg", color: BG });
 
   // 제목
-  ops.push({ op: "text", text: "당화응", x: PAD, y: 92, size: 40, color: MUTED, align: "left" });
+  ops.push({ op: "text", text: "nudy", x: PAD, y: 92, size: 40, color: MUTED, align: "left" });
   ops.push({ op: "text", text: input.lookName, x: CARD_W - PAD, y: 92, size: 40, color: ACCENT, align: "right", bold: true });
 
   // 합산 — 숫자만 크게. 기준 표기도 보정 표시도 없다 (F-10)
@@ -191,7 +191,7 @@ export async function saveCard(blob: Blob | null, name: string, env: ShareEnv): 
   const file = new File([blob], name, { type: blob.type || "image/jpeg" });
   if (env.share && env.canShare?.({ files: [file] })) {
     try {
-      await env.share({ files: [file], title: "당화응 결과" });
+      await env.share({ files: [file], title: "nudy 결과" });
       return "shared";
     } catch (e) {
       // 사용자가 공유 시트를 닫은 것은 실패가 아니다 — 내려받기로 넘기지 않는다

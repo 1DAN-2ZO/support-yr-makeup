@@ -31,7 +31,7 @@ export const DEFAULT_FAIL_MS = 60_000;
 type Phase = "working" | "slow" | "failed";
 
 const TEXT: Record<Phase, { title: string; note: string }> = {
-  working: { title: "룩을 만들고 있어요", note: "얼굴에 맞춰 그리는 중이에요" },
+  working: { title: "화장을 만들고 있어요", note: "얼굴에 맞춰 그리는 중이에요" },
   slow: { title: "조금만 더 기다려 주세요", note: "지금 다른 분들도 만들고 있어요" },
   // 결정 #8 (2026-09-21): 서버가 죽으면 "이용 불가" 로 둔다. 룩 없이 진행하는 대체 흐름은 없다
   failed: { title: "지금은 이용할 수 없어요", note: "서버가 응답하지 않아요. 잠시 후 다시 시도해 주세요" },

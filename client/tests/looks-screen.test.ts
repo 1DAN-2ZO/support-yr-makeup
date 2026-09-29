@@ -205,10 +205,10 @@ describe("화면 2-b — AR 완성 예상 (카메라를 못 열면 서버 그림
     expect(root.querySelector(".ar-why")).toBeNull();
   });
 
-  it("다른 룩 보기로 화면 2 로 돌아간다", () => {
+  it("다른 화장 보기로 화면 2 로 돌아간다", () => {
     const { root, ctx, go, deps } = setup([job("daily", "done", "/r/daily.png")], "daily");
     fullRenderScreen<null>(deps).mount(ctx);
-    byText(root, "다른 룩 보기").click();
+    byText(root, "다른 화장 보기").click();
     expect(go).toHaveBeenCalledWith("looks");
   });
 
