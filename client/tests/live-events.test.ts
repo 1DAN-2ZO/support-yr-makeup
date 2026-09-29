@@ -85,4 +85,12 @@ describe("live events", () => {
     for (let t = 0; t <= 10000; t += 33) ev.gate(t % 2000 < 33 ? "face" : "angle", t);
     expect(fails(events)).toEqual([expect.objectContaining({ first_fail: "angle" })]);
   });
+
+  it("E9 자리를 오래 비웠다 돌아오면 비운 시간은 막힌 시간이 아니다 — 1초 넘게 얼굴이 없으면 처음부터 (#170 리뷰 후속)", () => {
+    const { ev, events } = setup();
+    let t = run(ev, "angle", 0, 2000);       // 각도로 2초 막힘
+    t = run(ev, "face", t, 60000);           // 60초 자리 비움
+    run(ev, "angle", t, 2000);               // 돌아와서 2초 더
+    expect(fails(events)).toHaveLength(0);   // 실제로 막힌 건 2초씩뿐
+  });
 });
