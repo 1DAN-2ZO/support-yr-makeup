@@ -89,6 +89,8 @@ interface Tpl {
   name: string; color: Partial<Record<Part, string>>; lipEdge?: string; alpha: Partial<Record<Part, number>>; linerThick: number;
   stops?: Partial<Record<Part, { color: string; at: number }[]>>;
   axis?: Partial<Record<Part, "vertical" | "horizontal">>;
+  /** true 면 밴드가 라이너 꼬리 방향으로 뻗어 점점 좁아지는 쐐기(눈꼬리 깊게)까지 이어진다. 지금은 shadow만 소비 */
+  tailExtend?: Partial<Record<Part, boolean>>;
 }
 
 /** 쉐딩·하이라이트는 룩에 없다(얼굴형 규칙 부위, F-04) — 얹어 보기용 기본 색 */
@@ -126,6 +128,7 @@ const TEMPLATES: Tpl[] = [
     linerThick: 0.076,
     axis: { shadow: "vertical" },
     stops: { shadow: [{ at: 0.0, color: "#361f1c" }, { at: 0.5, color: "#a0807f" }, { at: 1.0, color: "#ab8484" }] },
+    tailExtend: { shadow: true },
   },
   ...LOOKS.map((l): Tpl => ({
     name: l.name,
@@ -178,6 +181,8 @@ applyTemplate();
 // ── 모양 ────────────────────────────────────────────
 const mix = (a: Pt, b: Pt, t: number): Pt => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
 const LIP_INNER = [78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95];
+/** 섀도 꼬리 연장 길이 (눈 폭 비율). 라이너 꼬리(12%)보다 크게 — 블러 반경보다 작으면 뭉개진다(실측 확인) */
+const SHADOW_TAIL_RATIO = 0.35;
 const SIDES = [
   { eye: LM.eyeA, brow: LM.browA, cheek: LM.cheekA, face: LM.faceL, sign: -1 },
   { eye: LM.eyeB, brow: LM.browB, cheek: LM.cheekB, face: LM.faceR, sign: 1 },
@@ -329,9 +334,22 @@ function drawMakeup(lm: readonly Pt[], style: LinerStyle): void {
         // guides.ts 섀도 범위와 같은 계산: 윗눈꺼풀 → 눈썹 아래로 rangeRatio 만큼
         const stops = t.stops?.shadow;
         const axis = t.axis?.shadow ?? "vertical";
-        for (const { eye, brow } of SIDES) {
+        // 눈꼬리 연장(선택): 라이너 꼬리 방향으로 밴드가 뻗어 점점 좁아지는 쐐기. shadow1/shadow2 참고 사진의 "눈꼬리 깊게" 영역
+        const tailExtend = t.tailExtend?.shadow;
+        const linerOut = tailExtend ? linerOutline({ lm, unit }, t.linerThick * (plan?.linerThick.scale ?? 1), style) : null;
+        for (const [side, { eye, brow }] of SIDES.entries()) {
           const lid = eye.upper.map(P), lo = brow.lower.map(P);
           const top = lid.map((q, i) => mix(q, lo[Math.min(lo.length - 1, Math.round((i / (lid.length - 1)) * (lo.length - 1)))]!, GUIDE_PARAMS.shadow.rangeRatio * (plan?.shadow.range ?? 1)));
+          // 라이너 꼬리 "방향"만 따라가고 길이는 직접 늘린다 — 라이너 자체 길이(눈 폭 12%)는 블러 반경(약 8px)보다 작아 뭉개졌다(실측 확인).
+          // SHADOW_TAIL_RATIO(35%)는 블러보다 확실히 크게 잡은 눈대중값 — 조정 필요하면 여기만 바꾸면 됨
+          const linerTip = linerOut ? (side === 0 ? linerOut.R : linerOut.L)[eye.upper.length] : null;
+          const outer = lid[0]!;
+          const wingTip = linerTip ? (() => {
+            const dx = linerTip.x - outer.x, dy = linerTip.y - outer.y, len = Math.hypot(dx, dy) || 1;
+            return { x: outer.x + (dx / len) * SHADOW_TAIL_RATIO * unit.eye, y: outer.y + (dy / len) * SHADOW_TAIL_RATIO * unit.eye };
+          })() : null;
+          const topWing = wingTip ? mix(top[0]!, wingTip, 0.5) : null;
+          const bandPts = wingTip ? [...lid, ...[...top].reverse(), topWing!, wingTip] : [...lid, ...[...top].reverse()];
           if (soft) {
             const mid = Math.floor(lid.length / 2);
             // vertical: 속눈썹 중앙 → 눈썹 아래 중앙. horizontal: 눈꼬리(lid[0]) → 눈 앞머리(lid 끝)
@@ -349,11 +367,11 @@ function drawMakeup(lm: readonly Pt[], style: LinerStyle): void {
             }
             ctx.fillStyle = grad;
             ctx.beginPath();
-            path(ctx, [...lid, ...[...top].reverse()]);
+            path(ctx, bandPts);
             ctx.fill();
             continue;
           }
-          path(ctx, [...lid, ...top.reverse()]);
+          path(ctx, bandPts);
         }
         if (soft) return;
       } else if (p.id === "liner") {
