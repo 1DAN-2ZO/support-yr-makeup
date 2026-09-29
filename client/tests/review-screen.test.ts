@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { SCORE_VERSION } from "@core/score";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createLogger, memorySink } from "@core/log";
 import { PART_NAME } from "@core/score";
@@ -162,7 +163,7 @@ describe("화면 6 — 결과 저장", () => {
     await settle();
     const arg = makeCard.mock.calls[0]?.[0];
     expect(arg.lookName).toBe("데일리");
-    expect(arg.stamp).toContain("score-v0.1");
+    expect(arg.stamp).toContain(SCORE_VERSION);   // rules/score.json (#44)
   });
 
   it("저장을 누르면 결과를 말해 주고 로그를 남긴다", async () => {

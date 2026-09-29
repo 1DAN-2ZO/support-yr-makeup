@@ -12,6 +12,7 @@
  * 각 모듈은 자기 버전만 `setVersions({ ... })` 로 알린다. 남의 칸은 건드리지 않는다.
  */
 
+import { SCORE_VERSION } from "./score";
 import { LOOKS_VERSION } from "./looks";
 import type { Versions } from "./types";
 
@@ -28,7 +29,7 @@ function buildVersion(): string {
 
 const DEFAULTS: Versions = {
   app: buildVersion(),
-  score: "score-v0.1",
+  score: SCORE_VERSION,   // rules/score.json (#44)
   look: LOOKS_VERSION,
   faceshape: "faceshape-rule-v1",
   transfer: "transfer-stub-v0",

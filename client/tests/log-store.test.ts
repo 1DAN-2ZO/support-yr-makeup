@@ -1,3 +1,4 @@
+import { SCORE_VERSION } from "@core/score";
 import { describe, expect, it, vi } from "vitest";
 import { createLogStore, EVENTS_KEY, exportFileName } from "@core/log-store";
 import { createLogger } from "@core/log";
@@ -129,7 +130,7 @@ describe("버전 다섯 개", () => {
   it("빈 값은 무시한다", () => {
     resetVersions();
     setVersions({ score: "" });
-    expect(getVersions().score).toBe("score-v0.1");
+    expect(getVersions().score).toBe(SCORE_VERSION);   // rules/score.json (#44)
   });
 
   it("결과 카드 도장은 앱·채점·룩 셋", () => {
