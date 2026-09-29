@@ -11,6 +11,7 @@
 
 import { yawFromLandmarks } from "./capture-measure";
 import { CAPTURE_LIMITS, SHOT_TEXT } from "./flow";
+import { LM, at } from "./landmarks";
 import type { GateFail, GateResult, PartId, Pt } from "./types";
 
 export interface LiveLimits {
@@ -70,6 +71,8 @@ export interface LiveMeasure {
   /** 기준 사진(맨얼굴 정면)의 각도 — 같은 poseOf() 로 */
   baseYaw?: number;
   basePitch?: number;
+  /** 기준 사진과의 각도 차(도) — rigidPoseDiff. 있으면 baseYaw·basePitch 대신 이것으로 본다 (턱·입을 안 씀, #28) */
+  poseDiff?: { yaw: number; pitch: number };
   /** 맨얼굴 때와의 표정 차 (expression.exprDiff). 없으면 조건 생략 */
   exprDiff?: number;
   /** landmarks.partVisible() */
@@ -90,6 +93,41 @@ export function poseOf(lm: readonly Pt[]): { yaw: number; pitch: number } {
   return { yaw: -a.yaw, pitch: a.pitch };
 }
 
+/**
+ * 기준 각도 차를 강체 점으로 (#28). 옛 방식(poseOf)은 턱 끝(152)·얼굴 옆을 써서 입을 벌리면 숙인 것으로 잡혔다.
+ * 양 눈꼬리(33·263)를 자로 삼아 코끝(4)이 그 선에서 옆·아래로 얼마나 옮겨 갔나를 눈꼬리 거리로 나눈다 →
+ * 크기·기울기·위치에 안 흔들린다. 도로 바꾸는 계수 k = (코끝이 눈꼬리 면에서 나온 깊이) ÷ (눈꼬리 거리), 작은 각 근사.
+ * k 는 **옛 방식(poseOf)의 눈금에 맞춘 값** — 게이트 한계(dYaw 8 · dPitch 6)가 옛 눈금으로 폰에서 정한 값이라서.
+ * 2026-09-29 PC 웹캠 `?pose` 보정(입 다물고 끄덕·돌리기): yaw 0.462(439점) · pitch 1.112(333점)·1.31(538점) → 가중 평균 1.23.
+ * (처음 어림 0.35 는 실제 각도 기준이었는데, 옛 pitch 눈금이 눌려 있어 3배 차이) 폰 시험 때 한 번 더 확인.
+ *
+ * 입을 크게 벌렸을 때 직전 대비 흔들림(같은 날, 152프레임, 중앙/최대): 옛 방식(턱) 8.0°/9.2° → 코끝 2.9°/3.6° (한계 6°).
+ * 이마(10)·콧대(6)·3D 행렬도 2~3° 라 남은 양은 "아" 할 때 실제로 고개가 움직인 것. 코끝을 쓰는 이유: 눈꼬리 선에서 멀어
+ * 같은 각도에 더 크게 움직인다 → 가만히 있을 때 잡음에 덜 흔들린다. 측정 도구: screens/pose-probe.ts
+ */
+export const RIGID_POSE = { kYaw: 0.462, kPitch: 1.23, nose: 4 } as const;
+
+function rigidOffset(lm: readonly Pt[]): { x: number; y: number } {
+  const a = at(lm, LM.eyeA.outer), b = at(lm, LM.eyeB.outer), n = at(lm, RIGID_POSE.nose);
+  const D = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+  const u = { x: (b.x - a.x) / D, y: (b.y - a.y) / D }, v = { x: -u.y, y: u.x };
+  const m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, d = { x: n.x - m.x, y: n.y - m.y };
+  return { x: (d.x * u.x + d.y * u.y) / D, y: (d.x * v.x + d.y * v.y) / D };
+}
+
+/** 기준 사진 → 지금, 각도 차(도). 부호는 비교에 안 쓰고 크기만 본다 */
+export function rigidPoseDiff(baseLm: readonly Pt[], curLm: readonly Pt[], k: { kYaw: number; kPitch: number } = RIGID_POSE): { yaw: number; pitch: number } {
+  const b = rigidOffset(baseLm), c = rigidOffset(curLm), deg = 180 / Math.PI;
+  return { yaw: ((c.x - b.x) / k.kYaw) * deg + 0, pitch: ((c.y - b.y) / k.kPitch) * deg + 0 };
+}
+
+/** 원점을 지나는 기울기 (최소제곱). 환산 계수 보정용 — 점이 없으면 null */
+export function slopeFit(pairs: readonly (readonly [number, number])[]): number | null {
+  let xy = 0, xx = 0;
+  for (const [x, y] of pairs) { xy += x * y; xx += x * x; }
+  return xx > 0 ? xy / xx : null;
+}
+
 export function evaluateGate(partId: PartId, m: LiveMeasure, limits: LiveLimits = LIVE_LIMITS): GateResult {
   const stableCount = m.stableCount ?? 0;
   const fail = (firstFail: GateFail, text: string): GateResult => ({ ok: false, firstFail, text, stableCount });
@@ -98,10 +136,8 @@ export function evaluateGate(partId: PartId, m: LiveMeasure, limits: LiveLimits 
   // NaN·Infinity 는 비교가 전부 false 라 모든 조건을 통과해 버린다 (정의서 3-5 "깨진 측정값")
   if (!measureFinite(m)) return fail("face", GATE_TEXT.face);
   if (Math.abs(m.yaw) > limits.yaw || Math.abs(m.pitch) > limits.pitch) return fail("angle", GATE_TEXT.angle);
-  if (typeof m.baseYaw === "number" && typeof m.basePitch === "number"
-    && (Math.abs(m.yaw - m.baseYaw) > limits.dYaw || Math.abs(m.pitch - m.basePitch) > limits.dPitch)) {
-    return fail("pose_diff", GATE_TEXT.pose);
-  }
+  const pd = m.poseDiff ?? (typeof m.baseYaw === "number" && typeof m.basePitch === "number" ? { yaw: m.yaw - m.baseYaw, pitch: m.pitch - m.basePitch } : null);
+  if (pd && (Math.abs(pd.yaw) > limits.dYaw || Math.abs(pd.pitch) > limits.dPitch)) return fail("pose_diff", GATE_TEXT.pose);
   if (typeof m.exprDiff === "number" && m.exprDiff > limits.exprTol) return fail("expr_diff", GATE_TEXT.expr);
   if (m.partVisible === false) return fail("visible", EYE_PARTS.includes(partId) ? GATE_TEXT.eyes : GATE_TEXT.part);
   // 이마 급변 = 무엇이든 얼굴을 가림 (#144). 계약 이름은 아직 "hand" — #155 에서 "occluded" 로 바뀐다
@@ -135,7 +171,7 @@ export function gateStep(stable: number, partId: PartId, m: LiveMeasure, limits:
 }
 
 function measureFinite(m: LiveMeasure): boolean {
-  const nums = [m.yaw, m.pitch, m.baseYaw, m.basePitch, m.exprDiff, m.sharpness, m.foreheadL, m.baselineL, m.stableCount,
+  const nums = [m.yaw, m.pitch, m.baseYaw, m.basePitch, m.poseDiff?.yaw, m.poseDiff?.pitch, m.exprDiff, m.sharpness, m.foreheadL, m.baselineL, m.stableCount,
     m.foreheadAb?.a, m.foreheadAb?.b, m.baselineAb?.a, m.baselineAb?.b];
   return nums.every((v) => v === undefined || Number.isFinite(v));
 }

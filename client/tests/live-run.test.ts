@@ -192,4 +192,12 @@ describe("live run", () => {
     const plain = run("lip");
     expect(plain.step(frame({ expr: { ...calm, mouthPucker: 0.7 } })).gate.firstFail).not.toBe("expr_diff");
   });
+
+  it("L19 입술 단계에서 입을 크게 벌려도 '같은 각도로 봐 주세요'(pose_diff)가 안 뜬다 (#28)", () => {
+    const open = FACE.map((p, i) => (i === LM.chin || (LM.lipsOuter.slice(11, 20) as readonly number[]).includes(i) ? { x: p.x, y: p.y + 80 } : p));
+    const lr = run("lip");
+    let r = lr.step(frame({ lm: open }));
+    for (let i = 0; i < 5; i++) r = lr.step(frame({ lm: open }));
+    expect(r.gate.firstFail).not.toBe("pose_diff");
+  });
 });

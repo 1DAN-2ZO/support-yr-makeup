@@ -13,6 +13,7 @@
  *  - 테두리 선은 live-run 의 One-Euro(④ smoothing.ts). 채점 묶음에는 원래 점
  *  - 개발용: 주소에 `?jitter` 를 붙이면 화면 구석에 화면 흔들림·선 떨림(프레임당 px)이 뜬다(탭하면 0부터).
  *    `?jitter&stab=0` 이면 데드존·One-Euro 를 끈 채로 잰다 → 적용 전후 비교
+ *  - 개발용 `?pose` (#28): 입을 벌릴 때 기준 각도 차가 흔들리는 원인 가르기 — screens/pose-probe.ts
  *
  * 이벤트(#24): gate_fail · landmark_lost 는 core/live-events (화면 1 과 같은 규칙). screen_enter/leave 는 껍데기가 찍는다.
  *
@@ -37,6 +38,7 @@ import { applyCameraLocks, applyUltraWideZoom, bindVisibility, requestWakeLock, 
 import { foreheadLabOf, grabFrame, sharpnessOf } from "./frame-measure";
 import { createLandmarker } from "./landmarker";
 import { strokeOutline } from "./outline-draw";
+import { createPoseProbe } from "./pose-probe";
 import type { Screen, ScreenContext } from "./shell";
 
 export interface LiveDeps {
@@ -165,9 +167,14 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
       // 화면 흔들림 = 사진(확대 창) 자체가 튀는 것, 선 떨림 = 테두리가 얼굴 위에서 튀는 것. 둘 다 프레임당 px(캔버스)
       const meter = q.has("jitter") ? { view: jitterMeter(), line: jitterMeter() } : null;
       const readout = el("p", "live-jitter");
-      if (meter) {
+      // #28 보정: [옛 각도 차, k=1 강체 각도 차] 짝 (입 다물었을 때) · 입 벌렸을 때 최대
+      const poseCal = q.has("pose") ? createPoseProbe() : null;
+      if (meter || poseCal) {
         stage.append(readout);
-        readout.addEventListener("click", () => { meter.view.reset(); meter.line.reset(); });
+        readout.addEventListener("click", () => {
+          meter?.view.reset(); meter?.line.reset();
+          poseCal?.reset();
+        });
       }
       const line = el("p", "cam-gate", LIVE_TEXT.loading);
       const btn = el("button", "primary live-btn", LIVE_TEXT.button);
@@ -260,6 +267,10 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
           if (lab) f.lab = lab;
         }
         const r = run.step(f);
+        if (poseCal && lm) {
+          readout.style.whiteSpace = "pre";
+          readout.textContent = poseCal.step(lm, res.facialTransformationMatrixes?.[0]?.data ?? null, f.expr?.["jawOpen"] ?? 0);
+        }
         const vm = drawView(view, video, shown, r.outline);
         if (meter && vm && r.outline) {
           // 화면 흔들림: 영상의 고정된 한 점(가운데)이 캔버스에서 어디 찍히나 — 창이 움직이면 사진 전체가 튄다

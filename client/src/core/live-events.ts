@@ -8,6 +8,7 @@
  *   통과하면 처음부터.
  * 얼굴 없음("face")은 gate_fail 로 안 센다 — landmark_lost 가 맡는다. 다만 막힌 시간을 지우지도 않는다:
  * 고개를 많이 돌리면 얼굴이 한두 프레임씩 끊기는데, 그때마다 지우면 3초·5초에 영영 못 닿는다 (#170 리뷰). 그 프레임만 건너뛴다.
+ * 단 lostMinMs(1초) 넘게 얼굴이 없으면 자리를 비운 것 — 비운 시간이 막힌 시간으로 세어지지 않게 처음부터 (#170 리뷰 후속).
  */
 
 import type { Logger } from "./log";
@@ -36,6 +37,8 @@ export function createLiveEvents(logger: Logger, opts: LiveEventsOptions = {}): 
   let cur: { reason: GateFail; since: number; logged: boolean } | null = null;
   let ep: { start: number; last: number; prev: GateFail; acc: Partial<Record<GateFail, number>>; logged: boolean } | null = null;
   let lostSince: number | null = null;
+  /** gate 쪽에서 본 얼굴 없음 시작 시각 (face() 의 lostSince 와 따로 — 호출 순서에 기대지 않게) */
+  let goneSince: number | null = null;
   const reset = (): void => { cur = null; ep = null; };
   const fail = (reason: GateFail): void => { logger.log({ name: "gate_fail", first_fail: reason }); };
 
@@ -45,8 +48,13 @@ export function createLiveEvents(logger: Logger, opts: LiveEventsOptions = {}): 
 
   return {
     gate(firstFail, now) {
+      if (firstFail === "face") {
+        goneSince ??= now;
+        if (now - goneSince > lostMinMs) reset();
+        return;
+      }
+      goneSince = null;
       if (firstFail === null) { reset(); return; }
-      if (firstFail === "face") return;
       if (!ep) ep = { start: now, last: now, prev: firstFail, acc: {}, logged: false };
       ep.acc[ep.prev] = (ep.acc[ep.prev] ?? 0) + (now - ep.last);
       ep.last = now; ep.prev = firstFail;
