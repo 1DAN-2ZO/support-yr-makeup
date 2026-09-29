@@ -144,7 +144,9 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
           const atlas = { mul: mk(), col: mk(), light: mk() }, off = mk();
           const paintLook = paintLookOf(look);
           let ref: Pt[] | null = null;
-          const smoother = new URLSearchParams(location.search).has("nosmooth") ? null : new LandmarkSmoother(Array.from({ length: 478 }, (_, i) => i));
+          const q = new URLSearchParams(location.search);
+          const smoother = q.has("nosmooth") ? null : new LandmarkSmoother(Array.from({ length: 478 }, (_, i) => i), { minCutoff: SMOOTH.minCutoff, beta: SMOOTH.beta });
+          if (smoother && q.has("tune")) wrap.insertBefore(tuner(smoother), stage.nextSibling);
 
           const tick = (): void => {
             if (!alive) return;
@@ -197,6 +199,34 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
       };
     },
   };
+}
+
+/**
+ * One-Euro 값. ④ 기본값(2.5 / 0.08)은 움직이기 시작할 때 뒤처졌다 (2026-09-29 폰: "트래킹이 느려졌다").
+ * 기준(minCutoff)↑ = 가만히 있을 때도 덜 부드럽게(더 딱 붙음), 반응성(beta)↑ = 움직일 때 더 빨리 따라감.
+ * 폰에서 ?tune 으로 맞춰 보고 여기 값을 정한다
+ */
+export const SMOOTH = { minCutoff: 4, beta: 0.3 };
+
+/** [개발용 ?tune] 슬라이더 두 개 — POC(look-tryon) 와 같은 방식 */
+function tuner(sm: LandmarkSmoother): HTMLElement {
+  const box = document.createElement("div");
+  box.className = "ar-tune";
+  const v = { ...SMOOTH };
+  const out = document.createElement("p");
+  const show = (): void => { out.textContent = `기준 ${v.minCutoff.toFixed(1)} · 반응성 ${v.beta.toFixed(2)}`; };
+  const slider = (label: string, key: keyof typeof v, min: number, max: number, step: number): HTMLLabelElement => {
+    const l = document.createElement("label");
+    l.textContent = label;
+    const r = document.createElement("input");
+    Object.assign(r, { type: "range", min: String(min), max: String(max), step: String(step), value: String(v[key]) });
+    r.addEventListener("input", () => { v[key] = Number(r.value); sm.setParams(v.minCutoff, v.beta); show(); });
+    l.append(r);
+    return l;
+  };
+  box.append(slider("기준 (높을수록 딱 붙음)", "minCutoff", 0.5, 10, 0.1), slider("반응성 (높을수록 빨리 따라감)", "beta", 0.01, 1, 0.01), out);
+  show();
+  return box;
 }
 
 /** 쓰는 제품 — 접기 없이 전부 (F-04). 룩 화면에서 옮겨 왔다 */
