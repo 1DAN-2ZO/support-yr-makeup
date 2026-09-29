@@ -217,6 +217,15 @@ describe("화면 2-b — AR 완성 예상 (카메라를 못 열면 서버 그림
     expect(go).toHaveBeenCalledWith("looks");
   });
 
+  it("AR 이 안 켜졌으면 장면을 저장하지 않고 그대로 부위 반복으로 간다", () => {
+    const { root, ctx, go, deps } = setup("daily");
+    const saveArFrame = vi.fn();
+    fullRenderScreen<null>({ ...deps, saveArFrame }).mount(ctx);
+    byText(root, "화장하러 가기").click();
+    expect(saveArFrame).not.toHaveBeenCalled();
+    expect(go).toHaveBeenCalledWith("guide");
+  });
+
   it("다른 화장 보기로 화면 2 로 돌아간다", () => {
     const { root, ctx, go, deps } = setup("daily");
     fullRenderScreen<null>(deps).mount(ctx);

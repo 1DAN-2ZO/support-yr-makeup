@@ -30,6 +30,7 @@ import { VlmFailure, createVlmClient, type VlmClient } from "./core/vlm-client";
 import { PROMPT_VER, planWithVlm, vlmSchema } from "./core/vlm-flow";
 import { measureFace } from "./core/face-measure";
 import { resolvePlan, type PersonalPlan } from "./core/personalize";
+import { createArFrameStore } from "./core/ar-frame-store";
 import { createPlanQueue } from "./core/plan-queue";
 import type { CaptureBundle } from "./core/types";
 import { checkSecureContext, readEnv, type SecureCheck } from "./core/secure-context";
@@ -205,6 +206,8 @@ async function boot(): Promise<void> {
       throw e;
     }
   });
+  // 2-b AR 한 장면 — 화면 3 완성본용 (#182 ② 가 getArFrame 으로 가져감). 지금은 메모리, ① #181 저장 자리가 오면 세션으로
+  const arFrames = createArFrameStore();
   // 앱을 다시 켜면 큐가 비어 있다. 그 사이엔 규칙 계획으로 본다 (TODO: 계획을 세션에 저장 — ① 에 요청)
   const planFor = (lookId: string | null): PersonalPlan | null => (lookId ? plans.get(lookId) ?? rulePlan() : null);
 
@@ -232,7 +235,8 @@ async function boot(): Promise<void> {
       },
       getBaseline: () => session.baseline,
       setBaseline: (b) => {
-        plans.clear();   // 얼굴이 바뀌면 앞 얼굴로 만든 계획은 버린다
+        plans.clear();   // 얼굴이 바뀌면 앞 얼굴로 만든 계획·장면은 버린다
+        arFrames.clear();
         set({ ...session, baseline: b, faceShape: b?.faceShape ?? null });
       },
       // 쌩얼 저장도 draft 와 같은 줄에 세운다 — 끝내기(clearAll)가 인코딩·저장이 끝날 때까지 기다린다 (#162 리뷰)
@@ -255,6 +259,7 @@ async function boot(): Promise<void> {
       isPersonalized: (lookId) => plans.get(lookId) !== undefined,
       minBusyMs: 1500,
       getPlan: (lookId) => planFor(lookId),
+      saveArFrame: (f) => arFrames.set(f),
     },
     {
       getParts: () => toReviewParts(session),
@@ -329,6 +334,7 @@ async function boot(): Promise<void> {
       restart: () => {
         logStore.reopen();
         plans.clear();
+        arFrames.clear();
         set(createSession());
         clearRemaining = 0;
         shell.render();
