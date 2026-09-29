@@ -13,6 +13,7 @@ import scoreRules from "../../../rules/score.json";
 import type { Lab } from "./color";
 import { deltaE } from "./color";
 import type { ScoreOutcome } from "./flow";
+import { RIGID_IDS } from "./landmarks";
 import type { CheckReason, PartId, PartResult, Pt } from "./types";
 
 export const PART_NAME: Record<PartId, string> = {
@@ -541,9 +542,10 @@ export function toOutcome(partId: PartId, res: PartScore, ctx: DecideContext = {
 
 /**
  * 화장·입·턱에 영향받지 않는 안정 점: 눈 안팎 끝, 콧대·코끝, 이마, 광대.
- * 얼굴 옆(234·454·127·356)과 턱(152)은 입을 벌리면 메시가 같이 벌어져 유사변환을 흔든다 — 실기기에서 확인, 제외
+ * 얼굴 옆(234·454·127·356)과 턱(152)은 입을 벌리면 메시가 같이 벌어져 유사변환을 흔든다 — 실기기에서 확인, 제외.
+ * 목록은 landmarks.RIGID_IDS 하나 — 화면 4 게이트도 같은 점을 쓴다 (#28)
  */
-export const STABLE_IDS = [33, 133, 362, 263, 168, 6, 197, 195, 5, 4, 10, 50, 280] as const;
+export const STABLE_IDS = RIGID_IDS;
 
 export interface SimilarityFit {
   /** 배율 */
