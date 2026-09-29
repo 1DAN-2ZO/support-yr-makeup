@@ -2,15 +2,17 @@
  * 화면 3 — 부위 완성본 (F-05·F-06, 정의서 3-1). 모듈 ②.
  *
  * 그 부위를 다 하면 어떻게 되는지 확대해서 보여 주고, 근거 한 줄 · 필요한 것 한 줄 · "따라 하기"(→ 화면 4).
- *  - 그림: 전체 완성 예상(④ 서버, 2-b 와 같은 그림)을 이 부위 크롭으로 줌 (3-2b). 없으면 쌩얼 사진.
+ *  - 그림(#182): **2-b AR 장면**("화장하러 가기" 를 누른 순간 내 얼굴에 개인화 화장이 입혀진 한 장)을 이 부위 크롭으로 줌 (3-2b).
+ *    사용자가 2-b 에서 본 그 얼굴 그대로다. 없으면(AR 이 안 켜짐 · 다른 화장 · 앱을 다시 켬) 쌩얼 — core/completed-source.
  *    어느 쪽이든 그 위에 화면 4 와 **같은 테두리**를 겹친다 — 여기서 본 선이 라이브에서 따라 그릴 선이다.
+ *    테두리는 **그 그림의 얼굴 점**으로 그린다 (AR 장면은 맨얼굴과 구도가 달라 장면과 함께 저장된 점).
  *  - 거울로 보여 준다 (화면 4 라이브와 같은 방향).
  *  - 그림이 없어도 흐름은 막지 않는다 (2-b 와 같은 원칙).
  *
- * 가정: 서버 완성본은 쌩얼 정면 사진과 같은 구도라서, 기준 랜드마크를 그림 크기로 늘여 쓴다.
- * 구도가 다르면(④ 가 자르거나 돌리면) 완성본에서 랜드마크를 다시 찾아야 한다 → #157·#29 에서.
  */
 
+import type { ArFrame } from "@core/ar-frame-store";
+import { completedSource } from "@core/completed-source";
 import { cropSpec, scaleLm } from "@core/crop";
 import { partCard } from "@core/guide-view";
 import { lookGuide } from "@core/guides";
@@ -18,7 +20,7 @@ import { outlineOf } from "@core/live-run";
 import type { Look } from "@core/looks";
 import type { GuideSource } from "@core/score-part";
 import { wantedOrientation } from "@core/screens";
-import type { Baseline, FaceShape, PartId } from "@core/types";
+import type { Baseline, FaceShape, PartId, Pt } from "@core/types";
 import { strokeOutline } from "./outline-draw";
 import type { Screen, ScreenContext } from "./shell";
 
@@ -29,8 +31,10 @@ export interface GuideDeps {
   getBaseline: () => Baseline | null;
   getLook: () => Look;
   getFaceShape: () => FaceShape | null;
-  /** 고른 룩의 전체 완성 예상 그림 (④). 아직 없으면 null */
-  fullRenderUrl: () => string | null;
+  /** 고른 화장의 2-b AR 장면 (⑥ ar-frame-store). 없으면 null → 쌩얼. 저장 자리가 세션으로 옮겨 가도(① #181) 그대로 받게 Promise 도 받는다 */
+  getArFrame?: () => ArFrame | null | Promise<ArFrame | null>;
+  /** Blob → 그림. 테스트에서 바꿔 끼운다 (기본 createImageBitmap) */
+  toBitmap?: (b: Blob) => Promise<ImageBitmap>;
   /** 테두리 모양 — 화면 4·5 와 같은 것. 없으면 lookGuide(getLook().parts). ⑥ 개인화 계획이 여기 꽂힌다 */
   getGuide?: () => GuideSource;
 }
@@ -54,26 +58,15 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text = ""):
   return e;
 }
 
-function loadUrl(url: string): Promise<Drawable> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => resolve({ img, w: img.naturalWidth, h: img.naturalHeight });
-    img.onerror = () => reject(new Error("full_render_load"));
-    img.src = url;
-  });
-}
-
-async function loadBare(b: Baseline["bareImage"]): Promise<Drawable | null> {
-  if (!b) return null;
-  const bmp = b instanceof Blob ? await createImageBitmap(b) : b;
+async function load(b: Blob | ImageBitmap, toBitmap: (b: Blob) => Promise<ImageBitmap>): Promise<Drawable> {
+  const bmp = b instanceof Blob ? await toBitmap(b) : b;
   return { img: bmp, w: bmp.width, h: bmp.height, ...(b instanceof Blob ? { close: () => bmp.close() } : {}) };
 }
 
-/** 부위 크롭 + 테두리, 거울로 */
-function drawPart(cv: HTMLCanvasElement, d: Drawable, part: PartId, baseline: Baseline, guide: GuideSource): boolean {
+/** 부위 크롭 + 테두리, 거울로. lm 은 그 그림의 얼굴 점(그림 크기) */
+function drawPart(cv: HTMLCanvasElement, d: Drawable, part: PartId, lm: readonly Pt[], guide: GuideSource): boolean {
   const aspect = wantedOrientation(part) === "landscape" ? 16 / 9 : 3 / 4;
-  const lm = scaleLm(baseline.lm, { w: baseline.w, h: baseline.h }, { w: d.w, h: d.h });
+  const outline = outlineOf(part, lm, guide);
   const crop = cropSpec(part, lm, aspect);
   const cw = aspect >= 1 ? VIEW_W : Math.round(VIEW_W * aspect), ch = Math.round(cw / aspect);
   cv.width = cw; cv.height = ch;
@@ -86,7 +79,7 @@ function drawPart(cv: HTMLCanvasElement, d: Drawable, part: PartId, baseline: Ba
   g.drawImage(d.img, crop.x, crop.y, crop.w, crop.h, 0, 0, cw, ch);
   g.scale(k, k);
   g.translate(-crop.x, -crop.y);
-  strokeOutline(g, outlineOf(part, lm, guide), Math.max(2, cw / 300) / k);
+  strokeOutline(g, outline, Math.max(2, cw / 300) / k);
   g.restore();
   return true;
 }
@@ -124,24 +117,30 @@ export function guideScreen<S>(deps: GuideDeps): Screen<S> {
 
       let alive = true;
       let shown: Drawable | null = null;
-      const baseline = deps.getBaseline();
-      const url = deps.fullRenderUrl();
-      if (baseline && baseline.lm.length && (url || baseline.bareImage)) {
-        void (async () => {
-          // 완성본이 먼저, 못 받으면 쌩얼 (그림 없이도 선은 보인다)
-          let d: Drawable | null = null;
-          if (url) d = await loadUrl(url).catch(() => null);
-          d ??= await loadBare(baseline.bareImage).catch(() => null);
-          if (!d) return;
-          if (!alive) { d.close?.(); return; }
-          shown = d;
-          const cv = el("canvas", "guide-canvas");
-          if (!drawPart(cv, d, part, baseline, deps.getGuide?.() ?? lookGuide(look.parts))) return;
-          figure.textContent = "";
-          figure.classList.remove("empty");
-          figure.append(cv, el("p", "guide-note muted", GUIDE_TEXT.imageNote));
-        })().catch((e: unknown) => ctx.log.log({ name: "error", where: "guide", msg: String(e).slice(0, 120) }));
-      }
+      const baseline: Baseline | null = deps.getBaseline();
+      const toBitmap = deps.toBitmap ?? ((b: Blob) => createImageBitmap(b));
+      void (async () => {
+        const ar = (await deps.getArFrame?.()) ?? null;
+        const src = completedSource(ar, baseline);
+        if (!src || !alive) return;
+        // AR 장면이 깨져 못 열면 쌩얼로 (그림 없이도 선은 보인다)
+        let d = await load(src.image, toBitmap).catch(() => null);
+        let from = src;
+        if (!d && src.from === "ar") {
+          const bare = completedSource(null, baseline);
+          if (bare) { from = bare; d = await load(bare.image, toBitmap).catch(() => null); }
+        }
+        if (!d) return;
+        if (!alive) { d.close?.(); return; }
+        shown = d;
+        // 점은 저장할 때 크기(w·h) 좌표 — 그림을 줄여 저장했을 수 있어 그림 크기로 맞춘다
+        const lm = scaleLm(from.lm, { w: from.w, h: from.h }, { w: d.w, h: d.h });
+        const cv = el("canvas", "guide-canvas");
+        if (!drawPart(cv, d, part, lm, deps.getGuide?.() ?? lookGuide(look.parts))) return;
+        figure.textContent = "";
+        figure.classList.remove("empty");
+        figure.append(cv, el("p", "guide-note muted", GUIDE_TEXT.imageNote));
+      })().catch((e: unknown) => ctx.log.log({ name: "error", where: "guide", msg: String(e).slice(0, 120) }));
 
       return () => {
         alive = false;
