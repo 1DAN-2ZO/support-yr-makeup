@@ -13,7 +13,7 @@ import { deltaE } from "./color";
 import { LM, at } from "./landmarks";
 import type { SampleFrame } from "./sampling";
 import { frameOf, sampleBrow, sampleForehead, sampleLiner, sampleLip, sampleRegion } from "./sampling";
-import type { Band, DecideContext, LightCorr, PartScore, ScoreParams, Side, SimilarityFit } from "./score";
+import type { Band, DecideContext, LightCorr, LinerStrip, PartScore, ScoreParams, Side, SimilarityFit } from "./score";
 import { PARAMS, alignToBaseline, browResult, compareLinerEye, compareLip, compareRegion, intensityIndex, intensityResult, lightCorr, linerResult, makeupBiasPx, noCorr, oneLiner, toOutcome } from "./score";
 import type { ScoreOutcome } from "./flow";
 import type { CheckReason, PartId, Pt } from "./types";
@@ -78,11 +78,19 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
 
   let result: PartScore;
   if (partId === "liner") {
-    const gb = linerOf(guide, base), gc = linerOf(guide, cur);
-    const eye = (s: Side) => compareLinerEye(sampleLiner(base, s, gb.wing[s], gb.thick), sampleLiner(cur, s, gc.wing[s], gc.thick), corr, p);
+    const gb = linerOf(guide, base);
+    const eye = (s: Side) => {
+      const sb = sampleLiner(base, s, gb.wing[s], gb.thick);
+      const strip = (f: SampleFrame) => { const g = linerOf(guide, f); return sampleLiner(f, s, g.wing[s], g.thick); };
+      // 눈을 뜨고 있으면 선 아래는 눈알(시선에 따라 바뀜) — 정렬 비용에서도 뺀다 (compareLinerEye 와 같은 칸)
+      const cost = (f: SampleFrame) => stripCost(sb, strip(f), corr, p.tol.band);
+      return compareLinerEye(sb, strip(register(cur, cost)), corr, p);
+    };
     result = linerResult({ R: eye("R"), L: eye("L") }, opts.baseAsym ?? 0, p);
   } else if (partId === "brow") {
-    result = browResult(compareRegion(sampleBrow(base), sampleBrow(cur), corr, p.dEThresh.brow));
+    const gb = sampleBrow(base);
+    const cost = (f: SampleFrame) => meanLighter(gb.lab, sampleBrow(f).lab, corr);
+    result = browResult(compareRegion(gb, sampleBrow(register(cur, cost)), corr, p.dEThresh.brow));
   } else if (partId === "lip") {
     result = compareLip(sampleLip(base, lipOf(guide, base).offset), sampleLip(cur, lipOf(guide, cur).offset), corr, p);
   } else if (partId === "contour") {
@@ -106,6 +114,61 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
   }
   if (opts.alignResidual !== undefined) result.metrics.alignResidual = opts.alignResidual;
   return { result, ctx };
+}
+
+// ---------- 부위별 미세 정렬 (#169 — 맨얼굴 오채점) ----------
+
+/**
+ * 채점은 "쌩얼 대비 색이 바뀐 곳 = 그린 곳" 이다. 맨얼굴에도 속눈썹·눈썹 털이 있어서 1~2px 만 어긋나도 새 선처럼 보였다
+ * (합성 실험: 1px 에 라이너 64점·눈썹 82점). 웹캠 랜드마크 흔들림과 게이트가 허용하는 각도 차만으로도 그만큼 어긋난다.
+ * 그래서 비교 전에 지금 프레임을 ±maxPx 안에서 옮겨 보고, 쌩얼과 가장 잘 겹치는 자리에서 비교한다.
+ * 같은 비용이면 덜 옮긴 쪽 — 이미 맞으면 그대로 둔다.
+ *
+ * 비용은 "쌩얼보다 **밝아진** 양"(L*) 이다. 색 차이 전체로 맞추면 그린 선을 원래 속눈썹 위로 끌어다 겹쳐
+ * 라이너가 75점으로 떨어졌다. 라이너·눈썹 화장은 피부를 어둡게만 하고, 속눈썹·눈썹 털이 어긋나면
+ * 털이 있던 자리가 밝아진다 — 밝아진 양만 보면 그린 화장은 정렬에 끼어들지 않는다.
+ */
+export const REGISTER = { maxPx: 2 } as const;
+
+function shiftFrame(f: SampleFrame, dx: number, dy: number): SampleFrame {
+  return { ...f, lm: f.lm.map((q) => ({ ...q, x: q.x + dx, y: q.y + dy })) };
+}
+
+function register(cur: SampleFrame, cost: (f: SampleFrame) => number, r: number = REGISTER.maxPx): SampleFrame {
+  let best = cur, bestC = cost(cur), bestD = 0;
+  for (let dy = -r; dy <= r; dy++) {
+    for (let dx = -r; dx <= r; dx++) {
+      if (!dx && !dy) continue;
+      const f = shiftFrame(cur, dx, dy), c = cost(f), d = Math.hypot(dx, dy);
+      if (c < bestC - 1e-9 || (Math.abs(c - bestC) <= 1e-9 && d < bestD)) { best = f; bestC = c; bestD = d; }
+    }
+  }
+  return best;
+}
+
+/** 쌩얼보다 밝아진 양 (L*, 어두워진 곳은 0) */
+const lighter = (base: Lab, cur: Lab, corr: LightCorr): number => Math.max(0, corr(cur).L - base.L);
+
+function meanLighter(a: readonly Lab[], b: readonly Lab[], corr: LightCorr): number {
+  const n = Math.min(a.length, b.length);
+  let sum = 0;
+  for (let i = 0; i < n; i++) sum += lighter(a[i]!, b[i]!, corr);
+  return n ? sum / n : 0;
+}
+
+function stripCost(base: LinerStrip, cur: LinerStrip, corr: LightCorr, band: number): number {
+  const useBelow = !base.meta.eyeOpen && !cur.meta.eyeOpen;
+  const N = Math.min(base.lab.length, cur.lab.length);
+  let sum = 0, n = 0;
+  for (let i = 0; i < N; i++) {
+    const wing = base.meta.isWing[i] ?? false;
+    base.meta.offs.forEach((o, j) => {
+      if (!wing && !useBelow && o < -band) return;
+      sum += lighter(base.lab[i]![j]!, cur.lab[i]![j]!, corr);
+      n++;
+    });
+  }
+  return n ? sum / n : 0;
 }
 
 /** 밴드 무게중심이 얼굴 중심에서 얼굴 폭의 이 비율 안이면 가운데 밴드 — 좌우 어느 쪽도 아니다 */
