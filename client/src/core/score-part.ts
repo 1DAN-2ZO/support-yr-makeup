@@ -92,16 +92,21 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
     const cost = (f: SampleFrame) => meanLighter(gb.lab, sampleBrow(f).lab, corr);
     result = browResult(compareRegion(gb, sampleBrow(register(cur, cost)), corr, p.dEThresh.brow));
   } else if (partId === "lip") {
-    result = compareLip(sampleLip(base, lipOf(guide, base).offset), sampleLip(cur, lipOf(guide, cur).offset), corr, p);
+    const lc = sampleLip(cur, lipOf(guide, cur).offset);
+    result = compareLip(sampleLip(base, lipOf(guide, base).offset), lc, corr, p);
+    // 입술 색 (조화 보정, #35): 경계에서 안쪽으로 떨어진 칸만 — 경계는 피부가 섞인다
+    const inner = lc.lab.flatMap((row) => row.filter((_, j) => (lc.meta.offs[j] ?? 0) < -p.tol.lipOut));
+    const ab = meanAb(inner);
+    if (ab) result.metrics.colorAb = ab;
   } else if (partId === "contour") {
     result = scoreContour(base, cur, guide, corr, p);
   } else {
     const halves = partId === "shadow";
     const side = (s: Side) => {
       const b = sampleRegion(base, regionOf(guide, partId, base, s), s, halves), c = sampleRegion(cur, regionOf(guide, partId, cur, s), s, halves);
-      if (!b || !c) return { delta: 0, index: 0, dir: 0 };   // 영역이 사진 밖 → 화장 없음으로 (확인만)
+      if (!b || !c) return { delta: 0, index: 0, dir: 0, color: null as Lab | null };   // 영역이 사진 밖 → 화장 없음으로 (확인만)
       const dir = b.outer && b.inner && c.outer && c.inner ? deltaE(b.outer, corr(c.outer)) - deltaE(b.inner, corr(c.inner)) : 0;
-      return { ...intensityIndex(b.part, c.part, b.ring, c.ring, corr, p), dir };
+      return { ...intensityIndex(b.part, c.part, b.ring, c.ring, corr, p), dir, color: c.part as Lab | null };
     };
     const L = side("L"), R = side("R");
     result = intensityResult(partId, {
@@ -111,6 +116,11 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
       ...(opts.band !== undefined ? { band: opts.band } : {}),
     }, p);
     result.metrics.deltas = { L: L.delta, R: R.delta };
+    // 볼터치 색 (조화 보정, #35): 지금 사진의 영역 평균. 화장이 감지됐을 때만
+    if (partId === "cheek" && result.present) {
+      const ab = meanAb([L.color, R.color].filter((c): c is Lab => !!c));
+      if (ab) result.metrics.colorAb = ab;
+    }
   }
   if (opts.alignResidual !== undefined) result.metrics.alignResidual = opts.alignResidual;
   return { result, ctx };
@@ -169,6 +179,11 @@ function stripCost(base: LinerStrip, cur: LinerStrip, corr: LightCorr, band: num
     });
   }
   return n ? sum / n : 0;
+}
+
+function meanAb(labs: readonly Lab[]): { a: number; b: number } | null {
+  if (!labs.length) return null;
+  return { a: labs.reduce((s, l) => s + l.a, 0) / labs.length, b: labs.reduce((s, l) => s + l.b, 0) / labs.length };
 }
 
 /** 밴드 무게중심이 얼굴 중심에서 얼굴 폭의 이 비율 안이면 가운데 밴드 — 좌우 어느 쪽도 아니다 */

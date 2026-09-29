@@ -300,10 +300,12 @@ export function linerResult(perEye: Record<Side, LinerEyeMetrics>, baseAsym = 0,
 /** 영역 격자 (눈썹): 점 K개. inside = 테두리 안, tail = 꼬리 구간 */
 export interface RegionGrid {
   lab: Lab[];
-  meta: { inside: readonly boolean[]; tail: readonly boolean[]; side: readonly Side[] };
+  meta: { inside: readonly boolean[]; tail: readonly boolean[]; side: readonly Side[]; lift?: readonly number[] };
 }
 
 export interface RegionSideMetrics {
+  /** 그린(감지된) 점들의 평균 높이 — 아래 선에서 위로, 눈 폭 비율. 격자에 높이가 없거나 감지가 없으면 null */
+  hitLift: number | null;
   coverage: number;
   overflow: number;
   tailCoverage: number;
@@ -312,12 +314,14 @@ export interface RegionSideMetrics {
 
 export function compareRegion(base: RegionGrid, cur: RegionGrid, corr: LightCorr, thresh: number): Record<Side, RegionSideMetrics> {
   const K = Math.min(base.lab.length, cur.lab.length);
-  const zero = () => ({ inN: 0, inHit: 0, outN: 0, outHit: 0, tailN: 0, tailHit: 0 });
+  const zero = () => ({ inN: 0, inHit: 0, outN: 0, outHit: 0, tailN: 0, tailHit: 0, liftSum: 0, liftN: 0 });
   const acc = { R: zero(), L: zero() };
   for (let i = 0; i < K; i++) {
     const a = acc[cur.meta.side[i]!], b = base.lab[i]!;
     const th = b.L < 40 ? thresh * 0.5 : thresh;   // 맨얼굴에서 이미 어두운 점(눈썹 털)은 펜슬 변화가 작으므로 임계를 절반으로
     const hit = deltaE(b, corr(cur.lab[i]!)) >= th;
+    const h = cur.meta.lift?.[i];
+    if (hit && h !== undefined) { a.liftSum += h; a.liftN++; }
     if (cur.meta.inside[i]) {
       a.inN++;
       if (hit) a.inHit++;
@@ -332,6 +336,7 @@ export function compareRegion(base: RegionGrid, cur: RegionGrid, corr: LightCorr
     overflow: a.outN ? a.outHit / a.outN : 0,
     tailCoverage: a.tailN ? a.tailHit / a.tailN : 0,
     present: a.inHit >= 6,
+    hitLift: a.liftN ? a.liftSum / a.liftN : null,
   });
   return { R: f(acc.R), L: f(acc.L) };
 }
@@ -347,7 +352,9 @@ export function browResult(per: Record<Side, RegionSideMetrics>): PartScore {
   const coverage = (per.R.coverage + per.L.coverage) / 2;
   if (coverage < 0.45) codes.push("BROW_SPARSE");
   const score = scoreForm({ coverage, overflow: (per.R.overflow + per.L.overflow) / 2 });
-  return { present, score, codes, lrIndex: null, metrics: { per } };
+  // 좌우 높이 차 (+ = 오른쪽이 높다). 합산의 대칭 보정이 쓴다 (#35). 한쪽이라도 안 그렸으면 안 넘긴다
+  const lr = per.R.present && per.L.present && per.R.hitLift !== null && per.L.hitLift !== null ? { lrDiff: per.R.hitLift - per.L.hitLift } : {};
+  return { present, score, codes, lrIndex: null, metrics: { per, ...lr } };
 }
 
 /** 입술 경계 스트립: 바깥 윤곽을 따라 N행, 안쪽(−) … 바깥쪽(+) M칸 */

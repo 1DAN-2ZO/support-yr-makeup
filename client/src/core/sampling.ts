@@ -110,7 +110,7 @@ const BROW_U = 24;
 
 /** 눈썹 격자 (양쪽): 가로 24 × 세로 9. u = 0 이 바깥 꼬리, 1 이 안쪽. 두 사진에서 점 개수·순서가 같다 */
 export function sampleBrow(f: SampleFrame): RegionGrid {
-  const lab: Lab[] = [], inside: boolean[] = [], tail: boolean[] = [], side: Side[] = [];
+  const lab: Lab[] = [], inside: boolean[] = [], tail: boolean[] = [], side: Side[] = [], lift: number[] = [];
   const along = (pts: readonly Pt[], u: number): Pt => {
     const t = u * (pts.length - 1), i = Math.min(pts.length - 2, Math.floor(t));
     return add(pts[i]!, mul(sub(pts[i + 1]!, pts[i]!), t - i));
@@ -123,12 +123,13 @@ export function sampleBrow(f: SampleFrame): RegionGrid {
         const q = add(a, mul(sub(b, a), v));
         lab.push(labAt(f.im, q.x, q.y));
         inside.push(v >= 0 && v <= 1);
+        lift.push((v * dist(a, b)) / (f.unit.eye || 1));   // 그 눈썹 아래 선에서 위로 (눈 폭 비율) — 좌우 높이 차(#35)
         tail.push(u < 0.4);
         side.push(key);
       }
     }
   }
-  return { lab, meta: { inside, tail, side } };
+  return { lab, meta: { inside, tail, side, lift } };
 }
 
 /** 입술 경계 스트립: 바깥 윤곽을 따라 60행, 안쪽(−) … 바깥쪽(+) 25칸. offset = 가이드 경계 오프셋 (입술 폭 비율, ② 값) */
