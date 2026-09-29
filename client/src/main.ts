@@ -24,7 +24,10 @@ import {
   type ScreenId,
   type Session,
 } from "./core/flow";
-import { lookGuide } from "./core/guides";
+import { planGuide } from "./core/personal-guide";
+import { measureFace } from "./core/face-measure";
+import { resolvePlan, type PersonalPlan } from "./core/personalize";
+import { createPlanQueue } from "./core/plan-queue";
 import type { CaptureBundle } from "./core/types";
 import { checkSecureContext, readEnv, type SecureCheck } from "./core/secure-context";
 import { createSessionStore, indexedDbBackend, memoryBackend, type SessionStore } from "./core/session-store";
@@ -37,8 +40,8 @@ import { doneScreen, type DoneDeps } from "./screens/done";
 import { landmarksFromImage } from "./screens/landmarker";
 import { guideScreen, type GuideDeps } from "./screens/guide";
 import { liveScreen, type LiveDeps } from "./screens/live";
-import { fullRenderScreen } from "./screens/fullrender";
-import { looksScreen } from "./screens/looks";
+import { fullRenderScreen, type FullRenderDeps } from "./screens/fullrender";
+import { looksScreen, type LooksDeps } from "./screens/looks";
 import { processingScreen, type ProcessingDeps } from "./screens/processing";
 import { resultScreen, type ResultDeps } from "./screens/result";
 import { reviewScreen, type ReviewDeps } from "./screens/review";
@@ -117,12 +120,27 @@ async function boot(): Promise<void> {
     log.log({ name: "error", where: "boot", msg: `secure_context:${secure.reason}` });
   }
 
-  // 가이드 모양 한 곳 — 화면 3 테두리 · 화면 4 테두리 · 화면 5 채점이 같은 것을 쓴다 ("따라 그린 선 = 채점 기준").
-  // 지금은 고른 룩의 규칙 가이드. ⑥ 개인화 계획이 오면 여기만 바꾼다 (#167 리뷰)
-  const guideFor = () => lookGuide(lookById(session.lookId).parts);
-
   // ④ 의 서버가 붙으면 여기만 진짜 공급자로 바뀐다. 그때까지는 전부 "로딩 중"
   const lookJobs: LookJobSource = emptyJobSource();
+
+  // 룩별 개인화 계획 — 룩을 누를 때 한 번씩, 마지막에 누른 것 먼저 (2026-09-28 흐름).
+  // 지금은 규칙 계획만. VLM 제안은 서버가 붙으면 resolvePlan 의 세 번째 인자로 넣는다 (사진이 밖으로 나가지 않는 학원 서버)
+  const rulePlan = (): PersonalPlan | null => {
+    const b = session.baseline;
+    return b ? resolvePlan(measureFace(b.lm), { faceShape: b.faceShape }) : null;
+  };
+  const plans = createPlanQueue<PersonalPlan>(async () => {
+    const p = rulePlan();
+    if (!p) throw new Error("기준 얼굴이 없습니다");
+    return p;
+  });
+  // 앱을 다시 켜면 큐가 비어 있다 — 규칙 계획은 같은 얼굴이면 같은 값이라 그 자리에서 다시 만든다 (AR·채점이 같은 기준)
+  const planFor = (lookId: string | null): PersonalPlan | null => (lookId ? plans.get(lookId) ?? rulePlan() : null);
+
+  // 가이드 모양 한 곳 — 화면 3 테두리 · 화면 4 테두리 · 화면 5 채점이 같은 것을 쓴다 ("따라 그린 선 = 채점 기준").
+  // 고른 화장을 이 얼굴에 맞춘 계획 = 2-b AR 에서 본 모양. 계획이 없으면(개인화 전·복원 직후) 표준 모양
+  // (planGuide(x, null) = lookGuide(x), plan-guide.test)
+  const guideFor = () => planGuide(lookById(session.lookId).parts, planFor(session.lookId));
 
   // 끝내기가 지우고 남은 키 수. 0 이어야 한다 (F-11)
   let clearRemaining = 0;
@@ -142,7 +160,10 @@ async function boot(): Promise<void> {
         set({ ...session, shots });
       },
       getBaseline: () => session.baseline,
-      setBaseline: (b) => set({ ...session, baseline: b, faceShape: b?.faceShape ?? null }),
+      setBaseline: (b) => {
+        plans.clear();   // 얼굴이 바뀌면 앞 얼굴로 만든 계획은 버린다
+        set({ ...session, baseline: b, faceShape: b?.faceShape ?? null });
+      },
       // 쌩얼 저장도 draft 와 같은 줄에 세운다 — 끝내기(clearAll)가 인코딩·저장이 끝날 때까지 기다린다 (#162 리뷰)
       saveBare: (blob) => {
         const done = saving.then(() => blob).then((b) => sessionStore.saveImage("bare", b));
@@ -159,6 +180,10 @@ async function boot(): Promise<void> {
       setLookId: (lookId: string) => {
         set({ ...session, lookId });
       },
+      personalize: (lookId) => plans.request(lookId).then(() => {}),
+      isPersonalized: (lookId) => plans.get(lookId) !== undefined,
+      minBusyMs: 1500,
+      getPlan: (lookId) => planFor(lookId),
     },
     {
       getParts: () => toReviewParts(session),
@@ -186,7 +211,7 @@ async function boot(): Promise<void> {
       getBaseline: () => session.baseline,
       // 화면 4(②) 가 확인받기 순간의 프레임 묶음을 parts[].captured 에 둔다 (CaptureBundle)
       getCapture: (part) => (session.parts.find((p) => p.partId === part)?.captured as CaptureBundle | null) ?? null,
-      // 화면 3·4 테두리와 같은 가이드로 채점한다
+      // 화면 3·4 테두리와 같은 계획 가이드로 채점한다 (2-b AR 에서 본 모양과 같은 기준)
       guide: guideFor,
       getStatus: (part) => session.parts.find((p) => p.partId === part)?.status ?? "in_progress",
       apply: (part, outcome) => {
@@ -227,6 +252,7 @@ async function boot(): Promise<void> {
       // 세션을 통째로 새로 만든다 — 앞 세션 값이 하나도 안 남게
       restart: () => {
         logStore.reopen();
+        plans.clear();
         set(createSession());
         clearRemaining = 0;
         shell.render();
@@ -254,11 +280,7 @@ async function boot(): Promise<void> {
  *
  * 예) shell.register("looks", looksScreen);
  */
-interface LookDeps {
-  jobs: LookJobSource;
-  getLookId: () => string | null;
-  setLookId: (lookId: string) => void;
-}
+type LookDeps = LooksDeps & FullRenderDeps;
 
 function registerAll(
   shell: ReturnType<typeof createShell<Session>>,

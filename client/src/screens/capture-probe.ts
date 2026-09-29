@@ -7,7 +7,7 @@
  */
 import type { FaceLandmarker } from "@mediapipe/tasks-vision";
 import type { FaceLandmarkerResult } from "@mediapipe/tasks-vision";
-import { CAPTURE_GUIDE, CAPTURE_LIMITS, SHOTS, burstShot, burstStep, nextShot, shotGate, startBurst } from "@core/flow";
+import { CAPTURE_GUIDE, CAPTURE_LIMITS, SHOTS, SHOT_TEXT, burstShot, burstStep, nextShot, shotGate, startBurst } from "@core/flow";
 import type { BurstState } from "@core/flow";
 import type { ShotId, ShotMeasure } from "@core/flow";
 import { FACE_L, FACE_R, labDrift } from "@core/color";
@@ -18,6 +18,7 @@ import type { GateFail, Pt } from "@core/types";
 import { createLogger, memorySink } from "@core/log";
 import { createCaptureEvents } from "@core/capture-events";
 import { foreheadStep, startForeheadTrack } from "@core/occlusion";
+import { settleStep, startSettle, type Settle } from "@core/capture-run";
 import { applyCameraLocks, applyUltraWideZoom, lockReportRow, requestWakeLock } from "@screens/camera-locks";
 
 const $ = <T extends HTMLElement>(id: string): T => {
@@ -121,6 +122,8 @@ const state = {
   burstWait: null as { shotId: ShotId; at: ShotAt; cv: HTMLCanvasElement; shotAt: number } | null,
   gateLog: {} as ProbeResult["gateLog"],
   fj: startForeheadTrack(),
+  /** 기준 장(정면 눈 뜸) 자리 잡기 — 앱(capture-run BASE_SETTLE)과 같은 규칙. null 이면 그 장 차례가 되면 시작 */
+  settle: null as Settle | null,
   fjAll: [] as number[],
   fjRecent: [] as { t: number; v: number }[],
   fjOccluded: 0,
@@ -260,7 +263,12 @@ function frame(): void {
   const pre = raw ? shotGate(shotId, { ...m, stableCount: 99 }) : null;
   state.stable = pre?.ok ? state.stable + 1 : 0;
   m.stableCount = state.stable;
-  const gate = shotGate(shotId, m);
+  let gate = shotGate(shotId, m);
+  if (shotId === "front_open") {
+    const sr = settleStep(state.settle ?? startSettle(t0), t0, m.foreheadL);
+    state.settle = sr.state;
+    if (gate.ok && !sr.ready) gate = { ok: false, firstFail: "stable", text: SHOT_TEXT.stable, stableCount: gate.stableCount };
+  }
   if (!gate.ok && gate.firstFail) state.blocked[gate.firstFail] = (state.blocked[gate.firstFail] ?? 0) + 1;
   if (at) logGate(shotId, gate.ok ? "통과" : gate.text, at);
   gateEl.textContent = `${NAME[shotId]} — ${gate.text}`;
@@ -391,7 +399,7 @@ $<HTMLButtonElement>("ok").onclick = () => {
 $<HTMLButtonElement>("redo").onclick = () => {
   const p = state.pending; if (!p) return;
   state.rejected[p.shot] += 1;
-  if (p.shot === "front_open") { state.burst = null; state.burstFrames = []; state.burstResult = null; }
+  if (p.shot === "front_open") { state.burst = null; state.burstFrames = []; state.burstResult = null; state.settle = null; }
   events.shot(p.shot, false, null);   // 게이트는 통과했지만 사람이 거부 (reason 없음)
   state.pending = null; confirmEl.hidden = true; state.paused = false;
   state.shotStart = performance.now();
@@ -403,7 +411,7 @@ function retakeLast(): void {
   delete state.shots[last];
   state.retakes[last] += 1;
   events.retake(last);
-  if (last === "front_open") { state.baselineL = undefined; state.burst = null; state.burstFrames = []; state.burstResult = null; }
+  if (last === "front_open") { state.baselineL = undefined; state.burst = null; state.burstFrames = []; state.burstResult = null; state.settle = null; }
   state.blocked = {}; state.stable = 0; state.shotStart = performance.now();
   gateEl.classList.remove("ready");
   $<HTMLButtonElement>("shake").disabled = true;

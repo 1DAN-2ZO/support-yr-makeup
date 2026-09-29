@@ -1,4 +1,4 @@
-# 당화응 — 서비스 정의 (v6)
+# nudy — 서비스 정의 (v6)
 
 > 2026-09-15 확정본 · 기능 정의서는 `feature-spec-v6.md`, 화면 목업 브리프는 `screen-image-brief-v6.md`
 

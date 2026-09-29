@@ -87,7 +87,7 @@ describe("서버 처리 화면", () => {
   it("작업이 아직 없으면 기다린다", () => {
     const { root, ctx, deps, go } = setup();
     processingScreen<null>(deps).mount(ctx);
-    expect(root.textContent).toContain("룩을 만들고 있어요");
+    expect(root.textContent).toContain("화장을 만들고 있어요");
     expect(go).not.toHaveBeenCalled();
   });
 

@@ -146,3 +146,22 @@ export const regionPaint = (partId: PartId, color: Rgb, sides: readonly Side[] =
 };
 
 export const made = (paint: Paint, gain = 1): SampleFrame => frameOf(image(paint, gain), LMS);
+
+// ---------- 자연 맨얼굴 (#169 — 맨얼굴 오채점) ----------
+// 살색 판(BARE)은 속눈썹·눈썹이 없어서 "맨얼굴끼리 비교" 가 너무 쉽게 통과했다.
+// 실제 맨얼굴에는 속눈썹 선(라이너 채점 띠 바로 그 자리)과 눈썹 털이 있다 — 1~2px 만 어긋나도 "새 선" 처럼 보인다.
+export const LASH: Rgb = [45, 35, 35], SCLERA: Rgb = [215, 205, 200], HAIR: Rgb = [150, 115, 95];
+const lids = (["R", "L"] as const).map((s) => eyeOf(s).upper.map(P));
+/** 속눈썹(선 위아래 1.5px) · 눈알 · 옅은 눈썹 털(눈썹 자리 세 칸에 하나) */
+export const naturalPaint: Paint = (x, y) => {
+  for (const l of lids) {
+    if (distToPath(x, y, l) <= 1.5) return LASH;
+    if (distToPath(x, y - 7, l) <= 4.5) return SCLERA;
+  }
+  return (x + y) % 3 === 0 && browPaint(x, y) ? HAIR : null;
+};
+/** top 이 칠한 곳은 top, 아니면 under */
+export const over = (top: Paint, under: Paint): Paint => (x, y) => top(x, y) ?? under(x, y);
+/** 사진 전체를 (dx, dy) px 옮긴다 — 랜드마크는 그대로 = 랜드마크가 그만큼 어긋난 것과 같다 */
+export const shifted = (p: Paint, dx: number, dy: number): Paint => (x, y) => p(x - dx, y - dy);
+export const NATURAL: SampleFrame = frameOf(image(naturalPaint), LMS);
