@@ -1,4 +1,4 @@
-# 당화응 분업안 — 모듈 6개 + 성능 평가
+# nudy 분업안 — 모듈 6개 + 성능 평가
 
 당화응 · 2026-09-18 작성 · 담당자 2026-09-22 확정 (§0-0)
 근거: `feature-spec-v6.md` §12 모듈·담당(구판), `tech-review-full-flow-v6.md`, `tech-review-screen5-v6.md`, `tech-review-screen6-v6.md`, 데이터 계획 4차(`data-plan-v6.md`), `poc/full` @ 50607ac · AI 파이프라인(호출 그래프·평가 하네스·버전·서빙 지표)은 `ai-pipeline-v6.md`
