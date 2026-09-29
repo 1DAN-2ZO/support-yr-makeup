@@ -13,7 +13,7 @@ import { deltaE } from "./color";
 import { LM, at } from "./landmarks";
 import type { SampleFrame } from "./sampling";
 import { frameOf, sampleBrow, sampleForehead, sampleLiner, sampleLip, sampleRegion } from "./sampling";
-import type { Band, DecideContext, LightCorr, PartScore, ScoreParams, Side, SimilarityFit } from "./score";
+import type { Band, DecideContext, LightCorr, LinerStrip, PartScore, ScoreParams, Side, SimilarityFit } from "./score";
 import { PARAMS, alignToBaseline, browResult, compareLinerEye, compareLip, compareRegion, intensityIndex, intensityResult, lightCorr, linerResult, makeupBiasPx, noCorr, oneLiner, toOutcome } from "./score";
 import type { ScoreOutcome } from "./flow";
 import type { CheckReason, PartId, Pt } from "./types";
@@ -32,6 +32,8 @@ export interface PartGeometry {
   lip?: {
     /** 경계 오프셋 (입술 폭 비율, + 바깥) */
     offset: number;
+    /** 개인화: 윗입술 가운데를 올리는 양 (윗입술 두께 비율). 채점은 아직 쓰지 않는다 — 화면 테두리(lipOutline)만 */
+    upperOverline?: number;
   };
   /** 섀도우·볼터치 영역 다각형, 좌우 하나씩 */
   regions?: Record<Side, readonly Pt[]>;
@@ -78,22 +80,35 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
 
   let result: PartScore;
   if (partId === "liner") {
-    const gb = linerOf(guide, base), gc = linerOf(guide, cur);
-    const eye = (s: Side) => compareLinerEye(sampleLiner(base, s, gb.wing[s], gb.thick), sampleLiner(cur, s, gc.wing[s], gc.thick), corr, p);
+    const gb = linerOf(guide, base);
+    const eye = (s: Side) => {
+      const sb = sampleLiner(base, s, gb.wing[s], gb.thick);
+      const strip = (f: SampleFrame) => { const g = linerOf(guide, f); return sampleLiner(f, s, g.wing[s], g.thick); };
+      // 눈을 뜨고 있으면 선 아래는 눈알(시선에 따라 바뀜) — 정렬 비용에서도 뺀다 (compareLinerEye 와 같은 칸)
+      const cost = (f: SampleFrame) => stripCost(sb, strip(f), corr, p.tol.band);
+      return compareLinerEye(sb, strip(register(cur, cost)), corr, p);
+    };
     result = linerResult({ R: eye("R"), L: eye("L") }, opts.baseAsym ?? 0, p);
   } else if (partId === "brow") {
-    result = browResult(compareRegion(sampleBrow(base), sampleBrow(cur), corr, p.dEThresh.brow));
+    const gb = sampleBrow(base);
+    const cost = (f: SampleFrame) => meanLighter(gb.lab, sampleBrow(f).lab, corr);
+    result = browResult(compareRegion(gb, sampleBrow(register(cur, cost)), corr, p.dEThresh.brow));
   } else if (partId === "lip") {
-    result = compareLip(sampleLip(base, lipOf(guide, base).offset), sampleLip(cur, lipOf(guide, cur).offset), corr, p);
+    const lc = sampleLip(cur, lipOf(guide, cur).offset);
+    result = compareLip(sampleLip(base, lipOf(guide, base).offset), lc, corr, p);
+    // 입술 색 (조화 보정, #35): 경계에서 안쪽으로 떨어진 칸만 — 경계는 피부가 섞인다
+    const inner = lc.lab.flatMap((row) => row.filter((_, j) => (lc.meta.offs[j] ?? 0) < -p.tol.lipOut));
+    const ab = meanAb(inner);
+    if (ab) result.metrics.colorAb = ab;
   } else if (partId === "contour") {
     result = scoreContour(base, cur, guide, corr, p);
   } else {
     const halves = partId === "shadow";
     const side = (s: Side) => {
       const b = sampleRegion(base, regionOf(guide, partId, base, s), s, halves), c = sampleRegion(cur, regionOf(guide, partId, cur, s), s, halves);
-      if (!b || !c) return { delta: 0, index: 0, dir: 0 };   // 영역이 사진 밖 → 화장 없음으로 (확인만)
+      if (!b || !c) return { delta: 0, index: 0, dir: 0, color: null as Lab | null };   // 영역이 사진 밖 → 화장 없음으로 (확인만)
       const dir = b.outer && b.inner && c.outer && c.inner ? deltaE(b.outer, corr(c.outer)) - deltaE(b.inner, corr(c.inner)) : 0;
-      return { ...intensityIndex(b.part, c.part, b.ring, c.ring, corr, p), dir };
+      return { ...intensityIndex(b.part, c.part, b.ring, c.ring, corr, p), dir, color: c.part as Lab | null };
     };
     const L = side("L"), R = side("R");
     result = intensityResult(partId, {
@@ -103,9 +118,81 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
       ...(opts.band !== undefined ? { band: opts.band } : {}),
     }, p);
     result.metrics.deltas = { L: L.delta, R: R.delta };
+    // 볼터치 색 (조화 보정, #35): 지금 사진의 영역 평균. 화장이 감지됐을 때만
+    if (partId === "cheek" && result.present) {
+      const ab = meanAb([L.color, R.color].filter((c): c is Lab => !!c));
+      if (ab) result.metrics.colorAb = ab;
+    }
   }
   if (opts.alignResidual !== undefined) result.metrics.alignResidual = opts.alignResidual;
   return { result, ctx };
+}
+
+// ---------- 부위별 미세 정렬 (#169 — 맨얼굴 오채점) ----------
+
+/**
+ * 채점은 "쌩얼 대비 색이 바뀐 곳 = 그린 곳" 이다. 맨얼굴에도 속눈썹·눈썹 털이 있어서 1~2px 만 어긋나도 새 선처럼 보였다
+ * (합성 실험: 1px 에 라이너 64점·눈썹 82점). 웹캠 랜드마크 흔들림과 게이트가 허용하는 각도 차만으로도 그만큼 어긋난다.
+ * 그래서 비교 전에 지금 프레임을 ±maxPx 안에서 옮겨 보고, 쌩얼과 가장 잘 겹치는 자리에서 비교한다.
+ * 같은 비용이면 덜 옮긴 쪽 — 이미 맞으면 그대로 둔다.
+ *
+ * 비용은 "쌩얼보다 **밝아진** 양"(L*) 이다. 색 차이 전체로 맞추면 그린 선을 원래 속눈썹 위로 끌어다 겹쳐
+ * 라이너가 75점으로 떨어졌다. 라이너·눈썹 화장은 피부를 어둡게만 하고, 속눈썹·눈썹 털이 어긋나면
+ * 털이 있던 자리가 밝아진다 — 밝아진 양만 보면 그린 화장은 정렬에 끼어들지 않는다.
+ */
+/**
+ * range: 옮겨 볼 범위(눈 폭 비율 — 합성 얼굴 눈 폭 90px 에서 2px). 픽셀로 고정하면 웹캠(눈 60px)엔 너무 크고 폰(200px)엔 너무 작다.
+ * minGain: 안 옮긴 자리보다 비용(밝아진 L*)이 이만큼 줄어야 옮긴다 (#174 리뷰: 잡음 속에서 엉뚱하게 옮겨 라이너 96 → 84).
+ *   합성 실측(잡음 σ 0~10): 진짜 1~2px 어긋남은 라이너 2.2~3.6 · 눈썹 0.1~0.2 줄고, 잡음 때문에 옮길 때는 0.03 이하
+ */
+export const REGISTER = { range: 0.022, minGain: 0.1 };
+
+function shiftFrame(f: SampleFrame, dx: number, dy: number): SampleFrame {
+  return { ...f, lm: f.lm.map((q) => ({ ...q, x: q.x + dx, y: q.y + dy })) };
+}
+
+function register(cur: SampleFrame, cost: (f: SampleFrame) => number): SampleFrame {
+  const r = Math.round(cur.unit.eye * REGISTER.range);
+  const c0 = cost(cur);
+  let best = cur, bestC = c0, bestD = 0;
+  for (let dy = -r; dy <= r; dy++) {
+    for (let dx = -r; dx <= r; dx++) {
+      if (!dx && !dy) continue;
+      const f = shiftFrame(cur, dx, dy), c = cost(f), d = Math.hypot(dx, dy);
+      if (c < bestC - 1e-9 || (Math.abs(c - bestC) <= 1e-9 && d < bestD)) { best = f; bestC = c; bestD = d; }
+    }
+  }
+  return c0 - bestC >= REGISTER.minGain ? best : cur;
+}
+
+/** 쌩얼보다 밝아진 양 (L*, 어두워진 곳은 0) */
+const lighter = (base: Lab, cur: Lab, corr: LightCorr): number => Math.max(0, corr(cur).L - base.L);
+
+function meanLighter(a: readonly Lab[], b: readonly Lab[], corr: LightCorr): number {
+  const n = Math.min(a.length, b.length);
+  let sum = 0;
+  for (let i = 0; i < n; i++) sum += lighter(a[i]!, b[i]!, corr);
+  return n ? sum / n : 0;
+}
+
+function stripCost(base: LinerStrip, cur: LinerStrip, corr: LightCorr, band: number): number {
+  const useBelow = !base.meta.eyeOpen && !cur.meta.eyeOpen;
+  const N = Math.min(base.lab.length, cur.lab.length);
+  let sum = 0, n = 0;
+  for (let i = 0; i < N; i++) {
+    const wing = base.meta.isWing[i] ?? false;
+    base.meta.offs.forEach((o, j) => {
+      if (!wing && !useBelow && o < -band) return;
+      sum += lighter(base.lab[i]![j]!, cur.lab[i]![j]!, corr);
+      n++;
+    });
+  }
+  return n ? sum / n : 0;
+}
+
+function meanAb(labs: readonly Lab[]): { a: number; b: number } | null {
+  if (!labs.length) return null;
+  return { a: labs.reduce((s, l) => s + l.a, 0) / labs.length, b: labs.reduce((s, l) => s + l.b, 0) / labs.length };
 }
 
 /** 밴드 무게중심이 얼굴 중심에서 얼굴 폭의 이 비율 안이면 가운데 밴드 — 좌우 어느 쪽도 아니다 */

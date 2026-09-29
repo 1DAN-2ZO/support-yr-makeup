@@ -73,11 +73,14 @@ export function reviewScreen<S>(deps: ReviewDeps): Screen<S> {
       wrap.className = "review";
       ctx.root.append(wrap);
 
-      wrap.append(scoreBlock(summary));
+      // POC 순서: 제목 → 점수 카드 → 부위 막대 → 사진 비교 → 버튼(세로)
+      const title = document.createElement("h1");
+      title.textContent = "전체 리뷰";
+      wrap.append(title, scoreBlock(summary));
       if (note) wrap.append(line("muted lighting-note", note));
+      wrap.append(partList(parts, ctx));
       const photos = photoRow();
       wrap.append(photos);
-      wrap.append(partList(parts, ctx));
 
       const msg = line("muted save-msg", "");
       const saveBtn = document.createElement("button");
@@ -88,11 +91,12 @@ export function reviewScreen<S>(deps: ReviewDeps): Screen<S> {
 
       const endBtn = document.createElement("button");
       endBtn.type = "button";
+      endBtn.className = "ghost";
       endBtn.textContent = "끝내기";
 
       const row = document.createElement("div");
-      row.className = "row";
-      row.append(endBtn, saveBtn);
+      row.className = "btns";
+      row.append(saveBtn, endBtn);
       wrap.append(row, msg);
 
       saveBtn.addEventListener("click", () => {
@@ -160,6 +164,12 @@ function scoreBlock(s: SessionSummary): HTMLElement {
   n.className = "total-num";
   n.textContent = s.total == null ? "—" : String(s.total);
   box.append(n);
+  if (s.total != null) {
+    const u = document.createElement("small");
+    u.className = "total-unit";
+    u.textContent = "/ 100";
+    box.append(u);
+  }
   if (s.total == null) {
     box.append(line("muted", "잰 부위가 없어요. 부위를 눌러 다시 해 볼 수 있어요"));
   }
