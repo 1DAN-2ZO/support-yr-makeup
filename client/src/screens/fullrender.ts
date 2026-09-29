@@ -5,6 +5,8 @@
  *  - 모양: 개인화 계획(personalize.ts) — 가이드·채점과 같은 계획이다
  *  - 그리기: 기준 얼굴(카메라에서 처음 잡힌 얼굴)에 화장 층을 한 번 그리고(makeup-paint.ts),
  *    매 프레임 얼굴 그물(삼각형 852개)로 지금 얼굴에 휘어 피부와 섞는다(makeup-gl.ts, WebGL2)
+ *  - 떨림: 얼굴 점에 One-Euro 필터(④ smoothing.ts). 가만히 있으면 많이, 움직이면 덜 부드럽게 — 고정 스무딩처럼
+ *    눈머리가 뒤처지지 않는다. 비교용으로 ?nosmooth 면 끈다 (2026-09-29 폰: "떨림이 심해")
  *  - 카메라·WebGL 을 못 쓰면 서버가 만든 그림(Stable-Makeup)을 보여 준다. 흐름은 막지 않는다
  *
  * 근거 한 줄(개인화 계획의 rationale)과 쓰는 제품을 같이 보여 주고, "화장하러 가기" 로 부위 반복을 시작한다.
@@ -16,6 +18,7 @@ import { lookById } from "../core/looks";
 import type { LookJobSource } from "../core/look-jobs";
 import { fullRenderUrl, lookDetail } from "../core/look-view";
 import { resolvePlan, type PersonalPlan } from "../core/personalize";
+import { LandmarkSmoother } from "../core/smoothing";
 import type { Pt } from "../core/types";
 import { createLandmarker } from "./landmarker";
 import { MakeupGl } from "./makeup-gl";
@@ -42,13 +45,22 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
       wrap.className = "fullrender";
       ctx.root.append(wrap);
 
+      // 맨 위 뒤로 가기 — 카메라 화면·제품 목록에 밀려 아래 버튼이 안 보일 수 있다 (2026-09-29 폰)
+      const top = document.createElement("button");
+      top.type = "button";
+      top.className = "back ghost";
+      top.textContent = "‹ 다른 화장";
+      top.addEventListener("click", () => {
+        ctx.log.log({ name: "button", button: "look_change" });
+        ctx.go("looks");
+      });
       const h = document.createElement("h1");
       h.textContent = `${look.name} — 내 얼굴에 입혀 봤어요`;
       const stage = document.createElement("div");
       stage.className = "ar-stage";
       const note = document.createElement("p");
       note.className = "muted";
-      wrap.append(h, stage, note);
+      wrap.append(top, h, stage, note);
 
       const why = Object.values(plan?.rationale ?? {}).filter((t): t is string => !!t);
       if (why.length) {
@@ -132,13 +144,16 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
           const atlas = { mul: mk(), col: mk(), light: mk() }, off = mk();
           const paintLook = paintLookOf(look);
           let ref: Pt[] | null = null;
+          const smoother = new URLSearchParams(location.search).has("nosmooth") ? null : new LandmarkSmoother(Array.from({ length: 478 }, (_, i) => i));
 
           const tick = (): void => {
             if (!alive) return;
             const w = video.videoWidth, hh = video.videoHeight;
             if (w && hh) {
               const face = lmk.detectForVideo(video, performance.now()).faceLandmarks[0];
-              const lm = face && face.length >= 478 ? face.map((p) => ({ x: p.x * w, y: p.y * hh })) : null;
+              const now = performance.now();
+              const raw = face && face.length >= 478 ? face.map((p) => ({ x: p.x * w, y: p.y * hh })) : null;
+              const lm = smoother ? smoother.smooth(raw, now) : raw;
               if (lm && !ref) {
                 // 기준 얼굴: 처음 잡힌 얼굴. 화장 층은 여기에 한 번만 그린다 (계획은 정해져 있다)
                 ref = lm;

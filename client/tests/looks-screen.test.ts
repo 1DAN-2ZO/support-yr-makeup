@@ -107,6 +107,42 @@ describe("화면 2 — 룩 선택", () => {
     expect(go).toHaveBeenCalledWith("fullrender");
   });
 
+  it("개인화가 금방 끝나도 '개인화 중입니다' 는 최소 시간만큼 보여 준다 (2026-09-29 폰: 안 보였음)", async () => {
+    vi.useFakeTimers();
+    try {
+      const { root, ctx, go, deps } = setup([job("daily", "done", "/r/daily.png")]);
+      looksScreen<null>({ ...deps, personalize: () => Promise.resolve(), minBusyMs: 1500 }).mount(ctx);
+      (cards(root)[0] as HTMLButtonElement).click();
+      await vi.advanceTimersByTimeAsync(1400);
+      expect(go).not.toHaveBeenCalled();
+      expect(root.querySelector(".personalizing")).not.toBeNull();
+      await vi.advanceTimersByTimeAsync(200);
+      expect(go).toHaveBeenCalledWith("fullrender");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("개인화 페이지에서 '다른 화장 고르기' 로 돌아가면, 개인화가 끝나도 2-b 로 끌려가지 않는다", async () => {
+    const { root, ctx, go, deps, finish } = setup([job("daily", "done", "/r/daily.png")]);
+    looksScreen<null>(deps).mount(ctx);
+    (cards(root)[0] as HTMLButtonElement).click();
+    byText(root, "다른 화장 고르기").click();
+    expect(root.querySelector(".personalizing")).toBeNull();
+    finish(true);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(go).not.toHaveBeenCalled();
+  });
+
+  it("이미 개인화한 화장은 기다리지 않고 바로 2-b 로 간다 (화장마다 한 번)", () => {
+    const { root, ctx, go, deps, personalize } = setup([job("daily", "done", "/r/daily.png")]);
+    looksScreen<null>({ ...deps, minBusyMs: 1500, isPersonalized: (id) => id === "daily" }).mount(ctx);
+    (cards(root)[0] as HTMLButtonElement).click();
+    expect(go).toHaveBeenCalledWith("fullrender");
+    expect(personalize).not.toHaveBeenCalled();
+    expect(root.querySelector(".personalizing")).toBeNull();
+  });
+
   it("개인화가 실패하면 룩 화면에 남고 다시 누르라고 말한다", async () => {
     const { root, ctx, go, deps, finish } = setup([job("daily", "done", "/r/daily.png")]);
     looksScreen<null>(deps).mount(ctx);
@@ -203,6 +239,16 @@ describe("화면 2-b — AR 완성 예상 (카메라를 못 열면 서버 그림
     const { root, ctx, deps } = setup([job("daily", "done", "/r/daily.png")], "daily");
     fullRenderScreen<null>({ ...deps, getPlan: () => null }).mount(ctx);
     expect(root.querySelector(".ar-why")).toBeNull();
+  });
+
+  it("맨 위에도 뒤로 가기가 있다 — 카메라·제품 목록에 밀려 아래 버튼이 안 보여도 (2026-09-29 폰)", () => {
+    const { root, ctx, go, deps } = setup([job("daily", "done", "/r/daily.png")], "daily");
+    fullRenderScreen<null>(deps).mount(ctx);
+    const top = root.querySelector<HTMLButtonElement>(".fullrender > .back");
+    expect(top).not.toBeNull();
+    expect(root.querySelector(".fullrender")?.firstElementChild).toBe(top);
+    top!.click();
+    expect(go).toHaveBeenCalledWith("looks");
   });
 
   it("다른 화장 보기로 화면 2 로 돌아간다", () => {

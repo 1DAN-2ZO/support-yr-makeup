@@ -23,6 +23,13 @@ export interface LooksDeps {
    * 끝나면 2-b(AR)로 간다. 안 주면 개인화 없이 바로 간다.
    */
   personalize?: (lookId: string) => Promise<void>;
+  /** 이미 개인화한 화장인가 — 그러면 기다림 화면 없이 바로 2-b (화장마다 한 번) */
+  isPersonalized?: (lookId: string) => boolean;
+  /**
+   * "개인화 중입니다" 를 최소 이만큼은 보여 준다(ms, 기본 0). 규칙 계획은 순식간이라 안 보이고 지나갔다 (2026-09-29 폰).
+   * 사용자가 "내 얼굴에 맞추는 단계" 가 있다는 걸 알아야 2-b 의 근거 문장이 이어진다
+   */
+  minBusyMs?: number;
 }
 
 export function looksScreen<S>(deps: LooksDeps): Screen<S> {
@@ -122,13 +129,14 @@ export function looksScreen<S>(deps: LooksDeps): Screen<S> {
         ctx.log.log({ name: "button", button: `look:${lookId}` });
         deps.setLookId(lookId);
         failed = false;
-        if (!deps.personalize) {
+        if (!deps.personalize || deps.isPersonalized?.(lookId)) {
           ctx.go("fullrender");
           return;
         }
         wanted = lookId;
         draw();
-        deps.personalize(lookId).then(
+        const minWait = new Promise<void>((r) => setTimeout(r, deps.minBusyMs ?? 0));
+        Promise.all([deps.personalize(lookId), minWait]).then(
           () => {
             if (!alive || wanted !== lookId) return;
             wanted = null;
@@ -144,7 +152,7 @@ export function looksScreen<S>(deps: LooksDeps): Screen<S> {
         );
       }
 
-      /** "개인화 중입니다" — 화면 위에 덮는다. 누르는 것은 막지 않는다 (다른 룩으로 바꿀 수 있게) */
+      /** "개인화 중입니다" — 한 페이지로 덮는다. "다른 화장 고르기" 로 돌아가면 끝나도 넘어가지 않는다 (계획은 큐에 남아 다음엔 바로) */
       function busy(): HTMLElement {
         const box = document.createElement("div");
         box.className = "personalizing";
@@ -156,7 +164,16 @@ export function looksScreen<S>(deps: LooksDeps): Screen<S> {
         const bar = document.createElement("div");
         bar.className = "wait-bar";
         bar.append(document.createElement("span"));
-        box.append(t, p, bar);
+        const back = document.createElement("button");
+        back.type = "button";
+        back.className = "ghost";
+        back.textContent = "다른 화장 고르기";
+        back.addEventListener("click", () => {
+          ctx.log.log({ name: "button", button: "personalize_cancel" });
+          wanted = null;
+          draw();
+        });
+        box.append(t, p, bar, back);
         return box;
       }
 

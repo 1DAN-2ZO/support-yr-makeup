@@ -173,6 +173,8 @@ async function boot(): Promise<void> {
         set({ ...session, lookId });
       },
       personalize: (lookId) => plans.request(lookId).then(() => {}),
+      isPersonalized: (lookId) => plans.get(lookId) !== undefined,
+      minBusyMs: 1500,
       getPlan: (lookId) => planFor(lookId),
     },
     {
