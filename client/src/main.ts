@@ -30,7 +30,6 @@ import { VlmFailure, createVlmClient, type VlmClient } from "./core/vlm-client";
 import { PROMPT_VER, planWithVlm, vlmSchema } from "./core/vlm-flow";
 import { measureFace } from "./core/face-measure";
 import { resolvePlan, type PersonalPlan } from "./core/personalize";
-import { createArFrameStore } from "./core/ar-frame-store";
 import { createPlanQueue } from "./core/plan-queue";
 import type { CaptureBundle } from "./core/types";
 import { checkSecureContext, readEnv, type SecureCheck } from "./core/secure-context";
@@ -218,8 +217,6 @@ async function boot(): Promise<void> {
       throw e;
     }
   });
-  // 2-b AR 한 장면 — 화면 3 완성본용 (#182 ② 가 getArFrame 으로 가져감). 지금은 메모리, ① #181 저장 자리가 오면 세션으로
-  const arFrames = createArFrameStore();
   // 앱을 다시 켜면 큐가 비어 있다. 그 사이엔 규칙 계획으로 본다 — ① #181 이 계획을 세션에 저장하면 없어질 자리.
   // 규칙 계획을 쓴 사실은 화장마다 한 번 로그로 남긴다 (#179 리뷰: VLM 계획과 구분이 안 됐다)
   const restoredRule = new Set<string>();
@@ -258,8 +255,7 @@ async function boot(): Promise<void> {
       },
       getBaseline: () => session.baseline,
       setBaseline: (b) => {
-        plans.clear();   // 얼굴이 바뀌면 앞 얼굴로 만든 계획·장면은 버린다
-        arFrames.clear();
+        plans.clear();   // 얼굴이 바뀌면 앞 얼굴로 만든 계획은 버린다
         set({ ...session, baseline: b, faceShape: b?.faceShape ?? null });
       },
       // 쌩얼 저장도 draft 와 같은 줄에 세운다 — 끝내기(clearAll)가 인코딩·저장이 끝날 때까지 기다린다 (#162 리뷰)
@@ -282,7 +278,6 @@ async function boot(): Promise<void> {
       isPersonalized: (lookId) => plans.get(lookId) !== undefined,
       minBusyMs: 1500,
       getPlan: (lookId) => planFor(lookId),
-      saveArFrame: (lookId, f) => arFrames.set(lookId, f),
     },
     {
       getParts: () => toReviewParts(session),
@@ -332,8 +327,6 @@ async function boot(): Promise<void> {
       getBaseline: () => session.baseline,
       getLook: () => lookById(session.lookId),
       getFaceShape: () => session.faceShape,
-      // 서버 완성본(Stable-Makeup)은 빠졌다 — 쌩얼 + 테두리로 보인다. AR 장면으로 바꾸는 건 ② 요청 (2026-09-29)
-      // 화면 3 완성본 = 2-b AR 장면 (#182). 지금 고른 화장의 장면만 (다른 화장이면 null → 쌩얼)
       // 화면 3 완성본(#192) = 쌩얼 정면 + 같은 개인화 계획 화장. 원본은 메모리에만 있어 앱을 다시 켜면 저장한 쌩얼
       getPlan: () => planFor(session.lookId),
       getBareSource: () => (session.shots.front_open as ShotData | undefined)?.cv ?? null,
@@ -360,7 +353,6 @@ async function boot(): Promise<void> {
       restart: () => {
         logStore.reopen();
         plans.clear();
-        arFrames.clear();
         set(createSession());
         clearRemaining = 0;
         shell.render();
