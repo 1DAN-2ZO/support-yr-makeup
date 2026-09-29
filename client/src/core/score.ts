@@ -53,6 +53,8 @@ export interface ScoreParams {
   toneDiv: number;
   /** 이마 L* 가 기준에서 이만큼 넘게 달라지면 조명이 바뀐 것 */
   lightTol: number;
+  /** 기준 얼굴과 정렬 잔차(안정 점 평균, 눈 폭 비율)가 이만큼 넘으면 확인만(align) — 가정값, 실사진 잔차 분포로 정한다 (#43) */
+  alignMax: number;
   /** 목표 지수 밴드. 룩 템플릿 값이 우선이고, 없으면 확인만 */
   band: Partial<Record<IntensityPartId, Band>>;
   tol: {
@@ -75,6 +77,7 @@ export const PARAMS: ScoreParams = {
   dEMaxSession: 25,
   toneDiv: 4,
   lightTol: 12,
+  alignMax: 0.08,
   band: { cheek: [25, 60], shadow: [20, 65] },
   tol: { band: 0.011, out: 0.022, wingDev: 0.022, wingShort: 0.055, thickOver: 0.015, thickUnder: 0.022, lrDiff: 0.045, lipIn: 0.006, lipOut: 0.012, wingMin: 0.015 },
 };
@@ -130,7 +133,7 @@ export function diagText(code: string): string | undefined {
 export const CHECK_REASON_TEXT: Record<CheckReason, string> = {
   faint: "색이 옅어서 재지 못했어요. 직접 보고 넘어가세요",
   lighting: "조명이 달라져서 재지 못했어요. 직접 보고 넘어가세요",
-  align: "얼굴을 찾지 못해 재지 못했어요. 직접 보고 넘어가세요",
+  align: "얼굴을 제대로 맞추지 못해 재지 못했어요. 직접 보고 넘어가세요",
   hand: "손에 가려서 재지 못했어요. 직접 보고 넘어가세요",
   no_baseline: "맨얼굴 기준이 없어서 재지 못했어요. 직접 보고 넘어가세요",
   no_band: "이 화장은 진하기 기준이 없어요. 직접 보고 넘어가세요",
@@ -223,7 +226,8 @@ export interface LinerEyeMetrics {
 
 export function compareLinerEye(base: LinerStrip, cur: LinerStrip, corr: LightCorr, p: ScoreParams = PARAMS): LinerEyeMetrics {
   const { offs, isWing, tFromCorner, wingLen, thick: guideThick } = cur.meta;
-  const half = guideThick / 2;
+  // 띠 = 속눈썹 선(o = 0)에서 위로 guideThick — ② 가이드(guides.ts linerOutline)와 같은 뜻 (#153).
+  // 전엔 속눈썹 선을 가운데 두고 ±thick/2 라, 두꺼운 화장을 가이드대로 칠해도 윗부분이 '번짐' 이었다
   const N = Math.min(base.lab.length, cur.lab.length), M = offs.length;
   const step = M > 1 ? offs[1]! - offs[0]! : 0.0092;
   // 속눈썹 선 아래(−)는 눈을 뜨고 있으면 눈알이다. 시선·홍채가 조금만 움직여도 색이 크게 변해 "선 아래 잉크"로 오인된다.
@@ -241,9 +245,9 @@ export function compareLinerEye(base: LinerStrip, cur: LinerStrip, corr: LightCo
       const o = offs[j]!;
       if (!wing && !useBelow && o < -p.tol.band) continue;   // 눈알 칸 — 어느 계산에도 안 넣는다
       const hit = deltaE(base.lab[i]![j]!, corr(cur.lab[i]![j]!)) >= p.dEThresh.liner;
-      if (Math.abs(o) <= half + p.tol.band) {
+      if (o >= -p.tol.band && o <= guideThick + p.tol.band) {
         if (hit) bandHit = true;   // 가이드 밴드(두께 + 허용) 안에 감지가 있으면 그 행은 덮임
-      } else if (Math.abs(o) > half + p.tol.out + blurW) {   // 번진 폭만큼 바깥 판정을 민다
+      } else if (o > guideThick + p.tol.out + blurW || o < -(p.tol.out + blurW)) {   // 번진 폭만큼 바깥 판정을 민다
         outN++;                    // 밴드 밖 번짐
         if (hit) outHit++;
       }
@@ -488,6 +492,8 @@ export interface DecideContext {
   noFace?: boolean;
   /** 이마 L* 변화량 (현재 − 기준) */
   lightShift?: number;
+  /** 기준 얼굴에 맞춘 정렬 잔차 (안정 점 평균 거리 ÷ 눈 폭). 고개·표정이 달라 틀이 안 맞으면 커진다 */
+  alignResidual?: number;
 }
 
 export interface Decision {
@@ -500,6 +506,7 @@ export interface Decision {
 export function decide(partId: PartId, res: Pick<PartScore, "present" | "score">, ctx: DecideContext = {}, p: ScoreParams = PARAMS): Decision {
   const checkOnly = (reason: CheckReason): Decision => ({ status: "check_only", reason, score: null });
   if (ctx.noFace) return checkOnly("align");
+  if (ctx.alignResidual !== undefined && ctx.alignResidual > p.alignMax) return checkOnly("align");
   if (partId === "contour") return checkOnly("contour");
   if (typeof ctx.lightShift === "number" && Math.abs(ctx.lightShift) > p.lightTol) return checkOnly("lighting");
   if (!res.present) return checkOnly("faint");

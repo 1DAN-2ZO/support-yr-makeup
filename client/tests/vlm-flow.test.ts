@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { measureFace } from "@core/face-measure";
 import { LOOKS } from "@core/looks";
 import { resolvePlan } from "@core/personalize";
-import { PROMPT_VER, planWithVlm, vlmSchema } from "@core/vlm-flow";
+import { PROMPT_VER, planWithVlm, retryPrompt, vlmSchema } from "@core/vlm-flow";
 import { LMS } from "./helpers/synth-face";
 
 const m = measureFace(LMS);
@@ -52,5 +52,19 @@ describe("VLM 개인화 흐름", () => {
     expect(keys.indexOf("liner")).toBeLessThan(keys.indexOf("rationale"));
     expect(keys.at(-1)).toBe("rationale");
     expect(PROMPT_VER).toMatch(/^vlm-prompt-v\d+/);
+  });
+  it("F6 다시 묻다가 실패하면(시간 초과·붐빔) 첫 답(관문을 거친 계획)을 쓴다 — 버리지 않는다 (#179 리뷰)", async () => {
+    const ask = vi.fn().mockResolvedValueOnce(bad).mockRejectedValueOnce(new Error("시간 초과"));
+    const r = await planWithVlm(m, look, null, ask);
+    expect(ask).toHaveBeenCalledTimes(2);
+    expect(r.tries).toBe(2);
+    expect(r.retryFailed).toBe(true);
+    expect(r.plan.shadow.range).toBe(rule.shadow.range);   // 거절된 항목은 규칙값
+  });
+
+  it("F7 다시 묻는 글에 모듈 번호 같은 내부 표기가 들어가지 않는다", () => {
+    const t = retryPrompt("앞 글", ["얼굴형: ⑤ 판정(round)과 다름 — oval"]);
+    expect(t).not.toMatch(/[①-⑥]/);
+    expect(t).toContain("얼굴형");
   });
 });

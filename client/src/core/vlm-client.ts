@@ -66,9 +66,12 @@ export function createVlmClient(base: string, fetchFn: Fetch = (u, i) => fetch(u
   return {
     async health() {
       try {
-        const r = await withTimeout(HEALTH_TIMEOUT_MS, (signal) => fetchFn(url("/health"), { signal }));
-        if (!r.ok) return { ok: false, model: null };
-        const j = (await r.json()) as { ok?: boolean; vlm?: { ok?: boolean; model?: string } };
+        // 본문 읽기까지 시간 안에 (#179 리뷰)
+        const j = await withTimeout(HEALTH_TIMEOUT_MS, async (signal) => {
+          const r = await fetchFn(url("/health"), { signal });
+          return r.ok ? ((await r.json()) as { ok?: boolean; vlm?: { ok?: boolean; model?: string } }) : null;
+        });
+        if (!j) return { ok: false, model: null };
         const ok = j.ok === true && j.vlm?.ok === true;
         return { ok, model: ok ? (j.vlm?.model ?? null) : null };
       } catch {
@@ -77,27 +80,29 @@ export function createVlmClient(base: string, fetchFn: Fetch = (u, i) => fetch(u
     },
 
     async plan(req) {
-      let r: Response;
+      // 본문 읽기까지 시간 안에 — 헤더만 오고 본문이 멈추면 끝없이 기다렸다 (#179 리뷰)
+      let got: { status: number; ok: boolean; body: unknown };
       try {
-        r = await withTimeout(timeoutMs, (signal) =>
-          fetchFn(url("/plan"), {
+        got = await withTimeout(timeoutMs, async (signal) => {
+          const r = await fetchFn(url("/plan"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ image: req.image, prompt: req.prompt, schema: req.schema, prompt_ver: req.promptVer, look_id: req.lookId }),
             signal,
-          }),
-        );
+          });
+          return { status: r.status, ok: r.ok, body: await r.json().catch(() => null) };
+        });
       } catch (e) {
         if (isAbort(e)) throw new VlmFailure("timeout", `개인화 요청이 ${timeoutMs}ms 를 넘었다`);
         throw new VlmFailure("unavailable", e instanceof Error ? e.message : String(e));
       }
-      if (r.status === 503) {
-        const j = (await r.json().catch(() => ({}))) as { reason?: string };
-        throw new VlmFailure(j.reason === "busy" ? "busy" : "unavailable", `503 ${j.reason ?? ""}`);
+      if (got.status === 503) {
+        const reason = (got.body as { reason?: string } | null)?.reason;
+        throw new VlmFailure(reason === "busy" ? "busy" : "unavailable", `503 ${reason ?? ""}`);
       }
-      if (r.status === 504) throw new VlmFailure("timeout", "504");
-      if (!r.ok) throw new VlmFailure("unavailable", `HTTP ${r.status}`);
-      const j = (await r.json().catch(() => null)) as Partial<PlanResponse> | null;
+      if (got.status === 504) throw new VlmFailure("timeout", "504");
+      if (!got.ok) throw new VlmFailure("unavailable", `HTTP ${got.status}`);
+      const j = got.body as Partial<PlanResponse> | null;
       if (!j || typeof j.proposal !== "string") throw new VlmFailure("bad_response", "proposal 이 없다");
       return { proposal: j.proposal, ms: Number(j.ms ?? 0), model: String(j.model ?? "") };
     },

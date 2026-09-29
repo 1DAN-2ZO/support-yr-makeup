@@ -6,6 +6,7 @@
  * 사진은 이 기기와 학원 서버 사이만 오간다 (서버는 저장하지 않는다 — core/vlm-client.ts 계약).
  */
 
+import { scaleLm } from "../core/crop";
 import type { Pt } from "../core/types";
 
 export const VLM_IMAGE_SIDE = 512;
@@ -19,10 +20,18 @@ export function faceSquare(lm: readonly Pt[]): { x: number; y: number; side: num
   return { x: (x0 + x1) / 2 - side / 2, y: (y0 + y1) / 2 - side / 2, side };
 }
 
-/** 쌩얼 사진(Blob·ImageBitmap) + 얼굴 점 → JPEG data URL */
-export async function faceImage(photo: Blob | ImageBitmap, lm: readonly Pt[], side = VLM_IMAGE_SIDE): Promise<string> {
+/**
+ * 얼굴 점이 잰 크기(from)와 사진 크기(to)가 다를 때 — 쌩얼은 긴 변 1024 로 줄여 저장하지만 점은 촬영 프레임 좌표다
+ * (#179 리뷰: 안 맞추면 폰 세로 사진에서 상자가 1.9배 커지고 아래로 밀렸다). 화면 3(guide.ts)과 같은 scaleLm
+ */
+export function faceSquareIn(lm: readonly Pt[], from: { w: number; h: number }, to: { w: number; h: number }): { x: number; y: number; side: number } {
+  return faceSquare(scaleLm(lm, from, to));
+}
+
+/** 쌩얼 사진(Blob·ImageBitmap) + 얼굴 점(from 크기 좌표) → JPEG data URL */
+export async function faceImage(photo: Blob | ImageBitmap, lm: readonly Pt[], from: { w: number; h: number }, side = VLM_IMAGE_SIDE): Promise<string> {
   const bmp = photo instanceof Blob ? await createImageBitmap(photo) : photo;
-  const b = faceSquare(lm);
+  const b = faceSquareIn(lm, from, { w: bmp.width, h: bmp.height });
   const cv = document.createElement("canvas");
   cv.width = side;
   cv.height = side;
