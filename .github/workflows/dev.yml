@@ -14,47 +14,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Print Workflow YAML
-        shell: powershell
-        run: |
-          Write-Host "========================================"
-          Write-Host "Workflow files"
-          Write-Host "========================================"
+      - name: Stop Docker Compose
+        run: docker compose down || true
 
-          Get-ChildItem `
-            -Path "$env:GITHUB_WORKSPACE\.github\workflows" `
-            -Include *.yml, *.yaml `
-            -File |
-            ForEach-Object {
-              Write-Host $_.FullName
-            }
-
-          Write-Host ""
-          Write-Host "========================================"
-          Write-Host "Current branch"
-          Write-Host "========================================"
-
-          Write-Host "Branch: $env:GITHUB_REF_NAME"
-
-          Write-Host ""
-          Write-Host "========================================"
-          Write-Host "Workflow information"
-          Write-Host "========================================"
-
-          Write-Host "Workflow Name: $env:GITHUB_WORKFLOW"
-          Write-Host "Workflow Ref : $env:GITHUB_WORKFLOW_REF"
-
-          Write-Host ""
-          Write-Host "========================================"
-          Write-Host "Workflow YAML"
-          Write-Host "========================================"
-
-          Get-ChildItem `
-            -Path "$env:GITHUB_WORKSPACE\.github\workflows" `
-            -Include *.yml, *.yaml `
-            -File |
-            ForEach-Object {
-              Write-Host ""
-              Write-Host "========== $($_.Name) =========="
-              Get-Content $_.FullName
-            }
+      - name: Start Docker Compose
+        run: docker compose up -d
