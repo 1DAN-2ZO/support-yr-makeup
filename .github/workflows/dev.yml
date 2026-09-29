@@ -21,6 +21,12 @@ jobs:
         run: docker compose down
         continue-on-error: true
 
+      - name: Docker Build
+        working-directory: .
+        run: |
+          docker builder prune -af
+          docker compose build --no-cache
+
       - name: Docker Up
         working-directory: .
         run: docker compose --profile tools up -d
