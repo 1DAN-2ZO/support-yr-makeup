@@ -1,12 +1,11 @@
 // 얼굴 그물 — 화장 무늬를 얼굴에 삼각형 단위로 휘어 붙이는 데 쓴다 (필터 방식, 2-b 레이어 휘기)
 import { describe, expect, it } from "vitest";
 import { FaceLandmarker } from "@mediapipe/tasks-vision";
-import { FOREHEAD_POLY } from "@core/color";
+import { FACE_L, FACE_R, FOREHEAD_POLY } from "@core/color";
 import {
   EXTENDED_TRIANGLES, FACE_TRIANGLES, HAIRLINE_START, HAIRLINE_TRIANGLES,
   MESH_VERTEX_SRC, estimateHairline, trianglesFromTesselation, withHairline,
 } from "@core/face-mesh";
-import { LM } from "@core/landmarks";
 import { LMS } from "./helpers/synth-face";
 
 describe("얼굴 그물 삼각형", () => {
@@ -34,23 +33,19 @@ describe("estimateHairline", () => {
     expect(estimateHairline(LMS)).toHaveLength(FOREHEAD_POLY.length);
   });
 
-  it("미간(168)에서 원래 점보다 항상 더 멀다 — 안쪽으로 들어가면 헤어라인이 아니라 얼굴 속으로 간 것", () => {
-    const c = LMS[LM.glabella]!;
-    const dist = (p: { x: number; y: number }) => Math.hypot(p.x - c.x, p.y - c.y);
+  it("전부 화면 위쪽(y가 작아지는 쪽)으로 밀린다 — 옆쪽도 예외 없이", () => {
     const hair = estimateHairline(LMS);
     FOREHEAD_POLY.forEach((idx, i) => {
-      expect(dist(hair[i]!)).toBeGreaterThan(dist(LMS[idx]!));
+      expect(hair[i]!.y).toBeLessThan(LMS[idx]!.y);
     });
   });
 
-  it("미간을 지나는 직선 위에 있다 — 방사형 확대라 방향은 안 바뀐다", () => {
-    const c = LMS[LM.glabella]!;
+  it("(회귀) 밀리는 거리가 중앙·옆쪽 다 똑같다 — 미간 기준 방사형 확대는 중앙만 올라가고 옆은 거의 안 올라가는 버그가 있었다(2026-09-29 실측 확인)", () => {
+    const faceL = LMS[FACE_L]!, faceR = LMS[FACE_R]!;
+    const faceWidth = Math.hypot(faceR.x - faceL.x, faceR.y - faceL.y);
     const hair = estimateHairline(LMS);
-    FOREHEAD_POLY.forEach((idx, i) => {
-      const p = LMS[idx]!, h = hair[i]!;
-      const cross = (p.x - c.x) * (h.y - c.y) - (p.y - c.y) * (h.x - c.x);
-      expect(Math.abs(cross)).toBeLessThan(1e-6);
-    });
+    const dists = FOREHEAD_POLY.map((idx, i) => Math.hypot(hair[i]!.x - LMS[idx]!.x, hair[i]!.y - LMS[idx]!.y));
+    for (const d of dists) expect(d).toBeCloseTo(faceWidth * 0.16, 1);
   });
 });
 

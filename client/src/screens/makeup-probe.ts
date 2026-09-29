@@ -9,7 +9,8 @@
 import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 import { unitScale } from "@core/baseline";
 import { measureFace } from "@core/face-measure";
-import { withHairline } from "@core/face-mesh";
+import { estimateHairline, withHairline } from "@core/face-mesh";
+import { FOREHEAD_POLY } from "@core/color";
 import { contourOutline } from "@core/contour";
 import { faceAxis } from "@core/face-measure";
 import { GUIDE_PARAMS, browStandard, linerOutline, lipOutline, planGuide } from "@core/guides";
@@ -92,6 +93,49 @@ interface Tpl {
   axis?: Partial<Record<Part, "vertical" | "horizontal">>;
   /** true 면 밴드가 라이너 꼬리 방향으로 뻗어 점점 좁아지는 쐐기(눈꼬리 깊게)까지 이어진다. 지금은 shadow만 소비 */
   tailExtend?: Partial<Record<Part, boolean>>;
+  /**
+   * matte(기본, 생략 가능) | glitter — glitter는 단색 채우기 대신 밝은 점을 흩뿌려 채운다.
+   * 빛 각도·시간에 따른 반짝임 애니메이션은 없다(고정 시드라 매 프레임 같은 자리) — 정적 무늬 하나를 그릴 뿐이다.
+   * 지금은 aegyo(애교살)·shadow(섀도우)만 소비한다 — 2026-09-29 "화장 10종" 중 글리터 포인트 룩(아이돌·
+   * 러블리·키치/하이틴) 때문에 추가. 애굣살에만 있으면 글리터가 눈 밑에서 뚝 끊겨 보여서 섀도우에도 얹는다.
+   */
+  finish?: Partial<Record<Part, "matte" | "glitter">>;
+}
+
+/** 시드 고정 의사난수(mulberry32) — 글리터 점 자리를 프레임마다 똑같이 만든다(반짝임 애니메이션 없음) */
+function mulberry32(seed: number): () => number {
+  return () => {
+    seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * 글리터: bbox 안에 아주 작은 점을 촘촘히 흩뿌려 "펄 가루" 느낌을 낸다. 클립이 이미 걸려 있어서 bbox
+ * 밖으로 나가도 안 보인다. 실측 참고 사진(2026-09-29, 사용자 제공 아이섀도 글리터 사진) 기준으로
+ * 큼직한 점 몇 개가 아니라 반경 1px 안팎의 점을 빽빽하게 — 듬성듬성한 스팽글이 아니라 파우더 펄이다.
+ * darken=false(기본, 애교살 — screen 블렌드): 점마다 흰 하이라이트를 얹어 반짝이는 입체감(단색 점보다 실감남).
+ * darken=true(섀도우 — multiply 블렌드): 흰색은 곱하기에서 그대로 통과해(1을 곱하면 변화 없음) 안 보이므로,
+ * 대신 검은 반점을 얹어 입자감을 낸다 — multiply 층에서는 밝게 반짝일 수 없어 "진한 펄 가루" 로 대체(실측 확인).
+ */
+function fillGlitter(ctx: CanvasRenderingContext2D, bbox: { x0: number; y0: number; x1: number; y1: number }, color: string, darken = false): void {
+  const rnd = mulberry32(0x9e3779b9);
+  const w = bbox.x1 - bbox.x0, h = bbox.y1 - bbox.y0;
+  const n = Math.max(40, Math.round(w * h * 0.02));
+  for (let i = 0; i < n; i++) {
+    const x = bbox.x0 + rnd() * w, y = bbox.y0 + rnd() * h;
+    const r = 0.45 + rnd() * 0.85;
+    ctx.beginPath();
+    ctx.fillStyle = rgba(color, (darken ? 0.7 : 0.55) + rnd() * 0.4);
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.fillStyle = darken ? `rgba(0,0,0,${0.35 + rnd() * 0.35})` : rgba("#ffffff", 0.6 + rnd() * 0.4);
+    ctx.arc(x, y, r * 0.45, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 /** 쉐딩·하이라이트는 룩에 없다(얼굴형 규칙 부위, F-04) — 얹어 보기용 기본 색 */
@@ -130,6 +174,103 @@ const TEMPLATES: Tpl[] = [
     axis: { shadow: "vertical" },
     stops: { shadow: [{ at: 0.0, color: "#361f1c" }, { at: 0.5, color: "#a0807f" }, { at: 1.0, color: "#ab8484" }] },
     tailExtend: { shadow: true },
+  },
+  // 화장 10종 (2026-09-29, 사용자가 준 헥스값 그대로 반영 — 눈썹·라이너·쉐딩/하이라이트만 헥스가 없어서
+  // 추정치. 섀도우 2색은 밝기를 비교해 어두운 쪽을 속눈썹 쪽(stops at:0), 밝은 쪽을 눈썹 쪽(at:1)으로 배치했다
+  // (원문 나열 순서와 다를 수 있음 — 기존 "속눈썹에서 진하고 위로 옅어진다" 기본 그러데이션 방향과 맞춘 것).
+  {
+    name: "어른 여자 (Chic & Elegant)",
+    color: { brow: "#5c4438", shadow: "#5c4033", liner: "#3a241c", cheek: "#a57164", lip: "#8b3a3a", contour: "#8f6b57", highlight: "#fff3e6", aegyo: "#d2b48c" },
+    lipEdge: "#a85d62",
+    alpha: { brow: 0.4, shadow: 0.45, liner: 0.9, cheek: 0.3, lip: 0.7, contour: 0.5, highlight: 0.35, aegyo: 0.25 },
+    linerThick: 0.04,
+    axis: { shadow: "vertical" },
+    stops: { shadow: [{ at: 0.0, color: "#5c4033" }, { at: 1.0, color: "#b0897a" }] },
+    tailExtend: { shadow: true },
+  },
+  {
+    name: "세미 스모키 (Hip & Edgy)",
+    color: { brow: "#262320", shadow: "#363636", liner: "#0d0b09", cheek: "#8b7d7b", lip: "#800020", contour: "#6b5040", highlight: "#fff3e6", aegyo: "#808080" },
+    alpha: { brow: 0.55, shadow: 0.55, liner: 0.95, cheek: 0.25, lip: 0.55, contour: 0.55, highlight: 0.3, aegyo: 0.35 },
+    linerThick: 0.06,
+    axis: { shadow: "vertical" },
+    stops: { shadow: [{ at: 0.0, color: "#363636" }, { at: 1.0, color: "#a9a9a9" }] },
+  },
+  {
+    name: "가을 (Autumn Mute)",
+    color: { brow: "#6b4a34", shadow: "#8b4513", liner: "#5a3b28", cheek: "#c86446", lip: "#b22222", contour: "#8a5c42", highlight: "#fff3e6", aegyo: "#e6c687" },
+    lipEdge: "#c4795a",
+    alpha: { brow: 0.45, shadow: 0.5, liner: 0.75, cheek: 0.32, lip: 0.6, contour: 0.45, highlight: 0.35, aegyo: 0.4 },
+    linerThick: 0.045,
+    axis: { shadow: "vertical" },
+    stops: { shadow: [{ at: 0.0, color: "#8b4513" }, { at: 1.0, color: "#d27d2d" }] },
+  },
+  {
+    name: "청순 (Pure & Clean)",
+    color: { brow: "#7a6552", shadow: "#e0b8a6", liner: "#2e2420", cheek: "#ffb7c5", lip: "#ff6f61", contour: "#b99783", highlight: "#fff3e6", aegyo: "#fff8dc" },
+    alpha: { brow: 0.3, shadow: 0.28, liner: 0.6, cheek: 0.28, lip: 0.4, contour: 0.3, highlight: 0.4, aegyo: 0.3 },
+    linerThick: 0.02,
+    axis: { shadow: "vertical" },
+    stops: { shadow: [{ at: 0.0, color: "#e0b8a6" }, { at: 1.0, color: "#f5e5d6" }] },
+  },
+  {
+    name: "아이돌 (Idol Sparkle)",
+    color: { brow: "#7a5c42", shadow: "#ff9eaa", liner: "#241a16", cheek: "#ffb6c1", lip: "#ff1493", contour: "#a88068", highlight: "#fff3e6", aegyo: "#ffffff" },
+    lipEdge: "#ff6fab",
+    alpha: { brow: 0.35, shadow: 0.45, liner: 0.9, cheek: 0.35, lip: 0.6, contour: 0.4, highlight: 0.6, aegyo: 0.6 },
+    linerThick: 0.05,
+    axis: { shadow: "vertical" },
+    stops: { shadow: [{ at: 0.0, color: "#ff9eaa" }, { at: 1.0, color: "#ffd1dc" }] },
+    tailExtend: { shadow: true },
+    finish: { shadow: "glitter", aegyo: "glitter" },
+  },
+  {
+    name: "힙스터 (Street & Y2K)",
+    color: { brow: "#a08868", shadow: "#4a3b32", liner: "#1a1512", cheek: "#b87333", lip: "#a0522d", contour: "#8a6048", highlight: "#fff3e6", aegyo: "#b8860b" },
+    lipEdge: "#9c5040",
+    alpha: { brow: 0.35, shadow: 0.35, liner: 0.85, cheek: 0.3, lip: 0.55, contour: 0.55, highlight: 0.35, aegyo: 0.4 },
+    linerThick: 0.055,
+    axis: { shadow: "vertical" },
+    stops: { shadow: [{ at: 0.0, color: "#4a3b32" }, { at: 1.0, color: "#c4a484" }] },
+    tailExtend: { shadow: true },
+  },
+  {
+    name: "러블리 (Soft Romantic)",
+    color: { brow: "#7c5c48", shadow: "#ffb6c1", liner: "#4a362c", cheek: "#e6a8d7", lip: "#e06666", contour: "#c4a090", highlight: "#fff3e6", aegyo: "#ffe4e1" },
+    lipEdge: "#f0a8ac",
+    alpha: { brow: 0.35, shadow: 0.4, liner: 0.7, cheek: 0.35, lip: 0.55, contour: 0.3, highlight: 0.4, aegyo: 0.45 },
+    linerThick: 0.04,
+    axis: { shadow: "vertical" },
+    stops: { shadow: [{ at: 0.0, color: "#ffb6c1" }, { at: 1.0, color: "#fff0f5" }] },
+    finish: { shadow: "glitter", aegyo: "glitter" },
+  },
+  {
+    name: "출근/학생 (Daily Quick)",
+    color: { brow: "#6b5240", shadow: "#967969", liner: "#2e2420", cheek: "#e9967a", lip: "#cd5c5c", contour: "#b4967f", highlight: "#fff3e6", aegyo: "#f5f5dc" },
+    alpha: { brow: 0.3, shadow: 0.3, liner: 0.6, cheek: 0.28, lip: 0.35, contour: 0.25, highlight: 0.3, aegyo: 0.22 },
+    linerThick: 0.02,
+    axis: { shadow: "vertical" },
+    stops: { shadow: [{ at: 0.0, color: "#967969" }, { at: 1.0, color: "#e8d8c8" }] },
+  },
+  {
+    name: "키치/하이틴 (Kitsch & High-teen)",
+    color: { brow: "#6b4a32", shadow: "#ffb7b2", liner: "#120f0d", cheek: "#ffb2d0", lip: "#ff4081", contour: "#8a6048", highlight: "#ffd9ec", aegyo: "#ffd1dc" },
+    lipEdge: "#ff85a8",
+    alpha: { brow: 0.4, shadow: 0.5, liner: 0.85, cheek: 0.38, lip: 0.65, contour: 0.4, highlight: 0.55, aegyo: 0.55 },
+    linerThick: 0.045,
+    axis: { shadow: "vertical" },
+    stops: { shadow: [{ at: 0.0, color: "#ffb7b2" }, { at: 1.0, color: "#e6e6fa" }] },
+    tailExtend: { shadow: true },
+    finish: { shadow: "glitter", aegyo: "glitter" },
+  },
+  {
+    name: "뉴트럴 (Clean Girl)",
+    color: { brow: "#6e5a48", shadow: "#8b7355", liner: "#8b7355", cheek: "#d2b48c", lip: "#c8ad8d", contour: "#b49a86", highlight: "#fff3e6", aegyo: "#c5b358" },
+    lipEdge: "#d2b48c",
+    alpha: { brow: 0.28, shadow: 0.28, liner: 0.45, cheek: 0.25, lip: 0.4, contour: 0.3, highlight: 0.55, aegyo: 0.2 },
+    linerThick: 0.05,
+    axis: { shadow: "vertical" },
+    stops: { shadow: [{ at: 0.0, color: "#8b7355" }, { at: 1.0, color: "#d3b683" }] },
   },
   ...LOOKS.map((l): Tpl => ({
     name: l.name,
@@ -254,6 +395,25 @@ function drawGuide(lm: readonly Pt[], w: number, h: number, p: PersonalPlan): vo
     }
   }
   gg.restore();
+
+  // [디버그] 이마 경계(파란, 실측 FOREHEAD_POLY) vs 추정 헤어라인(빨간, 합성) 점을 직접 찍는다.
+  // "피부 보정이 이마 중간에서 끊긴다"는 자리가 실제로 이 파란 점들 자리인지 눈으로 비교하려고
+  const P2 = (i: number): Pt => at(lm, i);
+  const real = FOREHEAD_POLY.map((i) => P2(i));
+  const hair = estimateHairline(lm);
+  gg.save();
+  for (const pt of real) { gg.beginPath(); gg.fillStyle = "#3b82f6"; gg.arc(pt.x, pt.y, 4, 0, Math.PI * 2); gg.fill(); }
+  for (const pt of hair) { gg.beginPath(); gg.fillStyle = "#ef4444"; gg.arc(pt.x, pt.y, 4, 0, Math.PI * 2); gg.fill(); }
+  gg.strokeStyle = "#ef4444";
+  gg.lineWidth = 1;
+  gg.setLineDash([]);
+  for (let i = 0; i < real.length; i++) {
+    gg.beginPath();
+    gg.moveTo(real[i]!.x, real[i]!.y);
+    gg.lineTo(hair[i]!.x, hair[i]!.y);
+    gg.stroke();
+  }
+  gg.restore();
 }
 const rgba = (hex: string, a: number): string => {
   const n = parseInt(hex.slice(1), 16);
@@ -370,6 +530,15 @@ function drawMakeup(lm: readonly Pt[], style: LinerStyle): void {
             ctx.beginPath();
             path(ctx, bandPts);
             ctx.fill();
+            // 글리터 룩(아이돌·러블리·키치): 그라데이션 베이스 위에 같은 밴드 안쪽으로만 점을 흩뿌린다
+            if (t.finish?.shadow === "glitter") {
+              ctx.save();
+              ctx.filter = "none"; // paint()가 건 블러를 점에는 적용 안 함(아래 aegyo와 같은 이유)
+              ctx.clip(); // fill 에 쓴 bandPts 경로가 아직 현재 경로라 그대로 클립에 쓴다
+              const xs = bandPts.map((q) => q.x), ys = bandPts.map((q) => q.y);
+              fillGlitter(ctx, { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) }, color, true);
+              ctx.restore();
+            }
             continue;
           }
           path(ctx, bandPts);
@@ -426,10 +595,21 @@ function drawMakeup(lm: readonly Pt[], style: LinerStyle): void {
       } else if (p.id === "under" || p.id === "aegyo") {
         // 언더라인·애교살: 아랫속눈썹 라인 → 볼 점 사이를 보간한 밴드(섀도와 같은 방식). 비율은 눈대중 시작값
         const [lo, hi] = p.id === "under" ? [0, 0.1] : [0.1, 0.35];
+        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
         for (const { eye, cheek } of SIDES) {
           const lash = eye.lower.map(P), cPt = P(cheek);
           const band = [...lash.map((q) => mix(q, cPt, lo)), ...lash.map((q) => mix(q, cPt, hi)).reverse()];
           path(ctx, band);
+          for (const q of band) { x0 = Math.min(x0, q.x); y0 = Math.min(y0, q.y); x1 = Math.max(x1, q.x); y1 = Math.max(y1, q.y); }
+        }
+        // 글리터 룩(아이돌·러블리·키치): 단색 채우기 대신 이 bbox(=클립된 영역) 안에 밝은 점을 흩뿌린다
+        if (p.id === "aegyo" && t.finish?.aegyo === "glitter") {
+          ctx.save();
+          ctx.filter = "none"; // paint()가 걸어 둔 블러를 점에는 적용 안 함 — 블러 먹으면 점이 아니라 흐린 빛 얼룩이 된다(실측 확인)
+          ctx.clip();
+          fillGlitter(ctx, { x0, y0, x1, y1 }, color);
+          ctx.restore();
+          return;
         }
       } else {
         // 쉐딩·하이라이트: 계획의 얼굴형 규칙 밴드 (모르면 계란형), T존은 계획대로

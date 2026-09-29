@@ -7,7 +7,7 @@
  */
 
 import { FaceLandmarker } from "@mediapipe/tasks-vision";
-import { FOREHEAD_POLY } from "./color";
+import { FACE_L, FACE_R, FOREHEAD_POLY } from "./color";
 import type { Pt } from "./types";
 
 export type Triangle = readonly [number, number, number];
@@ -30,23 +30,39 @@ export const FACE_TRIANGLES: readonly Triangle[] = trianglesFromTesselation(Face
 /**
  * [dev] 헤어라인 확장 — MediaPipe 468점 그물은 헤어라인이 아니라 FOREHEAD_POLY(이마 중간쯤)에서 끝난다.
  * "피부 보정" 같은 전체 얼굴 효과가 그 경계에서 잘려 보이는 문제(makeup-probe)를 없애려고,
- * 안 잡히는 헤어라인 점 11개를 미간(168) 기준 방사형 확대로 눈대중 추정해 그물을 한 겹 더 늘린다.
+ * 안 잡히는 헤어라인 점 11개를 눈대중으로 추정해 그물을 한 겹 더 늘린다.
  * 실측 랜드마크가 아니라 지어낸 점이라, 과학적 정확도가 필요한 채점·가이드 쪽에는 절대 쓰지 않는다.
+ *
+ * (2026-09-29 정정) 처음엔 미간(168) 기준 방사형 확대를 썼는데, 실측(WebGL 그물을 자홍색으로 직접
+ * 찍어 확인)해 보니 중앙점만 위로 잘 올라가고 옆(관자놀이 쪽) 점은 미간에서 대각선 방향이라 거의 안
+ * 올라가서 옆쪽 경계가 그대로 처져 있었다. 그래서 "같은 비율로 확대"가 아니라 "각 점을 자기 주변
+ * 곡선의 수직 방향(위쪽)으로 고정된 거리만큼 밀기"로 바꿨다 — guides.ts linerOutline 이 두께를 만들 때
+ * 쓰는 것과 같은 방식(접선에 수직인 법선, 화면 위쪽으로 강제)이라 중앙·옆 구분 없이 균일하게 올라간다.
  */
-const GLABELLA = 168;
-/** 확대 비율(1+k). 클수록 헤어라인이 더 위로. 눈대중 시작값 — 어색하면 여기만 조정 */
-const HAIRLINE_SCALE = 1.4;
+/** 밀어내는 거리 (얼굴 폭 비율). 눈대중 시작값 — 어색하면 여기만 조정 */
+const HAIRLINE_OFFSET_RATIO = 0.16;
 /** 합성 헤어라인 점이 시작하는 인덱스. lm 배열이 478점(홍채 포함)이라 그 다음 자리부터 이어 붙인다 */
 export const HAIRLINE_START = 478;
 
-/** FOREHEAD_POLY 각 점을 미간에서 바깥으로 밀어 헤어라인 점 11개를 만든다. 순서는 FOREHEAD_POLY와 같다 */
+/** FOREHEAD_POLY 각 점을 자기 주변 곡선의 수직(위쪽) 방향으로 고정 거리만큼 밀어 헤어라인 점 11개를 만든다 */
 export function estimateHairline(lm: readonly Pt[]): Pt[] {
-  const c = lm[GLABELLA];
-  if (!c) throw new Error(`랜드마크 ${GLABELLA} 없음 (${lm.length}점)`);
-  return FOREHEAD_POLY.map((i) => {
+  const pts = FOREHEAD_POLY.map((i) => {
     const p = lm[i];
     if (!p) throw new Error(`랜드마크 ${i} 없음 (${lm.length}점)`);
-    return { x: c.x + (p.x - c.x) * HAIRLINE_SCALE, y: c.y + (p.y - c.y) * HAIRLINE_SCALE };
+    return p;
+  });
+  const faceL = lm[FACE_L], faceR = lm[FACE_R];
+  if (!faceL || !faceR) throw new Error(`랜드마크 ${FACE_L}/${FACE_R} 없음 (${lm.length}점)`);
+  const faceWidth = Math.hypot(faceR.x - faceL.x, faceR.y - faceL.y);
+  const off = faceWidth * HAIRLINE_OFFSET_RATIO;
+  return pts.map((p, i) => {
+    const a = pts[Math.max(0, i - 1)]!, b = pts[Math.min(pts.length - 1, i + 1)]!;
+    const tx = b.x - a.x, ty = b.y - a.y;
+    let nx = -ty, ny = tx;   // 접선에 수직인 법선
+    const len = Math.hypot(nx, ny) || 1;
+    nx /= len; ny /= len;
+    if (ny > 0) { nx = -nx; ny = -ny; }   // 화면 위쪽(y 가 작아지는 쪽)으로 강제
+    return { x: p.x + nx * off, y: p.y + ny * off };
   });
 }
 

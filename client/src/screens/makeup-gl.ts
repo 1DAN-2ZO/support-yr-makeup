@@ -148,6 +148,9 @@ export class MakeupGl {
     this.iBuf = gl.createBuffer()!;
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.iBuf);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(EXTENDED_TRIANGLES.flat()), gl.STATIC_DRAW);
+    // [디버그] 생성 시 딱 한 번 — 이 인스턴스가 지금 코드(헤어라인 리본 포함, 872개)로 만들어졌는지 확인.
+    // 852만 찍히면 오래된 glr 인스턴스가 재사용된 것 — 탭을 완전히 새로 열어야 한다
+    console.log("[MakeupGl] 생성됨 — 삼각형", EXTENDED_TRIANGLES.length, "개, 정점 슬롯", MESH_VERTEX_SRC.length, "개 (기대값: 872 / 479)");
     this.tVideo = texture(gl);
     this.tMul = texture(gl);
     this.tCol = texture(gl);
@@ -197,11 +200,6 @@ export class MakeupGl {
       const li = MESH_VERTEX_SRC[i]!;
       const p = f.lm[li]!, r = f.ref[li]!;
       this.verts.set([p.x, p.y, r.x, r.y], i * 4);
-    }
-    // [디버그] 10프레임에 한 번, 헤어라인과 무관한 실제 랜드마크(입술 61번)와 합성 헤어라인 점(478번)을 찍는다.
-    // 화장이 위로 쏠린다면: lip61이 예전과 다른 값이면 실제 랜드마크 쪽 버그, hair478만 이상하면 헤어라인 국한 문제
-    if (Math.random() < 0.1) {
-      console.log("[hairline-debug] lip61(lm)=", f.lm[61], "lip61(ref)=", f.ref[61], "hair478(lm)=", f.lm[478], "hair478(ref)=", f.ref[478], "lm.length=", f.lm.length, "verts.length=", this.verts.length, "slots=", MESH_VERTEX_SRC.length);
     }
     gl.useProgram(this.mesh);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.vBuf);
