@@ -25,6 +25,7 @@ import {
   type Session,
 } from "./core/flow";
 import { planGuide } from "./core/personal-guide";
+import { LIGHTING_NOTE, lightingDiffers } from "./core/review";
 import { measureFace } from "./core/face-measure";
 import { resolvePlan, type PersonalPlan } from "./core/personalize";
 import { createPlanQueue } from "./core/plan-queue";
@@ -45,6 +46,7 @@ import { looksScreen, type LooksDeps } from "./screens/looks";
 import { processingScreen, type ProcessingDeps } from "./screens/processing";
 import { resultScreen, type ResultDeps } from "./screens/result";
 import { reviewScreen, type ReviewDeps } from "./screens/review";
+import { startReviewShot } from "./screens/review-shot";
 import { createShell } from "./screens/shell";
 
 /** 카메라를 못 여는 환경이면 맨 위에 띄운다. 흐름은 막지 않는다 */
@@ -188,12 +190,15 @@ async function boot(): Promise<void> {
     {
       getParts: () => toReviewParts(session),
       getLookName: () => lookById(session.lookId).name,
-      // 조명 차 안내: 화면은 받을 준비가 됐지만 **아직 줄 값이 없다.**
-      // 맨얼굴 기준(baseline.foreheadL)과 견줄 "확인받기 시점 이마 L*" 을 세션에 남기는 건
-      // ② 의 게이트 출력이다(#79). 그 값이 생기면 여기서 lightingDiffers 로 바꾼다.
-      lightingNote: () => null,
+      // 조명 차 안내 (#79): 리뷰에 들어오며 찍은 "지금" 사진의 이마 L* 를 맨얼굴 기준과 견준다 (8 이상 차이면 한 줄)
+      lightingNote: (nowL) => {
+        const b = session.baseline;
+        return b && typeof nowL === "number" && lightingDiffers(b, { foreheadL: nowL }) ? LIGHTING_NOTE : null;
+      },
+      shoot: (host, done) => startReviewShot(host, done, log),
       store: {
         loadImage: (k) => sessionStore.loadImage(k),
+        saveImage: (k, b) => sessionStore.saveImage(k, b),
         async clearAll() {
           await saving;   // 저장 중인 draft·쌩얼이 지운 뒤에 써지지 않게
           // 로그 저장소를 먼저 닫는다 — 안 닫으면 버퍼·시간 저장이 지운 뒤에 events 키를 다시 만든다
