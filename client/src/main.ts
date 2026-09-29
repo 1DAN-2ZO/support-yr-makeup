@@ -179,11 +179,22 @@ async function boot(): Promise<void> {
     const b = session.baseline;
     return b ? resolvePlan(measureFace(b.lm), { faceShape: b.faceShape }) : null;
   };
-  // VLM 에 보낼 얼굴 사진 — 기준 얼굴마다 한 번만 자른다
+  // VLM 에 보낼 얼굴 사진 — 기준 얼굴마다 한 번만 자른다.
+  // 촬영 직후엔 쌩얼이 아직 저장 중일 수 있다 — 끝나길 기다렸다가 저장소에서 읽는다 (#179 리뷰: 바로 누르면 실패했다)
+  const bareOf = async (b: NonNullable<Session["baseline"]>): Promise<Blob | ImageBitmap> => {
+    if (b.bareImage) return b.bareImage;
+    await saving;
+    const d = await sessionStore.loadImage("bare");
+    if (!d) throw new VlmFailure("unavailable", "쌩얼 사진이 없다");
+    return d instanceof Blob ? d : new Blob([d]);
+  };
   let vlmImage: { baseline: unknown; url: Promise<string> } | null = null;
   const imageFor = (b: NonNullable<Session["baseline"]>): Promise<string> => {
-    if (vlmImage?.baseline !== b) vlmImage = { baseline: b, url: faceImage(b.bareImage!, b.lm) };
-    return vlmImage.url;
+    // 얼굴 점은 촬영 프레임(b.w·b.h) 좌표, 쌩얼은 긴 변 1024 로 줄여 저장 — faceImage 가 맞춘다
+    if (vlmImage?.baseline !== b) vlmImage = { baseline: b, url: bareOf(b).then((photo) => faceImage(photo, b.lm, { w: b.w, h: b.h })) };
+    const url = vlmImage.url;
+    url.catch(() => { if (vlmImage?.url === url) vlmImage = null; });   // 실패는 기억하지 않는다
+    return url;
   };
   const plans = createPlanQueue<PersonalPlan>(async (lookId) => {
     const b = session.baseline;
@@ -198,15 +209,27 @@ async function boot(): Promise<void> {
         model = res.model;
         return res.proposal;
       });
-      log.log({ name: "vlm_plan", look_id: lookId, ms: Math.round(performance.now() - t0), tries: r.tries, first_rejected: r.firstRejected.length, left_rejected: r.plan.rejected.length, model, fail: null });
+      log.log({ name: "vlm_plan", look_id: lookId, ms: Math.round(performance.now() - t0), tries: r.tries, first_rejected: r.firstRejected.length, left_rejected: r.plan.rejected.length, model, fail: r.retryFailed ? "retry_failed" : null });
       return r.plan;
     } catch (e) {
-      log.log({ name: "vlm_plan", look_id: lookId, ms: Math.round(performance.now() - t0), tries: 0, first_rejected: 0, left_rejected: 0, model, fail: e instanceof VlmFailure ? e.reason : "error" });
+      // 첫 질문에서 실패 — 한 번 물었다
+      log.log({ name: "vlm_plan", look_id: lookId, ms: Math.round(performance.now() - t0), tries: 1, first_rejected: 0, left_rejected: 0, model, fail: e instanceof VlmFailure ? e.reason : "error" });
       throw e;
     }
   });
-  // 앱을 다시 켜면 큐가 비어 있다. 그 사이엔 규칙 계획으로 본다 (TODO: 계획을 세션에 저장 — ① 에 요청)
-  const planFor = (lookId: string | null): PersonalPlan | null => (lookId ? plans.get(lookId) ?? rulePlan() : null);
+  // 앱을 다시 켜면 큐가 비어 있다. 그 사이엔 규칙 계획으로 본다 — ① #181 이 계획을 세션에 저장하면 없어질 자리.
+  // 규칙 계획을 쓴 사실은 화장마다 한 번 로그로 남긴다 (#179 리뷰: VLM 계획과 구분이 안 됐다)
+  const restoredRule = new Set<string>();
+  const planFor = (lookId: string | null): PersonalPlan | null => {
+    if (!lookId) return null;
+    const p = plans.get(lookId);
+    if (p) return p;
+    if (vlm && !restoredRule.has(lookId)) {
+      restoredRule.add(lookId);
+      log.log({ name: "vlm_plan", look_id: lookId, ms: 0, tries: 0, first_rejected: 0, left_rejected: 0, model: null, fail: "restored_rule" });
+    }
+    return rulePlan();
+  };
 
   // 가이드 모양 한 곳 — 화면 3 테두리 · 화면 4 테두리 · 화면 5 채점이 같은 것을 쓴다 ("따라 그린 선 = 채점 기준").
   // 고른 화장을 이 얼굴에 맞춘 계획 = 2-b AR 에서 본 모양. 계획이 없으면(개인화 전·복원 직후) 표준 모양

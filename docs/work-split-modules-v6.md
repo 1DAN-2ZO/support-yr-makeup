@@ -266,7 +266,7 @@ FORCE_OK=1 git push --force-with-lease
 | `Session` | ⑥ ↔ ①③ | 화면·부위 상태·`shots`·draft(JSON) + 사진 3장(IndexedDB) | `flow.js`, `stripImages` |
 | `LookJob` | ④ → ⑥② | `jobId, status, resultUrl`, `layer{mesh, deltaLab, alpha}`(신규), `identity{cos}` | `tryon.js` (Gradio 직접 호출) |
 | `FaceShape` | ⑤ → ② | `label`(5종), `confidence`, `method`('rule'\|'model') | `estimateFaceShape` |
-| `Event` (로그) | 전 모듈 → ⑥ | 자동: `sid, t, screen, part, ver` · 이벤트: `screen_enter/leave`, `button{name}`, `consent{ok}`, `capture{shot, ok, retry, reason}`, `gate_fail{first_fail}`, `landmark_lost{ms}`, `part_status{part, from, to, score}`, `score{part, status, check_reason, ms}`, `look_job{look_id, ms, identity_cos, error}`, `restore{ok, had_images}`, `session_end{reason: finish\|abandon\|error, last_screen}`, `error{where, msg}` | 신규 |
+| `Event` (로그) | 전 모듈 → ⑥ | 자동: `sid, t, screen, part, ver` · 이벤트: `screen_enter/leave`, `button{name}`, `consent{ok}`, `capture{shot, ok, retry, reason}`, `gate_fail{first_fail}`, `landmark_lost{ms}`, `part_status{part, from, to, score}`, `score{part, status, check_reason, ms}`, `look_job{look_id, ms, identity_cos, error}`(Stable-Makeup 과 함께 안 씀, 2026-09-29), `vlm_plan{look_id, ms, tries, first_rejected, left_rejected, model, fail}`(개인화 한 번 — fail: null · retry_failed · restored_rule · busy · unavailable · timeout · bad_response, 2026-09-29), `restore{ok, had_images}`, `session_end{reason: finish\|abandon\|error, last_screen}`, `error{where, msg}` | 신규 |
 
 규칙: 계약 필드를 바꾸려면 주는 쪽·받는 쪽이 같은 PR에서 바꾸고 테스트를 같이 고친다. 숫자는 전부 비율 단위(눈 폭·입술 폭·얼굴 폭 기준), mm는 표시용 환산에만.
 

@@ -42,10 +42,12 @@ export function vlmSchema(): object {
 
 /** 다시 물을 때 붙이는 글 — 관문의 거절 이유는 이미 읽을 수 있는 문장이다 */
 export function retryPrompt(first: string, rejected: readonly string[]): string {
+  // 거절 이유에 섞인 내부 표기(모듈 번호 ①~⑥)는 뺀다 — 모델에겐 뜻이 없다
+  const clean = (r: string): string => r.replace(/[①-⑥]\s*/g, "");
   return `${first}
 
 ## 앞 답에서 받아들일 수 없던 것
-${rejected.map((r) => `- ${r}`).join("\n")}
+${rejected.map((r) => `- ${clean(r)}`).join("\n")}
 위 항목을 측정값과 허용 범위에 맞게 고쳐서, 전체를 다시 JSON 하나로 답하세요.`;
 }
 
@@ -63,12 +65,21 @@ export interface VlmPlanResult {
   tries: number;
   /** 첫 답에서 거절된 것 — 로그용 */
   firstRejected: string[];
+  /** 다시 묻다가 실패해서(시간 초과·붐빔) 첫 답을 썼나 */
+  retryFailed: boolean;
 }
 
 export async function planWithVlm(m: FaceMeasure, look: Look, faceShape: FaceShape | null, ask: (prompt: string) => Promise<string>): Promise<VlmPlanResult> {
   const prompt = buildVlmPrompt(m, look, faceShape);
   const first = resolvePlan(m, { faceShape }, parse(await ask(prompt)));
-  if (first.rejected.length === 0) return { plan: first, tries: 1, firstRejected: [] };
-  const second = resolvePlan(m, { faceShape }, parse(await ask(retryPrompt(prompt, first.rejected))));
-  return { plan: second, tries: 2, firstRejected: first.rejected };
+  if (first.rejected.length === 0) return { plan: first, tries: 1, firstRejected: [], retryFailed: false };
+  // 다시 묻다가 실패해도 첫 답은 관문을 거친 쓸 수 있는 계획이다 — 버리지 않는다 (#179 리뷰: 50초 기다린 뒤 실패 안내였다)
+  let raw: string;
+  try {
+    raw = await ask(retryPrompt(prompt, first.rejected));
+  } catch {
+    return { plan: first, tries: 2, firstRejected: first.rejected, retryFailed: true };
+  }
+  const second = resolvePlan(m, { faceShape }, parse(raw));
+  return { plan: second, tries: 2, firstRejected: first.rejected, retryFailed: false };
 }
