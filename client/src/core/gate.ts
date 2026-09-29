@@ -97,9 +97,15 @@ export function poseOf(lm: readonly Pt[]): { yaw: number; pitch: number } {
  * 기준 각도 차를 강체 점으로 (#28). 옛 방식(poseOf)은 턱 끝(152)·얼굴 옆을 써서 입을 벌리면 숙인 것으로 잡혔다.
  * 양 눈꼬리(33·263)를 자로 삼아 코끝(4)이 그 선에서 옆·아래로 얼마나 옮겨 갔나를 눈꼬리 거리로 나눈다 →
  * 크기·기울기·위치에 안 흔들린다. 도로 바꾸는 계수 k = (코끝이 눈꼬리 면에서 나온 깊이) ÷ (눈꼬리 거리), 작은 각 근사.
- * k 는 어림값(코 깊이 ≈ 30mm, 눈꼬리 거리 ≈ 87mm) — 화면 4 `?pose` 로 웹캠에서 보정한다
+ * k 는 **옛 방식(poseOf)의 눈금에 맞춘 값** — 게이트 한계(dYaw 8 · dPitch 6)가 옛 눈금으로 폰에서 정한 값이라서.
+ * 2026-09-29 PC 웹캠 `?pose` 보정(입 다물고 끄덕·돌리기): yaw 0.462(439점) · pitch 1.112(333점)·1.31(538점) → 가중 평균 1.23.
+ * (처음 어림 0.35 는 실제 각도 기준이었는데, 옛 pitch 눈금이 눌려 있어 3배 차이) 폰 시험 때 한 번 더 확인.
+ *
+ * 입을 크게 벌렸을 때 직전 대비 흔들림(같은 날, 152프레임, 중앙/최대): 옛 방식(턱) 8.0°/9.2° → 코끝 2.9°/3.6° (한계 6°).
+ * 이마(10)·콧대(6)·3D 행렬도 2~3° 라 남은 양은 "아" 할 때 실제로 고개가 움직인 것. 코끝을 쓰는 이유: 눈꼬리 선에서 멀어
+ * 같은 각도에 더 크게 움직인다 → 가만히 있을 때 잡음에 덜 흔들린다. 측정 도구: screens/pose-probe.ts
  */
-export const RIGID_POSE = { kYaw: 0.35, kPitch: 0.35, nose: 4 } as const;
+export const RIGID_POSE = { kYaw: 0.462, kPitch: 1.23, nose: 4 } as const;
 
 function rigidOffset(lm: readonly Pt[]): { x: number; y: number } {
   const a = at(lm, LM.eyeA.outer), b = at(lm, LM.eyeB.outer), n = at(lm, RIGID_POSE.nose);
