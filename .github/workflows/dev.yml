@@ -14,27 +14,47 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Print workflow YAML
-        shell: bash
+      - name: Print Workflow YAML
+        shell: powershell
         run: |
-          echo "========================================"
-          echo "Workflow files"
-          echo "========================================"
+          Write-Host "========================================"
+          Write-Host "Workflow files"
+          Write-Host "========================================"
 
-          find "$GITHUB_WORKSPACE/.github/workflows" \
-            -type f \( -name "*.yml" -o -name "*.yaml" \) \
-            -print
+          Get-ChildItem `
+            -Path "$env:GITHUB_WORKSPACE\.github\workflows" `
+            -Include *.yml, *.yaml `
+            -File |
+            ForEach-Object {
+              Write-Host $_.FullName
+            }
 
-          echo ""
-          echo "========================================"
-          echo "Current branch"
-          echo "========================================"
+          Write-Host ""
+          Write-Host "========================================"
+          Write-Host "Current branch"
+          Write-Host "========================================"
 
-          echo "Branch: $GITHUB_REF_NAME"
+          Write-Host "Branch: $env:GITHUB_REF_NAME"
 
-          echo ""
-          echo "========================================"
-          echo "Workflow"
-          echo "========================================"
+          Write-Host ""
+          Write-Host "========================================"
+          Write-Host "Workflow information"
+          Write-Host "========================================"
 
-          cat "$GITHUB_WORKSPACE/.github/workflows/$(basename "$GITHUB_WORKFLOW")"
+          Write-Host "Workflow Name: $env:GITHUB_WORKFLOW"
+          Write-Host "Workflow Ref : $env:GITHUB_WORKFLOW_REF"
+
+          Write-Host ""
+          Write-Host "========================================"
+          Write-Host "Workflow YAML"
+          Write-Host "========================================"
+
+          Get-ChildItem `
+            -Path "$env:GITHUB_WORKSPACE\.github\workflows" `
+            -Include *.yml, *.yaml `
+            -File |
+            ForEach-Object {
+              Write-Host ""
+              Write-Host "========== $($_.Name) =========="
+              Get-Content $_.FullName
+            }
