@@ -282,7 +282,7 @@ async function boot(): Promise<void> {
       isPersonalized: (lookId) => plans.get(lookId) !== undefined,
       minBusyMs: 1500,
       getPlan: (lookId) => planFor(lookId),
-      saveArFrame: (f) => arFrames.set(f),
+      saveArFrame: (lookId, f) => arFrames.set(lookId, f),
     },
     {
       getParts: () => toReviewParts(session),

@@ -17,20 +17,24 @@ export interface ArFrame {
 }
 
 export interface ArFrameStore {
-  set(f: ArFrame): void;
-  /** 지금 화장의 장면만. 다른 화장을 골랐으면 null */
-  get(lookId: string | null): ArFrame | null;
+  /**
+   * 누른 순간 자리를 먼저 잡는다 — JPEG 로 바꾸는 것(toBlob)은 늦게 끝나는데 화면 3 은 바로 열린다.
+   * 전엔 다 바꾼 뒤에야 넣어서 첫 부위 완성본이 거의 항상 쌩얼로 떨어졌다 (#190 리뷰)
+   */
+  set(lookId: string, frame: ArFrame | Promise<ArFrame | null>): void;
+  /** 지금 화장의 장면만 (저장 중이면 끝날 때까지 기다리는 Promise). 다른 화장을 골랐으면 null. 저장이 실패하면 null 로 풀린다 */
+  get(lookId: string | null): Promise<ArFrame | null> | null;
   clear(): void;
 }
 
 export function createArFrameStore(): ArFrameStore {
-  let cur: ArFrame | null = null;
+  let cur: { lookId: string; frame: Promise<ArFrame | null> } | null = null;
   return {
-    set(f) {
-      cur = f;
+    set(lookId, frame) {
+      cur = { lookId, frame: Promise.resolve(frame).catch(() => null) };
     },
     get(lookId) {
-      return cur && lookId && cur.lookId === lookId ? cur : null;
+      return cur && lookId && cur.lookId === lookId ? cur.frame : null;
     },
     clear() {
       cur = null;
