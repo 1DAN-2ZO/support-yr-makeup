@@ -68,8 +68,8 @@ if (!ctx2d || !offCtx) throw new Error("캔버스 2D 를 쓸 수 없음");
 const g: CanvasRenderingContext2D = ctx2d;
 const o: CanvasRenderingContext2D = offCtx;
 
-type Part = "brow" | "shadow" | "liner" | "cheek" | "lip" | "contour" | "highlight" | "under" | "aegyo";
-/** blur 는 얼굴 폭 대비 번짐 — 섀도·볼은 넓게, 라이너는 거의 없이 */
+type Part = "brow" | "shadow" | "liner" | "cheek" | "lip" | "contour" | "highlight" | "under" | "aegyo" | "lash";
+/** blur 는 얼굴 폭 대비 번짐 — 섀도·볼은 넓게, 라이너는 거의 없이. lash(마스카라)는 낱개 선이라 블러 안 먹임(0 이지만 미사용) */
 const PARTS: { id: Part; name: string; blur: number }[] = [
   { id: "brow", name: "눈썹", blur: 0.004 },
   { id: "shadow", name: "섀도", blur: 0.012 },
@@ -80,6 +80,7 @@ const PARTS: { id: Part; name: string; blur: number }[] = [
   { id: "highlight", name: "하이라이트", blur: 0.025 },
   { id: "under", name: "언더라인", blur: 0.002 },
   { id: "aegyo", name: "애교살", blur: 0.02 },
+  { id: "lash", name: "마스카라", blur: 0 },
 ];
 
 /**
@@ -138,6 +139,68 @@ function fillGlitter(ctx: CanvasRenderingContext2D, bbox: { x0: number; y0: numb
   }
 }
 
+/** span(안쪽→바깥 순 점 목록) 위에서 비율 t(0~1)에 해당하는 자리를 선형보간으로 구한다 */
+function pointAlong(span: readonly Pt[], t: number): Pt {
+  const f = Math.max(0, Math.min(1, t)) * (span.length - 1);
+  const i0 = Math.min(span.length - 2, Math.floor(f));
+  return mix(span[i0]!, span[i0 + 1]!, f - i0);
+}
+
+/**
+ * 마스카라 — "인조 마스카라 스티커"(속눈썹 연장) 컨셉. 참고 사진(eyelash1/2, 2026-09-29) 기준으로
+ * 다시 잡음 — 안쪽→바깥 단조 증가가 아니라 3구간 구조였다:
+ *   1) 중앙 부근에 제일 높이 솟은 스파이크(hump, 사인 곡선 봉우리) — 거의 수직
+ *   2) 안쪽 끝은 짧게 유지
+ *   3) 눈꼬리 쪽 마지막 30%에서만 갑자기 길어지며 옆(눈썹 방향)으로 확 젖혀지는 "윙" 구간
+ * 낱개는 부드러운 곡선이 아니라 뿌리에서 끝까지 곧게 뻗는 뾰족한 스파이크(직선).
+ * 위치는 매 프레임 완전히 고정(랜덤 없음), 길이만 살짝 흔들어 스티커 느낌을 살린다.
+ * 블러는 안 먹인다(먹으면 선이 아니라 얼룩이 된다 — 글리터와 같은 이유).
+ */
+function fillLashes(ctx: CanvasRenderingContext2D, span: readonly Pt[], dir: 1 | -1, eyeWidth: number, color: string): void {
+  const upper = dir === -1;
+  const rnd = mulberry32(upper ? 0x1a5e5a : 0x2a5e5a);
+  const n = upper ? 16 : 10;   // 윗속눈썹이 더 촘촘하다
+  // span의 안쪽→바깥 축에서 "바깥(눈꼬리)" 방향의 가로 성분 — 윙 구간에서만 이 방향으로 젖혀진다
+  const outVec = { x: span[span.length - 1]!.x - span[0]!.x, y: span[span.length - 1]!.y - span[0]!.y };
+  const outLen = Math.hypot(outVec.x, outVec.y) || 1;
+  const ux = outVec.x / outLen;
+  ctx.save();
+  for (let i = 0; i < n; i++) {
+    const t = i / (n - 1);
+    const base = pointAlong(span, t);
+    const hump = Math.sin(t * Math.PI);   // 0(양끝)→1(중앙) 봉우리
+    const wingT = Math.max(0, (t - 0.7) / 0.3);
+    const wing = wingT * wingT;   // 0(t<0.7)→1(t=1), 눈꼬리 쪽 윙 구간만 살아남
+    const humpAmt = upper ? 0.22 : 0.09, wingAmt = upper ? 0.34 : 0.12, baseAmt = upper ? 0.045 : 0.03;
+    const len = eyeWidth * (baseAmt + humpAmt * hump + wingAmt * wing) * (0.85 + rnd() * 0.3);
+    const fan = (upper ? 0.75 : 0.5) * wing;   // 윙 구간 전에는 거의 수직, 윙에서만 옆으로 젖혀짐
+    let dx = ux * fan, dy = dir * (1 - fan * 0.4);
+    const dlen = Math.hypot(dx, dy) || 1;
+    dx /= dlen; dy /= dlen;
+    // 뿌리는 거의 수직으로 서다가 끝에서 fan 방향으로 휜다(C컬) — 직선이 아니라 자연스러운 곡선(eyelash1.jpeg 참고, 2026-09-29)
+    const fanRoot = fan * 0.25;
+    let rx = ux * fanRoot, ry = dir * (1 - fanRoot * 0.4);
+    const rlen = Math.hypot(rx, ry) || 1;
+    rx /= rlen; ry /= rlen;
+    const bendX = base.x + rx * len * 0.55, bendY = base.y + ry * len * 0.55;   // 휘어지는 중간 지점
+    const tipX = base.x + dx * len, tipY = base.y + dy * len;
+    // 선(stroke)이 아니라 면(fill) — 뿌리는 넓고 끝은 뾰족해야 "그림" 느낌이 난다.
+    // 폭을 eyeWidth 고정 비율이 아니라 이 스파이크 "자기 길이"에 비례시킨다 — 길수록 뿌리도 굵어져야
+    // 실제 낱개 속눈썹처럼 보인다(고정 비율이면 반폭이 1px도 안 돼서 결국 선처럼 보였다, 실측 확인)
+    const px = -ry, py = rx;   // 뿌리 방향 기준 수직(뿌리 폭)
+    const bpx = -dy, bpy = dx;   // 끝 방향 기준 수직(굽는 지점 폭)
+    const w = len * 0.14 * (0.75 + rnd() * 0.5), bw = w * 0.5;
+    ctx.fillStyle = rgba(color, 0.75 + rnd() * 0.2);
+    ctx.beginPath();
+    ctx.moveTo(base.x + px * w, base.y + py * w);
+    ctx.quadraticCurveTo(bendX + bpx * bw, bendY + bpy * bw, tipX, tipY);
+    ctx.quadraticCurveTo(bendX - bpx * bw, bendY - bpy * bw, base.x - px * w, base.y - py * w);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 /** 쉐딩·하이라이트는 룩에 없다(얼굴형 규칙 부위, F-04) — 얹어 보기용 기본 색 */
 const CONTOUR_COLORS = { contour: "#a07a66", highlight: "#fff3e6" };
 const CONTOUR_ALPHA = { contour: 0.35, highlight: 0.45 };
@@ -148,28 +211,29 @@ const TEMPLATES: Tpl[] = [
   // 사진에서 뽑은 템플릿 (스크래치패드 extract.py 결과). 관찰색이라 보통 합성 + 불투명도로 얹는다. 불투명도는 눈대중 시작값
   {
     name: "사진 추출 (플럼 스모키)",
-    color: { brow: "#8b7371", shadow: "#4e3e44", liner: "#1a1217", cheek: "#dec0bd", lip: "#b31540", ...CONTOUR_COLORS },
+    color: { brow: "#8b7371", shadow: "#4e3e44", liner: "#1a1217", lash: "#1a1217", cheek: "#dec0bd", lip: "#b31540", ...CONTOUR_COLORS },
     lipEdge: "#c26375",
-    alpha: { brow: 0.45, shadow: 0.55, liner: 0.9, cheek: 0.35, lip: 0.75, ...CONTOUR_ALPHA },
+    alpha: { brow: 0.45, shadow: 0.55, liner: 0.9, lash: 0.9, cheek: 0.35, lip: 0.75, ...CONTOUR_ALPHA },
     linerThick: 0.045,
   },
   // 사진에서 뽑은 템플릿 2 (스크래치패드 extract_tpl.py 결과, before.png/after.png). 랜드마크 폴리곤 평균색 + ΔE 근사 alpha
   {
     name: "사진 추출 2 (로즈 브라운)",
-    color: { brow: "#bd9694", shadow: "#a7837f", liner: "#644646", cheek: "#d5b2af", lip: "#af7879", under: "#a87c7a", aegyo: "#c49995", ...CONTOUR_COLORS },
+    color: { brow: "#bd9694", shadow: "#a7837f", liner: "#644646", lash: "#644646", cheek: "#d5b2af", lip: "#af7879", under: "#a87c7a", aegyo: "#c49995", ...CONTOUR_COLORS },
     lipEdge: "#b98784",
-    alpha: { brow: 0.29, shadow: 0.47, liner: 0.32, cheek: 0.39, lip: 0.13, under: 0.36, aegyo: 0.61, ...CONTOUR_ALPHA },
+    alpha: { brow: 0.29, shadow: 0.47, liner: 0.32, lash: 0.32, cheek: 0.39, lip: 0.13, under: 0.36, aegyo: 0.61, ...CONTOUR_ALPHA },
     linerThick: 0.076,
     axis: { shadow: "vertical" },
     stops: { shadow: [{ at: 0.0, color: "#3d282a" }, { at: 0.5, color: "#967674" }, { at: 1.0, color: "#aa827a" }] },
   },
   // 사진에서 뽑은 템플릿 3 (스크래치패드 extract_tpl.py 결과, before2.png/after2.png). 언더라인·애교살 포함(#166 논의 뒤 추가)
   // 섀도우만 눈 감은 버전(before2_2/after2_2)으로 다시 재서 교체 — 뜬 눈은 윗눈꺼풀에 가려 실측이 부정확했다
+  // lash(마스카라)는 "인조 마스카라 스티커" 컨셉으로 바뀌면서(실측 아님) 라이너와 같은 진한 값으로 되돌림
   {
     name: "사진 추출 3 (윙드 라이너)",
-    color: { brow: "#b09495", shadow: "#8a6867", liner: "#463a40", cheek: "#d2b7b8", lip: "#a98387", under: "#735b60", aegyo: "#b79697", ...CONTOUR_COLORS },
+    color: { brow: "#b09495", shadow: "#8a6867", liner: "#463a40", lash: "#463a40", cheek: "#d2b7b8", lip: "#a98387", under: "#735b60", aegyo: "#b79697", ...CONTOUR_COLORS },
     lipEdge: "#ac8386",
-    alpha: { brow: 0.27, shadow: 0.65, liner: 0.39, cheek: 0.14, lip: 0.11, under: 0.79, aegyo: 0.51, ...CONTOUR_ALPHA },
+    alpha: { brow: 0.27, shadow: 0.65, liner: 0.39, lash: 0.39, cheek: 0.14, lip: 0.11, under: 0.79, aegyo: 0.51, ...CONTOUR_ALPHA },
     linerThick: 0.076,
     axis: { shadow: "vertical" },
     stops: { shadow: [{ at: 0.0, color: "#361f1c" }, { at: 0.5, color: "#a0807f" }, { at: 1.0, color: "#ab8484" }] },
@@ -180,9 +244,9 @@ const TEMPLATES: Tpl[] = [
   // (원문 나열 순서와 다를 수 있음 — 기존 "속눈썹에서 진하고 위로 옅어진다" 기본 그러데이션 방향과 맞춘 것).
   {
     name: "어른 여자 (Chic & Elegant)",
-    color: { brow: "#5c4438", shadow: "#5c4033", liner: "#3a241c", cheek: "#a57164", lip: "#8b3a3a", contour: "#8f6b57", highlight: "#fff3e6", aegyo: "#d2b48c" },
+    color: { brow: "#5c4438", shadow: "#5c4033", liner: "#3a241c", lash: "#3a241c", cheek: "#a57164", lip: "#8b3a3a", contour: "#8f6b57", highlight: "#fff3e6", aegyo: "#d2b48c" },
     lipEdge: "#a85d62",
-    alpha: { brow: 0.4, shadow: 0.45, liner: 0.9, cheek: 0.3, lip: 0.7, contour: 0.5, highlight: 0.35, aegyo: 0.25 },
+    alpha: { brow: 0.4, shadow: 0.45, liner: 0.9, lash: 0.9, cheek: 0.3, lip: 0.7, contour: 0.5, highlight: 0.35, aegyo: 0.25 },
     linerThick: 0.04,
     axis: { shadow: "vertical" },
     stops: { shadow: [{ at: 0.0, color: "#5c4033" }, { at: 1.0, color: "#b0897a" }] },
@@ -190,34 +254,34 @@ const TEMPLATES: Tpl[] = [
   },
   {
     name: "세미 스모키 (Hip & Edgy)",
-    color: { brow: "#262320", shadow: "#363636", liner: "#0d0b09", cheek: "#8b7d7b", lip: "#800020", contour: "#6b5040", highlight: "#fff3e6", aegyo: "#808080" },
-    alpha: { brow: 0.55, shadow: 0.55, liner: 0.95, cheek: 0.25, lip: 0.55, contour: 0.55, highlight: 0.3, aegyo: 0.35 },
+    color: { brow: "#262320", shadow: "#363636", liner: "#0d0b09", lash: "#0d0b09", cheek: "#8b7d7b", lip: "#800020", contour: "#6b5040", highlight: "#fff3e6", aegyo: "#808080" },
+    alpha: { brow: 0.55, shadow: 0.55, liner: 0.95, lash: 0.95, cheek: 0.25, lip: 0.55, contour: 0.55, highlight: 0.3, aegyo: 0.35 },
     linerThick: 0.06,
     axis: { shadow: "vertical" },
     stops: { shadow: [{ at: 0.0, color: "#363636" }, { at: 1.0, color: "#a9a9a9" }] },
   },
   {
     name: "가을 (Autumn Mute)",
-    color: { brow: "#6b4a34", shadow: "#8b4513", liner: "#5a3b28", cheek: "#c86446", lip: "#b22222", contour: "#8a5c42", highlight: "#fff3e6", aegyo: "#e6c687" },
+    color: { brow: "#6b4a34", shadow: "#8b4513", liner: "#5a3b28", lash: "#5a3b28", cheek: "#c86446", lip: "#b22222", contour: "#8a5c42", highlight: "#fff3e6", aegyo: "#e6c687" },
     lipEdge: "#c4795a",
-    alpha: { brow: 0.45, shadow: 0.5, liner: 0.75, cheek: 0.32, lip: 0.6, contour: 0.45, highlight: 0.35, aegyo: 0.4 },
+    alpha: { brow: 0.45, shadow: 0.5, liner: 0.75, lash: 0.75, cheek: 0.32, lip: 0.6, contour: 0.45, highlight: 0.35, aegyo: 0.4 },
     linerThick: 0.045,
     axis: { shadow: "vertical" },
     stops: { shadow: [{ at: 0.0, color: "#8b4513" }, { at: 1.0, color: "#d27d2d" }] },
   },
   {
     name: "청순 (Pure & Clean)",
-    color: { brow: "#7a6552", shadow: "#e0b8a6", liner: "#2e2420", cheek: "#ffb7c5", lip: "#ff6f61", contour: "#b99783", highlight: "#fff3e6", aegyo: "#fff8dc" },
-    alpha: { brow: 0.3, shadow: 0.28, liner: 0.6, cheek: 0.28, lip: 0.4, contour: 0.3, highlight: 0.4, aegyo: 0.3 },
+    color: { brow: "#7a6552", shadow: "#e0b8a6", liner: "#2e2420", lash: "#2e2420", cheek: "#ffb7c5", lip: "#ff6f61", contour: "#b99783", highlight: "#fff3e6", aegyo: "#fff8dc" },
+    alpha: { brow: 0.3, shadow: 0.28, liner: 0.6, lash: 0.6, cheek: 0.28, lip: 0.4, contour: 0.3, highlight: 0.4, aegyo: 0.3 },
     linerThick: 0.02,
     axis: { shadow: "vertical" },
     stops: { shadow: [{ at: 0.0, color: "#e0b8a6" }, { at: 1.0, color: "#f5e5d6" }] },
   },
   {
     name: "아이돌 (Idol Sparkle)",
-    color: { brow: "#7a5c42", shadow: "#ff9eaa", liner: "#241a16", cheek: "#ffb6c1", lip: "#ff1493", contour: "#a88068", highlight: "#fff3e6", aegyo: "#ffffff" },
+    color: { brow: "#7a5c42", shadow: "#ff9eaa", liner: "#241a16", lash: "#241a16", cheek: "#ffb6c1", lip: "#ff1493", contour: "#a88068", highlight: "#fff3e6", aegyo: "#ffffff" },
     lipEdge: "#ff6fab",
-    alpha: { brow: 0.35, shadow: 0.45, liner: 0.9, cheek: 0.35, lip: 0.6, contour: 0.4, highlight: 0.6, aegyo: 0.6 },
+    alpha: { brow: 0.35, shadow: 0.45, liner: 0.9, lash: 0.9, cheek: 0.35, lip: 0.6, contour: 0.4, highlight: 0.6, aegyo: 0.6 },
     linerThick: 0.05,
     axis: { shadow: "vertical" },
     stops: { shadow: [{ at: 0.0, color: "#ff9eaa" }, { at: 1.0, color: "#ffd1dc" }] },
@@ -226,9 +290,9 @@ const TEMPLATES: Tpl[] = [
   },
   {
     name: "힙스터 (Street & Y2K)",
-    color: { brow: "#a08868", shadow: "#4a3b32", liner: "#1a1512", cheek: "#b87333", lip: "#a0522d", contour: "#8a6048", highlight: "#fff3e6", aegyo: "#b8860b" },
+    color: { brow: "#a08868", shadow: "#4a3b32", liner: "#1a1512", lash: "#1a1512", cheek: "#b87333", lip: "#a0522d", contour: "#8a6048", highlight: "#fff3e6", aegyo: "#b8860b" },
     lipEdge: "#9c5040",
-    alpha: { brow: 0.35, shadow: 0.35, liner: 0.85, cheek: 0.3, lip: 0.55, contour: 0.55, highlight: 0.35, aegyo: 0.4 },
+    alpha: { brow: 0.35, shadow: 0.35, liner: 0.85, lash: 0.85, cheek: 0.3, lip: 0.55, contour: 0.55, highlight: 0.35, aegyo: 0.4 },
     linerThick: 0.055,
     axis: { shadow: "vertical" },
     stops: { shadow: [{ at: 0.0, color: "#4a3b32" }, { at: 1.0, color: "#c4a484" }] },
@@ -236,9 +300,9 @@ const TEMPLATES: Tpl[] = [
   },
   {
     name: "러블리 (Soft Romantic)",
-    color: { brow: "#7c5c48", shadow: "#ffb6c1", liner: "#4a362c", cheek: "#e6a8d7", lip: "#e06666", contour: "#c4a090", highlight: "#fff3e6", aegyo: "#ffe4e1" },
+    color: { brow: "#7c5c48", shadow: "#ffb6c1", liner: "#4a362c", lash: "#4a362c", cheek: "#e6a8d7", lip: "#e06666", contour: "#c4a090", highlight: "#fff3e6", aegyo: "#ffe4e1" },
     lipEdge: "#f0a8ac",
-    alpha: { brow: 0.35, shadow: 0.4, liner: 0.7, cheek: 0.35, lip: 0.55, contour: 0.3, highlight: 0.4, aegyo: 0.45 },
+    alpha: { brow: 0.35, shadow: 0.4, liner: 0.7, lash: 0.7, cheek: 0.35, lip: 0.55, contour: 0.3, highlight: 0.4, aegyo: 0.45 },
     linerThick: 0.04,
     axis: { shadow: "vertical" },
     stops: { shadow: [{ at: 0.0, color: "#ffb6c1" }, { at: 1.0, color: "#fff0f5" }] },
@@ -246,17 +310,17 @@ const TEMPLATES: Tpl[] = [
   },
   {
     name: "출근/학생 (Daily Quick)",
-    color: { brow: "#6b5240", shadow: "#967969", liner: "#2e2420", cheek: "#e9967a", lip: "#cd5c5c", contour: "#b4967f", highlight: "#fff3e6", aegyo: "#f5f5dc" },
-    alpha: { brow: 0.3, shadow: 0.3, liner: 0.6, cheek: 0.28, lip: 0.35, contour: 0.25, highlight: 0.3, aegyo: 0.22 },
+    color: { brow: "#6b5240", shadow: "#967969", liner: "#2e2420", lash: "#2e2420", cheek: "#e9967a", lip: "#cd5c5c", contour: "#b4967f", highlight: "#fff3e6", aegyo: "#f5f5dc" },
+    alpha: { brow: 0.3, shadow: 0.3, liner: 0.6, lash: 0.6, cheek: 0.28, lip: 0.35, contour: 0.25, highlight: 0.3, aegyo: 0.22 },
     linerThick: 0.02,
     axis: { shadow: "vertical" },
     stops: { shadow: [{ at: 0.0, color: "#967969" }, { at: 1.0, color: "#e8d8c8" }] },
   },
   {
     name: "키치/하이틴 (Kitsch & High-teen)",
-    color: { brow: "#6b4a32", shadow: "#ffb7b2", liner: "#120f0d", cheek: "#ffb2d0", lip: "#ff4081", contour: "#8a6048", highlight: "#ffd9ec", aegyo: "#ffd1dc" },
+    color: { brow: "#6b4a32", shadow: "#ffb7b2", liner: "#120f0d", lash: "#120f0d", cheek: "#ffb2d0", lip: "#ff4081", contour: "#8a6048", highlight: "#ffd9ec", aegyo: "#ffd1dc" },
     lipEdge: "#ff85a8",
-    alpha: { brow: 0.4, shadow: 0.5, liner: 0.85, cheek: 0.38, lip: 0.65, contour: 0.4, highlight: 0.55, aegyo: 0.55 },
+    alpha: { brow: 0.4, shadow: 0.5, liner: 0.85, lash: 0.85, cheek: 0.38, lip: 0.65, contour: 0.4, highlight: 0.55, aegyo: 0.55 },
     linerThick: 0.045,
     axis: { shadow: "vertical" },
     stops: { shadow: [{ at: 0.0, color: "#ffb7b2" }, { at: 1.0, color: "#e6e6fa" }] },
@@ -265,17 +329,23 @@ const TEMPLATES: Tpl[] = [
   },
   {
     name: "뉴트럴 (Clean Girl)",
-    color: { brow: "#6e5a48", shadow: "#8b7355", liner: "#8b7355", cheek: "#d2b48c", lip: "#c8ad8d", contour: "#b49a86", highlight: "#fff3e6", aegyo: "#c5b358" },
+    color: { brow: "#6e5a48", shadow: "#8b7355", liner: "#8b7355", lash: "#8b7355", cheek: "#d2b48c", lip: "#c8ad8d", contour: "#b49a86", highlight: "#fff3e6", aegyo: "#c5b358" },
     lipEdge: "#d2b48c",
-    alpha: { brow: 0.28, shadow: 0.28, liner: 0.45, cheek: 0.25, lip: 0.4, contour: 0.3, highlight: 0.55, aegyo: 0.2 },
+    alpha: { brow: 0.28, shadow: 0.28, liner: 0.45, lash: 0.45, cheek: 0.25, lip: 0.4, contour: 0.3, highlight: 0.55, aegyo: 0.2 },
     linerThick: 0.05,
     axis: { shadow: "vertical" },
     stops: { shadow: [{ at: 0.0, color: "#8b7355" }, { at: 1.0, color: "#d3b683" }] },
   },
   ...LOOKS.map((l): Tpl => ({
     name: l.name,
-    color: { ...CONTOUR_COLORS, ...Object.fromEntries(Object.entries(l.parts).flatMap(([k, p]) => (p?.color ? [[k, hex(p.color)]] : []))) },
-    alpha: { ...CONTOUR_ALPHA, ...Object.fromEntries(Object.entries(l.parts).map(([k, p]) => [k, p?.alpha ?? p?.alphaR ?? 0.5])) },
+    color: {
+      ...CONTOUR_COLORS, ...Object.fromEntries(Object.entries(l.parts).flatMap(([k, p]) => (p?.color ? [[k, hex(p.color)]] : []))),
+      ...(l.parts.liner?.color ? { lash: hex(l.parts.liner.color) } : {}),   // 마스카라는 라이너 색을 따라간다
+    },
+    alpha: {
+      ...CONTOUR_ALPHA, ...Object.fromEntries(Object.entries(l.parts).map(([k, p]) => [k, p?.alpha ?? p?.alphaR ?? 0.5])),
+      lash: l.parts.liner?.alpha ?? 0.5,
+    },
     linerThick: l.parts.liner?.thick ?? GUIDE_PARAMS.liner.thick,
   })),
 ];
@@ -346,6 +416,7 @@ const FILTER_BLEND: Record<Part, GlobalCompositeOperation[]> = {
   brow: ["multiply"], liner: ["multiply"], shadow: ["multiply"], cheek: ["multiply"], lip: ["multiply", "color"],
   contour: ["multiply"], highlight: ["screen"],   // 하이라이트는 밝힌다
   under: ["multiply"], aegyo: ["screen"],   // 애교살은 하이라이트처럼 밝힌다
+  lash: ["multiply"],
 };
 const natural = (): boolean => renderSel.value !== "sticker";
 const meshMode = (): boolean => renderSel.value === "mesh";
@@ -481,7 +552,7 @@ function drawMakeup(lm: readonly Pt[], style: LinerStyle): void {
     const s = sliders.get(p.id)!, color = t.color[p.id];
     if (!color || !s.on.checked) continue;
     const alpha = Math.min(1, Number(s.input.value) *
-      (p.id === "contour" || p.id === "highlight" || p.id === "under" || p.id === "aegyo" ? 1 : (plan?.intensity[p.id] ?? 1)));
+      (p.id === "contour" || p.id === "highlight" || p.id === "under" || p.id === "aegyo" || p.id === "lash" ? 1 : (plan?.intensity[p.id] ?? 1)));
     const soft = natural();
     paint(p.blur * faceW * (soft ? 1.6 : 1), alpha, (ctx) => {
       ctx.fillStyle = color;
@@ -591,6 +662,17 @@ function drawMakeup(lm: readonly Pt[], style: LinerStyle): void {
         path(ctx, lipOutline(lm, plan?.lip.overline ?? 0));
         path(ctx, inner);
         ctx.fill("evenodd");
+        return;
+      } else if (p.id === "lash") {
+        // 마스카라(인조 스티커 컨셉): 실제 속눈썹이 자라는 눈꺼풀 길이(eye.upper/lower) 안에서만 —
+        // 라이너 꼬리는 피부 위에 그리는 선이라 속눈썹이 없는 자리까지 뻗으면 안 된다(#158 정정)
+        ctx.filter = "none";
+        for (const { eye } of SIDES) {
+          const upperSpan = [...eye.upper.map(P)].reverse();   // 안쪽→바깥
+          const lowerSpan = [...eye.lower.map(P)].reverse();   // 안쪽→바깥
+          fillLashes(ctx, upperSpan, -1, unit.eye, color);
+          fillLashes(ctx, lowerSpan, 1, unit.eye, color);
+        }
         return;
       } else if (p.id === "under" || p.id === "aegyo") {
         // 언더라인·애교살: 아랫속눈썹 라인 → 볼 점 사이를 보간한 밴드(섀도와 같은 방식). 비율은 눈대중 시작값
@@ -710,7 +792,9 @@ sendBtn.addEventListener("click", () => {
 function tick(): void {
   if (!landmarker || video.readyState < 2) { requestAnimationFrame(tick); return; }
   const w = video.videoWidth, h = video.videoHeight;
-  if (cv.width !== w || cv.height !== h) { cv.width = off.width = w; cv.height = off.height = h; }
+  // cv 만 보고 넘어가면 off(오프스크린)가 어긋난 채로 남을 수 있다 — macOS 웹캠에서 videoWidth/Height가
+  // 늦게 확정되는 경우 cv 는 맞는데 off 만 옛 크기라 화장이 블러·블렌드 없이 도형으로만 보였다(실측 보고)
+  if (cv.width !== w || cv.height !== h || off.width !== w || off.height !== h) { cv.width = off.width = w; cv.height = off.height = h; }
   let face: { x: number; y: number }[] | undefined;
   if (stillLm) {
     g.drawImage(still, 0, 0, w, h);
