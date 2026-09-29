@@ -13,9 +13,14 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          path: .
 
-      - name: Stop Docker Compose
-        run: docker compose down || true
+      - name: Docker Down
+        working-directory: .
+        run: docker compose down
+        continue-on-error: true
 
-      - name: Start Docker Compose
-        run: docker compose up -d
+      - name: Docker Up
+        working-directory: .
+        run: docker compose --profile tools up -d
