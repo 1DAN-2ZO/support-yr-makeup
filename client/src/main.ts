@@ -334,7 +334,9 @@ async function boot(): Promise<void> {
       getFaceShape: () => session.faceShape,
       // 서버 완성본(Stable-Makeup)은 빠졌다 — 쌩얼 + 테두리로 보인다. AR 장면으로 바꾸는 건 ② 요청 (2026-09-29)
       // 화면 3 완성본 = 2-b AR 장면 (#182). 지금 고른 화장의 장면만 (다른 화장이면 null → 쌩얼)
-      getArFrame: () => arFrames.get(session.lookId),
+      // 화면 3 완성본(#192) = 쌩얼 정면 + 같은 개인화 계획 화장. 원본은 메모리에만 있어 앱을 다시 켜면 저장한 쌩얼
+      getPlan: () => planFor(session.lookId),
+      getBareSource: () => (session.shots.front_open as ShotData | undefined)?.cv ?? null,
       getGuide: guideFor,
     },
     {

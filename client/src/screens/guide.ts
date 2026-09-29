@@ -2,25 +2,27 @@
  * 화면 3 — 부위 완성본 (F-05·F-06, 정의서 3-1). 모듈 ②.
  *
  * 그 부위를 다 하면 어떻게 되는지 확대해서 보여 주고, 근거 한 줄 · 필요한 것 한 줄 · "따라 하기"(→ 화면 4).
- *  - 그림(#182): **2-b AR 장면**("화장하러 가기" 를 누른 순간 내 얼굴에 개인화 화장이 입혀진 한 장)을 이 부위 크롭으로 줌 (3-2b).
- *    사용자가 2-b 에서 본 그 얼굴 그대로다. 없으면(AR 이 안 켜짐 · 다른 화장 · 앱을 다시 켬) 쌩얼 — core/completed-source.
- *    어느 쪽이든 그 위에 화면 4 와 **같은 테두리**를 겹친다 — 여기서 본 선이 라이브에서 따라 그릴 선이다.
- *    테두리는 **그 그림의 얼굴 점**으로 그린다 (AR 장면은 맨얼굴과 구도가 달라 장면과 함께 저장된 점).
+ *  - 그림(#192): **쌩얼 정면 사진 + 지금 화장의 개인화 계획으로 입힌 화장**(screens/completed — 2-b AR 과 같은 그리기 코드)을
+ *    이 부위 크롭으로 줌 (3-2b). 사진은 촬영 원본(고해상도)이 있으면 그것, 없으면(앱을 다시 켬) 저장한 쌩얼.
+ *    정면 사진이라 확대해도 테두리가 안 비뚤고, 채점도 이 쌩얼과 비교해서 완성본·테두리·채점이 한 얼굴이다.
+ *    (#190 의 2-b AR 장면은 누르는 순간 자세에 달려 비뚤기 쉽고 앱을 다시 켜면 없어서 바꿨다 — #192)
+ *    그 위에 화면 4 와 **같은 테두리**를 맨얼굴 점(그림 크기로 맞춤)으로 겹친다 — 여기서 본 선이 라이브에서 따라 그릴 선이다.
+ *    계획이 없거나 그리기가 실패하면(WebGL 없음) 쌩얼 + 테두리.
  *  - 거울로 보여 준다 (화면 4 라이브와 같은 방향).
  *  - 그림이 없어도 흐름은 막지 않는다 (2-b 와 같은 원칙).
  *
  */
 
-import type { ArFrame } from "@core/ar-frame-store";
-import { completedSource } from "@core/completed-source";
 import { cropSpec, scaleLm } from "@core/crop";
 import { partCard } from "@core/guide-view";
 import { lookGuide } from "@core/guides";
 import { outlineOf } from "@core/live-run";
 import type { Look } from "@core/looks";
+import type { PersonalPlan } from "@core/personalize";
 import type { GuideSource } from "@core/score-part";
 import { wantedOrientation } from "@core/screens";
 import type { Baseline, FaceShape, PartId, Pt } from "@core/types";
+import { paintCompleted, type Drawable } from "./completed";
 import { strokeOutline } from "./outline-draw";
 import type { Screen, ScreenContext } from "./shell";
 
@@ -31,8 +33,12 @@ export interface GuideDeps {
   getBaseline: () => Baseline | null;
   getLook: () => Look;
   getFaceShape: () => FaceShape | null;
-  /** 고른 화장의 2-b AR 장면 (⑥ ar-frame-store). 없으면 null → 쌩얼. 저장 자리가 세션으로 옮겨 가도(① #181) 그대로 받게 Promise 도 받는다 */
-  getArFrame?: () => ArFrame | null | Promise<ArFrame | null>;
+  /** 지금 화장의 개인화 계획 — getGuide 와 같은 계획. 없으면 완성본을 안 그리고 쌩얼 */
+  getPlan?: () => PersonalPlan | null;
+  /** 촬영 원본(정면 눈 뜸, 고해상도). 메모리에만 있어 앱을 다시 켜면 null → 저장한 쌩얼 */
+  getBareSource?: () => HTMLCanvasElement | null;
+  /** 완성본 그리기 — 테스트에서 바꿔 끼운다 (기본 completed.paintCompleted) */
+  paint?: typeof paintCompleted;
   /** Blob → 그림. 테스트에서 바꿔 끼운다 (기본 createImageBitmap) */
   toBitmap?: (b: Blob) => Promise<ImageBitmap>;
   /** 테두리 모양 — 화면 4·5 와 같은 것. 없으면 lookGuide(getLook().parts). ⑥ 개인화 계획이 여기 꽂힌다 */
@@ -48,8 +54,6 @@ export const GUIDE_TEXT = {
 
 /** 화면에 그릴 폭(px). 긴 변 기준 */
 const VIEW_W = 720;
-
-type Drawable = { img: CanvasImageSource; w: number; h: number; close?: () => void };
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text = ""): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -120,21 +124,24 @@ export function guideScreen<S>(deps: GuideDeps): Screen<S> {
       const baseline: Baseline | null = deps.getBaseline();
       const toBitmap = deps.toBitmap ?? ((b: Blob) => createImageBitmap(b));
       void (async () => {
-        const ar = (await deps.getArFrame?.()) ?? null;
-        const src = completedSource(ar, baseline);
-        if (!src || !alive) return;
-        // AR 장면이 깨져 못 열면 쌩얼로 (그림 없이도 선은 보인다)
-        let d = await load(src.image, toBitmap).catch(() => null);
-        let from = src;
-        if (!d && src.from === "ar") {
-          const bare = completedSource(null, baseline);
-          if (bare) { from = bare; d = await load(bare.image, toBitmap).catch(() => null); }
+        if (!baseline?.lm.length) return;
+        // 쌩얼: 촬영 원본이 있으면 원본(선명), 없으면 저장한 쌩얼 (그림 없이도 선은 보인다)
+        const orig = deps.getBareSource?.() ?? null;
+        const bare: Drawable | null = orig
+          ? { img: orig, w: orig.width, h: orig.height }
+          : baseline.bareImage ? await load(baseline.bareImage, toBitmap).catch(() => null) : null;
+        if (!bare) return;
+        if (!alive) { bare.close?.(); return; }
+        // 맨얼굴 점은 촬영 크기(w·h) 좌표 — 그림 크기로 맞춘다. 완성본·테두리·채점이 이 한 얼굴
+        const lm = scaleLm(baseline.lm, { w: baseline.w, h: baseline.h }, { w: bare.w, h: bare.h });
+        let d: Drawable = bare;
+        const plan = deps.getPlan?.() ?? null;
+        const painted = plan ? (deps.paint ?? paintCompleted)(bare, lm, look, plan) : null;
+        if (painted) {
+          bare.close?.();
+          d = { img: painted, w: bare.w, h: bare.h };
         }
-        if (!d) return;
-        if (!alive) { d.close?.(); return; }
         shown = d;
-        // 점은 저장할 때 크기(w·h) 좌표 — 그림을 줄여 저장했을 수 있어 그림 크기로 맞춘다
-        const lm = scaleLm(from.lm, { w: from.w, h: from.h }, { w: d.w, h: d.h });
         const cv = el("canvas", "guide-canvas");
         if (!drawPart(cv, d, part, lm, deps.getGuide?.() ?? lookGuide(look.parts))) return;
         figure.textContent = "";
