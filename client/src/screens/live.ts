@@ -13,8 +13,7 @@
  *  - 테두리 선은 live-run 의 One-Euro(④ smoothing.ts). 채점 묶음에는 원래 점
  *  - 개발용: 주소에 `?jitter` 를 붙이면 화면 구석에 화면 흔들림·선 떨림(프레임당 px)이 뜬다(탭하면 0부터).
  *    `?jitter&stab=0` 이면 데드존·One-Euro 를 끈 채로 잰다 → 적용 전후 비교
- *  - 개발용 `?pose` (#28): 기준 각도 차 환산 계수 보정. 입을 다문 채 끄덕이거나 돌리면 옛 방식(턱 사용)에 맞춘 k 를 추정하고,
- *    입을 크게 벌리면 옛 방식·새 방식(강체 점)의 각도 차 최대를 나란히 보여 준다
+ *  - 개발용 `?pose` (#28): 입을 벌릴 때 기준 각도 차가 흔들리는 원인 가르기 — screens/pose-probe.ts
  *
  * 이벤트(#24): gate_fail · landmark_lost 는 core/live-events (화면 1 과 같은 규칙). screen_enter/leave 는 껍데기가 찍는다.
  *
@@ -27,7 +26,6 @@ import { cropSpec, type Rect } from "@core/crop";
 import { clampRect, createCropFollow, jitterMeter } from "@core/crop-follow";
 import { lookGuide } from "@core/guides";
 import { createLiveEvents } from "@core/live-events";
-import { poseOf, rigidPoseDiff, slopeFit, RIGID_POSE } from "@core/gate";
 import { createLiveRun, type LiveFrame } from "@core/live-run";
 import type { Logger } from "@core/log";
 import type { LookPart, LookPartId } from "@core/looks";
@@ -40,6 +38,7 @@ import { applyCameraLocks, applyUltraWideZoom, bindVisibility, requestWakeLock, 
 import { foreheadLabOf, grabFrame, sharpnessOf } from "./frame-measure";
 import { createLandmarker } from "./landmarker";
 import { strokeOutline } from "./outline-draw";
+import { createPoseProbe } from "./pose-probe";
 import type { Screen, ScreenContext } from "./shell";
 
 export interface LiveDeps {
@@ -169,12 +168,12 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
       const meter = q.has("jitter") ? { view: jitterMeter(), line: jitterMeter() } : null;
       const readout = el("p", "live-jitter");
       // #28 보정: [옛 각도 차, k=1 강체 각도 차] 짝 (입 다물었을 때) · 입 벌렸을 때 최대
-      const poseCal = q.has("pose") ? { yaw: [] as [number, number][], pitch: [] as [number, number][], openOld: 0, openNew: 0 } : null;
+      const poseCal = q.has("pose") ? createPoseProbe() : null;
       if (meter || poseCal) {
         stage.append(readout);
         readout.addEventListener("click", () => {
           meter?.view.reset(); meter?.line.reset();
-          if (poseCal) { poseCal.yaw = []; poseCal.pitch = []; poseCal.openOld = 0; poseCal.openNew = 0; }
+          poseCal?.reset();
         });
       }
       const line = el("p", "cam-gate", LIVE_TEXT.loading);
@@ -269,21 +268,8 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         }
         const r = run.step(f);
         if (poseCal && lm) {
-          const jaw = f.expr?.["jawOpen"] ?? 0;
-          const ob = poseOf(baseline!.lm), oc = poseOf(lm);
-          const old = { yaw: oc.yaw - ob.yaw, pitch: oc.pitch - ob.pitch };
-          if (jaw < 0.1) {
-            const unit = rigidPoseDiff(baseline!.lm, lm, { kYaw: 1, kPitch: 1 });
-            if (Math.abs(old.yaw) > 2) poseCal.yaw.push([old.yaw, unit.yaw]);
-            if (Math.abs(old.pitch) > 2) poseCal.pitch.push([old.pitch, unit.pitch]);
-          } else if (jaw > 0.4) {
-            poseCal.openOld = Math.max(poseCal.openOld, Math.abs(old.pitch));
-            poseCal.openNew = Math.max(poseCal.openNew, Math.abs(rigidPoseDiff(baseline!.lm, lm).pitch));
-          }
-          // 옛 yaw 는 거울 기준(poseOf 가 부호를 뒤집음)이라 기울기가 음수로 나온다 → 크기만
-          const abs = (v: number | null): number | null => (v === null ? null : Math.abs(v));
-          const ky = abs(slopeFit(poseCal.yaw)), kp = abs(slopeFit(poseCal.pitch));
-          readout.textContent = `k 추정 yaw ${ky?.toFixed(3) ?? "-"}(${poseCal.yaw.length}) · pitch ${kp?.toFixed(3) ?? "-"}(${poseCal.pitch.length}) [지금 ${RIGID_POSE.kPitch}] · 입 벌림 최대 옛 ${poseCal.openOld.toFixed(1)}° / 새 ${poseCal.openNew.toFixed(1)}°`;
+          readout.style.whiteSpace = "pre";
+          readout.textContent = poseCal.step(lm, res.facialTransformationMatrixes?.[0]?.data ?? null, f.expr?.["jawOpen"] ?? 0);
         }
         const vm = drawView(view, video, shown, r.outline);
         if (meter && vm && r.outline) {
