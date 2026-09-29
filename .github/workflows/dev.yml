@@ -1,0 +1,40 @@
+name: Print Workflow
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+jobs:
+  print-workflow:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Print workflow YAML
+        shell: bash
+        run: |
+          echo "========================================"
+          echo "Workflow files"
+          echo "========================================"
+
+          find "$GITHUB_WORKSPACE/.github/workflows" \
+            -type f \( -name "*.yml" -o -name "*.yaml" \) \
+            -print
+
+          echo ""
+          echo "========================================"
+          echo "Current branch"
+          echo "========================================"
+
+          echo "Branch: $GITHUB_REF_NAME"
+
+          echo ""
+          echo "========================================"
+          echo "Workflow"
+          echo "========================================"
+
+          cat "$GITHUB_WORKSPACE/.github/workflows/$(basename "$GITHUB_WORKFLOW")"
