@@ -223,7 +223,8 @@ export interface LinerEyeMetrics {
 
 export function compareLinerEye(base: LinerStrip, cur: LinerStrip, corr: LightCorr, p: ScoreParams = PARAMS): LinerEyeMetrics {
   const { offs, isWing, tFromCorner, wingLen, thick: guideThick } = cur.meta;
-  const half = guideThick / 2;
+  // 띠 = 속눈썹 선(o = 0)에서 위로 guideThick — ② 가이드(guides.ts linerOutline)와 같은 뜻 (#153).
+  // 전엔 속눈썹 선을 가운데 두고 ±thick/2 라, 두꺼운 화장을 가이드대로 칠해도 윗부분이 '번짐' 이었다
   const N = Math.min(base.lab.length, cur.lab.length), M = offs.length;
   const step = M > 1 ? offs[1]! - offs[0]! : 0.0092;
   // 속눈썹 선 아래(−)는 눈을 뜨고 있으면 눈알이다. 시선·홍채가 조금만 움직여도 색이 크게 변해 "선 아래 잉크"로 오인된다.
@@ -241,9 +242,9 @@ export function compareLinerEye(base: LinerStrip, cur: LinerStrip, corr: LightCo
       const o = offs[j]!;
       if (!wing && !useBelow && o < -p.tol.band) continue;   // 눈알 칸 — 어느 계산에도 안 넣는다
       const hit = deltaE(base.lab[i]![j]!, corr(cur.lab[i]![j]!)) >= p.dEThresh.liner;
-      if (Math.abs(o) <= half + p.tol.band) {
+      if (o >= -p.tol.band && o <= guideThick + p.tol.band) {
         if (hit) bandHit = true;   // 가이드 밴드(두께 + 허용) 안에 감지가 있으면 그 행은 덮임
-      } else if (Math.abs(o) > half + p.tol.out + blurW) {   // 번진 폭만큼 바깥 판정을 민다
+      } else if (o > guideThick + p.tol.out + blurW || o < -(p.tol.out + blurW)) {   // 번진 폭만큼 바깥 판정을 민다
         outN++;                    // 밴드 밖 번짐
         if (hit) outHit++;
       }
