@@ -43,6 +43,8 @@ export function looksScreen<S>(deps: LooksDeps): Screen<S> {
       const logged = new Set<string>();
       /** 개인화를 기다리는 룩 — 마지막에 누른 것만 2-b 로 넘어간다 */
       let wanted: string | null = null;
+      /** 누를 때마다 새 번호 — 취소하고 같은 화장을 다시 눌러도 앞 요청이 넘어가지 않게 */
+      let ticket = 0;
       let failed = false;
       let alive = true;
 
@@ -134,16 +136,17 @@ export function looksScreen<S>(deps: LooksDeps): Screen<S> {
           return;
         }
         wanted = lookId;
+        const my = ++ticket;
         draw();
         const minWait = new Promise<void>((r) => setTimeout(r, deps.minBusyMs ?? 0));
         Promise.all([deps.personalize(lookId), minWait]).then(
           () => {
-            if (!alive || wanted !== lookId) return;
+            if (!alive || ticket !== my) return;
             wanted = null;
             ctx.go("fullrender");
           },
           (e: unknown) => {
-            if (!alive || wanted !== lookId) return;
+            if (!alive || ticket !== my) return;
             ctx.log.log({ name: "error", where: "personalize", msg: e instanceof Error ? e.message : String(e) });
             wanted = null;
             failed = true;
@@ -171,6 +174,7 @@ export function looksScreen<S>(deps: LooksDeps): Screen<S> {
         back.addEventListener("click", () => {
           ctx.log.log({ name: "button", button: "personalize_cancel" });
           wanted = null;
+          ticket++;
           draw();
         });
         box.append(t, p, bar, back);

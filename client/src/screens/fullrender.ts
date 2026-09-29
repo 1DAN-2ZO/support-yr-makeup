@@ -122,6 +122,7 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
       let raf = 0;
       let stream: MediaStream | null = null;
       let closeLandmarker: (() => void) | null = null;
+      let disposeGl: (() => void) | null = null;
       if (typeof navigator !== "undefined" && typeof navigator.mediaDevices?.getUserMedia === "function") void startAr();
 
       async function startAr(): Promise<void> {
@@ -140,6 +141,7 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
           const canvas = document.createElement("canvas");
           canvas.className = "ar-canvas";
           const gl = new MakeupGl(canvas);
+          disposeGl = () => gl.dispose();
           const mk = () => document.createElement("canvas");
           const atlas = { mul: mk(), col: mk(), light: mk() }, off = mk();
           const paintLook = paintLookOf(look);
@@ -150,14 +152,27 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
 
           const tick = (): void => {
             if (!alive) return;
+            try {
+              frame();
+            } catch (e) {
+              // 루프 안 오류는 바깥 try 가 못 잡는다 — 기록하고 서버 그림으로 돌아간다 (#172 리뷰)
+              ctx.log.log({ name: "error", where: "ar", msg: e instanceof Error ? e.message : String(e) });
+              cleanup(false);
+              live = false;
+              drawFallback();
+              return;
+            }
+            raf = requestAnimationFrame(tick);
+          };
+          const frame = (): void => {
             const w = video.videoWidth, hh = video.videoHeight;
             if (w && hh) {
               const face = lmk.detectForVideo(video, performance.now()).faceLandmarks[0];
               const now = performance.now();
               const raw = face && face.length >= 478 ? face.map((p) => ({ x: p.x * w, y: p.y * hh })) : null;
               const lm = smoother ? smoother.smooth(raw, now) : raw;
-              if (lm && !ref) {
-                // 기준 얼굴: 처음 잡힌 얼굴. 화장 층은 여기에 한 번만 그린다 (계획은 정해져 있다)
+              if (lm && !ref && goodRef(raw!, w, hh)) {
+                // 기준 얼굴: 정면으로 다 보이는 첫 얼굴(goodRef). 화장 층은 여기에 한 번만 그린다 (계획은 정해져 있다)
                 ref = lm;
                 for (const c of [atlas.mul, atlas.col, atlas.light, off]) { c.width = w; c.height = hh; }
                 const p = plan ?? resolvePlan(measureFace(ref));
@@ -170,7 +185,6 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
                 note.textContent = "카메라에 비친 내 얼굴이에요. 고개를 돌려 봐도 따라가요.";
               }
             }
-            raf = requestAnimationFrame(tick);
           };
           raf = requestAnimationFrame(tick);
         } catch (e) {
@@ -190,6 +204,8 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
         stopStream();
         closeLandmarker?.();
         closeLandmarker = null;
+        disposeGl?.();
+        disposeGl = null;
         if (all) alive = false;
       }
 
@@ -199,6 +215,20 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
       };
     },
   };
+}
+
+/**
+ * 화장을 한 번 그릴 기준 얼굴로 쓸 만한가 (#172 리뷰: 첫 프레임이 고개를 돌렸거나 잘렸으면 그 비뚤어진 그물에
+ * 그린 화장이 세션 내내 따라다녔다). 얼굴 전체가 화면 안(가장자리 2%)에 있고, 코끝이 두 눈 바깥 끝의 가운데에서
+ * 눈 사이 거리의 12% 안(대략 정면 ±10°)이어야 한다. 그때까지는 화장 없이 영상만 보인다
+ */
+export function goodRef(lm: readonly Pt[], w: number, h: number): boolean {
+  const mx = w * 0.02, my = h * 0.02;
+  if (lm.some((p) => p.x < mx || p.x > w - mx || p.y < my || p.y > h - my)) return false;
+  const a = lm[33], b = lm[263], n = lm[1];
+  if (!a || !b || !n) return false;
+  const eye = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+  return Math.abs(n.x - (a.x + b.x) / 2) / eye < 0.12;
 }
 
 /**

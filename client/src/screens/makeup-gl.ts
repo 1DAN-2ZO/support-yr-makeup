@@ -134,6 +134,19 @@ export class MakeupGl {
   private tLight: WebGLTexture;
   private verts = new Float32Array(468 * 4);
 
+  /**
+   * GPU 자원을 돌려준다. 화면을 떠날 때 부른다 — 브라우저는 살아 있는 WebGL 을 16개쯤으로 막아서,
+   * 2-b 를 여러 번 드나들면 오래된 것부터 강제로 잃는다 (#172 리뷰)
+   */
+  dispose(): void {
+    const gl = this.gl;
+    for (const t of [this.tVideo, this.tMul, this.tCol, this.tLight]) gl.deleteTexture(t);
+    for (const b of [this.bgBuf, this.vBuf, this.iBuf]) gl.deleteBuffer(b);
+    gl.deleteProgram(this.bg);
+    gl.deleteProgram(this.mesh);
+    gl.getExtension("WEBGL_lose_context")?.loseContext();
+  }
+
   constructor(private canvas: HTMLCanvasElement) {
     const gl = canvas.getContext("webgl2", { premultipliedAlpha: false, preserveDrawingBuffer: true });
     if (!gl) throw new Error("WebGL2 를 쓸 수 없음");

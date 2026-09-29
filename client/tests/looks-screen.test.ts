@@ -134,6 +134,28 @@ describe("화면 2 — 룩 선택", () => {
     expect(go).not.toHaveBeenCalled();
   });
 
+  it("취소한 화장을 다시 누르면 새로 최소 시간을 기다린다 — 앞 요청이 먼저 끝나도 끌려가지 않음 (#172 리뷰)", async () => {
+    vi.useFakeTimers();
+    try {
+      let done: () => void = () => {};
+      const plan = new Promise<void>((r) => { done = r; });
+      const { root, ctx, go, deps } = setup([job("daily", "done", "/r/daily.png")]);
+      looksScreen<null>({ ...deps, personalize: () => plan, minBusyMs: 1500 }).mount(ctx);
+      (cards(root)[0] as HTMLButtonElement).click();          // t=0
+      await vi.advanceTimersByTimeAsync(1000);
+      byText(root, "다른 화장 고르기").click();
+      (cards(root)[0] as HTMLButtonElement).click();          // t=1000 — 다시
+      await vi.advanceTimersByTimeAsync(600);                  // 첫 요청 최소 시간(1500) 지남
+      done();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(go).not.toHaveBeenCalled();                        // 두 번째 요청은 t=2500 까지
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(go).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("이미 개인화한 화장은 기다리지 않고 바로 2-b 로 간다 (화장마다 한 번)", () => {
     const { root, ctx, go, deps, personalize } = setup([job("daily", "done", "/r/daily.png")]);
     looksScreen<null>({ ...deps, minBusyMs: 1500, isPersonalized: (id) => id === "daily" }).mount(ctx);

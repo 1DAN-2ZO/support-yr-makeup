@@ -37,7 +37,14 @@ export function createPlanQueue<T>(compute: (lookId: string) => Promise<T>): Pla
     const lookId = queue.pop()!;                   // 마지막에 누른 것부터
     running = lookId;
     const my = epoch;
-    compute(lookId).then(
+    // 계산이 동기로 던져도 약속으로 받는다 — 안 그러면 running 이 안 풀려 큐가 멈춘다 (바로 부르는 건 그대로)
+    let started: Promise<T>;
+    try {
+      started = compute(lookId);
+    } catch (e) {
+      started = Promise.reject(e);
+    }
+    started.then(
       (v) => {
         if (my !== epoch) return;
         done.set(lookId, v);

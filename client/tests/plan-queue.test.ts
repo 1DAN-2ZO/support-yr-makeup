@@ -79,4 +79,15 @@ describe("룩별 개인화 대기열", () => {
     q.clear();
     expect(q.get("smoky")).toBeUndefined();
   });
+  it("계산이 바로(동기로) 던져도 큐가 멈추지 않는다 — 다음 요청은 돈다 (#172 리뷰)", async () => {
+    let n = 0;
+    const q = createPlanQueue<number>((id) => {
+      n++;
+      if (id === "bad") throw new Error("동기 실패");
+      return Promise.resolve(1);
+    });
+    await expect(q.request("bad")).rejects.toThrow("동기 실패");
+    await expect(q.request("ok")).resolves.toBe(1);
+    expect(n).toBe(2);
+  });
 });
