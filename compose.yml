@@ -1,15 +1,27 @@
 services:
-  api:
+  back:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: BackDockerfile
 
-    container_name: fastapi-server
+    container_name: back-server
 
     ports:
       - "8000:8000"
 
     volumes:
       - ./server:/app/server
+
+    restart: unless-stopped
+
+  front:
+    build:
+      context: .
+      dockerfile: FrontDockerfile
+
+    container_name: front-server
+
+    ports:
+      - "80:80"
 
     restart: unless-stopped
