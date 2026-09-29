@@ -204,3 +204,8 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
 .shot-thumb { width: 100%; height: auto; border-radius: 8px; background: var(--line); }
 .shot-name { font-size: 13px; }
 .shot-retake { padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--ink); font: inherit; font-size: 13px; }
+
+/* 화면 6 들어올 때 "지금" 얼굴 정면 1장 (#79) — 카메라는 화면 1 과 같은 .cam */
+.review-shot { margin: 16px 0; }
+.review-shot .shot-title { margin: 0 0 8px; font-weight: 600; text-align: center; }
+.review-shot .ghost { display: block; margin: 8px auto 0; }
