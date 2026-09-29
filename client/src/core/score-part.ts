@@ -77,6 +77,8 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
   const lit = foreBase && foreCur ? { corr: lightCorr(foreBase.L, foreCur.L), shift: foreCur.L - foreBase.L } : null;
   const corr = lit?.corr ?? noCorr;
   const ctx: DecideContext = lit ? { lightShift: lit.shift } : {};
+  // 정렬 잔차는 눈 폭으로 나눠 해상도와 상관없게 (#43)
+  if (opts.alignResidual !== undefined && cur.unit.eye > 0) ctx.alignResidual = opts.alignResidual / cur.unit.eye;
 
   let result: PartScore;
   if (partId === "liner") {

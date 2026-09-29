@@ -279,6 +279,11 @@ describe("상태·한 줄 평", () => {
     expect(decide("liner", scored(80), { noFace: true }).reason).toBe("align");
   });
 
+  it("D1b 기준 얼굴과 정렬이 크게 어긋나면(잔차 > 눈 폭의 alignMax) 확인만(align) — 그 아래면 채점 (#43)", () => {
+    expect(decide("liner", scored(80), { alignResidual: PARAMS.alignMax + 0.01 })).toMatchObject({ status: "check_only", reason: "align" });
+    expect(decide("liner", scored(80), { alignResidual: PARAMS.alignMax - 0.01 }).status).toBe("scored");
+  });
+
   it("D2 한 줄 평: 모든 문구에 숫자 없음, 최대 두 문장, 코드가 없으면 '잘 됐어요'", () => {
     for (const t of Object.values(DIAG_TEXT)) expect(hasDigit(t), t).toBe(false);
     for (const t of Object.values(CHECK_REASON_TEXT)) expect(hasDigit(t), t).toBe(false);
