@@ -9,6 +9,7 @@
  *  - 세션 반영은 flow.ts applyResult 가 한다. 여기서는 toOutcome() 으로 그 입력을 만든다
  */
 
+import scoreRules from "../../../rules/score.json";
 import type { Lab } from "./color";
 import { deltaE } from "./color";
 import type { ScoreOutcome } from "./flow";
@@ -71,16 +72,11 @@ export interface ScoreParams {
   };
 }
 
-export const PARAMS: ScoreParams = {
-  dEThresh: { liner: 14, brow: 10, lip: 10 },
-  tPresent: { shadow: 3.5, cheek: 4, contour: 4 },
-  dEMaxSession: 25,
-  toneDiv: 4,
-  lightTol: 12,
-  alignMax: 0.08,
-  band: { cheek: [25, 60], shadow: [20, 65] },
-  tol: { band: 0.011, out: 0.022, wingDev: 0.022, wingShort: 0.055, thickOver: 0.015, thickUnder: 0.022, lrDiff: 0.045, lipIn: 0.006, lipOut: 0.012, wingMin: 0.015 },
-};
+/** 채점 가정값 — rules/score.json 한 곳 (#44). 코드에 숫자를 박지 않는다 (dev-stack-v6.md §6) */
+// JSON 의 [a, b] 는 "숫자 목록" 으로 읽혀 Band(두 개) 로 바로 안 바뀐다 — 값이 파일과 같은지는 score-rules.test R1 이 본다
+export const PARAMS: ScoreParams = scoreRules.params as unknown as ScoreParams;
+/** 채점 규칙 버전 — 로그(Event.ver)·결과 카드 도장에 붙는다. 임계를 바꾸면 rules/score.json 에서 올린다 */
+export const SCORE_VERSION: string = scoreRules.version;
 
 /** 진단 코드 → 한 줄 문장. 코드표는 여기 한 곳에만 둔다 (review.ts 도 가져다 쓴다). 숫자를 쓰지 않는다 */
 export const DIAG_TEXT = {

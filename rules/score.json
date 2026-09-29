@@ -1,0 +1,51 @@
+{
+  "version": "score-v0.2",
+  "note": "채점 가정값 — 전부 여기 한 곳 (dev-stack-v6.md §6). 실사진(골든 세트 #38)으로 확정하면 버전을 올린다. v0.2 (2026-09-29): 평균 창 1/30·미세 정렬·라이너 띠 위로·정렬 어긋남 확인만 (#174 #153 #43)",
+  "params": {
+    "dEThresh": {
+      "liner": 14,
+      "brow": 10,
+      "lip": 10
+    },
+    "tPresent": {
+      "shadow": 3.5,
+      "cheek": 4,
+      "contour": 4
+    },
+    "dEMaxSession": 25,
+    "toneDiv": 4,
+    "lightTol": 12,
+    "alignMax": 0.08,
+    "band": {
+      "cheek": [
+        25,
+        60
+      ],
+      "shadow": [
+        20,
+        65
+      ]
+    },
+    "tol": {
+      "band": 0.011,
+      "out": 0.022,
+      "wingDev": 0.022,
+      "wingShort": 0.055,
+      "thickOver": 0.015,
+      "thickUnder": 0.022,
+      "lrDiff": 0.045,
+      "lipIn": 0.006,
+      "lipOut": 0.012,
+      "wingMin": 0.015
+    }
+  },
+  "_register": "비교 전 부위별 미세 정렬 — range: 옮겨 볼 범위(눈 폭 비율), minGain: 밝아진 L* 비용이 이만큼 줄어야 옮김 (#174)",
+  "register": {
+    "range": 0.022,
+    "minGain": 0.1
+  },
+  "_sample": "채점 샘플을 눈 폭 × boxRatio 창 평균으로 읽는다 — 카메라 잡음 (#174)",
+  "sample": {
+    "boxRatio": 0.03333333333333333
+  }
+}
