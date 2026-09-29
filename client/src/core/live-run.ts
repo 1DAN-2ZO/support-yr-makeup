@@ -13,12 +13,14 @@ import type { Lab } from "./color";
 import { unitScale } from "./baseline";
 import type { Rect } from "./crop";
 import { createBundleCollector, type BundleState } from "./capture-bundle";
+import { exprDiff } from "./expression";
 import { gateStep, poseOf, type LiveLimits, LIVE_LIMITS } from "./gate";
 import { linerOutline, GUIDE_PARAMS } from "./guides";
 import { partInRect } from "./landmarks";
 import { foreheadStep, startForeheadTrack, type ForeheadTrack } from "./occlusion";
 import { guideOutline, type Outline } from "./overlay";
 import type { GuideSource } from "./score-part";
+import { LandmarkSmoother } from "./smoothing";
 import type { GateResult, PartId, Pt } from "./types";
 
 /** 화면이 프레임마다 넣는 것. 픽셀 측정(선명·이마 색)은 화면이 한다 (screens/frame-measure) */
@@ -34,6 +36,8 @@ export interface LiveFrame<I> {
   sharpness?: number;
   /** 이마 L*a*b*. 못 쟀으면 없음 */
   lab?: Lab;
+  /** 지금 표정 (블렌드셰이프 이름 → 0~1). 없으면 표정 조건 생략 */
+  expr?: Readonly<Record<string, number>>;
   /** 지금 프레임 사진. 묶음을 모을 때만 부른다 — 프레임마다 복사하면 무겁다 */
   image: () => I;
 }
@@ -44,8 +48,12 @@ export interface LiveRunOptions {
   baseline: { lm: readonly Pt[]; foreheadL: number };
   /** 기준 이마 a*·b*. 촬영 직후에만 있다 (복원하면 없음 → 색 조건 생략) */
   baseAb?: { a: number; b: number };
+  /** 맨얼굴 정면 때 표정 (① Baseline, #177). 없으면 표정 조건 생략 */
+  baseExpr?: Readonly<Record<string, number>> | null;
   /** 테두리 모양. 채점과 같은 것 */
   guide: GuideSource;
+  /** 테두리를 그릴 점에 One-Euro(④ smoothing.ts)를 건다. 기본 켬 — 떨림 비교(#23)용으로 끌 수 있다 */
+  smooth?: boolean;
   limits?: LiveLimits;
 }
 
@@ -71,6 +79,8 @@ export function outlineOf(partId: PartId, lm: readonly Pt[], guide: GuideSource)
   return guideOutline(partId, lm, g);
 }
 
+const optExpr = (d: number | undefined): { exprDiff?: number } => (d === undefined ? {} : { exprDiff: d });
+
 export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): LiveStep<I>; press(): boolean } {
   const limits = opt.limits ?? LIVE_LIMITS;
   const base = poseOf(opt.baseline.lm);
@@ -78,6 +88,8 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
   let fj: ForeheadTrack = startForeheadTrack();
   let lastOk = false;
   let collector: ReturnType<typeof createBundleCollector<I>> | null = null;
+  // 그리기 전용. 게이트·묶음(채점)에는 원래 점을 쓴다 — 필터 지연이 채점 위치를 끌고 가지 않게
+  const smoother = opt.smooth === false ? null : new LandmarkSmoother(Array.from({ length: 478 }, (_, i) => i));
 
   return {
     step(f) {
@@ -85,6 +97,7 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
       let outline: Outline | null = null;
       let occluded: boolean | null = null;
       if (!f.lm) {
+        smoother?.smooth(null, f.t);
         const r = gateStep(stable, opt.partId, { faceDetected: false, yaw: 0, pitch: 0 }, limits);
         stable = r.stable;
         gate = r.gate;
@@ -97,6 +110,7 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
         }
         const r = gateStep(stable, opt.partId, {
           faceDetected: true, ...pose, baseYaw: base.yaw, basePitch: base.pitch,
+          ...optExpr(exprDiff(opt.partId, opt.baseExpr, f.expr)),
           partVisible: partInRect(opt.partId, f.lm, f.view ?? { x: 0, y: 0, w: f.w, h: f.h }),
           ...(occluded !== null ? { occluded } : {}),
           ...(f.sharpness !== undefined ? { sharpness: f.sharpness } : {}),
@@ -106,7 +120,7 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
         }, limits);
         stable = r.stable;
         gate = r.gate;
-        outline = outlineOf(opt.partId, f.lm, opt.guide);
+        outline = outlineOf(opt.partId, smoother?.smooth(f.lm, f.t) ?? f.lm, opt.guide);
       }
       lastOk = gate.ok;
 

@@ -57,6 +57,15 @@ describe("evaluateGate", () => {
     expect(evaluateGate("liner", good({ yaw: 9 })).text).toBe("처음 찍을 때와 같은 각도로 봐 주세요");
   });
 
+  it("V6b 표정이 맨얼굴 때와 많이 다르면 expr_diff — 각도 차 다음, 부위 보임보다 먼저 (#27)", () => {
+    const r = evaluateGate("lip", good({ exprDiff: LIVE_LIMITS.exprTol + 0.01, partVisible: false }));
+    expect(r.firstFail).toBe("expr_diff");
+    expect(r.text).toBe("처음 찍을 때처럼 편한 표정으로 있어 주세요");
+    expect(evaluateGate("lip", good({ exprDiff: LIVE_LIMITS.exprTol + 0.01, yaw: 9 })).firstFail).toBe("pose_diff");
+    expect(evaluateGate("lip", good({ exprDiff: LIVE_LIMITS.exprTol })).ok).toBe(true);
+    expect(evaluateGate("lip", good({ exprDiff: undefined })).ok).toBe(true);
+  });
+
   it("V7 부위가 잘리면 visible — 눈 부위는 '양쪽 눈', 나머지는 '부위'", () => {
     for (const p of ["brow", "liner", "shadow"] as const) {
       expect(evaluateGate(p, good({ partVisible: false })).text).toBe("양쪽 눈이 보이게 해 주세요");
