@@ -2,8 +2,9 @@
  * [dev] 화장 필터 렌더러 (WebGL2) — SNOW 같은 필터 방식.
  *
  * 1. 배경: 영상(또는 찍은 사진)을 그대로 깐다.
- * 2. 얼굴 그물(삼각형 852개): 점 위치는 지금 얼굴, 무늬 좌표는 기준 얼굴.
+ * 2. 얼굴 그물(MediaPipe 852개 + 헤어라인 합성 리본 20개, face-mesh.ts EXTENDED_TRIANGLES): 점 위치는 지금 얼굴, 무늬 좌표는 기준 얼굴.
  *    기준 얼굴 위에 그린 화장 무늬(atlas)가 삼각형마다 휘어 지금 얼굴에 붙는다.
+ *    헤어라인 리본은 "피부 보정"이 이마 중간에서 잘리는 문제 때문에 늘렸다 — 실측 랜드마크가 아니라 지어낸 점이니 화장 자리 계산에는 안 쓴다.
  * 3. 셰이더에서 피부와 섞는다:
  *    - 곱하기 층: 피부 × 화장색 — 결·그늘·광이 그대로 비친다
  *    - 색 층(입술): 밝기는 피부 것을 두고 색만 옮긴다 — 입술 광이 산다
@@ -12,7 +13,7 @@
  * 무늬 캔버스는 영상과 같은 크기라, 기준 얼굴 점 px ÷ 크기 가 그대로 무늬 좌표다.
  */
 
-import { FACE_TRIANGLES } from "@core/face-mesh";
+import { EXTENDED_TRIANGLES, MESH_VERTEX_SRC } from "@core/face-mesh";
 import type { Pt } from "@core/types";
 
 const VS_BG = `#version 300 es
@@ -111,9 +112,9 @@ function texture(gl: WebGL2RenderingContext): WebGLTexture {
 }
 
 export interface GlFrame {
-  /** 지금 얼굴 점 (px) */
+  /** 지금 얼굴 점 (px). face-mesh.ts withHairline() 으로 헤어라인 합성점까지 붙여서 넘긴다 */
   lm: readonly Pt[];
-  /** 무늬를 그린 기준 얼굴 점 (px) */
+  /** 무늬를 그린 기준 얼굴 점 (px). 마찬가지로 withHairline() 통과한 것 */
   ref: readonly Pt[];
   /** 피부 보정 0~1 */
   beauty: number;
@@ -132,7 +133,7 @@ export class MakeupGl {
   private tMul: WebGLTexture;
   private tCol: WebGLTexture;
   private tLight: WebGLTexture;
-  private verts = new Float32Array(468 * 4);
+  private verts = new Float32Array(MESH_VERTEX_SRC.length * 4);
 
   constructor(private canvas: HTMLCanvasElement) {
     const gl = canvas.getContext("webgl2", { premultipliedAlpha: false, preserveDrawingBuffer: true });
@@ -146,7 +147,7 @@ export class MakeupGl {
     this.vBuf = gl.createBuffer()!;
     this.iBuf = gl.createBuffer()!;
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.iBuf);
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(FACE_TRIANGLES.flat()), gl.STATIC_DRAW);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(EXTENDED_TRIANGLES.flat()), gl.STATIC_DRAW);
     this.tVideo = texture(gl);
     this.tMul = texture(gl);
     this.tCol = texture(gl);
@@ -184,13 +185,23 @@ export class MakeupGl {
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     gl.disableVertexAttribArray(aBg);
     if (!f) return;
+    // 방어: lm/ref가 헤어라인 합성점(withHairline) 없이 넘어오면(HMR 반영 틈 등) 예외로 렌더 루프 전체가
+    // 멈추는 대신, 이 프레임만 배경만 그리고 건너뛴다 — 얼어붙은 옛 프레임이 "화장이 안 따라온다"로 보이는 사고를 막는다
+    const maxIdx = MESH_VERTEX_SRC[MESH_VERTEX_SRC.length - 1]!;
+    if (f.lm.length <= maxIdx || f.ref.length <= maxIdx) { console.warn(`[MakeupGl] lm/ref 길이 부족(${f.lm.length}/${f.ref.length}, ${maxIdx + 1} 필요) — 이 프레임 건너뜀`); return; }
 
     this.upload(this.tMul, mul);
     this.upload(this.tCol, col);
     this.upload(this.tLight, light);
-    for (let i = 0; i < 468; i++) {
-      const p = f.lm[i]!, r = f.ref[i]!;
+    for (let i = 0; i < MESH_VERTEX_SRC.length; i++) {
+      const li = MESH_VERTEX_SRC[i]!;
+      const p = f.lm[li]!, r = f.ref[li]!;
       this.verts.set([p.x, p.y, r.x, r.y], i * 4);
+    }
+    // [디버그] 10프레임에 한 번, 헤어라인과 무관한 실제 랜드마크(입술 61번)와 합성 헤어라인 점(478번)을 찍는다.
+    // 화장이 위로 쏠린다면: lip61이 예전과 다른 값이면 실제 랜드마크 쪽 버그, hair478만 이상하면 헤어라인 국한 문제
+    if (Math.random() < 0.1) {
+      console.log("[hairline-debug] lip61(lm)=", f.lm[61], "lip61(ref)=", f.ref[61], "hair478(lm)=", f.lm[478], "hair478(ref)=", f.ref[478], "lm.length=", f.lm.length, "verts.length=", this.verts.length, "slots=", MESH_VERTEX_SRC.length);
     }
     gl.useProgram(this.mesh);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.vBuf);
@@ -209,7 +220,7 @@ export class MakeupGl {
     this.bindUnit(this.mesh, "uCol", 2, this.tCol);
     this.bindUnit(this.mesh, "uLight", 3, this.tLight);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.iBuf);
-    gl.drawElements(gl.TRIANGLES, FACE_TRIANGLES.length * 3, gl.UNSIGNED_SHORT, 0);
+    gl.drawElements(gl.TRIANGLES, EXTENDED_TRIANGLES.length * 3, gl.UNSIGNED_SHORT, 0);
     gl.disableVertexAttribArray(aPos);
     gl.disableVertexAttribArray(aRef);
   }

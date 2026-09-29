@@ -9,6 +9,7 @@
 import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 import { unitScale } from "@core/baseline";
 import { measureFace } from "@core/face-measure";
+import { withHairline } from "@core/face-mesh";
 import { contourOutline } from "@core/contour";
 import { faceAxis } from "@core/face-measure";
 import { GUIDE_PARAMS, browStandard, linerOutline, lipOutline, planGuide } from "@core/guides";
@@ -556,7 +557,7 @@ function tick(): void {
       aLight.clearRect(0, 0, w, h);
       if (!bare) drawMakeup(ref, style);
       glr ??= new MakeupGl(glcv);
-      glr.render(stillLm ? still : video, w, h, atlasMul, atlasCol, atlasLight, { lm, ref, beauty: bare ? 0 : Number(beautyIn.value), radius: unitScale(lm).face * 0.012 });
+      glr.render(stillLm ? still : video, w, h, atlasMul, atlasCol, atlasLight, { lm: withHairline(lm), ref: withHairline(ref), beauty: bare ? 0 : Number(beautyIn.value), radius: unitScale(lm).face * 0.012 });
     } else {
       if (!bare) drawMakeup(lm, style);
       if (linesChk.checked) drawBrowLines(lm);
