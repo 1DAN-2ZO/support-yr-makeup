@@ -36,7 +36,6 @@ import { checkSecureContext, readEnv, type SecureCheck } from "./core/secure-con
 import { createSessionStore, indexedDbBackend, memoryBackend, type SessionStore } from "./core/session-store";
 import { getVersions } from "./core/versions";
 import { lookById, SUMMARY_TEMPLATE } from "./core/looks";
-import { fullRenderUrl } from "./core/look-view";
 import { captureScreen, type CaptureDeps, type ShotData } from "./screens/capture";
 import { consentScreen, deniedScreen, type ConsentDeps } from "./screens/consent";
 import { doneScreen, type DoneDeps } from "./screens/done";
@@ -305,7 +304,8 @@ async function boot(): Promise<void> {
       getBaseline: () => session.baseline,
       getLook: () => lookById(session.lookId),
       getFaceShape: () => session.faceShape,
-      fullRenderUrl: () => fullRenderUrl(lookJobs.current(), session.lookId),
+      // 서버 완성본(Stable-Makeup)은 빠졌다 — 쌩얼 + 테두리로 보인다. AR 장면으로 바꾸는 건 ② 요청 (2026-09-29)
+      fullRenderUrl: () => null,
       getGuide: guideFor,
     },
     {
