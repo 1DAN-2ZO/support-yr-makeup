@@ -167,6 +167,7 @@ export type EventName =
   | "part_status"
   | "score"
   | "look_job"
+  | "vlm_plan"
   | "restore"
   | "session_end"
   | "error";
@@ -189,6 +190,8 @@ export type EventFields =
   | { name: "part_status"; part: PartId; from: PartStatus; to: PartStatus; score: number | null }
   | { name: "score"; part: PartId; status: PartStatus; check_reason: CheckReason | null; ms: number }
   | { name: "look_job"; look_id: string; ms: number | null; identity_cos: number | null; error: string | null }
+  /** 개인화 한 번 (2026-09-29): VLM 에 몇 번 물었나, 첫 답에서 거절된 수, 마지막까지 남은 거절 수(규칙값으로 대신한 항목), 실패 이유 */
+  | { name: "vlm_plan"; look_id: string; ms: number; tries: number; first_rejected: number; left_rejected: number; model: string | null; fail: string | null }
   | { name: "restore"; ok: boolean; had_images: boolean }
   | { name: "session_end"; reason: "finish" | "abandon" | "error"; last_screen: string }
   | { name: "error"; where: string; msg: string };

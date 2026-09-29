@@ -62,12 +62,11 @@ const ctx = (screen: string): ScreenContext<null> => ({
 });
 
 let lookId: string | null = "smoky";
-const jobs = mutableJobSource(LOOKS.map((l, i) => job(l.id, i === 7 ? "running" : "done", i)));
 
 const SCREENS: Record<string, () => Promise<Screen<null>>> = {
   "서버 처리": async () => processingScreen<null>({ jobs: mutableJobSource(LOOKS.map((l) => ({ ...job(l.id, "running", 0) }))) }),
-  "2 룩": async () => looksScreen<null>({ jobs, getLookId: () => lookId, setLookId: (id) => { lookId = id; } }),
-  "2-b 완성 예상": async () => fullRenderScreen<null>({ jobs, getLookId: () => lookId }),
+  "2 룩": async () => looksScreen<null>({ getLookId: () => lookId, setLookId: (id) => { lookId = id; } }),
+  "2-b 완성 예상": async () => fullRenderScreen<null>({ getLookId: () => lookId }),
   "5 결과 (라이너)": async () => {
     const bare = await bitmapOf(BARE_IMAGE), made = image(linerPaint());
     const frame = await bitmapOf(made);

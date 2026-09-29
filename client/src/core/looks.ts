@@ -26,6 +26,8 @@ export interface Look {
   products: string[];
   /** 화면 3 근거 한 줄 — 숫자 없이 말로 */
   rationale: Partial<Record<LookPartId, string>>;
+  /** 화면 2 대표 이미지 (앱 기준 경로, 예: "looks/daily.jpg"). 없으면 색 견본 (2026-09-29) */
+  image?: string;
 }
 
 /** 합산 설정. **전 룩 공통** — 룩마다 다르면 "이 룩은 점수가 잘 나온다"가 생겨 룩 간 비교가 안 된다 */
