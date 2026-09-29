@@ -118,6 +118,8 @@ describe("화면 5 — 부위 결과", () => {
     expect(events.find((e) => e.name === "score")).toMatchObject({ status: "check_only", check_reason: "faint" });
     btn(root, "다음").click();
     expect(session().parts.find((p) => p.partId === "lip")).toMatchObject({ status: "check_only", score: null, checkReason: "faint" });
+    // 퍼널(E-8): 확인만으로 넘어간 것도 part_status 로 남는다 (#37)
+    expect(events.find((e) => e.name === "part_status")).toMatchObject({ part: "lip", from: "in_progress", to: "check_only", score: null });
   });
 
   it("강도 부위: 볼터치 감지 안 되면 '감지되지 않음', 쉐딩은 항상 확인만 + 좌우 한 줄, 마지막 부위라 '결과 보러 가기'", async () => {

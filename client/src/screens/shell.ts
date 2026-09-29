@@ -99,7 +99,8 @@ export function createShell<S>(opts: ShellOptions<S>) {
 
     opts.root.textContent = "";
     renderChips(parts, currentPart, screen);
-    renderHint(currentPart);
+    // 방향 안내는 부위 화면(3·4·5)에서만 — 리뷰에 마지막 부위 기준 "세로로" 가 떴다 (#169 3번)
+    renderHint(isPartScreen(screen) ? currentPart : null);
 
     const s = registry.get(screen);
     if (!s) {

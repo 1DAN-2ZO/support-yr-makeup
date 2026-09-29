@@ -1,4 +1,4 @@
-# 당화응 (support-yr-makeup)
+# nudy (support-yr-makeup) — 전 이름 당화응
 
 **새로운 화장을 배우고 싶은 사람을 위한, 한 부위씩 잡아주는 화장 코치.**
 

@@ -17,9 +17,8 @@
       "lip": 1.0,
       "cheek": 0.7
     },
-    "harmonyRange": {
-      "maxDeltaAb": 12
-    }
+    "_harmonyNote": "조화 허용 범위는 비워 둔다(null = 조화 보정 끔). 볼 영역 평균은 대부분 피부색이라 입술색과 늘 멀어 잘 어울리는 화장도 -5 였다 (#174 리뷰). 실제 사진으로 기준을 잡으면 채운다 (#35 '화장 확정 전 null'). 전 값 maxDeltaAb 12",
+    "harmonyRange": null
   },
   "contour": {
     "products": [

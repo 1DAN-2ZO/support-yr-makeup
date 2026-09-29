@@ -10,7 +10,7 @@
 
 import { LOOKS } from "../core/looks";
 import type { LookJobSource } from "../core/look-jobs";
-import { allUnavailable, anySelectable, lookDetail, tiles, type LookTile } from "../core/look-view";
+import { allUnavailable, tiles, type LookTile } from "../core/look-view";
 import type { LookJob } from "../core/types";
 import type { Screen, ScreenContext } from "./shell";
 
@@ -18,6 +18,18 @@ export interface LooksDeps {
   jobs: LookJobSource;
   getLookId: () => string | null;
   setLookId: (lookId: string) => void;
+  /**
+   * 누른 룩을 이 얼굴에 맞게 개인화한다 (규칙 계획 + VLM, 룩마다 한 번 — core/plan-queue.ts).
+   * 끝나면 2-b(AR)로 간다. 안 주면 개인화 없이 바로 간다.
+   */
+  personalize?: (lookId: string) => Promise<void>;
+  /** 이미 개인화한 화장인가 — 그러면 기다림 화면 없이 바로 2-b (화장마다 한 번) */
+  isPersonalized?: (lookId: string) => boolean;
+  /**
+   * "개인화 중입니다" 를 최소 이만큼은 보여 준다(ms, 기본 0). 규칙 계획은 순식간이라 안 보이고 지나갔다 (2026-09-29 폰).
+   * 사용자가 "내 얼굴에 맞추는 단계" 가 있다는 걸 알아야 2-b 의 근거 문장이 이어진다
+   */
+  minBusyMs?: number;
 }
 
 export function looksScreen<S>(deps: LooksDeps): Screen<S> {
@@ -29,6 +41,12 @@ export function looksScreen<S>(deps: LooksDeps): Screen<S> {
 
       // 끝난 작업을 한 번씩만 로그로 남긴다 — 같은 작업이 폴링마다 다시 오기 때문
       const logged = new Set<string>();
+      /** 개인화를 기다리는 룩 — 마지막에 누른 것만 2-b 로 넘어간다 */
+      let wanted: string | null = null;
+      /** 누를 때마다 새 번호 — 취소하고 같은 화장을 다시 눌러도 앞 요청이 넘어가지 않게 */
+      let ticket = 0;
+      let failed = false;
+      let alive = true;
 
       function draw(): void {
         const jobs = deps.jobs.current();
@@ -39,8 +57,8 @@ export function looksScreen<S>(deps: LooksDeps): Screen<S> {
         wrap.textContent = "";
         wrap.append(head(ts));
         wrap.append(grid(ts, picked));
-        if (picked) wrap.append(detail(picked));
-        wrap.append(startRow(ts, picked));
+        if (failed) wrap.append(note("개인화하지 못했어요. 화장을 다시 눌러 주세요"));
+        if (wanted) wrap.append(busy());
       }
 
       function logTerminal(jobs: readonly LookJob[]): void {
@@ -61,7 +79,7 @@ export function looksScreen<S>(deps: LooksDeps): Screen<S> {
       function head(ts: readonly LookTile[]): HTMLElement {
         const el = document.createElement("div");
         const h = document.createElement("h1");
-        h.textContent = "어떤 느낌으로 할까요?";
+        h.textContent = "어떤 화장으로 할까요";
         const p = document.createElement("p");
         p.className = "muted";
         // 다 죽었을 때만 다른 말을 한다. 몇 개 남았는지 숫자로 재촉하지 않는다
@@ -103,52 +121,79 @@ export function looksScreen<S>(deps: LooksDeps): Screen<S> {
         name.textContent = t.name;
 
         btn.append(thumb, name);
-        btn.addEventListener("click", () => {
-          ctx.log.log({ name: "button", button: `look:${t.lookId}` });
-          deps.setLookId(t.lookId);
-          draw();
-        });
+        btn.addEventListener("click", () => pick(t.lookId));
         li.append(btn);
         return li;
       }
 
-      /** 고른 룩의 제품 목록 — 접기 없이 전부 (F-04) */
-      function detail(lookId: string): HTMLElement {
-        const { look, products } = lookDetail(lookId);
-        const box = document.createElement("section");
-        box.className = "look-detail";
-        const h = document.createElement("h2");
-        h.textContent = `${look.name} — 쓰는 것`;
-        const ul = document.createElement("ul");
-        for (const p of products) {
-          const li = document.createElement("li");
-          li.textContent = p;
-          ul.append(li);
+      /** 룩을 누름 = 고름 → 개인화 → 2-b. 개인화 중에 다른 룩을 누르면 마지막 것만 넘어간다 */
+      function pick(lookId: string): void {
+        ctx.log.log({ name: "button", button: `look:${lookId}` });
+        deps.setLookId(lookId);
+        failed = false;
+        if (!deps.personalize || deps.isPersonalized?.(lookId)) {
+          ctx.go("fullrender");
+          return;
         }
-        box.append(h, ul);
+        wanted = lookId;
+        const my = ++ticket;
+        draw();
+        const minWait = new Promise<void>((r) => setTimeout(r, deps.minBusyMs ?? 0));
+        Promise.all([deps.personalize(lookId), minWait]).then(
+          () => {
+            if (!alive || ticket !== my) return;
+            wanted = null;
+            ctx.go("fullrender");
+          },
+          (e: unknown) => {
+            if (!alive || ticket !== my) return;
+            ctx.log.log({ name: "error", where: "personalize", msg: e instanceof Error ? e.message : String(e) });
+            wanted = null;
+            failed = true;
+            draw();
+          },
+        );
+      }
+
+      /** "개인화 중입니다" — 한 페이지로 덮는다. "다른 화장 고르기" 로 돌아가면 끝나도 넘어가지 않는다 (계획은 큐에 남아 다음엔 바로) */
+      function busy(): HTMLElement {
+        const box = document.createElement("div");
+        box.className = "personalizing";
+        box.setAttribute("role", "status");
+        const t = document.createElement("strong");
+        t.textContent = "개인화 중입니다…";
+        const p = document.createElement("p");
+        p.textContent = "이 얼굴에 맞게 화장을 조정하고 있어요";
+        const bar = document.createElement("div");
+        bar.className = "wait-bar";
+        bar.append(document.createElement("span"));
+        const back = document.createElement("button");
+        back.type = "button";
+        back.className = "ghost";
+        back.textContent = "다른 화장 고르기";
+        back.addEventListener("click", () => {
+          ctx.log.log({ name: "button", button: "personalize_cancel" });
+          wanted = null;
+          ticket++;
+          draw();
+        });
+        box.append(t, p, bar, back);
         return box;
       }
 
-      function startRow(ts: readonly LookTile[], picked: string | null): HTMLElement {
-        const row = document.createElement("div");
-        row.className = "row";
-        const go = document.createElement("button");
-        go.type = "button";
-        go.className = "primary";
-        go.textContent = "이 룩으로 시작";
-        // 고르지 않았거나 아직 아무것도 안 왔으면 못 누른다
-        go.disabled = !picked || !anySelectable(ts);
-        go.addEventListener("click", () => {
-          ctx.log.log({ name: "button", button: "look_start" });
-          ctx.go("fullrender");
-        });
-        row.append(go);
-        return row;
+      function note(text: string): HTMLElement {
+        const p = document.createElement("p");
+        p.className = "muted";
+        p.textContent = text;
+        return p;
       }
 
       const stop = deps.jobs.subscribe(draw);
       draw();
-      return stop;
+      return () => {
+        alive = false;
+        stop();
+      };
     },
   };
 }

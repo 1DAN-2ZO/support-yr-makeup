@@ -138,12 +138,12 @@ function part(partId: PartId, over: Partial<PartResult> = {}): PartResult {
 describe("합산 설정 — 전 룩 공통 (결정 2026-09-22)", () => {
   it("rules/looks.json 에서 온다 — 코드에 숫자를 박지 않는다", () => {
     expect(SUMMARY_TEMPLATE.weights.brow).toBeTypeOf("number");
-    expect(SUMMARY_TEMPLATE.harmonyRange?.maxDeltaAb).toBeTypeOf("number");
+    // 조화 허용 범위는 기준을 잡기 전까지 비워 둔다 (#35·#174) — 키는 있어야 한다
+    expect(SUMMARY_TEMPLATE).toHaveProperty("harmonyRange", null);
   });
 
   it("③ 의 기본값과 같다 — 코드에서 옮겨 왔고 숫자는 안 바꿨다", () => {
     expect(SUMMARY_TEMPLATE.weights).toEqual(DEFAULT_TEMPLATE.weights);
-    expect(SUMMARY_TEMPLATE.harmonyRange).toEqual(DEFAULT_TEMPLATE.harmonyRange);
     expect([...SUMMARY_TEMPLATE.partIds]).toEqual([...DEFAULT_TEMPLATE.partIds]);
   });
 
