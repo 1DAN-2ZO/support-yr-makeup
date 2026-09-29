@@ -10,7 +10,7 @@
 
 import { unitScale } from "./baseline";
 import type { Lab, RgbaImage } from "./color";
-import { foreheadLab, labAt, meanLabPoly, pointInPoly } from "./color";
+import { foreheadLab, labAt, meanLabPoly, pointInPoly, rgbToLab } from "./color";
 import { LM, at, dist } from "./landmarks";
 import type { LinerStrip, LipStrip, RegionGrid, Side } from "./score";
 import type { Baseline, Pt } from "./types";
@@ -84,6 +84,31 @@ export function eyeClosed(lm: readonly Pt[], side: Side): boolean {
 }
 
 /**
+ * 채점 샘플을 한 픽셀이 아니라 box×box 평균으로 읽는다 (#174 리뷰: 카메라 잡음만으로 맨얼굴에 점수가 났다 —
+ * 두 사진의 픽셀마다 잡음이 따로 붙어 "색이 바뀌었다" 가 됐다).
+ * box = 눈 폭 × boxRatio (반올림, 1 이상). 합성 얼굴(눈 폭 90px) 실험 2026-09-29, 잡음 σ 0·3·6·10 × 5회, 미세 정렬 켬:
+ *   1×1 — σ6 부터 맨얼굴 15/15 오채점 · 2×2 — σ10 에서 15/15 · **3×3 — 전부 0, 그린 라이너 ≥91 · 눈썹 ≥94 · 입술 ≥93**
+ *   4×4~6×6 — 오채점 0 이지만 가는 라이너가 흐려져 88 → 82
+ */
+export const SAMPLE = { boxRatio: 1 / 30 };
+
+const boxOf = (eyePx: number): number => Math.max(1, Math.round(eyePx * SAMPLE.boxRatio));
+
+function labBox(im: RgbaImage, x: number, y: number, box: number): Lab {
+  if (box <= 1) return labAt(im, x, y);
+  const x0 = Math.round(x - (box - 1) / 2), y0 = Math.round(y - (box - 1) / 2);
+  let r = 0, g = 0, b = 0, n = 0;
+  for (let dy = 0; dy < box; dy++) {
+    const yi = Math.max(0, Math.min(im.h - 1, y0 + dy));
+    for (let dx = 0; dx < box; dx++) {
+      const xi = Math.max(0, Math.min(im.w - 1, x0 + dx)), i = (yi * im.w + xi) * 4;
+      r += im.data[i] ?? 0; g += im.data[i + 1] ?? 0; b += im.data[i + 2] ?? 0; n++;
+    }
+  }
+  return rgbToLab(r / n, g / n, b / n);
+}
+
+/**
  * 아이라이너 스트립 (한쪽 눈): 속눈썹 선 + 꼬리 선을 따라 80행, 법선 방향 25칸. + 가 위쪽.
  * 선 아래(−)는 눈을 뜨고 있으면 눈알이다 — meta.eyeOpen 으로 표시해서 채점이 그 칸을 뺀다.
  * wing = 가이드의 꼬리 선 [눈꼬리, 꼬리 끝], thick = 가이드 선 두께 (눈 폭 비율) — 둘 다 ② 가 이 룩에서 그린 값.
@@ -97,11 +122,11 @@ export function sampleLiner(f: SampleFrame, side: Side, wing: readonly [Pt, Pt],
   const ue = f.unit.eye;
   const lab: Lab[][] = [], isWing: boolean[] = [], tFromCorner: number[] = [];
   for (const s of resample([...lid, wing[1]], 80, true)) {
-    lab.push(LINER_OFFS.map((o) => labAt(f.im, s.p.x + s.n.x * o * ue, s.p.y + s.n.y * o * ue)));
+    lab.push(LINER_OFFS.map((o) => labBox(f.im, s.p.x + s.n.x * o * ue, s.p.y + s.n.y * o * ue, boxOf(ue))));
     isWing.push(s.t > lidLen);
     tFromCorner.push((s.t - lidLen) / ue);
   }
-  return { lab, meta: { offs: LINER_OFFS, isWing, tFromCorner, wingLen: dist(wing[0], wing[1]) / ue, thick, eyeOpen: !eyeClosed(f.lm, side) } };
+  return { lab, meta: { offs: LINER_OFFS, isWing, tFromCorner, wingLen: dist(wing[0], wing[1]) / ue, thick, eyeOpen: !eyeClosed(f.lm, side), blur: (boxOf(ue) - 1) / ue } };
 }
 
 /** 눈썹 격자 세로 위치. 0~1 이 테두리 안, 그 밖은 바깥 띠 */
@@ -110,25 +135,35 @@ const BROW_U = 24;
 
 /** 눈썹 격자 (양쪽): 가로 24 × 세로 9. u = 0 이 바깥 꼬리, 1 이 안쪽. 두 사진에서 점 개수·순서가 같다 */
 export function sampleBrow(f: SampleFrame): RegionGrid {
-  const lab: Lab[] = [], inside: boolean[] = [], tail: boolean[] = [], side: Side[] = [];
+  const lab: Lab[] = [], inside: boolean[] = [], tail: boolean[] = [], side: Side[] = [], lift: number[] = [];
   const along = (pts: readonly Pt[], u: number): Pt => {
     const t = u * (pts.length - 1), i = Math.min(pts.length - 2, Math.floor(t));
     return add(pts[i]!, mul(sub(pts[i + 1]!, pts[i]!), t - i));
   };
+  // 좌우 공통 두께 (양쪽 눈썹 평균, px). 높이는 "자기 눈썹 안에서의 위치(v)" × 이 두께로 잰다 —
+  // 각자 두께를 곱하면 원래 두꺼운 쪽이 "높게 그렸다" 가 됐다 (#174 리뷰)
+  const thickOf = (brow: { upper: readonly number[]; lower: readonly number[] }): number => {
+    const up = brow.upper.map((i) => at(f.lm, i)), lo = brow.lower.map((i) => at(f.lm, i));
+    let sum = 0;
+    for (let ui = 0; ui < BROW_U; ui++) sum += dist(along(lo, ui / (BROW_U - 1)), along(up, ui / (BROW_U - 1)));
+    return sum / BROW_U;
+  };
+  const thick = (thickOf(LM.browA) + thickOf(LM.browB)) / 2;
   for (const [brow, key] of [[LM.browA, "R"], [LM.browB, "L"]] as const) {
     const up = brow.upper.map((i) => at(f.lm, i)), lo = brow.lower.map((i) => at(f.lm, i));   // 인덱스 0 = 바깥 꼬리
     for (let ui = 0; ui < BROW_U; ui++) {
       const u = ui / (BROW_U - 1), a = along(lo, u), b = along(up, u);
       for (const v of BROW_V) {
         const q = add(a, mul(sub(b, a), v));
-        lab.push(labAt(f.im, q.x, q.y));
+        lab.push(labBox(f.im, q.x, q.y, boxOf(f.unit.eye)));
         inside.push(v >= 0 && v <= 1);
+        lift.push((v * thick) / (f.unit.eye || 1));   // 그 눈썹 아래 선에서 위로 (눈 폭 비율) — 좌우 높이 차(#35)
         tail.push(u < 0.4);
         side.push(key);
       }
     }
   }
-  return { lab, meta: { inside, tail, side } };
+  return { lab, meta: { inside, tail, side, lift } };
 }
 
 /** 입술 경계 스트립: 바깥 윤곽을 따라 60행, 안쪽(−) … 바깥쪽(+) 25칸. offset = 가이드 경계 오프셋 (입술 폭 비율, ② 값) */
@@ -137,7 +172,7 @@ export function sampleLip(f: SampleFrame, offset: number): LipStrip {
   const lab: Lab[][] = [], half: ("upper" | "lower")[] = [], side: Side[] = [];
   for (const s of resample([...lip, lip[0]!], 60, false)) {
     const n = norm(sub(s.p, c));   // 법선 = 입술 중심에서 바깥
-    lab.push(LIP_OFFS.map((o) => labAt(f.im, s.p.x + n.x * o * ul, s.p.y + n.y * o * ul)));
+    lab.push(LIP_OFFS.map((o) => labBox(f.im, s.p.x + n.x * o * ul, s.p.y + n.y * o * ul, boxOf(f.unit.eye))));
     half.push(s.p.y < c.y ? "upper" : "lower");
     side.push(s.p.x < c.x ? "R" : "L");
   }
