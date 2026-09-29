@@ -14,7 +14,7 @@ import { unitScale } from "./baseline";
 import type { Rect } from "./crop";
 import { createBundleCollector, type BundleState } from "./capture-bundle";
 import { exprDiff } from "./expression";
-import { gateStep, poseOf, type LiveLimits, LIVE_LIMITS } from "./gate";
+import { gateStep, poseOf, rigidPoseDiff, type LiveLimits, LIVE_LIMITS } from "./gate";
 import { linerOutline, GUIDE_PARAMS } from "./guides";
 import { partInRect } from "./landmarks";
 import { foreheadStep, startForeheadTrack, type ForeheadTrack } from "./occlusion";
@@ -83,7 +83,6 @@ const optExpr = (d: number | undefined): { exprDiff?: number } => (d === undefin
 
 export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): LiveStep<I>; press(): boolean } {
   const limits = opt.limits ?? LIVE_LIMITS;
-  const base = poseOf(opt.baseline.lm);
   let stable = 0;
   let fj: ForeheadTrack = startForeheadTrack();
   let lastOk = false;
@@ -109,7 +108,8 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
           occluded = o.occluded;
         }
         const r = gateStep(stable, opt.partId, {
-          faceDetected: true, ...pose, baseYaw: base.yaw, basePitch: base.pitch,
+          // 정면 여부(절대 각도)는 화면 1 과 같은 식, 기준 사진과의 차는 강체 점으로 (입을 벌려도 안 흔들림, #28)
+          faceDetected: true, ...pose, poseDiff: rigidPoseDiff(opt.baseline.lm, f.lm),
           ...optExpr(exprDiff(opt.partId, opt.baseExpr, f.expr)),
           partVisible: partInRect(opt.partId, f.lm, f.view ?? { x: 0, y: 0, w: f.w, h: f.h }),
           ...(occluded !== null ? { occluded } : {}),
