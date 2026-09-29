@@ -17,7 +17,6 @@ import { measureFace } from "../core/face-measure";
 import { lookById } from "../core/looks";
 import { lookDetail } from "../core/look-view";
 import { resolvePlan, type PersonalPlan } from "../core/personalize";
-import type { ArFrame } from "../core/ar-frame-store";
 import { LandmarkSmoother } from "../core/smoothing";
 import type { Pt } from "../core/types";
 import { createLandmarker } from "./landmarker";
@@ -29,11 +28,6 @@ export interface FullRenderDeps {
   getLookId: () => string | null;
   /** 룩 화면에서 만든 이 룩의 개인화 계획 (core/plan-queue.ts). 없으면 카메라 얼굴로 규칙 계획을 만든다 */
   getPlan?: (lookId: string) => PersonalPlan | null;
-  /**
-   * "화장하러 가기" 를 누른 순간의 AR 한 장면 + 얼굴 점 — 화면 3 완성본용 (#182). 화장이 입혀져 보일 때만 부른다.
-   * 사진·점은 안 뒤집힌 카메라 좌표 (캔버스는 CSS 로만 거울). JPEG 로 바꾸는 중이라 Promise 로 넘긴다
-   */
-  saveArFrame?: (lookId: string, f: Promise<ArFrame | null>) => void;
 }
 
 export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
@@ -87,7 +81,6 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
       go.textContent = "화장하러 가기";
       go.addEventListener("click", () => {
         ctx.log.log({ name: "button", button: "guide_start" });
-        snapshot?.();
         ctx.go("guide");
       });
       const back = document.createElement("button");
@@ -116,7 +109,6 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
       // ── AR ───────────────────────────────────────────
       let raf = 0;
       /** 지금 AR 장면을 저장한다 — AR 이 화장을 입혀 보여 줄 때만 채워진다 */
-      let snapshot: (() => void) | null = null;
       let stream: MediaStream | null = null;
       let closeLandmarker: (() => void) | null = null;
       let disposeGl: (() => void) | null = null;
@@ -143,23 +135,6 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
           const atlas = { mul: mk(), col: mk(), light: mk() }, off = mk();
           const paintLook = paintLookOf(look);
           let ref: Pt[] | null = null;
-          /** 마지막으로 화장을 입혀 그린 프레임의 얼굴 점·크기 */
-          let shown: { lm: Pt[]; w: number; h: number } | null = null;
-          snapshot = () => {
-            if (!shown || !lookId || !deps.saveArFrame) return;
-            // 화면을 떠나면 WebGL 을 돌려줘서(dispose) 그림이 사라진다 — 누른 순간 2D 캔버스로 바로 옮긴다
-            const copy = document.createElement("canvas");
-            copy.width = shown.w;
-            copy.height = shown.h;
-            const c2 = copy.getContext("2d");
-            if (!c2) return;
-            c2.drawImage(canvas, 0, 0, shown.w, shown.h);
-            const f = shown, id = lookId;
-            // JPEG 는 늦게 끝난다 — 화면 3 이 기다렸다 받게 자리(Promise)를 먼저 넘긴다
-            deps.saveArFrame(id, new Promise<ArFrame | null>((resolve) => {
-              copy.toBlob((b) => resolve(b ? { lookId: id, image: b, lm: f.lm, w: f.w, h: f.h } : null), "image/jpeg", 0.9);
-            }));
-          };
           const q = new URLSearchParams(location.search);
           const smoother = q.has("nosmooth") ? null : new LandmarkSmoother(Array.from({ length: 478 }, (_, i) => i), { minCutoff: SMOOTH.minCutoff, beta: SMOOTH.beta });
           if (smoother && q.has("tune")) wrap.insertBefore(tuner(smoother), stage.nextSibling);
@@ -193,7 +168,6 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
                 paintMakeup({ mul: atlas.mul.getContext("2d")!, col: atlas.col.getContext("2d")!, light: atlas.light.getContext("2d")! }, off, ref, paintLook, p, p.liner.plan.style);
               }
               gl.render(video, w, hh, atlas.mul, atlas.col, atlas.light, lm && ref ? { lm, ref, beauty: 0.3, radius: w * 0.004 } : null);
-              shown = lm && ref ? { lm, w, h: hh } : null;
               if (!live) {
                 live = true;
                 stage.replaceChildren(canvas);
