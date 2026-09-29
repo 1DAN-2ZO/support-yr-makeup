@@ -29,6 +29,11 @@ server = [
     "pillow>=10.3",
     "mediapipe>=0.10.14",
 ]
+# VLM 선정 실험 (eval/vlm) — 학원 PC 에서 llama-server 와 함께
+vlm = [
+    "pillow>=10.3",
+    "mediapipe>=0.10.14",
+]
 # 개발 도구
 dev = [
     "pytest>=8.2",

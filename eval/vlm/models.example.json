@@ -1,0 +1,37 @@
+{
+  "_설명": "복사해서 models.json 으로 두고 경로를 채운다 (models.json 은 PC 마다 달라서 커밋하지 않는다). 모델 파일은 저장소 밖 (예: D:/models).",
+  "llama_server": "C:/llama.cpp/llama-server.exe",
+  "models": {
+    "qwen3vl8b": {
+      "_출처": "https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF (공식, mmproj 포함 — 조사로 확인)",
+      "gguf": "D:/models/Qwen3-VL-8B-Instruct-Q4_K_M.gguf",
+      "mmproj": "D:/models/mmproj-Qwen3-VL-8B-Instruct-F16.gguf",
+      "ctx": 8192
+    },
+    "qwen3vl4b": {
+      "_출처": "확인 필요 — Qwen 공식 GGUF 가 있으면 그것 (8B 가 5초를 넘기면 쓰는 속도 대비책)",
+      "gguf": "D:/models/Qwen3-VL-4B-Instruct-Q4_K_M.gguf",
+      "mmproj": "D:/models/mmproj-Qwen3-VL-4B-Instruct-F16.gguf",
+      "ctx": 8192
+    },
+    "qwen35_9b": {
+      "_출처": "확인 필요 — https://huggingface.co/Qwen/Qwen3.5-9B. llama.cpp 이미지 입력 지원을 0단계에서 확인. 생각 모드는 끈다",
+      "gguf": "D:/models/Qwen3.5-9B-Q4_K_M.gguf",
+      "mmproj": "D:/models/mmproj-Qwen3.5-9B-F16.gguf",
+      "ctx": 8192,
+      "request_extra": { "chat_template_kwargs": { "enable_thinking": false } }
+    },
+    "gemma4_e4b": {
+      "_출처": "확인 필요 — Gemma 4 E4B GGUF + mmproj. llama.cpp 이미지 입력 지원을 0단계에서 확인",
+      "gguf": "D:/models/gemma-4-E4B-it-Q4_K_M.gguf",
+      "mmproj": "D:/models/mmproj-gemma-4-E4B-it-F16.gguf",
+      "ctx": 8192
+    },
+    "minicpmv45": {
+      "_출처": "확인 필요 — https://huggingface.co/openbmb/MiniCPM-V-4_5 의 GGUF (llama.cpp b6282 부터 지원)",
+      "gguf": "D:/models/MiniCPM-V-4_5-Q4_K_M.gguf",
+      "mmproj": "D:/models/mmproj-MiniCPM-V-4_5-F16.gguf",
+      "ctx": 8192
+    }
+  }
+}

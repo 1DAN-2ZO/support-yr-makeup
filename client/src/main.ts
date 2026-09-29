@@ -36,10 +36,13 @@ import { checkSecureContext, readEnv, type SecureCheck } from "./core/secure-con
 import { createSessionStore, indexedDbBackend, memoryBackend, type SessionStore } from "./core/session-store";
 import { getVersions } from "./core/versions";
 import { lookById, SUMMARY_TEMPLATE } from "./core/looks";
-import { captureScreen, type CaptureDeps } from "./screens/capture";
+import { fullRenderUrl } from "./core/look-view";
+import { captureScreen, type CaptureDeps, type ShotData } from "./screens/capture";
 import { consentScreen, deniedScreen, type ConsentDeps } from "./screens/consent";
 import { doneScreen, type DoneDeps } from "./screens/done";
 import { landmarksFromImage } from "./screens/landmarker";
+import { guideScreen, type GuideDeps } from "./screens/guide";
+import { liveScreen, type LiveDeps } from "./screens/live";
 import { fullRenderScreen, type FullRenderDeps } from "./screens/fullrender";
 import { looksScreen, type LooksDeps } from "./screens/looks";
 import { processingScreen, type ProcessingDeps } from "./screens/processing";
@@ -206,6 +209,11 @@ async function boot(): Promise<void> {
   // 앱을 다시 켜면 큐가 비어 있다. 그 사이엔 규칙 계획으로 본다 (TODO: 계획을 세션에 저장 — ① 에 요청)
   const planFor = (lookId: string | null): PersonalPlan | null => (lookId ? plans.get(lookId) ?? rulePlan() : null);
 
+  // 가이드 모양 한 곳 — 화면 3 테두리 · 화면 4 테두리 · 화면 5 채점이 같은 것을 쓴다 ("따라 그린 선 = 채점 기준").
+  // 고른 화장을 이 얼굴에 맞춘 계획 = 2-b AR 에서 본 모양. 계획이 없으면(개인화 전·복원 직후) 표준 모양
+  // (planGuide(x, null) = lookGuide(x), plan-guide.test)
+  const guideFor = () => planGuide(lookById(session.lookId).parts, planFor(session.lookId));
+
   // 끝내기가 지우고 남은 키 수. 0 이어야 한다 (F-11)
   let clearRemaining = 0;
 
@@ -278,9 +286,8 @@ async function boot(): Promise<void> {
       getBaseline: () => session.baseline,
       // 화면 4(②) 가 확인받기 순간의 프레임 묶음을 parts[].captured 에 둔다 (CaptureBundle)
       getCapture: (part) => (session.parts.find((p) => p.partId === part)?.captured as CaptureBundle | null) ?? null,
-      // 고른 룩을 이 얼굴에 맞춘 계획대로 채점한다 — 2-b AR 에서 본 모양과 같은 기준.
-      // 계획이 없으면(개인화 전·복원 직후) 룩 표준 모양 (planGuide(x, null) = lookGuide(x), plan-guide.test)
-      guide: () => planGuide(lookById(session.lookId).parts, planFor(session.lookId)),
+      // 화면 3·4 테두리와 같은 계획 가이드로 채점한다 (2-b AR 에서 본 모양과 같은 기준)
+      guide: guideFor,
       getStatus: (part) => session.parts.find((p) => p.partId === part)?.status ?? "in_progress",
       apply: (part, outcome) => {
         set(applyResult(session, part, outcome));
@@ -292,6 +299,30 @@ async function boot(): Promise<void> {
     },
     // 서버 처리 화면은 흐름에서 빠졌다 (등록만 남김 — 되살린 세션은 위에서 화장 선택으로 보낸다)
     { jobs: emptyJobSource() },
+    {
+      getPart: () => session.currentPart,
+      firstPart: () => nextPart(session, null),
+      getBaseline: () => session.baseline,
+      getLook: () => lookById(session.lookId),
+      getFaceShape: () => session.faceShape,
+      fullRenderUrl: () => fullRenderUrl(lookJobs.current(), session.lookId),
+      getGuide: guideFor,
+    },
+    {
+      getPart: () => session.currentPart,
+      getBaseline: () => session.baseline,
+      // 정면 장의 이마 a*·b* 는 메모리에만 있다 (복원하면 없음 → 색 조건 생략)
+      getBaseAb: () => {
+        const f = (session.shots.front_open as ShotData | undefined)?.forehead;
+        return f ? { a: f.a, b: f.b } : null;
+      },
+      getLookParts: () => lookById(session.lookId).parts,
+      getGuide: guideFor,
+      setCapture: (part, bundle) => {
+        set({ ...session, parts: session.parts.map((p) => (p.partId === part ? { ...p, captured: bundle } : p)) });
+      },
+      next: "result",
+    },
     {
       remaining: () => clearRemaining,
       // 세션을 통째로 새로 만든다 — 앞 세션 값이 하나도 안 남게
@@ -335,6 +366,8 @@ function registerAll(
   review: ReviewDeps,
   result: ResultDeps,
   processing: ProcessingDeps,
+  guide: GuideDeps,
+  live: LiveDeps,
   done: DoneDeps,
 ): void {
   shell.register("consent", consentScreen<Session>(consent));
@@ -346,7 +379,8 @@ function registerAll(
   shell.register("result", resultScreen<Session>(result));
   shell.register("review", reviewScreen<Session>(review));
   shell.register("done", doneScreen<Session>(done));
-  // 남은 것: ② guide·live
+  shell.register("guide", guideScreen<Session>(guide));
+  shell.register("live", liveScreen<Session>(live));
   // 등록 안 된 화면은 담당 모듈을 알려주는 자리표시가 뜬다
 }
 
