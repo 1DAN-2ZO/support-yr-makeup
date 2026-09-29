@@ -80,7 +80,16 @@ const PARTS: { id: Part; name: string; blur: number }[] = [
   { id: "aegyo", name: "애교살", blur: 0.02 },
 ];
 
-interface Tpl { name: string; color: Partial<Record<Part, string>>; lipEdge?: string; alpha: Partial<Record<Part, number>>; linerThick: number }
+/**
+ * stops/axis — 부위 하나를 단색이 아니라 여러 색으로 입체감 있게 바를 때만 채운다(지금은 shadow만 소비).
+ * axis vertical(기본): 속눈썹↔눈썹 방향, 마지막 색이 눈썹 쪽에서 알파 0으로 자동 페이드(피부에 스며듦).
+ * axis horizontal: 눈 앞머리↔눈꼬리 방향, 양끝이 이 패턴의 핵심 색이라 자동 페이드를 안 한다.
+ */
+interface Tpl {
+  name: string; color: Partial<Record<Part, string>>; lipEdge?: string; alpha: Partial<Record<Part, number>>; linerThick: number;
+  stops?: Partial<Record<Part, { color: string; at: number }[]>>;
+  axis?: Partial<Record<Part, "vertical" | "horizontal">>;
+}
 
 /** 쉐딩·하이라이트는 룩에 없다(얼굴형 규칙 부위, F-04) — 얹어 보기용 기본 색 */
 const CONTOUR_COLORS = { contour: "#a07a66", highlight: "#fff3e6" };
@@ -104,14 +113,19 @@ const TEMPLATES: Tpl[] = [
     lipEdge: "#b98784",
     alpha: { brow: 0.29, shadow: 0.47, liner: 0.32, cheek: 0.39, lip: 0.13, under: 0.36, aegyo: 0.61, ...CONTOUR_ALPHA },
     linerThick: 0.076,
+    axis: { shadow: "vertical" },
+    stops: { shadow: [{ at: 0.0, color: "#3d282a" }, { at: 0.5, color: "#967674" }, { at: 1.0, color: "#aa827a" }] },
   },
   // 사진에서 뽑은 템플릿 3 (스크래치패드 extract_tpl.py 결과, before2.png/after2.png). 언더라인·애교살 포함(#166 논의 뒤 추가)
+  // 섀도우만 눈 감은 버전(before2_2/after2_2)으로 다시 재서 교체 — 뜬 눈은 윗눈꺼풀에 가려 실측이 부정확했다
   {
     name: "사진 추출 3 (윙드 라이너)",
-    color: { brow: "#b09495", shadow: "#977f80", liner: "#463a40", cheek: "#d2b7b8", lip: "#a98387", under: "#735b60", aegyo: "#b79697", ...CONTOUR_COLORS },
+    color: { brow: "#b09495", shadow: "#8a6867", liner: "#463a40", cheek: "#d2b7b8", lip: "#a98387", under: "#735b60", aegyo: "#b79697", ...CONTOUR_COLORS },
     lipEdge: "#ac8386",
-    alpha: { brow: 0.27, shadow: 0.51, liner: 0.39, cheek: 0.14, lip: 0.11, under: 0.79, aegyo: 0.51, ...CONTOUR_ALPHA },
+    alpha: { brow: 0.27, shadow: 0.65, liner: 0.39, cheek: 0.14, lip: 0.11, under: 0.79, aegyo: 0.51, ...CONTOUR_ALPHA },
     linerThick: 0.076,
+    axis: { shadow: "vertical" },
+    stops: { shadow: [{ at: 0.0, color: "#361f1c" }, { at: 0.5, color: "#a0807f" }, { at: 1.0, color: "#ab8484" }] },
   },
   ...LOOKS.map((l): Tpl => ({
     name: l.name,
@@ -313,16 +327,26 @@ function drawMakeup(lm: readonly Pt[], style: LinerStyle): void {
         else for (const { brow } of SIDES) path(ctx, ownBrow(lm, brow));
       } else if (p.id === "shadow") {
         // guides.ts 섀도 범위와 같은 계산: 윗눈꺼풀 → 눈썹 아래로 rangeRatio 만큼
+        const stops = t.stops?.shadow;
+        const axis = t.axis?.shadow ?? "vertical";
         for (const { eye, brow } of SIDES) {
           const lid = eye.upper.map(P), lo = brow.lower.map(P);
           const top = lid.map((q, i) => mix(q, lo[Math.min(lo.length - 1, Math.round((i / (lid.length - 1)) * (lo.length - 1)))]!, GUIDE_PARAMS.shadow.rangeRatio * (plan?.shadow.range ?? 1)));
           if (soft) {
-            // 속눈썹 선에서 가장 진하고 위로 갈수록 옅어진다 — 섀도를 펴 바른 모양
-            const a = lid[Math.floor(lid.length / 2)]!, b = top[Math.floor(top.length / 2)]!;
+            const mid = Math.floor(lid.length / 2);
+            // vertical: 속눈썹 중앙 → 눈썹 아래 중앙. horizontal: 눈꼬리(lid[0]) → 눈 앞머리(lid 끝)
+            const [a, b] = axis === "horizontal" ? [lid[0]!, lid[lid.length - 1]!] : [lid[mid]!, top[mid]!];
             const grad = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
-            grad.addColorStop(0, rgba(color, 1));
-            grad.addColorStop(0.55, rgba(color, 0.6));
-            grad.addColorStop(1, rgba(color, 0));
+            if (stops && stops.length > 0) {
+              for (const st of stops) grad.addColorStop(Math.max(0, Math.min(1, st.at)), st.color);
+              const last = stops[stops.length - 1]!;
+              if (axis === "vertical" && last.at < 1) grad.addColorStop(1, rgba(last.color, 0));   // 눈썹 쪽으로 스며들듯 페이드
+            } else {
+              // 속눈썹 선에서 가장 진하고 위로 갈수록 옅어진다 — 섀도를 펴 바른 모양 (stops 없을 때 기본값)
+              grad.addColorStop(0, rgba(color, 1));
+              grad.addColorStop(0.55, rgba(color, 0.6));
+              grad.addColorStop(1, rgba(color, 0));
+            }
             ctx.fillStyle = grad;
             ctx.beginPath();
             path(ctx, [...lid, ...[...top].reverse()]);
