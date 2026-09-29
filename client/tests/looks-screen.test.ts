@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createLogger, memorySink } from "@core/log";
-import { mutableJobSource } from "@core/look-jobs";
 import { CONTOUR_PRODUCTS, LOOKS } from "@core/looks";
+import { VlmFailure } from "@core/vlm-client";
 import type { PersonalPlan } from "@core/personalize";
-import type { JobStatus, LookJob, Versions } from "@core/types";
+import type { Versions } from "@core/types";
 import { fullRenderScreen } from "@screens/fullrender";
 import { looksScreen } from "@screens/looks";
 import type { ScreenContext } from "@screens/shell";
@@ -17,26 +17,10 @@ const ver: Versions = {
   transfer: "transfer-stub-v0",
 };
 
-function job(lookId: string, status: JobStatus, url: string | null = null): LookJob {
-  return {
-    job_id: `j-${lookId}`,
-    look_id: lookId,
-    status,
-    result_url: url,
-    layer: null,
-    identity: { cos: 0.9 },
-    ms: 1200,
-    queue_ms: 30,
-    error: null,
-    ver,
-  };
-}
-
-function setup(jobs: LookJob[] = [], lookId: string | null = null) {
+function setup(lookId: string | null = null) {
   document.body.innerHTML = `<div id="root"></div>`;
   const root = document.getElementById("root") as HTMLElement;
   const m = memorySink();
-  const source = mutableJobSource(jobs);
   const state = { lookId };
   const go = vi.fn();
   const ctx: ScreenContext<null> = {
@@ -49,14 +33,13 @@ function setup(jobs: LookJob[] = [], lookId: string | null = null) {
   let finish: (ok: boolean) => void = () => {};
   const personalize = vi.fn((_id: string) => new Promise<void>((res, rej) => { finish = (ok) => (ok ? res() : rej(new Error("개인화 실패"))); }));
   const deps = {
-    jobs: source,
     getLookId: () => state.lookId,
     setLookId: (id: string) => {
       state.lookId = id;
     },
     personalize,
   };
-  return { root, ctx, go, deps, source, state, events: m.events, personalize, finish: (ok: boolean) => finish(ok) };
+  return { root, ctx, go, deps, state, events: m.events, personalize, finish: (ok: boolean) => finish(ok) };
 }
 
 function cards(root: HTMLElement): HTMLButtonElement[] {
@@ -76,26 +59,23 @@ describe("화면 2 — 룩 선택", () => {
     document.body.innerHTML = "";
   });
 
-  it("서버가 아직 없어도 룩 10개가 로딩 중으로 뜬다", () => {
+  it("화장 10개가 처음부터 전부 눌린다 — 기다릴 서버 그림이 없다 (2026-09-29)", () => {
     const { root, ctx, deps } = setup();
     looksScreen<null>(deps).mount(ctx);
     const cs = cards(root);
     expect(cs).toHaveLength(LOOKS.length);
-    expect(cs.every((c) => c.disabled)).toBe(true);
-    expect(root.querySelector(".look-thumb")?.textContent).toBe("로딩 중");
+    expect(cs.every((c) => !c.disabled)).toBe(true);
+    expect(cs[0]?.textContent).toContain(LOOKS[0]!.name);
   });
 
-  it("끝난 룩만 누를 수 있다", () => {
-    const { root, ctx, deps } = setup([job("smoky", "done", "/r/smoky.png"), job("coral", "error")]);
+  it("대표 이미지가 없으면 그 화장의 색 견본을 보여 준다", () => {
+    const { root, ctx, deps } = setup();
     looksScreen<null>(deps).mount(ctx);
-    const byId = new Map(LOOKS.map((l, i) => [l.id, cards(root)[i] as HTMLButtonElement]));
-    expect(byId.get("smoky")?.disabled).toBe(false);
-    expect(byId.get("coral")?.disabled).toBe(true);
-    expect(byId.get("coral")?.textContent).toContain("준비 중");
+    expect(root.querySelectorAll(".look-thumb .swatch i").length).toBeGreaterThan(0);
   });
 
   it("누르면 그 룩을 고르고 '개인화 중입니다' — 끝나면 2-b(AR)로 간다 (2026-09-28 흐름)", async () => {
-    const { root, ctx, go, deps, state, personalize, finish } = setup([job("daily", "done", "/r/daily.png")]);
+    const { root, ctx, go, deps, state, personalize, finish } = setup();
     looksScreen<null>(deps).mount(ctx);
     (cards(root)[0] as HTMLButtonElement).click();
     expect(state.lookId).toBe("daily");
@@ -110,7 +90,7 @@ describe("화면 2 — 룩 선택", () => {
   it("개인화가 금방 끝나도 '개인화 중입니다' 는 최소 시간만큼 보여 준다 (2026-09-29 폰: 안 보였음)", async () => {
     vi.useFakeTimers();
     try {
-      const { root, ctx, go, deps } = setup([job("daily", "done", "/r/daily.png")]);
+      const { root, ctx, go, deps } = setup();
       looksScreen<null>({ ...deps, personalize: () => Promise.resolve(), minBusyMs: 1500 }).mount(ctx);
       (cards(root)[0] as HTMLButtonElement).click();
       await vi.advanceTimersByTimeAsync(1400);
@@ -124,7 +104,7 @@ describe("화면 2 — 룩 선택", () => {
   });
 
   it("개인화 페이지에서 '다른 화장 고르기' 로 돌아가면, 개인화가 끝나도 2-b 로 끌려가지 않는다", async () => {
-    const { root, ctx, go, deps, finish } = setup([job("daily", "done", "/r/daily.png")]);
+    const { root, ctx, go, deps, finish } = setup();
     looksScreen<null>(deps).mount(ctx);
     (cards(root)[0] as HTMLButtonElement).click();
     byText(root, "다른 화장 고르기").click();
@@ -139,7 +119,7 @@ describe("화면 2 — 룩 선택", () => {
     try {
       let done: () => void = () => {};
       const plan = new Promise<void>((r) => { done = r; });
-      const { root, ctx, go, deps } = setup([job("daily", "done", "/r/daily.png")]);
+      const { root, ctx, go, deps } = setup();
       looksScreen<null>({ ...deps, personalize: () => plan, minBusyMs: 1500 }).mount(ctx);
       (cards(root)[0] as HTMLButtonElement).click();          // t=0
       await vi.advanceTimersByTimeAsync(1000);
@@ -157,7 +137,7 @@ describe("화면 2 — 룩 선택", () => {
   });
 
   it("이미 개인화한 화장은 기다리지 않고 바로 2-b 로 간다 (화장마다 한 번)", () => {
-    const { root, ctx, go, deps, personalize } = setup([job("daily", "done", "/r/daily.png")]);
+    const { root, ctx, go, deps, personalize } = setup();
     looksScreen<null>({ ...deps, minBusyMs: 1500, isPersonalized: (id) => id === "daily" }).mount(ctx);
     (cards(root)[0] as HTMLButtonElement).click();
     expect(go).toHaveBeenCalledWith("fullrender");
@@ -166,7 +146,7 @@ describe("화면 2 — 룩 선택", () => {
   });
 
   it("개인화가 실패하면 룩 화면에 남고 다시 누르라고 말한다", async () => {
-    const { root, ctx, go, deps, finish } = setup([job("daily", "done", "/r/daily.png")]);
+    const { root, ctx, go, deps, finish } = setup();
     looksScreen<null>(deps).mount(ctx);
     (cards(root)[0] as HTMLButtonElement).click();
     finish(false);
@@ -176,8 +156,16 @@ describe("화면 2 — 룩 선택", () => {
     expect(root.textContent).toContain("다시 눌러");
   });
 
+  it("VLM 서버가 붐비면 그렇게 말한다 — 다른 실패와 구분", async () => {
+    const { root, ctx, deps } = setup();
+    looksScreen<null>({ ...deps, personalize: () => Promise.reject(new VlmFailure("busy", "503")) }).mount(ctx);
+    (cards(root)[0] as HTMLButtonElement).click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(root.textContent).toContain("지금 사람이 많아요");
+  });
+
   it("개인화 중에 다른 룩을 누르면 마지막에 누른 룩으로 간다", async () => {
-    const { root, ctx, go, deps, state, personalize, finish } = setup([job("daily", "done", "/r/d.png"), job("smoky", "done", "/r/s.png")]);
+    const { root, ctx, go, deps, state, personalize, finish } = setup();
     looksScreen<null>(deps).mount(ctx);
     (cards(root)[0] as HTMLButtonElement).click();
     (cards(root)[1] as HTMLButtonElement).click();
@@ -187,43 +175,6 @@ describe("화면 2 — 룩 선택", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(go).toHaveBeenCalledTimes(1);
   });
-
-  it("나중에 도착한 룩이 화면에 들어온다", () => {
-    const { root, ctx, deps, source } = setup();
-    looksScreen<null>(deps).mount(ctx);
-    expect(cards(root).every((c) => c.disabled)).toBe(true);
-
-    source.push([job("daily", "done", "/r/daily.png")]);
-    expect((cards(root)[0] as HTMLButtonElement).disabled).toBe(false);
-    expect(root.querySelector(".look-thumb img")?.getAttribute("src")).toBe("/r/daily.png");
-  });
-
-  it("전부 실패하면 다시 오라고 말한다", () => {
-    const { root, ctx, deps } = setup(LOOKS.map((l) => job(l.id, "error")));
-    looksScreen<null>(deps).mount(ctx);
-    expect(root.textContent).toContain("잠시 후 다시 열어 주세요");
-  });
-
-  it("끝난 작업은 한 번만 로그로 남는다", () => {
-    const { ctx, deps, source, events } = setup([job("daily", "done", "/r/daily.png")]);
-    looksScreen<null>(deps).mount(ctx);
-    source.push([job("daily", "done", "/r/daily.png"), job("smoky", "fallback")]);
-
-    const logged = events.filter((e) => e.name === "look_job");
-    expect(logged).toHaveLength(2);
-    expect(logged.map((e) => (e as { look_id: string }).look_id)).toEqual(["daily", "smoky"]);
-    expect((logged[1] as { error: string | null }).error).toBe("fallback");
-  });
-
-  it("떠날 때 구독을 끊는다", () => {
-    const { ctx, deps, source, root } = setup();
-    const stop = looksScreen<null>(deps).mount(ctx);
-    expect(typeof stop).toBe("function");
-    (stop as () => void)();
-    root.textContent = "";
-    source.push([job("daily", "done", "/r/daily.png")]);
-    expect(root.textContent).toBe("");
-  });
 });
 
 describe("화면 2-b — AR 완성 예상 (카메라를 못 열면 서버 그림)", () => {
@@ -231,25 +182,18 @@ describe("화면 2-b — AR 완성 예상 (카메라를 못 열면 서버 그림
     document.body.innerHTML = "";
   });
 
-  it("고른 룩의 그림을 보여 준다", () => {
-    const { root, ctx, deps } = setup([job("daily", "done", "/r/daily.png")], "daily");
+  it("카메라를 못 쓰면 안내하고, 그래도 '화장하러 가기' 로 부위 반복을 시작한다", () => {
+    const { root, ctx, go, deps } = setup("daily");
     fullRenderScreen<null>(deps).mount(ctx);
-    expect(root.querySelector(".full-img img")?.getAttribute("src")).toBe("/r/daily.png");
     expect(root.querySelector("h1")?.textContent).toContain(LOOKS[0]?.name ?? "");
-  });
-
-  it("그림이 없어도 '화장하러 가기' 로 부위 반복을 시작한다", () => {
-    const { root, ctx, go, deps } = setup([job("daily", "running")], "daily");
-    fullRenderScreen<null>(deps).mount(ctx);
-    expect(root.querySelector(".full-img")?.textContent).toBe("준비 중");
+    expect(root.querySelector(".full-img")?.textContent).toContain("미리보기를 볼 수 없어요");
     const start = byText(root, "화장하러 가기");
-    expect(start.disabled).toBe(false);
     start.click();
     expect(go).toHaveBeenCalledWith("guide");
   });
 
   it("개인화 근거 문장과 쓰는 제품을 보여 준다 (제품 목록은 룩 화면에서 옮겨 옴)", () => {
-    const { root, ctx, deps } = setup([job("daily", "done", "/r/daily.png")], "daily");
+    const { root, ctx, deps } = setup("daily");
     const plan = { rationale: { liner: "눈꼬리가 올라가 있어서 꼬리를 위로 뺐어요" } } as unknown as PersonalPlan;
     fullRenderScreen<null>({ ...deps, getPlan: () => plan }).mount(ctx);
     expect(root.querySelector(".ar-why")?.textContent).toContain("눈꼬리가 올라가 있어서");
@@ -258,13 +202,13 @@ describe("화면 2-b — AR 완성 예상 (카메라를 못 열면 서버 그림
   });
 
   it("계획이 없으면 근거 줄을 그리지 않는다", () => {
-    const { root, ctx, deps } = setup([job("daily", "done", "/r/daily.png")], "daily");
+    const { root, ctx, deps } = setup("daily");
     fullRenderScreen<null>({ ...deps, getPlan: () => null }).mount(ctx);
     expect(root.querySelector(".ar-why")).toBeNull();
   });
 
   it("맨 위에도 뒤로 가기가 있다 — 카메라·제품 목록에 밀려 아래 버튼이 안 보여도 (2026-09-29 폰)", () => {
-    const { root, ctx, go, deps } = setup([job("daily", "done", "/r/daily.png")], "daily");
+    const { root, ctx, go, deps } = setup("daily");
     fullRenderScreen<null>(deps).mount(ctx);
     const top = root.querySelector<HTMLButtonElement>(".fullrender > .back");
     expect(top).not.toBeNull();
@@ -274,17 +218,9 @@ describe("화면 2-b — AR 완성 예상 (카메라를 못 열면 서버 그림
   });
 
   it("다른 화장 보기로 화면 2 로 돌아간다", () => {
-    const { root, ctx, go, deps } = setup([job("daily", "done", "/r/daily.png")], "daily");
+    const { root, ctx, go, deps } = setup("daily");
     fullRenderScreen<null>(deps).mount(ctx);
     byText(root, "다른 화장 보기").click();
     expect(go).toHaveBeenCalledWith("looks");
-  });
-
-  it("그림이 늦게 와도 화면이 따라간다", () => {
-    const { root, ctx, deps, source } = setup([], "daily");
-    fullRenderScreen<null>(deps).mount(ctx);
-    expect(root.querySelector(".full-img.empty")).not.toBeNull();
-    source.push([job("daily", "done", "/r/daily.png")]);
-    expect(root.querySelector(".full-img img")?.getAttribute("src")).toBe("/r/daily.png");
   });
 });

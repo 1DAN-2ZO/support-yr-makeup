@@ -7,7 +7,7 @@
  *    매 프레임 얼굴 그물(삼각형 852개)로 지금 얼굴에 휘어 피부와 섞는다(makeup-gl.ts, WebGL2)
  *  - 떨림: 얼굴 점에 One-Euro 필터(④ smoothing.ts). 가만히 있으면 많이, 움직이면 덜 부드럽게 — 고정 스무딩처럼
  *    눈머리가 뒤처지지 않는다. 비교용으로 ?nosmooth 면 끈다 (2026-09-29 폰: "떨림이 심해")
- *  - 카메라·WebGL 을 못 쓰면 서버가 만든 그림(Stable-Makeup)을 보여 준다. 흐름은 막지 않는다
+ *  - 카메라·WebGL 을 못 쓰면 안내만 하고 흐름은 막지 않는다 (2026-09-29: Stable-Makeup 을 빼서 대신 보여 줄 그림이 없다)
  *
  * 근거 한 줄(개인화 계획의 rationale)과 쓰는 제품을 같이 보여 주고, "화장하러 가기" 로 부위 반복을 시작한다.
  * 사진은 저장하지 않는다 — 카메라 영상은 이 화면 안에서만 쓴다.
@@ -15,8 +15,7 @@
 
 import { measureFace } from "../core/face-measure";
 import { lookById } from "../core/looks";
-import type { LookJobSource } from "../core/look-jobs";
-import { fullRenderUrl, lookDetail } from "../core/look-view";
+import { lookDetail } from "../core/look-view";
 import { resolvePlan, type PersonalPlan } from "../core/personalize";
 import { LandmarkSmoother } from "../core/smoothing";
 import type { Pt } from "../core/types";
@@ -26,7 +25,6 @@ import { paintLookOf, paintMakeup } from "./makeup-paint";
 import type { Screen, ScreenContext } from "./shell";
 
 export interface FullRenderDeps {
-  jobs: LookJobSource;
   getLookId: () => string | null;
   /** 룩 화면에서 만든 이 룩의 개인화 계획 (core/plan-queue.ts). 없으면 카메라 얼굴로 규칙 계획을 만든다 */
   getPlan?: (lookId: string) => PersonalPlan | null;
@@ -96,26 +94,16 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
       row.append(go, back);
       wrap.append(row);
 
-      /** 카메라가 아직이거나 못 쓸 때: 서버 그림 */
+      /** 카메라가 아직이거나 못 쓸 때 — 안내만. 부위 반복은 그대로 시작할 수 있다 */
       function drawFallback(): void {
         if (live) return;
-        const url = fullRenderUrl(deps.jobs.current(), lookId);
         const figure = document.createElement("div");
-        figure.className = "full-img" + (url ? "" : " empty");
-        if (url) {
-          const img = document.createElement("img");
-          img.src = url;
-          img.alt = "전체 완성 예상";
-          figure.append(img);
-        } else {
-          figure.textContent = "준비 중";
-        }
+        figure.className = "full-img empty";
+        figure.textContent = "이 기기에서는 미리보기를 볼 수 없어요";
         stage.replaceChildren(figure);
-        // 완성 예상은 참고다. 실제 결과가 이것과 다르다고 점수가 깎이지 않는다
-        note.textContent = url ? "참고용 그림이에요. 순서대로 하나씩 따라가 볼게요." : "그림은 아직이지만 그대로 시작할 수 있어요.";
+        note.textContent = "그대로 시작할 수 있어요. 부위마다 그릴 자리를 보여 드릴게요.";
       }
 
-      const stopJobs = deps.jobs.subscribe(drawFallback);
       drawFallback();
 
       // ── AR ───────────────────────────────────────────
@@ -211,7 +199,6 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
 
       return () => {
         cleanup();
-        stopJobs();
       };
     },
   };
