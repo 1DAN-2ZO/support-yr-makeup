@@ -93,4 +93,12 @@ describe("guides — 화면에 그릴 라이너 두께 윤곽", () => {
     const o = linerOutline(BARE, 0.045);
     expect(o.L).toContainEqual(LMS[LM.eyeB.outer]);
   });
+
+  it("G12 꼬리 선을 넘겨받으면 그 끝을 쓴다 — 개인화 가이드의 꼬리 모양을 윤곽이 따른다", () => {
+    const tipR = { x: 150, y: 200 }, tipL = { x: 450, y: 200 };
+    const o = linerOutline(BARE, 0.045, { R: [LMS[LM.eyeA.outer]!, tipR], L: [LMS[LM.eyeB.outer]!, tipL] });
+    expect(o.R).toContainEqual(tipR);
+    expect(o.L).toContainEqual(tipL);
+    expect(o.R).not.toContainEqual(lookGuide()("liner", BARE).liner!.wing.R[1]);
+  });
 });
