@@ -54,37 +54,61 @@ describe("화면 3", () => {
     expect(Array.from(root.querySelectorAll("button")).some((x) => x.textContent === GUIDE_TEXT.start)).toBe(true);
   });
 
-  // #182 완성본 = 2-b AR 장면. 그림 그리기(캔버스)는 브라우저에서만 — 여기서는 무엇을 꺼내는지만
-  const baseline = { lm: Array.from({ length: 478 }, () => ({ x: 10, y: 10 })), unit: { eye: 1, lip: 1, face: 1 }, foreheadL: 60, scleraLab: null,
+  // #192 완성본 = 쌩얼 정면(촬영 원본 우선) + 개인화 계획 화장 (2-b AR 과 같은 그리기 코드). 그림 합성(WebGL)은 브라우저에서만 — 여기서는 순서만
+  const baseline = { lm: Array.from({ length: 478 }, () => ({ x: 10, y: 20 })), unit: { eye: 1, lip: 1, face: 1 }, foreheadL: 60, scleraLab: null,
     faceShape: { label: "oval" as const, confidence: 0, method: "rule" as const, version: "t" }, bareImage: new Blob(["bare"]), w: 1000, h: 800 };
+  const plan = { tag: "plan" } as unknown as NonNullable<ReturnType<NonNullable<GuideDeps["getPlan"]>>>;
   const flush = () => new Promise((r) => setTimeout(r, 0));
+  const original = () => { const c = document.createElement("canvas"); c.width = 2000; c.height = 1600; return c; };
+  /** 테두리를 그릴 때 받은 얼굴 점의 첫 점 */
+  const spyGuide = () => {
+    const seen: { x: number; y: number }[] = [];
+    const getGuide = () => ((_p: unknown, f: { lm: readonly { x: number; y: number }[] }) => { seen.push(f.lm[0]!); return {}; }) as never;
+    return { seen, getGuide };
+  };
 
-  it("GS5 AR 장면이 있으면 그 장면을 연다 (쌩얼이 아니라)", async () => {
-    const arImage = new Blob(["ar"]);
-    const toBitmap = vi.fn(async () => ({ width: 1280, height: 720, close: vi.fn() }) as unknown as ImageBitmap);
-    const { ctx, deps } = setup({ getBaseline: () => baseline, getArFrame: async () => ({ lookId: "x", image: arImage, lm: baseline.lm, w: 1280, h: 720 }), toBitmap });
+  it("GS5 계획이 있으면 촬영 원본 위에 그 계획으로 화장을 그린다 — 얼굴 점은 원본 크기에 맞춰", async () => {
+    const paint = vi.fn(() => document.createElement("canvas"));
+    const toBitmap = vi.fn();
+    const { ctx, deps } = setup({ getBaseline: () => baseline, getPlan: () => plan, getBareSource: original, paint, toBitmap });
     guideScreen<null>(deps).mount(ctx);
     await flush();
-    expect(toBitmap).toHaveBeenCalledTimes(1);
-    expect(toBitmap).toHaveBeenCalledWith(arImage);
+    expect(paint).toHaveBeenCalledTimes(1);
+    const [d, lm, lookArg, planArg] = paint.mock.calls[0] as unknown as [{ w: number; h: number }, { x: number; y: number }[], unknown, unknown];
+    expect([d.w, d.h]).toEqual([2000, 1600]);
+    expect(lm[0]).toEqual({ x: 20, y: 40 });   // 1000×800 → 2000×1600
+    expect(lookArg).toBe(look);
+    expect(planArg).toBe(plan);
+    expect(toBitmap).not.toHaveBeenCalled();   // 원본이 있으면 저장한 쌩얼을 안 연다
   });
 
-  it("GS6 AR 장면이 없으면 쌩얼을 연다", async () => {
-    const toBitmap = vi.fn(async () => ({ width: 1000, height: 800, close: vi.fn() }) as unknown as ImageBitmap);
-    const { ctx, deps } = setup({ getBaseline: () => baseline, getArFrame: async () => null, toBitmap });
+  it("GS6 원본이 없으면(앱을 다시 켬) 저장한 쌩얼 위에 그린다", async () => {
+    const paint = vi.fn(() => document.createElement("canvas"));
+    const toBitmap = vi.fn(async () => ({ width: 500, height: 400, close: vi.fn() }) as unknown as ImageBitmap);
+    const { ctx, deps } = setup({ getBaseline: () => baseline, getPlan: () => plan, paint, toBitmap });
     guideScreen<null>(deps).mount(ctx);
     await flush();
     expect(toBitmap).toHaveBeenCalledWith(baseline.bareImage);
+    const [d, lm] = paint.mock.calls[0] as unknown as [{ w: number }, { x: number }[]];
+    expect(d.w).toBe(500);
+    expect(lm[0]!.x).toBe(5);
   });
 
-  it("GS7 테두리는 그 그림의 얼굴 점으로 — AR 장면이면 장면의 점을 그림 크기에 맞춰 (맨얼굴 점이 아니라)", async () => {
-    const arLm = Array.from({ length: 478 }, () => ({ x: 50, y: 40 }));
-    const seen: { x: number; y: number }[] = [];
-    const getGuide = () => ((_p: unknown, f: { lm: readonly { x: number; y: number }[] }) => { seen.push(f.lm[0]!); return {}; }) as never;
-    const toBitmap = vi.fn(async () => ({ width: 640, height: 360, close: vi.fn() }) as unknown as ImageBitmap);   // 저장한 1280×720 의 절반
-    const { ctx, deps } = setup({ getBaseline: () => baseline, getArFrame: () => ({ lookId: "x", image: new Blob(["ar"]), lm: arLm, w: 1280, h: 720 }), toBitmap, getGuide });
+  it("GS7 계획이 없거나 그리기가 실패하면 쌩얼만 — 테두리는 그대로 맨얼굴 점", async () => {
+    for (const over of [{ getPlan: () => null }, { getPlan: () => plan, paint: vi.fn(() => null) }]) {
+      const { seen, getGuide } = spyGuide();
+      const { ctx, deps } = setup({ getBaseline: () => baseline, getBareSource: original, getGuide, ...over });
+      guideScreen<null>(deps).mount(ctx);
+      await flush();
+      expect(seen[0]).toEqual({ x: 20, y: 40 });
+    }
+  });
+
+  it("GS8 테두리 점 = 맨얼굴 점을 그린 그림 크기에 맞춘 것 (완성본·테두리·채점이 한 얼굴)", async () => {
+    const { seen, getGuide } = spyGuide();
+    const { ctx, deps } = setup({ getBaseline: () => baseline, getPlan: () => plan, getBareSource: original, paint: () => document.createElement("canvas"), getGuide });
     guideScreen<null>(deps).mount(ctx);
     await flush();
-    expect(seen[0]).toEqual({ x: 25, y: 20 });
+    expect(seen[0]).toEqual({ x: 20, y: 40 });
   });
 });
