@@ -27,25 +27,30 @@ export const SLOW_HINT = "머리카락이나 손이 얼굴을 가리지 않았�
  * 그 장이 기준이 되면 다음 장이 "밝기" 로 53초 막혔다. 사용자도 "켜지자마자 찍힌다" 고 했다.
  *  - minMs: 그 장 차례가 된 뒤 최소 이만큼은 기다린다 (준비할 틈)
  *  - settleMs 동안 이마 L* 의 폭이 settleL 이하여야 한다 (카메라가 멈췄다)
+ *  - maxWaitMs 가 지나면 자리 잡기는 건너뛴다 — 이마를 계속 못 재면(드묾) 다른 조건이 다 맞아도
+ *    "잠시만 그대로" 에 영원히 멈추기 때문 (#168 ⑥ 리뷰)
  */
-export const BASE_SETTLE = { minMs: 1500, settleMs: 500, settleL: 2 } as const;
+export const BASE_SETTLE = { minMs: 1500, settleMs: 500, settleL: 2, maxWaitMs: 5000 } as const;
 
 export interface Settle {
+  /** 그 장 차례가 된 시각 */
+  since: number;
   notBefore: number;
   hist: readonly { t: number; L: number }[];
 }
 
 export function startSettle(now: number, opt = BASE_SETTLE): Settle {
-  return { notBefore: now + opt.minMs, hist: [] };
+  return { since: now, notBefore: now + opt.minMs, hist: [] };
 }
 
 /** 프레임마다. L 이 없으면(이마 못 잼) 기록을 비운다 */
 export function settleStep(st: Settle, now: number, L: number | undefined, opt = BASE_SETTLE): { state: Settle; ready: boolean } {
-  if (L === undefined || !Number.isFinite(L)) return { state: { ...st, hist: [] }, ready: false };
+  const timedOut = now - st.since >= opt.maxWaitMs;
+  if (L === undefined || !Number.isFinite(L)) return { state: { ...st, hist: [] }, ready: timedOut };
   const hist = [...st.hist.filter((h) => now - h.t <= opt.settleMs), { t: now, L }];
   const Ls = hist.map((h) => h.L);
   const spanOk = now - (hist[0]?.t ?? now) >= opt.settleMs * 0.8;
-  const ready = now >= st.notBefore && spanOk && Math.max(...Ls) - Math.min(...Ls) <= opt.settleL;
+  const ready = timedOut || (now >= st.notBefore && spanOk && Math.max(...Ls) - Math.min(...Ls) <= opt.settleL);
   return { state: { ...st, hist }, ready };
 }
 

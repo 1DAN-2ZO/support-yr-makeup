@@ -80,6 +80,19 @@ describe("기준 장 자리 잡기 (2026-09-28 실내등: 켜자마자 찍힌 �
     expect(tookAt).toBeLessThan(BASE_SETTLE.minMs);
   });
 
+  it("S5 이마를 계속 못 재도 5초가 지나면 자리 잡기를 건너뛰고 찍는다 (#168 리뷰)", () => {
+    let st = startRun({}, 0);
+    let tookAt = -1;
+    for (let t = 0; tookAt < 0 && t < 10000; t += 50) {
+      const { foreheadL: _L, ...noForehead } = OK;
+      const r = runStep(st, noForehead, t);
+      if (r.take) tookAt = t;
+      st = r.state;
+    }
+    expect(tookAt).toBeGreaterThanOrEqual(BASE_SETTLE.maxWaitMs);
+    expect(tookAt).toBeLessThan(BASE_SETTLE.maxWaitMs + 500);
+  });
+
   it("S4 settleStep: 이마를 못 재면 기록을 비운다", () => {
     let s = startSettle(0);
     s = settleStep(s, 2000, 60).state;
