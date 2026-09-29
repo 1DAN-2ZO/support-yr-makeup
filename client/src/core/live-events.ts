@@ -6,7 +6,8 @@
  *   프레임마다 찍지 않는다(초당 수십 줄). 같은 조건에 stuckMs(3초) 막히면 그 조건으로 한 번.
  *   조건이 3초 안에 계속 바뀌면 slowMs(5초) 동안 못 넘긴 뒤 가장 오래 막힌 조건으로 한 번.
  *   통과하면 처음부터.
- * 얼굴 없음("face")은 gate_fail 로 안 센다 — 사용자가 자리를 비운 것이지 조건에 막힌 게 아니다. landmark_lost 가 맡는다.
+ * 얼굴 없음("face")은 gate_fail 로 안 센다 — landmark_lost 가 맡는다. 다만 막힌 시간을 지우지도 않는다:
+ * 고개를 많이 돌리면 얼굴이 한두 프레임씩 끊기는데, 그때마다 지우면 3초·5초에 영영 못 닿는다 (#170 리뷰). 그 프레임만 건너뛴다.
  */
 
 import type { Logger } from "./log";
@@ -44,13 +45,15 @@ export function createLiveEvents(logger: Logger, opts: LiveEventsOptions = {}): 
 
   return {
     gate(firstFail, now) {
-      if (firstFail === null || firstFail === "face") { reset(); return; }
+      if (firstFail === null) { reset(); return; }
+      if (firstFail === "face") return;
       if (!ep) ep = { start: now, last: now, prev: firstFail, acc: {}, logged: false };
       ep.acc[ep.prev] = (ep.acc[ep.prev] ?? 0) + (now - ep.last);
       ep.last = now; ep.prev = firstFail;
       if (!cur || cur.reason !== firstFail) {
         cur = { reason: firstFail, since: now, logged: false };
-      } else if (!cur.logged && !ep.logged && now - cur.since >= stuckMs) {
+      } else if (!cur.logged && now - cur.since >= stuckMs) {
+        // 한 번 찍은 뒤에도 조건이 바뀌어 또 3초 막히면 그것도 찍는다 — 화면 1 capture-events blocked() 와 같게 (#170 리뷰)
         cur.logged = true; ep.logged = true;
         fail(firstFail);
         return;

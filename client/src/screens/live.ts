@@ -235,7 +235,6 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         const sw = video.videoWidth, sh = video.videoHeight;
         const raw = lmk.detectForVideo(video, now).faceLandmarks[0];
         const lm = raw ? raw.map((p) => ({ x: p.x * sw, y: p.y * sh })) : null;
-        events.face(!!lm, now);
         // 확대 창: 칸 비율이 바뀌면(방향 전환) 새로 잡는다. 얼굴을 3초 넘게 잃으면 옛 자리에서 미끄러져 오지 않게 새로 (3-9 자리 비움)
         const aspect = view.clientWidth && view.clientHeight ? view.clientWidth / view.clientHeight : 3 / 4;
         if (!follow || Math.abs(aspect - followAspect) > 0.01) { follow = createCropFollow(part!, aspect); followAspect = aspect; }
@@ -281,6 +280,8 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
           return;
         }
         if (collecting) return;
+        // 묶음을 모으는 동안은 세지 않는다 — 얼굴 놓침도 막힘도 (#170 리뷰)
+        events.face(!!lm, now);
         events.gate(r.gate.ok ? null : r.gate.firstFail, now);
         // 실패 문구는 다시 통과할 때까지 그대로 둔다 — 게이트 문구가 바로 덮으면 왜 안 찍혔는지 못 본다
         if (line.textContent === LIVE_TEXT.failed && !r.gate.ok) return;

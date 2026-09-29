@@ -71,4 +71,18 @@ describe("live events", () => {
     ev.face(true, 1700);
     expect(events.filter((e) => e.name === "landmark_lost")).toEqual([expect.objectContaining({ ms: 1500 })]);
   });
+
+  it("E7 한 번 찍은 뒤 다른 조건으로 또 3초 막히면 그것도 찍는다 — 화면 1 blocked() 와 같게 (#170 리뷰)", () => {
+    const { ev, events } = setup();
+    let t = run(ev, "angle", 0, 3100);
+    t = run(ev, "size", t, 3500);
+    expect(fails(events).map((e) => (e as { first_fail?: string }).first_fail)).toEqual(["angle", "size"]);
+  });
+
+  it("E8 얼굴이 한 프레임씩 끊겨도 막힌 시간은 이어진다 — 지우지 않고 그 프레임만 건너뜀 (#170 리뷰)", () => {
+    const { ev, events } = setup();
+    // 각도에 10초 막혀 있는데 2초마다 얼굴이 한 프레임 끊긴다
+    for (let t = 0; t <= 10000; t += 33) ev.gate(t % 2000 < 33 ? "face" : "angle", t);
+    expect(fails(events)).toEqual([expect.objectContaining({ first_fail: "angle" })]);
+  });
 });
