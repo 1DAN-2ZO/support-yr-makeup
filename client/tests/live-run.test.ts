@@ -184,4 +184,12 @@ describe("live run", () => {
     if (last?.status !== "done") return;
     expect(last.bundle.pts[0]![0]).toEqual({ x: moved[0]!.x, y: moved[0]!.y });
   });
+
+  it("L18 맨얼굴 표정을 받으면 지금 표정과 비교해 막는다 — 입술 단계에서 입을 내밀면 expr_diff (#27)", () => {
+    const calm = { mouthPucker: 0.05, jawOpen: 0.04, mouthSmileLeft: 0.02, mouthSmileRight: 0.02 };
+    const lr = createLiveRun<string>({ partId: "lip", baseline: { lm: FACE, foreheadL: SKIN.L }, guide: lookGuide({}), baseExpr: calm });
+    expect(lr.step(frame({ expr: { ...calm, mouthPucker: 0.7 } })).gate.firstFail).toBe("expr_diff");
+    const plain = run("lip");
+    expect(plain.step(frame({ expr: { ...calm, mouthPucker: 0.7 } })).gate.firstFail).not.toBe("expr_diff");
+  });
 });

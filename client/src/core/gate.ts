@@ -2,11 +2,11 @@
  * 화면 4 품질 게이트 — "지금 확인받아도 되나" (정의서 3-3·3-7, 2-1 셋째 조각 #21). 순수 함수, DOM·카메라를 모른다.
  * poc/full/lib/gate.js 의 evaluateGate 를 계약 타입(GateResult)에 맞춰 옮기고, 화면 1(flow.ts shotGate)과 값·문구를 맞췄다.
  *
- *   얼굴 → 정면 → 기준 각도 차 → 부위 보임 → 가림 → 선명 → 밝기 → 색 → 안정
+ *   얼굴 → 정면 → 기준 각도 차 → 표정 차 → 부위 보임 → 가림 → 선명 → 밝기 → 색 → 안정
  *   안 맞는 것 하나만 한 줄, 숫자 없음. 통과 전에는 "확인받기" 버튼이 꺼져 있다.
  *
  * 측정은 화면 1 과 같은 코드를 쓴다: 각도 capture-measure · 선명·이마 색 frame-measure · 가림 occlusion.foreheadStep.
- * 표정 차(expr_diff)는 아직 없다 — #27(표정 게이트, 스프린트 3).
+ * 표정 차(expr_diff, #27): 맨얼굴 때 표정과의 차(core/expression.exprDiff). 맨얼굴 값이 없으면 건너뛴다 (① #177 전).
  */
 
 import { yawFromLandmarks } from "./capture-measure";
@@ -20,6 +20,8 @@ export interface LiveLimits {
   /** 기준 사진과의 각도 차 한계(°). 넘으면 정합이 감당 못 한다 (tech-review 화면 4 실기기 1차) */
   dYaw: number;
   dPitch: number;
+  /** 표정 차(블렌드셰이프 0~1 중 가장 크게 달라진 양) 한계. 가정값 — 촬영 세션(#58)에서 확정 */
+  exprTol: number;
   sharpMin: number;
   brightTol: number;
   brightMin: number;
@@ -30,7 +32,7 @@ export interface LiveLimits {
 
 /** 선명·밝기·색·안정은 화면 1 과 같은 값 (flow.ts CAPTURE_LIMITS 주석 "화면 4 게이트와 값을 맞춘다") */
 export const LIVE_LIMITS: LiveLimits = {
-  yaw: 15, pitch: 10, dYaw: 8, dPitch: 6,
+  yaw: 15, pitch: 10, dYaw: 8, dPitch: 6, exprTol: 0.35,
   sharpMin: CAPTURE_LIMITS.sharpMin,
   brightTol: CAPTURE_LIMITS.brightTol,
   brightMin: CAPTURE_LIMITS.brightMin,
@@ -44,6 +46,7 @@ export const GATE_TEXT = {
   face: "",   // 얼굴이 없으면 문구 없이 테두리만 사라진다 (정의서 3-9)
   angle: SHOT_TEXT.front,
   pose: "처음 찍을 때와 같은 각도로 봐 주세요",
+  expr: "처음 찍을 때처럼 편한 표정으로 있어 주세요",
   eyes: "양쪽 눈이 보이게 해 주세요",
   part: "부위가 다 보이게 해 주세요",
   occluded: SHOT_TEXT.occluded,
@@ -67,6 +70,8 @@ export interface LiveMeasure {
   /** 기준 사진(맨얼굴 정면)의 각도 — 같은 poseOf() 로 */
   baseYaw?: number;
   basePitch?: number;
+  /** 맨얼굴 때와의 표정 차 (expression.exprDiff). 없으면 조건 생략 */
+  exprDiff?: number;
   /** landmarks.partVisible() */
   partVisible?: boolean;
   /** occlusion.foreheadStep().occluded */
@@ -97,6 +102,7 @@ export function evaluateGate(partId: PartId, m: LiveMeasure, limits: LiveLimits 
     && (Math.abs(m.yaw - m.baseYaw) > limits.dYaw || Math.abs(m.pitch - m.basePitch) > limits.dPitch)) {
     return fail("pose_diff", GATE_TEXT.pose);
   }
+  if (typeof m.exprDiff === "number" && m.exprDiff > limits.exprTol) return fail("expr_diff", GATE_TEXT.expr);
   if (m.partVisible === false) return fail("visible", EYE_PARTS.includes(partId) ? GATE_TEXT.eyes : GATE_TEXT.part);
   // 이마 급변 = 무엇이든 얼굴을 가림 (#144). 계약 이름은 아직 "hand" — #155 에서 "occluded" 로 바뀐다
   if (m.occluded) return fail("hand", GATE_TEXT.occluded);
@@ -129,7 +135,7 @@ export function gateStep(stable: number, partId: PartId, m: LiveMeasure, limits:
 }
 
 function measureFinite(m: LiveMeasure): boolean {
-  const nums = [m.yaw, m.pitch, m.baseYaw, m.basePitch, m.sharpness, m.foreheadL, m.baselineL, m.stableCount,
+  const nums = [m.yaw, m.pitch, m.baseYaw, m.basePitch, m.exprDiff, m.sharpness, m.foreheadL, m.baselineL, m.stableCount,
     m.foreheadAb?.a, m.foreheadAb?.b, m.baselineAb?.a, m.baselineAb?.b];
   return nums.every((v) => v === undefined || Number.isFinite(v));
 }

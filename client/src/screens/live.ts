@@ -16,7 +16,7 @@
  *
  * 이벤트(#24): gate_fail · landmark_lost 는 core/live-events (화면 1 과 같은 규칙). screen_enter/leave 는 껍데기가 찍는다.
  *
- * 아직 없는 것: 표정 게이트(#27).
+ * 표정 게이트(#27): 지금 블렌드셰이프를 맨얼굴 때 값(getBaseExpr)과 비교. 맨얼굴 값이 오기 전(① #177)엔 건너뛴다.
  */
 
 import type { FaceLandmarker } from "@mediapipe/tasks-vision";
@@ -46,6 +46,8 @@ export interface LiveDeps {
   getBaseAb: () => { a: number; b: number } | null;
   /** 고른 룩의 parts — getGuide 가 없을 때 기본 가이드(lookGuide)용 */
   getLookParts: () => Partial<Record<LookPartId, LookPart>>;
+  /** 맨얼굴 정면 때 표정 (① Baseline.expression, #177). 없으면 표정 조건을 건너뛴다 */
+  getBaseExpr?: () => Readonly<Record<string, number>> | null;
   /** 테두리 모양 — 채점(화면 5)과 같은 것을 넘긴다. 없으면 lookGuide(getLookParts()). ⑥ 개인화 계획이 여기 꽂힌다 (#167 리뷰) */
   getGuide?: () => GuideSource;
   /** 확인받기 묶음을 그 부위에 둔다 (화면 5 가 getCapture 로 읽는다) */
@@ -180,6 +182,7 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         partId: part,
         baseline: { lm: baseline.lm, foreheadL: baseline.foreheadL },
         ...(baseAb ? { baseAb } : {}),
+        baseExpr: deps.getBaseExpr?.() ?? null,
         guide: deps.getGuide?.() ?? lookGuide(deps.getLookParts()),
         smooth: stab,
       });
@@ -233,7 +236,8 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         const now = Math.max(performance.now(), lastT + 1);
         lastT = now;
         const sw = video.videoWidth, sh = video.videoHeight;
-        const raw = lmk.detectForVideo(video, now).faceLandmarks[0];
+        const res = lmk.detectForVideo(video, now);
+        const raw = res.faceLandmarks[0];
         const lm = raw ? raw.map((p) => ({ x: p.x * sw, y: p.y * sh })) : null;
         // 확대 창: 칸 비율이 바뀌면(방향 전환) 새로 잡는다. 얼굴을 3초 넘게 잃으면 옛 자리에서 미끄러져 오지 않게 새로 (3-9 자리 비움)
         const aspect = view.clientWidth && view.clientHeight ? view.clientWidth / view.clientHeight : 3 / 4;
@@ -249,6 +253,8 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         // 부위 가시성은 사용자에게 보이는 창 안에서 본다
         const f: LiveFrame<HTMLCanvasElement> = { t: now, lm, w: sw, h: sh, image: () => grabFrame(video), view: shown };
         if (lm) {
+          const bs = res.faceBlendshapes[0]?.categories;
+          if (bs?.length) f.expr = Object.fromEntries(bs.map((c) => [c.categoryName, c.score]));
           f.sharpness = sharpnessOf(video, faceCropOf(lm, sw, sh));
           const lab = foreheadLabOf(video, lm, sw, sh);
           if (lab) f.lab = lab;
