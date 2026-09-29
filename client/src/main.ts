@@ -333,7 +333,8 @@ async function boot(): Promise<void> {
       getLook: () => lookById(session.lookId),
       getFaceShape: () => session.faceShape,
       // 서버 완성본(Stable-Makeup)은 빠졌다 — 쌩얼 + 테두리로 보인다. AR 장면으로 바꾸는 건 ② 요청 (2026-09-29)
-      fullRenderUrl: () => null,
+      // 화면 3 완성본 = 2-b AR 장면 (#182). 지금 고른 화장의 장면만 (다른 화장이면 null → 쌩얼)
+      getArFrame: () => arFrames.get(session.lookId),
       getGuide: guideFor,
     },
     {

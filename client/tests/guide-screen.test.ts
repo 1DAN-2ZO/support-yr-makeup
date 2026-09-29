@@ -17,7 +17,7 @@ function setup(over: Partial<GuideDeps> = {}) {
   const ctx: ScreenContext<null> = { root, session: null, go, goPart, log: createLogger({ sid: "s1", screen: "guide", part: "liner", ver }, memorySink().sink) };
   const deps: GuideDeps = {
     getPart: () => "liner", firstPart: () => "brow", getBaseline: () => null, getLook: () => look,
-    getFaceShape: () => null, fullRenderUrl: () => null, ...over,
+    getFaceShape: () => null, ...over,
   };
   return { root, ctx, go, goPart, deps };
 }
@@ -52,5 +52,39 @@ describe("화면 3", () => {
     guideScreen<null>(deps).mount(ctx);
     expect(root.querySelector(".guide-img")?.textContent).toBe(GUIDE_TEXT.noImage);
     expect(Array.from(root.querySelectorAll("button")).some((x) => x.textContent === GUIDE_TEXT.start)).toBe(true);
+  });
+
+  // #182 완성본 = 2-b AR 장면. 그림 그리기(캔버스)는 브라우저에서만 — 여기서는 무엇을 꺼내는지만
+  const baseline = { lm: Array.from({ length: 478 }, () => ({ x: 10, y: 10 })), unit: { eye: 1, lip: 1, face: 1 }, foreheadL: 60, scleraLab: null,
+    faceShape: { label: "oval" as const, confidence: 0, method: "rule" as const, version: "t" }, bareImage: new Blob(["bare"]), w: 1000, h: 800 };
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  it("GS5 AR 장면이 있으면 그 장면을 연다 (쌩얼이 아니라)", async () => {
+    const arImage = new Blob(["ar"]);
+    const toBitmap = vi.fn(async () => ({ width: 1280, height: 720, close: vi.fn() }) as unknown as ImageBitmap);
+    const { ctx, deps } = setup({ getBaseline: () => baseline, getArFrame: async () => ({ lookId: "x", image: arImage, lm: baseline.lm, w: 1280, h: 720 }), toBitmap });
+    guideScreen<null>(deps).mount(ctx);
+    await flush();
+    expect(toBitmap).toHaveBeenCalledTimes(1);
+    expect(toBitmap).toHaveBeenCalledWith(arImage);
+  });
+
+  it("GS6 AR 장면이 없으면 쌩얼을 연다", async () => {
+    const toBitmap = vi.fn(async () => ({ width: 1000, height: 800, close: vi.fn() }) as unknown as ImageBitmap);
+    const { ctx, deps } = setup({ getBaseline: () => baseline, getArFrame: async () => null, toBitmap });
+    guideScreen<null>(deps).mount(ctx);
+    await flush();
+    expect(toBitmap).toHaveBeenCalledWith(baseline.bareImage);
+  });
+
+  it("GS7 테두리는 그 그림의 얼굴 점으로 — AR 장면이면 장면의 점을 그림 크기에 맞춰 (맨얼굴 점이 아니라)", async () => {
+    const arLm = Array.from({ length: 478 }, () => ({ x: 50, y: 40 }));
+    const seen: { x: number; y: number }[] = [];
+    const getGuide = () => ((_p: unknown, f: { lm: readonly { x: number; y: number }[] }) => { seen.push(f.lm[0]!); return {}; }) as never;
+    const toBitmap = vi.fn(async () => ({ width: 640, height: 360, close: vi.fn() }) as unknown as ImageBitmap);   // 저장한 1280×720 의 절반
+    const { ctx, deps } = setup({ getBaseline: () => baseline, getArFrame: () => ({ lookId: "x", image: new Blob(["ar"]), lm: arLm, w: 1280, h: 720 }), toBitmap, getGuide });
+    guideScreen<null>(deps).mount(ctx);
+    await flush();
+    expect(seen[0]).toEqual({ x: 25, y: 20 });
   });
 });
