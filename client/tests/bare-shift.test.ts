@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { frameOf } from "@core/sampling";
 import { scorePart } from "@core/score-part";
 import { toOutcome } from "@core/score";
+import type { RgbaImage } from "@core/color";
 import type { PartId } from "@core/types";
 import { LMS, NATURAL, browPaint, guide, image, linerPaint, naturalPaint, over, shifted, type Paint } from "./helpers/synth-face";
 
@@ -43,4 +44,38 @@ describe("그린 화장은 조금 어긋나도 그대로 잡는다", () => {
       expect(run("liner", paint).outcome.decision).toBe("check_only");
     });
   }
+});
+
+// 카메라 잡음 (#174 리뷰): 한 픽셀씩 읽으면 두 사진의 픽셀마다 잡음이 따로 붙어 맨얼굴에 점수가 났다 (σ6 에서 15/15).
+// 눈 폭 1/30 창(합성 얼굴 3×3) 평균으로 읽는다 — sampling.ts SAMPLE
+describe("카메라 잡음", () => {
+  let seed = 5;
+  const g = (): number => { let s = 0; for (let i = 0; i < 6; i++) s += (seed = (seed * 16807) % 2147483647) / 2147483647; return (s - 3) / Math.sqrt(0.5); };
+  const noisy = (im: RgbaImage, sd: number): RgbaImage => {
+    const d = new Uint8ClampedArray(im.data);
+    for (let i = 0; i < d.length; i += 4) for (let c = 0; c < 3; c++) d[i + c] = d[i + c]! + g() * sd;
+    return { ...im, data: d };
+  };
+  const bareIm = image(naturalPaint), linerIm = image(over(linerPaint(), naturalPaint));
+
+  for (const sd of [6, 10]) {
+    it(`B4 잡음 σ${sd} — 맨얼굴은 라이너·눈썹·입술 모두 확인만, 그린 라이너는 90점 이상`, () => {
+      const base = frameOf(noisy(bareIm, sd), LMS);
+      for (const part of ["liner", "brow", "lip"] as const) {
+        const { result, ctx } = scorePart(part, base, frameOf(noisy(bareIm, sd), LMS), guide);
+        expect(toOutcome(part, result, ctx).decision, part).toBe("check_only");
+      }
+      const { result, ctx } = scorePart("liner", base, frameOf(noisy(linerIm, sd), LMS), guide);
+      expect(toOutcome("liner", result, ctx).score).toBeGreaterThanOrEqual(90);
+    });
+  }
+
+  it("B5 잡음 속 그린 눈썹 — 정렬이 잡음에 헛돌지 않는다 (확실히 나아질 때만 옮김, 20회 모두 98점 이상)", () => {
+    const browIm = image(over(browPaint, naturalPaint));
+    for (let t = 0; t < 20; t++) {
+      seed = 77 + t * 131 + 6;
+      const base = frameOf(noisy(bareIm, 6), LMS);
+      expect(scorePart("brow", base, frameOf(noisy(browIm, 6), LMS), guide).result.score, `회차 ${t}`).toBeGreaterThanOrEqual(98);
+    }
+  });
 });

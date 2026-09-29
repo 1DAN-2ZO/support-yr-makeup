@@ -200,6 +200,8 @@ export interface LinerStrip {
     thick: number;
     /** 이 프레임에서 눈을 뜨고 있나. 뜨고 있으면 속눈썹 선 아래는 눈알이라 그 칸을 안 본다 */
     eyeOpen: boolean;
+    /** 평균 창 때문에 선이 양쪽으로 번져 보이는 폭 (눈 폭 비율, 없으면 0). 두께에서 뺀다 */
+    blur?: number;
   };
 }
 
@@ -227,6 +229,8 @@ export function compareLinerEye(base: LinerStrip, cur: LinerStrip, corr: LightCo
   // 속눈썹 선 아래(−)는 눈을 뜨고 있으면 눈알이다. 시선·홍채가 조금만 움직여도 색이 크게 변해 "선 아래 잉크"로 오인된다.
   // 두 프레임 다 눈을 감았을 때만 아래쪽(아래 눈꺼풀 피부)을 본다. 꼬리 행은 눈 밖이라 항상 본다
   const useBelow = !base.meta.eyeOpen && !cur.meta.eyeOpen;
+  // 평균 창으로 번진 폭은 칸 단위로 뺀다 — 두께가 칸(step) 단위로 재지므로 (합성: 3×3 에서 정확히 2칸 늘었다)
+  const blurW = Math.round((cur.meta.blur ?? 0) / step) * step;
   let rowsN = 0, rowsCovered = 0, outN = 0, outHit = 0, wingDrawn = 0, lidRows = 0, lidHitRows = 0;
   const widths: number[] = [], devs: number[] = [];
   for (let i = 0; i < N; i++) {
@@ -239,7 +243,7 @@ export function compareLinerEye(base: LinerStrip, cur: LinerStrip, corr: LightCo
       const hit = deltaE(base.lab[i]![j]!, corr(cur.lab[i]![j]!)) >= p.dEThresh.liner;
       if (Math.abs(o) <= half + p.tol.band) {
         if (hit) bandHit = true;   // 가이드 밴드(두께 + 허용) 안에 감지가 있으면 그 행은 덮임
-      } else if (Math.abs(o) > half + p.tol.out) {
+      } else if (Math.abs(o) > half + p.tol.out + blurW) {   // 번진 폭만큼 바깥 판정을 민다
         outN++;                    // 밴드 밖 번짐
         if (hit) outHit++;
       }
@@ -248,7 +252,7 @@ export function compareLinerEye(base: LinerStrip, cur: LinerStrip, corr: LightCo
     rowsN++;
     if (bandHit) rowsCovered++;
     if (drawnW > 0) {
-      widths.push(drawnW);
+      widths.push(Math.max(step, drawnW - blurW));
       if (wing && t > wingLen * 0.5) devs.push(median(hitOffs));   // 꼬리 바깥쪽 절반의 중심 오프셋
     }
     if (!wing) { lidRows++; if (drawnW > 0) lidHitRows++; }
@@ -263,7 +267,8 @@ export function compareLinerEye(base: LinerStrip, cur: LinerStrip, corr: LightCo
     wingDrawn,
     wingDev: devs.length ? median(devs) : 0,
     gapRatio: lidRows ? 1 - lidHitRows / lidRows : 1,
-    present: widths.length >= 3,
+    // 잡음 몇 칸이 아니라 선이어야 한다 — 3행 이상이면서 행의 10% 이상 (#174 리뷰: 잡음 σ10 에서 흩어진 몇 행으로 25점)
+    present: widths.length >= Math.max(3, 0.1 * rowsN),
   };
 }
 

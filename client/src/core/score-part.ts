@@ -138,14 +138,21 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
  * 라이너가 75점으로 떨어졌다. 라이너·눈썹 화장은 피부를 어둡게만 하고, 속눈썹·눈썹 털이 어긋나면
  * 털이 있던 자리가 밝아진다 — 밝아진 양만 보면 그린 화장은 정렬에 끼어들지 않는다.
  */
-export const REGISTER = { maxPx: 2 } as const;
+/**
+ * range: 옮겨 볼 범위(눈 폭 비율 — 합성 얼굴 눈 폭 90px 에서 2px). 픽셀로 고정하면 웹캠(눈 60px)엔 너무 크고 폰(200px)엔 너무 작다.
+ * minGain: 안 옮긴 자리보다 비용(밝아진 L*)이 이만큼 줄어야 옮긴다 (#174 리뷰: 잡음 속에서 엉뚱하게 옮겨 라이너 96 → 84).
+ *   합성 실측(잡음 σ 0~10): 진짜 1~2px 어긋남은 라이너 2.2~3.6 · 눈썹 0.1~0.2 줄고, 잡음 때문에 옮길 때는 0.03 이하
+ */
+export const REGISTER = { range: 0.022, minGain: 0.1 };
 
 function shiftFrame(f: SampleFrame, dx: number, dy: number): SampleFrame {
   return { ...f, lm: f.lm.map((q) => ({ ...q, x: q.x + dx, y: q.y + dy })) };
 }
 
-function register(cur: SampleFrame, cost: (f: SampleFrame) => number, r: number = REGISTER.maxPx): SampleFrame {
-  let best = cur, bestC = cost(cur), bestD = 0;
+function register(cur: SampleFrame, cost: (f: SampleFrame) => number): SampleFrame {
+  const r = Math.round(cur.unit.eye * REGISTER.range);
+  const c0 = cost(cur);
+  let best = cur, bestC = c0, bestD = 0;
   for (let dy = -r; dy <= r; dy++) {
     for (let dx = -r; dx <= r; dx++) {
       if (!dx && !dy) continue;
@@ -153,7 +160,7 @@ function register(cur: SampleFrame, cost: (f: SampleFrame) => number, r: number 
       if (c < bestC - 1e-9 || (Math.abs(c - bestC) <= 1e-9 && d < bestD)) { best = f; bestC = c; bestD = d; }
     }
   }
-  return best;
+  return c0 - bestC >= REGISTER.minGain ? best : cur;
 }
 
 /** 쌩얼보다 밝아진 양 (L*, 어두워진 곳은 0) */
