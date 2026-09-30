@@ -114,10 +114,10 @@ export function drawLashes(ctx: CanvasRenderingContext2D, tex: LashTextures, lm:
     // 아랫속눈썹 먼저 — 윗속눈썹이 위에 겹친다. 눈 감음이면 윗속눈썹에 가려 안 그린다
     if (state !== "down") {
       const t = meta.textures.lower, img = tex.tint(t.file, color);
-      if (img) drawStrip(ctx, img, lidStrip([...lower].reverse(), { x: -up.x, y: -up.y }, eyeW, meta, t), meta, t);
+      if (img) drawStrip(ctx, img, lidStrip([...lower].reverse(), { x: -up.x, y: -up.y }, eyeW, t), meta, t);
     }
     const t = meta.textures[state], img = tex.tint(t.file, color);
-    if (img) drawStrip(ctx, img, lidStrip([...upper].reverse(), up, eyeW, meta, t), meta, t);   // 점 순서가 바깥→안쪽이라 뒤집는다
+    if (img) drawStrip(ctx, img, lidStrip([...upper].reverse(), up, eyeW, t), meta, t);   // 점 순서가 바깥→안쪽이라 뒤집는다
   });
   ctx.restore();
   return [states[0]!, states[1]!];
