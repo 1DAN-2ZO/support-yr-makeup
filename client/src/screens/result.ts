@@ -14,7 +14,7 @@
 import type { RgbaImage } from "../core/color";
 import type { ScoreOutcome } from "../core/flow";
 import { guideOutline } from "../core/overlay";
-import { frameOf } from "../core/sampling";
+import { frameOf, type HairMask } from "../core/sampling";
 import { scoreBundle, type GuideSource } from "../core/score-part";
 import { PART_NAME } from "../core/score";
 import type { Baseline, CaptureBundle, PartId, PartStatus } from "../core/types";
@@ -35,6 +35,11 @@ export interface ResultDeps {
   getStatus?: (part: PartId) => PartStatus;
   /** 이미지 → 픽셀. 안 주면 캔버스로. 테스트에서 바꿔 끼운다 */
   toRgba?: (src: ImageBitmap | Blob) => Promise<RgbaImage>;
+  /**
+   * 사진 → 머리카락 마스크 (screens/hair-segmenter createHairMasker). 주면 맨얼굴·확인받기 사진마다 만들어
+   * 앞머리·옆머리 칸을 채점에서 뺀다. 안 주거나 null 이면 전과 같이 (docs/research/hair-skin-2026-09-29)
+   */
+  hairMask?: (im: RgbaImage) => Promise<HairMask | null>;
 }
 
 const GUIDE_COLOR = "#3FD1C4";
@@ -80,8 +85,12 @@ export function resultScreen<S>(deps: ResultDeps): Screen<S> {
           const [bareIm, ...ims] = await Promise.all([toRgba(baseline.bareImage!), ...bundle.frames.map((f) => toRgba(f))]);
           if (!alive) return;
           const guide = deps.guide();
-          const base = frameOf(bareIm, baseline.lm);
-          const b = scoreBundle(part, base, ims.map((im, i) => ({ im, pts: bundle.pts[i]!, occluded: bundle.handOverlap[i] ?? null })), guide);
+          // 머리카락 마스크 — 실패한 장은 null(그 장은 머리카락을 안 뺌). 맨얼굴 것도 같이: 한쪽이라도 가린 칸은 뺀다
+          const hairOf = deps.hairMask ?? (async () => null);
+          const [bareHair, ...hairs] = await Promise.all([bareIm, ...ims].map((im) => hairOf(im).catch(() => null)));
+          if (!alive) return;
+          const base = frameOf(bareIm, baseline.lm, bareHair ?? undefined);
+          const b = scoreBundle(part, base, ims.map((im, i) => ({ im, pts: bundle.pts[i]!, occluded: bundle.handOverlap[i] ?? null, ...(hairs[i] ? { hair: hairs[i] } : {}) })), guide);
           outcome = b.outcome;
           if (b.pick !== null && b.cur) drawOverlay(canvas, bundle.frames[b.pick]!, ims[b.pick]!, guideOutline(part, b.cur.lm, guide(part, b.cur)));
           ctx.log.log({ name: "score", part, status: outcome.decision === "scored" ? "passed" : "check_only", check_reason: outcome.checkReason, ms: Math.round(performance.now() - t0) });

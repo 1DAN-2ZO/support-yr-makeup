@@ -2,6 +2,8 @@
 // 화면 5·5-b 부위 결과 (이슈 #100) — 합성 얼굴로 실제 채점까지 돌려서 화면에 뜨는 것·버튼·로그·세션 반영을 본다.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RgbaImage } from "@core/color";
+import { LM } from "@core/landmarks";
+import type { HairMask } from "@core/sampling";
 import { applyResult, applySkip, createSession, nextPart, setCurrentPart, type Session } from "@core/flow";
 import { createLogger, memorySink } from "@core/log";
 import { hasDigit } from "@core/score";
@@ -164,5 +166,30 @@ describe("화면 5 — 부위 결과", () => {
     expect(root.querySelector(".result-score")?.textContent).toBe("채점하지 못했어요");
     expect(btn(root, "다음").disabled).toBe(true);
     expect(events.find((e) => e.name === "error")).toMatchObject({ where: "result" });
+  });
+});
+
+describe("화면 5 — 머리카락 마스크", () => {
+  // 오른쪽 눈썹을 덮는 앞머리 (화장은 안 함)
+  const browR = [...LM.browA.upper, ...LM.browA.lower].map((i) => LMS[i]!);
+  const x0 = Math.min(...browR.map((p) => p.x)) - 12, x1 = Math.max(...browR.map((p) => p.x)) + 12;
+  const y0 = Math.min(...browR.map((p) => p.y)) - 20, y1 = Math.max(...browR.map((p) => p.y)) + 12;
+  const bangs = (x: number, y: number) => x >= x0 && x <= x1 && y >= y0 && y <= y1;
+  const hairIm = image((x, y) => (bangs(x, y) ? [28, 22, 20] : null));
+  const mask: HairMask = { w: 600, h: 600, data: Float32Array.from({ length: 600 * 600 }, (_, i) => (bangs(i % 600, Math.floor(i / 600)) ? 1 : 0)) };
+
+  it("RH1 마스크 함수를 받으면 맨얼굴·확인받기 사진마다 부르고, 앞머리가 덮으면 확인만(가림)", async () => {
+    const hairMask = vi.fn(async (im: RgbaImage) => (im === hairIm ? mask : null));
+    const { root } = setup("brow", hairIm, { hairMask });
+    await scored(root);
+    expect(hairMask).toHaveBeenCalledTimes(2);
+    expect(root.querySelector(".result-score")?.textContent).toBe("확인만");
+    expect(root.querySelector(".result-say")?.textContent).toContain("머리카락");
+  });
+
+  it("RH2 마스크를 못 만들면(null) 마스크 없이 전처럼 채점한다", async () => {
+    const { root } = setup("liner", image(linerPaint()), { hairMask: async () => null });
+    await scored(root);
+    expect(Number(root.querySelector(".result-num")?.textContent)).toBeGreaterThan(0);
   });
 });

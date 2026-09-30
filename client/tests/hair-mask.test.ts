@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import { LM } from "@core/landmarks";
 import { frameOf, sampleBrow, type HairMask } from "@core/sampling";
-import { scorePart } from "@core/score-part";
+import { scoreBundle, scorePart } from "@core/score-part";
 import { CHECK_REASON_TEXT, PARAMS, decide } from "@core/score";
 import type { PartId } from "@core/types";
 import { BARE, BLUSH, LMS, P, W, H, guide, image, inRegion } from "./helpers/synth-face";
@@ -90,5 +90,16 @@ describe("채점 — 머리카락 마스크", () => {
 
   it("H7 가림 안내 문구가 손만 말하지 않는다", () => {
     expect(CHECK_REASON_TEXT.hand).toContain("머리카락");
+  });
+});
+
+describe("묶음 채점 — 사진마다 마스크", () => {
+  it("H8 확인받기 여러 장에 각자 마스크를 주면 가린 칸을 빼고 확인만(가림)", () => {
+    const cur = image(paintOf(bangsOverBrow)), m = maskOf(bangsOverBrow);
+    const frames = [0, 1, 2].map(() => ({ im: cur, pts: LMS, occluded: null, hair: m }));
+    expect(scoreBundle("brow", BARE, frames, guide).outcome).toMatchObject({ decision: "check_only", checkReason: "hand" });
+    // 마스크 없이는 앞머리를 그린 것으로 본다
+    const bare = [0, 1, 2].map(() => ({ im: cur, pts: LMS, occluded: null }));
+    expect(scoreBundle("brow", BARE, bare, guide).outcome.checkReason).not.toBe("hand");
   });
 });
