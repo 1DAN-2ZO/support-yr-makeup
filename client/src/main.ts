@@ -101,7 +101,29 @@ function el(id: string): HTMLElement {
   return found;
 }
 
+/** 앱 첫 진입 스플래시. 세션 화면이 아니라 부팅 중에만 보인다. */
+function showSplash(ms = 3000): Promise<void> {
+  const root = el("screen");
+  root.textContent = "";
+  const splash = document.createElement("div");
+  splash.className = "splash";
+  splash.innerHTML = `
+    <div class="splash-logo" aria-label="nudy">
+      <span>nudy</span>
+      <i aria-hidden="true"></i>
+    </div>
+  `;
+  root.append(splash);
+  return new Promise((resolve) => {
+    window.setTimeout(() => {
+      splash.classList.add("leaving");
+      window.setTimeout(resolve, 280);
+    }, ms);
+  });
+}
+
 async function boot(): Promise<void> {
+  const splashDone = showSplash();
   let session: Session = createSession();
 
   // 로그는 세션과 같은 IndexedDB 를 쓴다 — DB 를 두 벌 만들지 않는다.
@@ -129,8 +151,6 @@ async function boot(): Promise<void> {
     saving = saving.then(() => sessionStore.saveDraft(draft)).catch(() => {});
   };
 
-  // 복원 중에는 모델을 받느라 몇 초 걸린다 — 빈 화면 대신 한 줄 (shell.render 가 지운다)
-  el("screen").textContent = "준비하고 있어요…";
   session = await restore(sessionStore, events, session);
   // 서버 처리 화면(Stable-Makeup 그림 기다리기)은 흐름에서 빠졌다 — 거기서 멈춘 세션은 화장 선택으로
   if (session.screen === "processing") session = setScreen(session, "looks");
@@ -143,6 +163,7 @@ async function boot(): Promise<void> {
     const h = await vlm.health();
     if (!h.ok) {
       log.log({ name: "error", where: "boot", msg: "vlm_unavailable" });
+      await splashDone;
       showUnavailable();
       return;
     }
@@ -150,6 +171,7 @@ async function boot(): Promise<void> {
     showDevRuleOnly();
   } else {
     log.log({ name: "error", where: "boot", msg: "vlm_not_configured" });
+    await splashDone;
     showUnavailable();
     return;
   }
@@ -385,6 +407,7 @@ async function boot(): Promise<void> {
   // 탭을 닫기 전에 버퍼에 남은 로그를 저장
   window.addEventListener("pagehide", () => void logStore.flush());
 
+  await splashDone;
   shell.render();
 }
 

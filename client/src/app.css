@@ -182,6 +182,67 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
 }
 
 /* 화면 1 동의·촬영 (모듈 1) */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  color: #eba0aa;
+  animation: splash-in 520ms ease-out both;
+}
+.splash.leaving { animation: splash-out 280ms ease-in both; }
+.splash-logo {
+  position: relative;
+  display: inline-flex;
+  align-items: flex-start;
+  color: #eba0aa;
+  font-family: "Arial Rounded MT Bold", "Avenir Next Rounded", "Nunito", "Apple SD Gothic Neo", system-ui, sans-serif;
+  font-size: clamp(68px, 19vw, 108px);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.015em;
+  text-transform: lowercase;
+  transform: scaleY(0.84);
+}
+.splash-logo i {
+  position: relative;
+  width: 16px;
+  height: 14px;
+  margin: -0.08em 0 0 -0.03em;
+  background: transparent;
+  transform: rotate(-14deg);
+}
+.splash-logo i::before,
+.splash-logo i::after {
+  content: "";
+  position: absolute;
+  width: 9px;
+  height: 14px;
+  border-radius: 999px 999px 0 0;
+  background: #eba0aa;
+  transform-origin: 50% 100%;
+}
+.splash-logo i::before {
+  left: 7px;
+  transform: rotate(-45deg);
+}
+.splash-logo i::after {
+  left: 0;
+  transform: rotate(45deg);
+}
+@keyframes splash-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes splash-out {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(1.03); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .splash, .splash.leaving { animation: none; }
+}
 .consent { padding-top: 32px; }
 .capture-guide ul { padding-left: 20px; }
 .capture-guide li { margin: 6px 0; }
