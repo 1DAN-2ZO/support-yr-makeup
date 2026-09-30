@@ -24,7 +24,7 @@ describe("눈 부위 확대 창 (#204)", () => {
     }
   });
 
-  it("C3 세로 칸(가로를 강제하지 않음)에서도 · 기운 얼굴(30°)에서도 부위 점을 다 담는다", () => {
+  it("C3 기운 얼굴(30°)에서도 · 가로로 돌리는 도중의 세로 칸에서도 부위 점을 다 담는다 (확인받기는 가로에서만 — 게이트)", () => {
     for (const p of EYE_PARTS) for (const aspect of [16 / 9, 3 / 4]) for (const deg of [0, 30, -30]) {
       const lm = rot(LMS, deg), r = cropSpec(p, lm, aspect);
       expect(r.w / r.h).toBeCloseTo(aspect, 6);
