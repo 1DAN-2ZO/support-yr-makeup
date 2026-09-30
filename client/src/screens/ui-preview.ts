@@ -65,7 +65,7 @@ let lookId: string | null = "smoky";
 
 const SCREENS: Record<string, () => Promise<Screen<null>>> = {
   "서버 처리": async () => processingScreen<null>({ jobs: mutableJobSource(LOOKS.map((l) => ({ ...job(l.id, "running", 0) }))) }),
-  "2 룩": async () => looksScreen<null>({ getLookId: () => lookId, setLookId: (id) => { lookId = id; } }),
+  "2 화장": async () => looksScreen<null>({ getLookId: () => lookId, setLookId: (id) => { lookId = id; } }),
   "2-b 완성 예상": async () => fullRenderScreen<null>({ getLookId: () => lookId }),
   "5 결과 (라이너)": async () => {
     const bare = await bitmapOf(BARE_IMAGE), made = image(linerPaint());
@@ -107,4 +107,4 @@ for (const name of Object.keys(SCREENS)) {
   b.onclick = () => void show(name);
   pick.append(b);
 }
-void show(decodeURIComponent(location.hash.slice(1)) || "2 룩");
+void show(decodeURIComponent(location.hash.slice(1)) || "2 화장");
