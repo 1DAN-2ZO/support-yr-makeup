@@ -44,6 +44,41 @@ export interface ResultDeps {
   hairTimeoutMs?: number;
   /** 개발용(?tune): 판정 근거 숫자를 한 줄로 — 밝기 차·머리카락 가림·정렬·쓴 장 수. 사용자 화면엔 안 나온다 */
   tune?: boolean;
+  /** ?tune "채점 사진 저장" 에 같이 담을 것 (화장 id·개인화 계획 등) */
+  tuneInfo?: () => Record<string, unknown>;
+  /** 픽셀 → PNG data URL. 테스트에서 바꿔 끼운다 (기본 캔버스) */
+  toPng?: (im: RgbaImage) => string;
+  /** 파일 내려받기. 테스트에서 바꿔 끼운다 (기본 <a download>) */
+  download?: (name: string, text: string) => void;
+}
+
+/**
+ * [개발용 ?tune] 채점에 쓴 사진·얼굴 점·결과를 한 파일로 — 폰에서 난 오채점을 PC 에서 그대로 재현한다
+ * (2026-09-30 폰 시험: 맨얼굴인데 눈썹 70 · 라이너 43). 본인 사진만, 저장소 밖($DHE_DATA_DIR)에 둔다
+ */
+function scoreDump(part: PartId, baseline: Baseline, bareIm: RgbaImage, ims: RgbaImage[], bundle: CaptureBundle, outcome: ScoreOutcome, info: Record<string, unknown>, toPng: (im: RgbaImage) => string): string {
+  return JSON.stringify({
+    kind: "nudy-score-dump", v: 1, at: new Date().toISOString(), part, info,
+    bare: { png: toPng(bareIm), w: bareIm.w, h: bareIm.h, lm: baseline.lm, lmFrame: { w: baseline.w, h: baseline.h } },
+    frames: ims.map((im, i) => ({ png: toPng(im), w: im.w, h: im.h, pts: bundle.pts[i], occluded: bundle.handOverlap[i] ?? null })),
+    outcome,
+  });
+}
+
+function canvasPng(im: RgbaImage): string {
+  const c = document.createElement("canvas");
+  c.width = im.w;
+  c.height = im.h;
+  c.getContext("2d")?.putImageData(new ImageData(new Uint8ClampedArray(im.data), im.w, im.h), 0, 0);
+  return c.toDataURL("image/png");
+}
+
+function saveFile(name: string, text: string): void {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
 }
 
 const HAIR_TIMEOUT_MS = 3000;
@@ -86,9 +121,11 @@ export function resultScreen<S>(deps: ResultDeps): Screen<S> {
       const t0 = performance.now();
       void (async () => {
         let outcome: ScoreOutcome;
+        let shot: { bare: RgbaImage; ims: RgbaImage[] } | null = null;   // ?tune 사진 저장용
         try {
           // 확인받기 묶음 전체를 채점한다 (3-3): 가려진 장은 빼고, 점수는 중앙값, 사진은 대표 장
           const [bareIm, ...ims] = await Promise.all([toRgba(baseline.bareImage!), ...bundle.frames.map((f) => toRgba(f))]);
+          shot = { bare: bareIm, ims };
           if (!alive) return;
           const guide = deps.guide();
           // 머리카락 마스크 — 실패한 장은 null(그 장은 머리카락을 안 뺌). 맨얼굴 것도 같이: 한쪽이라도 가린 칸은 뺀다
@@ -110,7 +147,18 @@ export function resultScreen<S>(deps: ResultDeps): Screen<S> {
           return;
         }
         fill(scoreEl, say, extra, part, outcome);
-        if (deps.tune) row.before(tuneLine(outcome));
+        if (deps.tune && shot) {
+          const sh = shot;
+          row.before(tuneLine(outcome));
+          const dump = el("button", "secondary result-dump");
+          dump.textContent = "채점 사진 저장 (개발용)";
+          const done = outcome;
+          dump.addEventListener("click", () => {
+            const text = scoreDump(part, baseline, sh.bare, sh.ims, bundle, done, deps.tuneInfo?.() ?? {}, deps.toPng ?? canvasPng);
+            (deps.download ?? saveFile)(`nudy-score-${part}-${Date.now()}.json`, text);
+          });
+          row.before(dump);
+        }
         row.replaceWith(buttons(ctx, deps, part, outcome));
       })();
 
