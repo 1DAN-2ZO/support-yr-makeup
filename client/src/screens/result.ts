@@ -13,6 +13,7 @@
 
 import type { RgbaImage } from "../core/color";
 import type { ScoreOutcome } from "../core/flow";
+import { scaleLm } from "../core/crop";
 import { guideOutline } from "../core/overlay";
 import { frameOf, type HairMask } from "../core/sampling";
 import { scoreBundle, type GuideSource } from "../core/score-part";
@@ -134,7 +135,10 @@ export function resultScreen<S>(deps: ResultDeps): Screen<S> {
           const late = new Promise<null>((r) => setTimeout(() => r(null), deps.hairTimeoutMs ?? HAIR_TIMEOUT_MS));
           const [bareHair, ...hairs] = await Promise.all([bareIm, ...ims].map((im) => Promise.race([hairOf(im).catch(() => null), late])));
           if (!alive) return;
-          const base = frameOf(bareIm, baseline.lm, bareHair ?? undefined);
+          // 쌩얼은 긴 변 1024 로 줄여 저장하고 점은 촬영 크기다 — 사진 크기로 맞춘다 (폰 시험 2026-09-30: 안 맞춰서 엉뚱한 자리를 읽어
+          // 쌩얼끼리인데 눈썹 70점 · 가짜 "밝기가 달라요". 화면 3 guide.ts 와 같은 scaleLm)
+          const baseLm = scaleLm(baseline.lm, { w: baseline.w, h: baseline.h }, { w: bareIm.w, h: bareIm.h });
+          const base = frameOf(bareIm, baseLm, bareHair ?? undefined);
           const b = scoreBundle(part, base, ims.map((im, i) => ({ im, pts: bundle.pts[i]!, occluded: bundle.handOverlap[i] ?? null, ...(hairs[i] ? { hair: hairs[i] } : {}) })), guide);
           outcome = b.outcome;
           if (b.pick !== null && b.cur) drawOverlay(canvas, bundle.frames[b.pick]!, ims[b.pick]!, guideOutline(part, b.cur.lm, guide(part, b.cur)));
