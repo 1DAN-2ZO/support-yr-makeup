@@ -359,12 +359,13 @@ const TEMPLATES: Tpl[] = [
   },
   {
     name: "뉴트럴 (Clean Girl)",
-    color: { brow: "#6e5a48", shadow: "#8b7355", liner: "#8b7355", lash: "#8b7355", cheek: "#d2b48c", lip: "#c8ad8d", contour: "#b49a86", highlight: "#fff3e6", aegyo: "#c5b358" },
-    lipEdge: "#d2b48c",
+    // 2026-09-30 갱신: "그림자 음영" 컨셉(어두운 샌드/올리브)에서 "유리알 글래스스킨"(맑은 피치·아이보리)으로 다시 받음
+    color: { brow: "#6e5a48", shadow: "#e6c5b8", liner: "#e6c5b8", lash: "#e6c5b8", cheek: "#f2b8a2", lip: "#e29a86", contour: "#b49a86", highlight: "#fff3e6", aegyo: "#f3e3d3" },
+    lipEdge: "#f2b8a2",
     alpha: { brow: 0.28, shadow: 0.28, liner: 0.45, lash: 0.45, cheek: 0.25, lip: 0.4, contour: 0.3, highlight: 0.55, aegyo: 0.2 },
     linerThick: 0.05,
     axis: { shadow: "vertical" },
-    stops: { shadow: [{ at: 0.0, color: "#8b7355" }, { at: 1.0, color: "#d3b683" }] },
+    stops: { shadow: [{ at: 0.0, color: "#e6c5b8" }, { at: 1.0, color: "#f9ebe0" }] },
     lashIntensity: "natural",
   },
   ...LOOKS.map((l): Tpl => {
