@@ -34,9 +34,19 @@ export interface LockReport {
 }
 
 /**
+ * 'manual' 로 바꿀 때 **지금 값을 같이 넘기는** 칸. 'manual' 만 보내면 Android Chrome 은 기본 노출 시간·색온도로 바꿔
+ * 화면이 하얗게 날아간다 (2026-09-30 Android 실기기: 켜고 1.5초 뒤 확 밝아짐). 지금 값을 못 읽으면 잠그지 않는다
+ */
+const LOCK_VALUE: Record<"whiteBalanceMode" | "exposureMode" | "focusMode", readonly string[]> = {
+  exposureMode: ["exposureTime", "iso", "exposureCompensation"],
+  whiteBalanceMode: ["colorTemperature"],
+  focusMode: ["focusDistance"],
+};
+
+/**
  * 기준 촬영 4장 동안 색이 안 흔들리게 WB·노출·초점을 'manual' 로 잠근다.
- * 순서: 1) 'continuous' 로 두고 안정될 시간을 준 뒤(호출 쪽) 2) 이 함수로 'manual' 전환.
- * manual 이 지원 목록에 없으면 건너뛴다. applyConstraints 가 throw 하면 failed.
+ * 순서: 1) 'continuous' 로 두고 안정될 시간을 준 뒤(호출 쪽) 2) 이 함수로 'manual' 전환 — **그 순간의 값(getSettings)을 그대로 고정**.
+ * manual 이 지원 목록에 없거나, 지금 값을 못 읽으면(노출 시간·색온도) 건너뛴다. applyConstraints 가 throw 하면 failed.
  */
 export async function applyCameraLocks(track: TrackLike): Promise<LockReport> {
   const caps: CameraCaps = track.getCapabilities ? track.getCapabilities() : {};
@@ -44,8 +54,14 @@ export async function applyCameraLocks(track: TrackLike): Promise<LockReport> {
   const tryLock = async (key: "whiteBalanceMode" | "exposureMode" | "focusMode"): Promise<LockReport["whiteBalance"]> => {
     const modes = caps[key];
     if (!modes || !modes.includes("manual")) return "unsupported";
+    const now = track.getSettings ? track.getSettings() : {};
+    const values: Record<string, unknown> = {};
+    for (const k of LOCK_VALUE[key]) if (typeof now[k] === "number" && Number.isFinite(now[k])) values[k] = now[k];
+    // 노출은 노출 시간, WB 는 색온도를 꼭 알아야 한다 — 모르면 'manual' 이 기본값으로 튄다
+    if (key === "exposureMode" && !("exposureTime" in values)) return "unsupported";
+    if (key === "whiteBalanceMode" && !("colorTemperature" in values)) return "unsupported";
     try {
-      await track.applyConstraints({ advanced: [{ [key]: "manual" }] });
+      await track.applyConstraints({ advanced: [{ [key]: "manual", ...values }] });
       return "locked";
     } catch {
       return "failed";
