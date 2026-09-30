@@ -103,6 +103,13 @@ interface Tpl {
    * 러블리·키치/하이틴) 때문에 추가. 애굣살에만 있으면 글리터가 눈 밑에서 뚝 끊겨 보여서 섀도우에도 얹는다.
    */
   finish?: Partial<Record<Part, "matte" | "glitter">>;
+  /**
+   * 마스카라 세기 — natural(연한) | deep(진한), 생략하면 미적용(속눈썹 체크박스가 꺼진 채 비활성화).
+   * 지금은 켜짐/꺼짐만 가른다 — natural·deep 별도 그림(reference/eyelash)은 아직 없어서 둘 다
+   * 같은 텍스처(anime-spike)를 쓴다. 그림이 생기면 lashMode="texture" 쪽에서 이 값으로 텍스처
+   * 세트를 고른다(마스카라 각도 재연구, 2026-09-30).
+   */
+  lashIntensity?: "natural" | "deep";
 }
 
 /** 시드 고정 의사난수(mulberry32) — 글리터 점 자리를 프레임마다 똑같이 만든다(반짝임 애니메이션 없음) */
@@ -209,6 +216,16 @@ const CONTOUR_ALPHA = { contour: 0.35, highlight: 0.45 };
 
 const hex = (c: readonly number[]): string => "#" + c.map((v) => Math.round(v).toString(16).padStart(2, "0")).join("");
 
+/**
+ * rules/looks.json 화장 10종에는 마스카라 세기 데이터가 없다(그 파일은 이 화면 밖 공용 스키마라
+ * 안 건드림) — 여기서만 이름 느낌으로 임시로 정한다. id 없으면(새 룩 추가 등) 미적용.
+ */
+const LASH_INTENSITY_BY_LOOK_ID: Partial<Record<string, "natural" | "deep">> = {
+  daily: "natural", smoky: "deep", coral: "natural", rose: "natural", red: "natural",
+  peach: "natural", bronze: "natural", plum: "deep", doll: "deep",
+  // clean: 미적용 — 오피스라 마스카라도 뺀 예시
+};
+
 const TEMPLATES: Tpl[] = [
   // 사진에서 뽑은 템플릿 (스크래치패드 extract.py 결과). 관찰색이라 보통 합성 + 불투명도로 얹는다. 불투명도는 눈대중 시작값
   {
@@ -217,6 +234,7 @@ const TEMPLATES: Tpl[] = [
     lipEdge: "#c26375",
     alpha: { brow: 0.45, shadow: 0.55, liner: 0.9, lash: 0.9, cheek: 0.35, lip: 0.75, ...CONTOUR_ALPHA },
     linerThick: 0.045,
+    lashIntensity: "deep",
   },
   // 사진에서 뽑은 템플릿 2 (스크래치패드 extract_tpl.py 결과, before.png/after.png). 랜드마크 폴리곤 평균색 + ΔE 근사 alpha
   {
@@ -227,6 +245,7 @@ const TEMPLATES: Tpl[] = [
     linerThick: 0.076,
     axis: { shadow: "vertical" },
     stops: { shadow: [{ at: 0.0, color: "#3d282a" }, { at: 0.5, color: "#967674" }, { at: 1.0, color: "#aa827a" }] },
+    lashIntensity: "natural",
   },
   // 사진에서 뽑은 템플릿 3 (스크래치패드 extract_tpl.py 결과, before2.png/after2.png). 언더라인·애교살 포함(#166 논의 뒤 추가)
   // 섀도우만 눈 감은 버전(before2_2/after2_2)으로 다시 재서 교체 — 뜬 눈은 윗눈꺼풀에 가려 실측이 부정확했다
@@ -240,6 +259,7 @@ const TEMPLATES: Tpl[] = [
     axis: { shadow: "vertical" },
     stops: { shadow: [{ at: 0.0, color: "#361f1c" }, { at: 0.5, color: "#a0807f" }, { at: 1.0, color: "#ab8484" }] },
     tailExtend: { shadow: true },
+    lashIntensity: "natural",
   },
   // 화장 10종 (2026-09-29, 사용자가 준 헥스값 그대로 반영 — 눈썹·라이너·쉐딩/하이라이트만 헥스가 없어서
   // 추정치. 섀도우 2색은 밝기를 비교해 어두운 쪽을 속눈썹 쪽(stops at:0), 밝은 쪽을 눈썹 쪽(at:1)으로 배치했다
@@ -253,6 +273,7 @@ const TEMPLATES: Tpl[] = [
     axis: { shadow: "vertical" },
     stops: { shadow: [{ at: 0.0, color: "#5c4033" }, { at: 1.0, color: "#b0897a" }] },
     tailExtend: { shadow: true },
+    lashIntensity: "natural",
   },
   {
     name: "세미 스모키 (Hip & Edgy)",
@@ -261,6 +282,7 @@ const TEMPLATES: Tpl[] = [
     linerThick: 0.06,
     axis: { shadow: "vertical" },
     stops: { shadow: [{ at: 0.0, color: "#363636" }, { at: 1.0, color: "#a9a9a9" }] },
+    lashIntensity: "deep",
   },
   {
     name: "가을 (Autumn Mute)",
@@ -270,6 +292,7 @@ const TEMPLATES: Tpl[] = [
     linerThick: 0.045,
     axis: { shadow: "vertical" },
     stops: { shadow: [{ at: 0.0, color: "#8b4513" }, { at: 1.0, color: "#d27d2d" }] },
+    lashIntensity: "natural",
   },
   {
     name: "청순 (Pure & Clean)",
@@ -278,6 +301,7 @@ const TEMPLATES: Tpl[] = [
     linerThick: 0.02,
     axis: { shadow: "vertical" },
     stops: { shadow: [{ at: 0.0, color: "#e0b8a6" }, { at: 1.0, color: "#f5e5d6" }] },
+    lashIntensity: "natural",
   },
   {
     name: "아이돌 (Idol Sparkle)",
@@ -289,6 +313,7 @@ const TEMPLATES: Tpl[] = [
     stops: { shadow: [{ at: 0.0, color: "#ff9eaa" }, { at: 1.0, color: "#ffd1dc" }] },
     tailExtend: { shadow: true },
     finish: { shadow: "glitter", aegyo: "glitter" },
+    lashIntensity: "deep",
   },
   {
     name: "힙스터 (Street & Y2K)",
@@ -299,6 +324,7 @@ const TEMPLATES: Tpl[] = [
     axis: { shadow: "vertical" },
     stops: { shadow: [{ at: 0.0, color: "#4a3b32" }, { at: 1.0, color: "#c4a484" }] },
     tailExtend: { shadow: true },
+    lashIntensity: "deep",
   },
   {
     name: "러블리 (Soft Romantic)",
@@ -309,11 +335,13 @@ const TEMPLATES: Tpl[] = [
     axis: { shadow: "vertical" },
     stops: { shadow: [{ at: 0.0, color: "#ffb6c1" }, { at: 1.0, color: "#fff0f5" }] },
     finish: { shadow: "glitter", aegyo: "glitter" },
+    lashIntensity: "natural",
   },
   {
+    // 마스카라 미적용(lashIntensity 생략) 예시 — 출근·등교라 화장 시간을 줄인 룩
     name: "출근/학생 (Daily Quick)",
-    color: { brow: "#6b5240", shadow: "#967969", liner: "#2e2420", lash: "#2e2420", cheek: "#e9967a", lip: "#cd5c5c", contour: "#b4967f", highlight: "#fff3e6", aegyo: "#f5f5dc" },
-    alpha: { brow: 0.3, shadow: 0.3, liner: 0.6, lash: 0.6, cheek: 0.28, lip: 0.35, contour: 0.25, highlight: 0.3, aegyo: 0.22 },
+    color: { brow: "#6b5240", shadow: "#967969", liner: "#2e2420", cheek: "#e9967a", lip: "#cd5c5c", contour: "#b4967f", highlight: "#fff3e6", aegyo: "#f5f5dc" },
+    alpha: { brow: 0.3, shadow: 0.3, liner: 0.6, cheek: 0.28, lip: 0.35, contour: 0.25, highlight: 0.3, aegyo: 0.22 },
     linerThick: 0.02,
     axis: { shadow: "vertical" },
     stops: { shadow: [{ at: 0.0, color: "#967969" }, { at: 1.0, color: "#e8d8c8" }] },
@@ -328,6 +356,7 @@ const TEMPLATES: Tpl[] = [
     stops: { shadow: [{ at: 0.0, color: "#ffb7b2" }, { at: 1.0, color: "#e6e6fa" }] },
     tailExtend: { shadow: true },
     finish: { shadow: "glitter", aegyo: "glitter" },
+    lashIntensity: "deep",
   },
   {
     name: "뉴트럴 (Clean Girl)",
@@ -337,19 +366,25 @@ const TEMPLATES: Tpl[] = [
     linerThick: 0.05,
     axis: { shadow: "vertical" },
     stops: { shadow: [{ at: 0.0, color: "#8b7355" }, { at: 1.0, color: "#d3b683" }] },
+    lashIntensity: "natural",
   },
-  ...LOOKS.map((l): Tpl => ({
-    name: l.name,
-    color: {
-      ...CONTOUR_COLORS, ...Object.fromEntries(Object.entries(l.parts).flatMap(([k, p]) => (p?.color ? [[k, hex(p.color)]] : []))),
-      ...(l.parts.liner?.color ? { lash: hex(l.parts.liner.color) } : {}),   // 마스카라는 라이너 색을 따라간다
-    },
-    alpha: {
-      ...CONTOUR_ALPHA, ...Object.fromEntries(Object.entries(l.parts).map(([k, p]) => [k, p?.alpha ?? p?.alphaR ?? 0.5])),
-      lash: l.parts.liner?.alpha ?? 0.5,
-    },
-    linerThick: l.parts.liner?.thick ?? GUIDE_PARAMS.liner.thick,
-  })),
+  ...LOOKS.map((l): Tpl => {
+    const lashIntensity = LASH_INTENSITY_BY_LOOK_ID[l.id];
+    return {
+      name: l.name,
+      color: {
+        ...CONTOUR_COLORS, ...Object.fromEntries(Object.entries(l.parts).flatMap(([k, p]) => (p?.color ? [[k, hex(p.color)]] : []))),
+        // 마스카라는 라이너 색을 따라간다 — 미적용(lashIntensity 없음)이면 색도 안 준다(체크박스가 자동으로 꺼짐)
+        ...(lashIntensity && l.parts.liner?.color ? { lash: hex(l.parts.liner.color) } : {}),
+      },
+      alpha: {
+        ...CONTOUR_ALPHA, ...Object.fromEntries(Object.entries(l.parts).map(([k, p]) => [k, p?.alpha ?? p?.alphaR ?? 0.5])),
+        ...(lashIntensity ? { lash: l.parts.liner?.alpha ?? 0.5 } : {}),
+      },
+      linerThick: l.parts.liner?.thick ?? GUIDE_PARAMS.liner.thick,
+      ...(lashIntensity ? { lashIntensity } : {}),
+    };
+  }),
 ];
 TEMPLATES.forEach((t, i) => lookSel.add(new Option(t.name, String(i))));
 
