@@ -112,6 +112,34 @@ def summarize(preds: list[dict], items: list[dict], note: str = "") -> list[dict
                 f"카파 {k:.3f}" if k is not None else "",
             )
         )
+    # 정답이 없어도 볼 수 있는 것 — 화장을 찾는가(화장 사진), 맨얼굴을 화장으로 착각하지 않는가(대조)
+    src = {it.get("id"): str(it.get("source", "")) for it in items}
+    makeup = [p for p in preds if src.get(p.get("id"), "") and not src[p.get("id")].endswith("-bare")]
+    control = [p for p in preds if src.get(p.get("id"), "").endswith("-bare")]
+    for part in [
+        q for q in ("brow", "liner", "lip", "shadow", "cheek") if any(p.get("part") == q for p in makeup)
+    ]:
+        ps = [p for p in makeup if p.get("part") == part]
+        hit = [p for p in ps if p.get("status") == "scored"]
+        dist = Counter(p.get("pred") for p in hit)
+        rows.append(
+            row(
+                f"화장 찾음 비율 · {part}",
+                rate(len(hit), len(ps)),
+                len(ps),
+                "판정 " + " · ".join(f"{k} {dist.get(k, 0)}" for k in ORDER) if hit else "전부 확인만",
+            )
+        )
+    if control:
+        quiet = sum(p.get("status") == "check_only" for p in control)
+        rows.append(
+            row(
+                "맨얼굴 대조 · '화장 없음'(확인만) 비율",
+                rate(quiet, len(control)),
+                len(control),
+                "1.0 이 정상",
+            )
+        )
     ms = [p["ms"] for p in preds if isinstance(p.get("ms"), (int, float))]
     if ms:
         rows.append(row("채점 시간 중앙값(ms)", round(statistics.median(ms), 1), len(ms)))
@@ -128,9 +156,12 @@ def main() -> int:
     g = load_golden()
     base = data_dir(g)
     rows: list[dict] = []
-    if g["items"] and base and CLI.exists():
-        preds = run_node(g["items"], base)
-        rows = summarize(preds, g["items"], args.candidate or "")
+    items = [
+        it for it in g["items"] if not it.get("excluded")
+    ]  # 판단 불가(사진 오류)로 뺀 시험지는 채점하지 않는다
+    if items and base and CLI.exists():
+        preds = run_node(items, base)
+        rows = summarize(preds, items, args.candidate or "")
     path = result_path("score", (args.candidate or SCORE_VERSION), g["golden_version"])
     write_rows(path, rows)
     print(path.name, "rows" if rows else "skipped (golden empty or score_cli.mjs missing)")
