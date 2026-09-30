@@ -13,7 +13,7 @@ import { faceAxis } from "../core/face-measure";
 import { GUIDE_PARAMS } from "../core/guides";
 import { LM, at } from "../core/landmarks";
 import type { Look } from "../core/looks";
-import { browStandard, linerOutline, lipOutline } from "../core/personal-guide";
+import { browOnFace, linerOutline, lipOutline } from "../core/personal-guide";
 import { PLAN_RULES, type LinerStyle, type PersonalPlan } from "../core/personalize";
 import type { Pt } from "../core/types";
 
@@ -39,6 +39,12 @@ export interface PaintLook {
 /** 쉐딩·하이라이트는 룩에 없다(얼굴형 규칙 부위, F-04) — 기본 색·진하기 */
 const CONTOUR = { color: { contour: "#a07a66", highlight: "#fff3e6" }, alpha: { contour: 0.35, highlight: 0.45 } };
 
+/**
+ * 눈썹 기본 색 — 화장 템플릿(rules/looks.json)에 눈썹 색이 없으면 이것으로 칠한다.
+ * 폰 시험(2026-09-30): 10개 모두 눈썹 색이 비어 눈썹이 아예 안 그려졌다. 템플릿 값을 대표 이미지(#77·#121)에서 재면 그 색으로
+ */
+export const BROW_DEFAULT_COLOR = "#5a4032";
+
 const hex = (c: readonly number[]): string => "#" + c.map((v) => Math.round(v).toString(16).padStart(2, "0")).join("");
 
 export function paintLookOf(look: Look): PaintLook {
@@ -47,6 +53,7 @@ export function paintLookOf(look: Look): PaintLook {
     if (p.color) color[k] = hex(p.color);
     alpha[k] = p.alpha ?? p.alphaR ?? 0.5;
   }
+  color.brow ??= BROW_DEFAULT_COLOR;
   return { color, alpha, linerThick: look.parts.liner?.thick ?? GUIDE_PARAMS.liner.thick };
 }
 
@@ -90,7 +97,8 @@ export function paintMakeup(layers: Layers, off: HTMLCanvasElement, lm: readonly
     o.fillStyle = color;
     o.beginPath();
     if (p.id === "brow") {
-      const std = browStandard({ lm, unit }, plan?.brow);
+      // 가이드 테두리와 같은 자리 — 표준 모양을 실제 눈썹 높이에 맞춘 것 (personal-guide browOnFace)
+      const std = browOnFace({ lm, unit }, plan?.brow);
       if (std) for (const s of ["R", "L"] as const) path(o, std[s].outline);
       else for (const { brow } of SIDES) path(o, [...brow.upper.map(P), ...[...brow.lower].reverse().map(P)]);
       o.fill();

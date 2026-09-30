@@ -2,7 +2,7 @@
 // mm 기준값을 홍채 지름(11.3 mm)으로 px 로 바꿔 이 얼굴 위에 표준 눈썹을 세운다.
 import { describe, expect, it } from "vitest";
 import { unitScale } from "@core/baseline";
-import { BROW_ARCH_MM, browStandard, STANDARD_BROW_MM } from "@core/personal-guide";
+import { BROW_ARCH_MM, browOnFace, browStandard, STANDARD_BROW_MM } from "@core/personal-guide";
 import { LM } from "@core/landmarks";
 import type { Pt } from "@core/types";
 import { face, tiltHead } from "./helpers/measure-face";
@@ -127,5 +127,44 @@ describe("표준 눈썹 — 개인화 조정 (C-2: 얼굴형 → 높이·미간�
     expect(dn.R.peak.top.y).toBeCloseTo(base.R.peak.top.y + S, 6);
     expect(up.R.head).toEqual(base.R.head);
     expect(up.R.outer).toEqual(base.R.outer);
+  });
+});
+
+describe("표준 눈썹을 실제 눈썹 높이에 맞추기 (browOnFace)", () => {
+  // 폰 시험(2026-09-30): 표준(동공 위 22 mm)이 실제 눈썹보다 4~5 mm 아래라 테두리가 눈썹과 눈 사이에 섰다
+  const meanY = (pts: readonly Pt[]) => pts.reduce((s, p) => s + p.y, 0) / pts.length;
+  const realBrow = (lm: Pt[], brow: { upper: readonly number[]; lower: readonly number[] }) => [...brow.upper, ...brow.lower].map((i) => lm[i]!);
+  /** 실제 눈썹 점만 dy 만큼 올린 얼굴 (px, 위가 −) */
+  const liftBrows = (dy: number) => face().map((p, i) => ([...LM.browA.upper, ...LM.browA.lower, ...LM.browB.upper, ...LM.browB.lower] as readonly number[]).includes(i) ? { x: p.x, y: p.y - dy } : p);
+
+  it("A1 세로 자리는 실제 눈썹 가운데 — 5 mm 높은 눈썹이면 테두리도 따라 올라간다", () => {
+    const lm = liftBrows(5 * S);
+    const b = browOnFace(frame(lm))!;
+    expect(meanY(b.R.outline)).toBeCloseTo(meanY(realBrow(lm, LM.browA)), 4);
+    expect(meanY(b.L.outline)).toBeCloseTo(meanY(realBrow(lm, LM.browB)), 4);
+  });
+
+  it("A2 모양은 표준 그대로 — 두께·가로 자리가 같고 세로로만 옮긴다", () => {
+    const lm = liftBrows(5 * S);
+    const std = browStandard(frame(lm))!, on = browOnFace(frame(lm))!;
+    const dy = on.R.peak.top.y - std.R.peak.top.y;
+    expect(dy).toBeLessThan(0);   // 위로
+    std.R.outline.forEach((p, i) => {
+      expect(on.R.outline[i]!.x).toBeCloseTo(p.x, 6);
+      expect(on.R.outline[i]!.y).toBeCloseTo(p.y + dy, 6);
+    });
+    expect(on.R.peak.bottom.y - on.R.peak.top.y).toBeCloseTo(std.R.peak.bottom.y - std.R.peak.top.y, 6);
+  });
+
+  it("A3 계획의 높이 조정(heightMm)은 실제 눈썹 기준으로 살아 있다", () => {
+    const lm = liftBrows(5 * S);
+    const base = browOnFace(frame(lm))!, up2 = browOnFace(frame(lm), { heightMm: 2, glabellaMm: 0, arch: "standard" })!;
+    expect(base.R.peak.top.y - up2.R.peak.top.y).toBeCloseTo(2 * S, 4);
+  });
+
+  it("A4 mm 를 모르면 null (표준과 같게)", () => {
+    const lm = face();
+    lm[LM.eyeA.iris[0]] = lm[LM.eyeB.iris[0]] = { x: 300, y: 300 };
+    expect(browOnFace(frame(lm))).toBeNull();
   });
 });
