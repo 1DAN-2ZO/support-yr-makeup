@@ -10,7 +10,8 @@
  *   조명 색 차이는 막지 않고 준비 문구에 안내만 덧붙인다. 절대 밝기(너무 어둡거나 밝음)는 사진 자체가 안 돼서 막는다.
  *
  * 측정은 화면 1 과 같은 코드를 쓴다: 각도 capture-measure · 선명·이마 색 frame-measure · 가림 occlusion.foreheadStep.
- * 표정 차(expr_diff, #27): 맨얼굴 때 표정과의 차(core/expression.exprDiff). 맨얼굴 값이 없으면 건너뛴다 (① #177 전).
+ * 표정 차(expr_diff, #27): 맨얼굴 때 표정과의 차(core/expression.exprDiff). 맨얼굴 값은 ① Baseline.expression(#177 → #226) —
+ * 촬영 때 정면 눈 뜸 장에서 재고, 앱을 다시 켜면 저장한 쌩얼에서 다시 잰다. 못 쟀으면(null) 조건을 건너뛴다.
  */
 
 import { yawFromLandmarks } from "./capture-measure";

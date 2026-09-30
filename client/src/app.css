@@ -230,3 +230,6 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
 .guide-note { margin: 4px 0 0; font-size: 13px; }
 .guide-why { font-size: 17px; margin: 12px 0 4px; }
 .guide-need { margin: 0 0 8px; }
+
+/* 눈 부위를 세로로 볼 때 (화면 3·5) — 가로로 돌리기 전엔 내용 대신 이것만 (②, 팀 협의) */
+.rotate-lock { margin: 40vh 0 0; text-align: center; font-size: 18px; font-weight: 600; }
