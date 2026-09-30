@@ -1,7 +1,7 @@
 // 채점 표본에서 머리카락 빼기 (docs/research/hair-skin-2026-09-29 보고서 3번)
 // 앞머리·옆머리가 눈썹·볼을 덮으면 어두운 머리카락이 "화장했다" 로 잡힌다.
 // 머리카락 마스크(0~1, MediaPipe Hair Segmentation 같은 것)를 SampleFrame 에 주면 그 칸·픽셀을 비교에서 빼고,
-// 너무 많이 가렸으면 확인만(가림, 계약 이름은 아직 "hand" — #155).
+// 너무 많이 가렸으면 확인만(가림, 계약 이름 "occluded" — #155).
 import { describe, expect, it } from "vitest";
 import { LM } from "@core/landmarks";
 import { frameOf, sampleBrow, type HairMask } from "@core/sampling";
@@ -55,7 +55,7 @@ describe("채점 — 머리카락 마스크", () => {
     const cur = frameOf(image(paintOf(bangsOverBrow)), LMS, maskOf(bangsOverBrow));
     const { ctx, d } = run("brow", cur);
     expect(ctx.hairFrac).toBeGreaterThan(PARAMS.hairMax);
-    expect(d).toMatchObject({ status: "check_only", reason: "hand" });
+    expect(d).toMatchObject({ status: "check_only", reason: "occluded" });
   });
 
   it("H3 눈썹 격자에 가린 칸 표시 — 덮은 쪽(R) 안쪽 칸만", () => {
@@ -89,7 +89,7 @@ describe("채점 — 머리카락 마스크", () => {
   });
 
   it("H7 가림 안내 문구가 손만 말하지 않는다", () => {
-    expect(CHECK_REASON_TEXT.hand).toContain("머리카락");
+    expect(CHECK_REASON_TEXT.occluded).toContain("머리카락");
   });
 });
 
@@ -97,9 +97,9 @@ describe("묶음 채점 — 사진마다 마스크", () => {
   it("H8 확인받기 여러 장에 각자 마스크를 주면 가린 칸을 빼고 확인만(가림)", () => {
     const cur = image(paintOf(bangsOverBrow)), m = maskOf(bangsOverBrow);
     const frames = [0, 1, 2].map(() => ({ im: cur, pts: LMS, occluded: null, hair: m }));
-    expect(scoreBundle("brow", BARE, frames, guide).outcome).toMatchObject({ decision: "check_only", checkReason: "hand" });
+    expect(scoreBundle("brow", BARE, frames, guide).outcome).toMatchObject({ decision: "check_only", checkReason: "occluded" });
     // 마스크 없이는 앞머리를 그린 것으로 본다
     const bare = [0, 1, 2].map(() => ({ im: cur, pts: LMS, occluded: null }));
-    expect(scoreBundle("brow", BARE, bare, guide).outcome.checkReason).not.toBe("hand");
+    expect(scoreBundle("brow", BARE, bare, guide).outcome.checkReason).not.toBe("occluded");
   });
 });

@@ -101,7 +101,7 @@ describe("화면 5 — 부위 결과", () => {
     const b: CaptureBundle = { frames: [new FakeBitmap(good) as unknown as ImageBitmap], pts: [LMS], handOverlap: [true], foreheadL: [70] };
     const { root, events } = setup("liner", null, { getCapture: () => b });
     await scored(root);
-    expect(events.some((e) => e.name === "score" && (e as { check_reason?: string }).check_reason === "hand")).toBe(true);
+    expect(events.some((e) => e.name === "score" && (e as { check_reason?: string }).check_reason === "occluded")).toBe(true);
   });
 
   it("화면에 숫자는 점수 하나뿐 — 나머지 글에 숫자가 없다 (F-09)", async () => {

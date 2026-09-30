@@ -140,8 +140,8 @@ export function evaluateGate(partId: PartId, m: LiveMeasure, limits: LiveLimits 
   if (pd && (Math.abs(pd.yaw) > limits.dYaw || Math.abs(pd.pitch) > limits.dPitch)) return fail("pose_diff", GATE_TEXT.pose);
   if (typeof m.exprDiff === "number" && m.exprDiff > limits.exprTol) return fail("expr_diff", GATE_TEXT.expr);
   if (m.partVisible === false) return fail("visible", EYE_PARTS.includes(partId) ? GATE_TEXT.eyes : GATE_TEXT.part);
-  // 이마 급변 = 무엇이든 얼굴을 가림 (#144). 계약 이름은 아직 "hand" — #155 에서 "occluded" 로 바뀐다
-  if (m.occluded) return fail("hand", GATE_TEXT.occluded);
+  // 이마 급변 = 무엇이든 얼굴을 가림 (#144) — 손·브러시·머리카락 무엇이든, 수단이 아니라 상태 (#155)
+  if (m.occluded) return fail("occluded", GATE_TEXT.occluded);
   if (typeof m.sharpness === "number" && m.sharpness < limits.sharpMin) return fail("sharp", GATE_TEXT.sharp);
   if (typeof m.foreheadL === "number") {
     if (m.foreheadL < limits.brightMin) return fail("bright", GATE_TEXT.bright_low);

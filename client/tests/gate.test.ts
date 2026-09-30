@@ -78,7 +78,7 @@ describe("evaluateGate", () => {
 
   it("V8 가림(이마 급변) — 선명보다 먼저, 문구는 정의서 97행 그대로", () => {
     const r = evaluateGate("liner", good({ occluded: true, sharpness: 10 }));
-    expect(r.firstFail).toBe("hand");
+    expect(r.firstFail).toBe("occluded");
     expect(r.text).toBe("얼굴을 가리지 말아 주세요");
   });
 

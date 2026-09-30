@@ -74,7 +74,7 @@ export type GateFail =
   | "sharp"
   | "bright"
   | "color"
-  | "hand"
+  | "occluded"
   | "visible"
   | "pose_diff"
   | "expr_diff"
@@ -97,7 +97,7 @@ export interface CaptureBundle {
 }
 
 /** no_band: 룩 템플릿에 진하기 목표 밴드가 없어 강도 부위 점수를 못 낸다 */
-export type CheckReason = "faint" | "lighting" | "align" | "hand" | "no_baseline" | "no_band" | "contour";
+export type CheckReason = "faint" | "lighting" | "align" | "occluded" | "no_baseline" | "no_band" | "contour";
 
 /** ③ 채점 → ⑥ */
 export interface PartResult {
