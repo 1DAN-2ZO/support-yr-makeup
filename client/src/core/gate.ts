@@ -66,6 +66,14 @@ export const GATE_TEXT = {
   // 세로 부위(입술·볼·쉐딩)에서 얼굴이 누웠으면 폰을 가로로 들고 있는 것
   holdPortrait: "폰을 세로로 들어 주세요",
   pose: "처음 찍을 때와 같은 각도로 봐 주세요",
+  // 정면·기준 각도 차는 **어느 쪽으로** 고치면 되는지 말한다 (폰 시험 2026-09-30: 가로로 들면 카메라가 옆이라
+  // 화면만 보고 있어도 얼굴이 15° 쯤 돌아간 것으로 찍힌다 → "조금만 정면으로" 로는 뭘 해야 할지 모른다).
+  // 좌우는 화면 1 과 같은 기준: 거울 기준 yaw 가 + 면 "왼쪽으로" 돌려야 준다 (flow.ts left_45 = yaw 음수 = "고개를 왼쪽으로")
+  turnLeft: "얼굴을 왼쪽으로 살짝 돌려 주세요",
+  turnRight: "얼굴을 오른쪽으로 살짝 돌려 주세요",
+  // 위아래: pitch 가 + 면 코끝이 내려간 것(숙임) → 들어야 준다
+  tiltUp: "고개를 살짝 들어 주세요",
+  tiltDown: "고개를 살짝 숙여 주세요",
   expr: "처음 찍을 때처럼 편한 표정으로 있어 주세요",
   eyes: "양쪽 눈이 보이게 해 주세요",
   part: "부위가 다 보이게 해 주세요",
@@ -178,9 +186,16 @@ export function evaluateGate(partId: PartId, m: LiveMeasure, limits: LiveLimits 
   if (m.screen === "portrait" && EYE_PARTS.includes(partId)) return fail("angle", GATE_TEXT.toLandscape);
   // NaN·Infinity 는 비교가 전부 false 라 모든 조건을 통과해 버린다 (정의서 3-5 "깨진 측정값")
   if (!measureFinite(m)) return fail("face", GATE_TEXT.face);
-  if (Math.abs(m.yaw) > limits.yaw || Math.abs(m.pitch) > limits.pitch) return fail("angle", GATE_TEXT.angle);
-  const pd = m.poseDiff ?? (typeof m.baseYaw === "number" && typeof m.basePitch === "number" ? { yaw: m.yaw - m.baseYaw, pitch: m.pitch - m.basePitch } : null);
-  if (pd && (Math.abs(pd.yaw) > limits.dYaw || Math.abs(pd.pitch) > limits.dPitch)) return fail("pose_diff", GATE_TEXT.pose);
+  if (Math.abs(m.yaw) > limits.yaw) return fail("angle", m.yaw > 0 ? GATE_TEXT.turnLeft : GATE_TEXT.turnRight);
+  if (Math.abs(m.pitch) > limits.pitch) return fail("angle", m.pitch > 0 ? GATE_TEXT.tiltUp : GATE_TEXT.tiltDown);
+  // 기준 각도 차: 강체 차(poseDiff)는 이미지 좌표(코끝이 이미지 오른쪽이면 +)라 거울 기준으로 부호를 바꿔 방향을 정한다
+  const pd = m.poseDiff
+    ? { yaw: m.poseDiff.yaw, pitch: m.poseDiff.pitch, mirrorYaw: -m.poseDiff.yaw }
+    : typeof m.baseYaw === "number" && typeof m.basePitch === "number"
+      ? { yaw: m.yaw - m.baseYaw, pitch: m.pitch - m.basePitch, mirrorYaw: m.yaw - m.baseYaw }
+      : null;
+  if (pd && Math.abs(pd.yaw) > limits.dYaw) return fail("pose_diff", pd.mirrorYaw > 0 ? GATE_TEXT.turnLeft : GATE_TEXT.turnRight);
+  if (pd && Math.abs(pd.pitch) > limits.dPitch) return fail("pose_diff", pd.pitch > 0 ? GATE_TEXT.tiltUp : GATE_TEXT.tiltDown);
   if (typeof m.exprDiff === "number" && m.exprDiff > limits.exprTol) return fail("expr_diff", GATE_TEXT.expr);
   if (m.partVisible === false) return fail("visible", EYE_PARTS.includes(partId) ? GATE_TEXT.eyes : GATE_TEXT.part);
   // 이마 급변 = 무엇이든 얼굴을 가림 (#144) — 손·브러시·머리카락 무엇이든, 수단이 아니라 상태 (#155)
