@@ -21,6 +21,15 @@ from typing import Any
 
 Event = dict[str, Any]
 
+# 옛 이름 → 지금 이름 (#155: 가림은 손만이 아니라 무엇이든 — hand → occluded). 폰에 남은 옛 로그도 같은 줄로
+RENAMED = {"hand": "occluded"}
+
+
+def _name(v: Any) -> str:
+    s = str(v)
+    return RENAMED.get(s, s)
+
+
 # 사용자가 흘러가는 순서. 퍼널은 이 순서로 "어디까지 왔나"를 센다
 FUNNEL_SCREENS = ["consent", "capture", "looks", "fullrender", "guide", "live", "result", "review"]
 
@@ -96,7 +105,7 @@ def summarize_session(events: list[Event]) -> SessionSummary:
             else:
                 s.retries[str(e.get("shot"))] += 1
         elif name == "gate_fail":
-            s.gate_fails[str(e.get("first_fail"))] += 1
+            s.gate_fails[_name(e.get("first_fail"))] += 1
         elif name == "landmark_lost":
             s.lost_face_ms += int(e.get("ms") or 0)
         elif name == "part_status":
@@ -107,7 +116,7 @@ def summarize_session(events: list[Event]) -> SessionSummary:
             s.part_status[part] = to
         elif name == "score":
             if e.get("check_reason"):
-                s.check_reasons[str(e["check_reason"])] += 1
+                s.check_reasons[_name(e["check_reason"])] += 1
             if isinstance(e.get("ms"), (int, float)):
                 s.score_ms.append(int(e["ms"]))
         elif name == "button" and str(e.get("button")).startswith("save"):

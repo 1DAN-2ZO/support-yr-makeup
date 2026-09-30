@@ -237,3 +237,16 @@ def test_개인화_실패_뒤_이탈():
 def test_개인화_기록이_없으면_개인화_줄도_없다():
     m = rows_by_metric(aggregate(full_session("a")))
     assert not [k for k in m if k.startswith("개인화")]
+
+
+def test_옛_이름_hand_는_occluded_로_센다():
+    """#155 로 가림 이름이 hand → occluded. 폰에 남은 옛 로그도 같은 줄로 센다"""
+    events = [
+        ev("a", 1, "gate_fail", screen="live", first_fail="hand"),
+        ev("a", 2, "gate_fail", screen="live", first_fail="occluded"),
+        ev("a", 3, "score", screen="result", part="brow", status="check_only", check_reason="hand", ms=10),
+    ]
+    m = rows_by_metric(aggregate(events))
+    assert m["게이트 첫 실패 · occluded(%)"] == 100.0
+    assert m["확인만 이유 · occluded(회)"] == 1
+    assert "게이트 첫 실패 · hand(%)" not in m

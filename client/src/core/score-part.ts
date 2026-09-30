@@ -302,7 +302,7 @@ export interface BundleScore {
 
 /**
  * 확인받기 3~5장을 각각 채점해 합친다.
- *  - 가려진 장은 뺀다. 다 가려졌으면 확인만(hand)
+ *  - 가려진 장은 뺀다. 다 가려졌으면 확인만(occluded)
  *  - 점수 난 장이 절반 이상이면 점수 = 중앙값. 흔들린 한 장이 점수를 끌고 가지 않게 (이슈는 "평균" — 튀는 값에 강한 쪽을 골랐다)
  *  - 아니면 확인만, 이유는 가장 많이 나온 것
  *  - 한 줄 평·코드·사진은 대표 장(점수가 중앙값에 가장 가까운 장, 확인만이면 그 이유가 나온 첫 장)에서
@@ -313,8 +313,8 @@ export function scoreBundle(partId: PartId, base: SampleFrame, frames: readonly 
   const excluded = frames.length - kept.length;
   if (!kept.length) {
     const outcome: ScoreOutcome = {
-      decision: "check_only", score: null, diagnosisCodes: [], checkReason: "hand",
-      diagnosis: oneLiner(partId, { status: "check_only", reason: "hand", score: null }), lrIndex: null,
+      decision: "check_only", score: null, diagnosisCodes: [], checkReason: "occluded",
+      diagnosis: oneLiner(partId, { status: "check_only", reason: "occluded", score: null }), lrIndex: null,
       metrics: { frames: { used: 0, excluded } },
     };
     return { outcome, pick: null, cur: null, used: 0, excluded };

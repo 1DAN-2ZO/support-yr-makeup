@@ -133,7 +133,7 @@ export const CHECK_REASON_TEXT: Record<CheckReason, string> = {
   faint: "색이 옅어서 재지 못했어요. 직접 보고 넘어가세요",
   lighting: "조명이 달라져서 재지 못했어요. 직접 보고 넘어가세요",
   align: "얼굴을 제대로 맞추지 못해 재지 못했어요. 직접 보고 넘어가세요",
-  hand: "손이나 머리카락에 가려서 재지 못했어요. 직접 보고 넘어가세요",
+  occluded: "손이나 머리카락에 가려서 재지 못했어요. 직접 보고 넘어가세요",
   no_baseline: "맨얼굴 기준이 없어서 재지 못했어요. 직접 보고 넘어가세요",
   no_band: "이 화장은 진하기 기준이 없어요. 직접 보고 넘어가세요",
   contour: "확인하고 넘어가세요.",
@@ -511,8 +511,8 @@ export function decide(partId: PartId, res: Pick<PartScore, "present" | "score">
   if (ctx.noFace) return checkOnly("align");
   if (ctx.alignResidual !== undefined && ctx.alignResidual > p.alignMax) return checkOnly("align");
   if (partId === "contour") return checkOnly("contour");
-  // 가림 — 계약 이름은 아직 "hand" (#155 에서 "occluded")
-  if (typeof ctx.hairFrac === "number" && ctx.hairFrac > p.hairMax) return checkOnly("hand");
+  // 가림 (#155 — 손·머리카락 무엇이든)
+  if (typeof ctx.hairFrac === "number" && ctx.hairFrac > p.hairMax) return checkOnly("occluded");
   if (typeof ctx.lightShift === "number" && Math.abs(ctx.lightShift) > p.lightTol) return checkOnly("lighting");
   if (!res.present) return checkOnly("faint");
   if (res.score == null) return checkOnly("no_band");
