@@ -265,7 +265,7 @@ function frame(): void {
   m.stableCount = state.stable;
   let gate = shotGate(shotId, m);
   if (shotId === "front_open") {
-    const sr = settleStep(state.settle ?? startSettle(t0), t0, m.foreheadL);
+    const sr = settleStep(state.settle ?? startSettle(), t0, m.foreheadL, m.faceDetected);
     state.settle = sr.state;
     if (gate.ok && !sr.ready) gate = { ok: false, firstFail: "stable", text: SHOT_TEXT.stable, stableCount: gate.stableCount };
   }
