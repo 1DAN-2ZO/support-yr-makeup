@@ -30,7 +30,7 @@ export interface CardInput {
 
 export type CardOp =
   | { op: "bg"; color: string }
-  | { op: "text"; text: string; x: number; y: number; size: number; color: string; align: "left" | "center" | "right"; bold?: boolean }
+  | { op: "text"; text: string; x: number; y: number; size: number; color: string; align: "left" | "center" | "right"; bold?: boolean; maxW?: number }
   | { op: "bar"; x: number; y: number; w: number; h: number; ratio: number; color: string; track: string }
   | { op: "image"; which: "bare" | "after"; x: number; y: number; w: number; h: number }
   | { op: "box"; x: number; y: number; w: number; h: number; color: string };
@@ -70,7 +70,8 @@ export function cardLayout(input: CardInput): CardOp[] {
 
   // 제목
   ops.push({ op: "text", text: "nudy", x: PAD, y: 92, size: 40, color: MUTED, align: "left" });
-  ops.push({ op: "text", text: input.lookName, x: CARD_W - PAD, y: 92, size: 40, color: ACCENT, align: "right", bold: true });
+  // 화장 이름은 길 수 있다 — 왼쪽 "nudy" 자리를 빼고 남는 폭 안에서 말줄임 (#79)
+  ops.push({ op: "text", text: input.lookName, x: CARD_W - PAD, y: 92, size: 40, color: ACCENT, align: "right", bold: true, maxW: CARD_W - PAD * 2 - 160 });
 
   // 합산 — 숫자만 크게. 기준 표기도 보정 표시도 없다 (F-10)
   const total = input.summary.total;
@@ -118,7 +119,7 @@ export function cardLayout(input: CardInput): CardOp[] {
   let y = photoY + PHOTO_H + 100;
 
   if (input.lightingNote) {
-    ops.push({ op: "text", text: input.lightingNote, x: PAD, y, size: 28, color: MUTED, align: "left" });
+    ops.push({ op: "text", text: input.lightingNote, x: PAD, y, size: 28, color: MUTED, align: "left", maxW: CARD_W - PAD * 2 });
     y += 46;
   }
 
@@ -135,6 +136,20 @@ export function cardLayout(input: CardInput): CardOp[] {
   // 버전 — 구석에 작게. 어떤 규칙으로 낸 점수인지 나중에 따져 볼 수 있어야 한다
   ops.push({ op: "text", text: input.stamp, x: CARD_W - PAD, y: CARD_H - 40, size: 22, color: MUTED, align: "right" });
   return ops;
+}
+
+/**
+ * 폭에 맞춰 말줄임 (#79). 글자 수로 자르면 기기마다 글꼴 폭이 달라 넘치거나 남는다 — 실제 폭(measure)으로 잰다.
+ * 들어가면 그대로, 넘치면 "…" 을 붙여 들어가는 만큼, "…" 도 안 들어가면 빈 글자
+ */
+export function fitText(measure: (t: string) => number, text: string, maxW: number): string {
+  if (measure(text) <= maxW) return text;
+  const chars = [...text];
+  for (let n = chars.length - 1; n > 0; n--) {
+    const t = chars.slice(0, n).join("").trimEnd() + "…";
+    if (measure(t) <= maxW) return t;
+  }
+  return measure("…") <= maxW ? "…" : "";
 }
 
 /** 목록을 캔버스에 옮긴다. 여기엔 배치 판단이 없다 */
@@ -164,7 +179,7 @@ export function drawCard(ctx: CanvasRenderingContext2D, ops: readonly CardOp[], 
         ctx.fillStyle = o.color;
         ctx.font = `${o.bold ? "600 " : ""}${o.size}px system-ui, sans-serif`;
         ctx.textAlign = o.align;
-        ctx.fillText(o.text, o.x, o.y);
+        ctx.fillText(o.maxW ? fitText((t) => ctx.measureText(t).width, o.text, o.maxW) : o.text, o.x, o.y);
         break;
     }
   }
@@ -223,6 +238,8 @@ export async function renderCard(input: CardInput): Promise<Blob | null> {
   canvas.height = CARD_H;
   const ctx = canvas.getContext("2d");
   if (!ctx) return null;
+  // 글꼴이 다 불러와진 뒤에 그린다 — 안 그러면 기본 글꼴 폭으로 재고 그려 줄바꿈·말줄임이 어긋난다 (#79)
+  await (document as Document & { fonts?: { ready: Promise<unknown> } }).fonts?.ready.catch(() => {});
   drawCard(ctx, cardLayout(input), input);
   return new Promise((resolve) => {
     if (typeof canvas.toBlob !== "function") return resolve(null);

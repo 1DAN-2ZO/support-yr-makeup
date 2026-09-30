@@ -10,6 +10,7 @@
 
 import type { Baseline, FaceShape, GateFail, GateResult, PartId, PartResult, PartStatus } from "./types";
 import { LOOK_PART_IDS, PART_IDS } from "./types";
+import type { PersonalPlan } from "./personalize";
 
 // ---------- 화면 순서 ----------
 
@@ -33,7 +34,7 @@ export const SCREEN_NAME: Record<ScreenId, string> = {
   denied: "이용 불가",
   capture: "1 촬영",
   processing: "서버 처리",
-  looks: "2 룩",
+  looks: "2 화장",
   fullrender: "2-b 전체 완성 예상",
   guide: "3 완성본",
   live: "4 실시간 테두리",
@@ -105,15 +106,23 @@ export interface CaptureLimits {
   eyeMinPx: number;
   /** 이마 a*·b* 가 첫 장 대비 이만큼 넘게 돌면 "조명 색이 바뀜" (1-9). 임계는 1-4 실측으로 확정, 지금은 가정값 */
   colorTol: number;
+  /**
+   * 45° 장 전용 밝기·색 허용 차. 고개를 돌리면 이마에 빛이 닿는 각도가 바뀌어 정면끼리보다 크게 흔들린다 (노출 잠금과 무관).
+   * 2026-09-30 1차 실측(15회, 폰 4종, 비정상 1회 제외): 정면 두 장 최대 밝기 7.5·색 4.1 / **45° 최대 밝기 11.6·색 8.0**.
+   * 규칙 "정상 최대 × 1.5" → 정면 12·6 (그대로), 45° 18·12. 내일(#215) 사람 2·3 조명 3종으로 검증 후 확정
+   */
+  brightTol45: number;
+  colorTol45: number;
   stableFrames: number;
 }
-export const CAPTURE_LIMITS: CaptureLimits = { pitch: 10, sharpMin: 150, brightTol: 12, brightMin: 40, brightMax: 85, eyeMinPx: 80, colorTol: 6, stableFrames: 5 };
+export const CAPTURE_LIMITS: CaptureLimits = { pitch: 10, sharpMin: 150, brightTol: 12, brightMin: 40, brightMax: 85, eyeMinPx: 80, colorTol: 6, brightTol45: 18, colorTol45: 12, stableFrames: 5 };
 
 /** 촬영 조건 문구. 숫자 없이 한 줄 (기능 정의서 F-01) */
 export const SHOT_TEXT = {
   none: "",
   cut: "얼굴이 잘려요. 얼굴 전체가 보이게 해 주세요",
   occluded: "얼굴을 가리지 말아 주세요",
+  bangs: "앞머리를 넘겨서 이마가 보이게 해 주세요",
   front: "조금만 정면으로",
   left: "고개를 왼쪽으로 조금 더",
   right: "고개를 오른쪽으로 조금 더",
@@ -147,6 +156,8 @@ export interface ShotMeasure {
   faceInset?: number;
   /** 이마가 갑자기 크게 변해 가림으로 본다 (occlusion.ts foreheadStep, 2026-09-23 #144). 없으면 조건 생략 */
   foreheadOccluded?: boolean;
+  /** 얼굴은 잡혔는데 이마 대부분이 머리카락이라 이마 피부를 못 잰다 (color.foreheadLab null, 2026-09-30). 조명 기준을 몰라서 안 찍는다 */
+  foreheadHidden?: boolean;
   /** 눈 폭 px — 두 눈 중 큰 쪽 (45° 장은 먼 눈이 짧아진다). 없으면 조건 생략 */
   eyeWidthPx?: number;
   /** 라플라시안 분산 */
@@ -181,6 +192,7 @@ export function shotGate(shotId: ShotId, m: ShotMeasure, limits: CaptureLimits =
   const shot = SHOTS.find((s) => s.id === shotId);
   if (!shot) throw new Error(`알 수 없는 촬영 장: ${shotId}`);
   const stableCount = m.stableCount ?? 0;
+  const side = shotId === "left_45" || shotId === "right_45";   // 45° 장은 밝기·색 허용 차가 넓다 (brightTol45·colorTol45)
   const fail = (firstFail: GateFail, key: ShotTextKey): GateResult => ({ ok: false, firstFail, text: SHOT_TEXT[key], stableCount });
 
   if (!m.faceDetected) return fail("face", "none");
@@ -190,6 +202,7 @@ export function shotGate(shotId: ShotId, m: ShotMeasure, limits: CaptureLimits =
   if (typeof m.faceInset === "number" && m.faceInset < FACE_INSET_MIN) return fail("visible", "cut");
   // 가림 (2026-09-23 #144): 이마 급변. 손 검출 모델 없이 손·머리카락·브러시·마스크를 한 조건으로. 무엇인지는 모른다 → "visible"
   if (m.foreheadOccluded) return fail("visible", "occluded");
+  if (m.foreheadHidden) return fail("visible", "bangs");
   if (m.yaw < shot.yaw[0] || m.yaw > shot.yaw[1]) {
     if (shot.id.startsWith("front")) return fail("angle", "front");
     // 반대로 돌렸을 때 "조금 더" 라고 하면 그쪽으로 더 돌린다 (2026-09-23 iPad: 왼쪽 45° 차례에 yaw +84 까지, 20초)
@@ -211,12 +224,13 @@ export function shotGate(shotId: ShotId, m: ShotMeasure, limits: CaptureLimits =
   if (typeof m.foreheadL === "number" && m.foreheadL > limits.brightMax) return fail("bright", "bright_high");
   if (typeof m.baselineL === "number" && typeof m.foreheadL === "number") {
     const d = m.foreheadL - m.baselineL;
-    if (d < -limits.brightTol) return fail("bright", "bright_low");
-    if (d > limits.brightTol) return fail("bright", "bright_high");
+    const tol = side ? limits.brightTol45 : limits.brightTol;
+    if (d < -tol) return fail("bright", "bright_low");
+    if (d > tol) return fail("bright", "bright_high");
   }
   if (m.foreheadAb && m.baselineAb) {
     const dab = Math.hypot(m.foreheadAb.a - m.baselineAb.a, m.foreheadAb.b - m.baselineAb.b);
-    if (dab > limits.colorTol) return fail("color", "color");
+    if (dab > (side ? limits.colorTol45 : limits.colorTol)) return fail("color", "color");
   }
   if (stableCount < limits.stableFrames) return fail("stable", "stable");
   return { ok: true, firstFail: null, text: SHOT_TEXT.ready, stableCount };
@@ -301,6 +315,11 @@ export interface Session {
   currentPart: PartId | null;
   parts: SessionPart[];
   startedAt: number;
+  /**
+   * 화장(lookId)별 개인화 계획 (#181, 새 흐름 #179). VLM 이 매번 조금 달라서 다시 묻지 않고 저장본을 쓴다.
+   * 숫자·짧은 문장뿐이라 draft 에 그대로 남는다. 기준 얼굴이 바뀌면(정면 다시 찍기) 비운다 — withBaseline
+   */
+  plans: Record<string, PersonalPlan>;
 }
 
 const SETTLED: readonly PartStatus[] = ["passed", "check_only", "skipped"];
@@ -329,7 +348,22 @@ export function createSession(now: () => number = Date.now): Session {
       captured: null,
     })),
     startedAt: now(),
+    plans: {},
   };
+}
+
+/**
+ * 기준(Baseline) 바꾸기. **얼굴이 바뀌면**(정면을 다시 찍어 랜드마크가 달라지면) 앞 얼굴로 만든 개인화 계획을 비운다 (#181).
+ * 같은 얼굴에 쌩얼 사진만 붙는 갱신(encode 뒤 bareImage)은 계획을 그대로 둔다
+ */
+export function withBaseline(s: Session, b: Baseline | null): Session {
+  const sameFace = !!b && !!s.baseline && b.lm === s.baseline.lm;
+  return { ...s, baseline: b, faceShape: b?.faceShape ?? null, plans: sameFace ? s.plans : {} };
+}
+
+/** 화장 하나의 개인화 계획 저장 (#181) */
+export function setPlan(s: Session, lookId: string, plan: PersonalPlan): Session {
+  return { ...s, plans: { ...s.plans, [lookId]: plan } };
 }
 
 export function setScreen(s: Session, screen: ScreenId): Session {
@@ -429,6 +463,8 @@ export interface SessionDraft {
   currentPart: PartId | null;
   parts: (PartResult & { captured: boolean })[];
   startedAt: number;
+  /** 화장별 개인화 계획 — 얼굴 사진·점이 아니라 선택 값이라 draft 에 남긴다 (#181). 예전 draft 에는 없다 */
+  plans?: Record<string, PersonalPlan>;
 }
 
 /** 세션 draft 저장용. 사진·랜드마크는 뺀다 (얼굴 데이터는 draft 에 남기지 않는다) */
@@ -446,6 +482,7 @@ export function stripImages(s: Session): SessionDraft {
     currentPart: s.currentPart,
     parts: s.parts.map(({ captured, ...rest }) => ({ ...rest, captured: !!captured })),
     startedAt: s.startedAt,
+    plans: s.plans,
   };
 }
 

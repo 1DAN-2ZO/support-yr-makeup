@@ -61,18 +61,17 @@ const ctx = (screen: string): ScreenContext<null> => ({
   log: createLogger({ sid: "preview", screen: screen as never, part: null, ver }, () => {}),
 });
 
-let lookId: string | null = "smoky";
-const jobs = mutableJobSource(LOOKS.map((l, i) => job(l.id, i === 7 ? "running" : "done", i)));
+let lookId: string | null = "edgy";
 
 const SCREENS: Record<string, () => Promise<Screen<null>>> = {
   "서버 처리": async () => processingScreen<null>({ jobs: mutableJobSource(LOOKS.map((l) => ({ ...job(l.id, "running", 0) }))) }),
-  "2 룩": async () => looksScreen<null>({ jobs, getLookId: () => lookId, setLookId: (id) => { lookId = id; } }),
-  "2-b 완성 예상": async () => fullRenderScreen<null>({ jobs, getLookId: () => lookId }),
+  "2 화장": async () => looksScreen<null>({ getLookId: () => lookId, setLookId: (id) => { lookId = id; } }),
+  "2-b 완성 예상": async () => fullRenderScreen<null>({ getLookId: () => lookId }),
   "5 결과 (라이너)": async () => {
     const bare = await bitmapOf(BARE_IMAGE), made = image(linerPaint());
     const frame = await bitmapOf(made);
     const bundle: CaptureBundle = { frames: [frame], pts: [LMS], handOverlap: [null], foreheadL: [70] };
-    const baseline = { lm: LMS, unit: { eye: 90, lip: 120, face: 400 }, foreheadL: 70, scleraLab: null, faceShape: { label: "oval" as const, confidence: 1, method: "rule" as const, version: "t" }, bareImage: bare, w: 600, h: 600 };
+    const baseline = { lm: LMS, unit: { eye: 90, lip: 120, face: 400 }, foreheadL: 70, scleraLab: null, faceShape: { label: "oval" as const, confidence: 1, method: "rule" as const, version: "t" }, bareImage: bare, w: 600, h: 600, expression: null };
     return resultScreen<null>({
       getPart: () => "liner", getBaseline: () => baseline, getCapture: () => bundle, guide: () => guide,
       getStatus: () => "in_progress", apply: () => {}, skip: () => {}, nextPart: () => "shadow",
@@ -108,4 +107,4 @@ for (const name of Object.keys(SCREENS)) {
   b.onclick = () => void show(name);
   pick.append(b);
 }
-void show(decodeURIComponent(location.hash.slice(1)) || "2 룩");
+void show(decodeURIComponent(location.hash.slice(1)) || "2 화장");

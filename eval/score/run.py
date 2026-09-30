@@ -28,7 +28,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from eval.common import ROOT, data_dir, load_golden, result_path, write_rows  # noqa: E402
 
-SCORE_VERSION = "score-v0.1"
+# 채점 버전 = rules/score.json (앱과 같은 파일, #44) — 결과 파일 이름·표에 찍힌다
+SCORE_VERSION = json.loads(
+    (Path(__file__).resolve().parents[2] / "rules" / "score.json").read_text(encoding="utf-8")
+)["version"]
 CLI = ROOT / "eval" / "score" / "score_cli.mjs"
 ORDER = {"ok": 0, "slight": 1, "off": 2}
 

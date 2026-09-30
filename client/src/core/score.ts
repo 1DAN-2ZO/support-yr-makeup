@@ -9,9 +9,11 @@
  *  - 세션 반영은 flow.ts applyResult 가 한다. 여기서는 toOutcome() 으로 그 입력을 만든다
  */
 
+import scoreRules from "../../../rules/score.json";
 import type { Lab } from "./color";
-import { deltaE } from "./color";
+import { deltaE, rgbToLab } from "./color";
 import type { ScoreOutcome } from "./flow";
+import { RIGID_IDS } from "./landmarks";
 import type { CheckReason, PartId, PartResult, Pt } from "./types";
 
 export const PART_NAME: Record<PartId, string> = {
@@ -53,6 +55,19 @@ export interface ScoreParams {
   toneDiv: number;
   /** 이마 L* 가 기준에서 이만큼 넘게 달라지면 조명이 바뀐 것 */
   lightTol: number;
+  /** 기준 얼굴과 정렬 잔차(안정 점 평균, 눈 폭 비율)가 이만큼 넘으면 확인만(align) — 가정값, 실사진 잔차 분포로 정한다 (#43) */
+  alignMax: number;
+  /** 부위가 머리카락에 이만큼 넘게 가리면 확인만(가림) — 가정값 (docs/research/hair-skin-2026-09-29) */
+  hairMax: number;
+  /**
+   * 조명 보정 방식 (S-4 #40). "L" = 이마 L* 비율만(지금). "sclera" = 거기에 눈 흰자 a*b* 가 돈 만큼 조명 색을 되돌림 —
+   * 합성 얼굴: 노란·파란 불빛의 맨얼굴이 "L" 이면 눈썹·라이너·입술 66~70점, "sclera" 면 화장 없음 (color-corr.test)
+   */
+  colorCorr: "L" | "sclera";
+  /**
+   * 템플릿 색이 피부와 얼마나 다른지 볼 때, 실제로 발리는 비율 (가정값). 차이 × 이 값이 부위 검출 기준보다 작으면 확인만(subtle)
+   */
+  subtleCover: number;
   /** 목표 지수 밴드. 룩 템플릿 값이 우선이고, 없으면 확인만 */
   band: Partial<Record<IntensityPartId, Band>>;
   tol: {
@@ -69,15 +84,11 @@ export interface ScoreParams {
   };
 }
 
-export const PARAMS: ScoreParams = {
-  dEThresh: { liner: 14, brow: 10, lip: 10 },
-  tPresent: { shadow: 3.5, cheek: 4, contour: 4 },
-  dEMaxSession: 25,
-  toneDiv: 4,
-  lightTol: 12,
-  band: { cheek: [25, 60], shadow: [20, 65] },
-  tol: { band: 0.011, out: 0.022, wingDev: 0.022, wingShort: 0.055, thickOver: 0.015, thickUnder: 0.022, lrDiff: 0.045, lipIn: 0.006, lipOut: 0.012, wingMin: 0.015 },
-};
+/** 채점 가정값 — rules/score.json 한 곳 (#44). 코드에 숫자를 박지 않는다 (dev-stack-v6.md §6) */
+// JSON 의 [a, b] 는 "숫자 목록" 으로 읽혀 Band(두 개) 로 바로 안 바뀐다 — 값이 파일과 같은지는 score-rules.test R1 이 본다
+export const PARAMS: ScoreParams = scoreRules.params as unknown as ScoreParams;
+/** 채점 규칙 버전 — 로그(Event.ver)·결과 카드 도장에 붙는다. 임계를 바꾸면 rules/score.json 에서 올린다 */
+export const SCORE_VERSION: string = scoreRules.version;
 
 /** 진단 코드 → 한 줄 문장. 코드표는 여기 한 곳에만 둔다 (review.ts 도 가져다 쓴다). 숫자를 쓰지 않는다 */
 export const DIAG_TEXT = {
@@ -126,16 +137,36 @@ export function diagText(code: string): string | undefined {
   return (DIAG_TEXT as Record<string, string>)[code];
 }
 
-/** "확인만" 이유 → 한 줄 문장. 숫자를 쓰지 않는다 */
-export const CHECK_REASON_TEXT: Record<CheckReason, string> = {
-  faint: "색이 옅어서 재지 못했어요. 직접 보고 넘어가세요",
-  lighting: "조명이 달라져서 재지 못했어요. 직접 보고 넘어가세요",
-  align: "얼굴을 찾지 못해 재지 못했어요. 직접 보고 넘어가세요",
-  hand: "손에 가려서 재지 못했어요. 직접 보고 넘어가세요",
-  no_baseline: "맨얼굴 기준이 없어서 재지 못했어요. 직접 보고 넘어가세요",
-  no_band: "이 화장은 진하기 기준이 없어요. 직접 보고 넘어가세요",
+/**
+ * "확인만" 이유 → 짧은 이유 한 문장. 숫자를 쓰지 않는다. 리뷰(다 끝난 뒤)는 이것만 쓴다.
+ * 폰 시험(2026-09-30): "조명이 달라져서 재지 못했어요" 는 사용자를 탓하는 것 같고 기계 말투라 → 무엇이 다른지만 짧게
+ */
+export const CHECK_REASON_SHORT: Record<CheckReason, string> = {
+  faint: "아직 색이 잘 안 보여요.",
+  lighting: "처음 찍을 때와 밝기가 달라요.",
+  align: "얼굴이 처음과 달라 비교하기 어려워요.",
+  occluded: "앞머리나 손이 가리고 있어요.",
+  no_baseline: "맨얼굴 사진이 없어 비교할 수 없어요.",
+  no_band: "이 화장은 아직 진하기 기준이 없어요.",
+  subtle: "이 화장은 색이 피부와 가까워 사진으로 가르기 어려워요.",
   contour: "확인하고 넘어가세요.",
 };
+
+/** 화면 5 에서 이유 뒤에 붙이는 할 일 하나. 다시 하면 되는 이유는 다시 확인받기를 권한다 */
+export const CHECK_ACTION: Record<Exclude<CheckReason, "contour">, string> = {
+  faint: "조금 더 바르거나, 거울로 보고 넘어가세요",
+  lighting: "같은 자리에서 다시 확인받아 주세요",
+  align: "정면을 보고 다시 확인받아 주세요",
+  occluded: "치우고 다시 확인받아 주세요",
+  no_baseline: "거울로 보고 넘어가세요",
+  no_band: "거울로 보고 넘어가세요",
+  subtle: "거울로 보고 넘어가세요",
+};
+
+/** 화면 5 "확인만" 한 줄 = 이유 + 할 일. 쉐딩은 이유만 */
+export const CHECK_REASON_TEXT: Record<CheckReason, string> = Object.fromEntries(
+  (Object.keys(CHECK_REASON_SHORT) as CheckReason[]).map((k) => [k, k === "contour" ? CHECK_REASON_SHORT[k] : `${CHECK_REASON_SHORT[k]} ${CHECK_ACTION[k]}`]),
+) as Record<CheckReason, string>;
 
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
 const median = (arr: readonly number[]): number => {
@@ -151,6 +182,19 @@ export const noCorr: LightCorr = (lab) => lab;
 export function lightCorr(baseForeheadL: number, curForeheadL: number): LightCorr {
   const r = baseForeheadL / Math.max(1, curForeheadL);
   return (lab) => ({ L: lab.L * r, a: lab.a, b: lab.b });
+}
+
+/**
+ * 밝기(이마 L* 비율) + 조명 색(흰자 a*b* 차이를 되돌림). 흰자는 원래 흰색이라 흰자가 돈 만큼 조명이 돈 것 (S-4 #40).
+ * 색이 도는 양은 밝을수록 크다(곱으로 도는 불빛) — 흰자에서 잰 차이를 **그 픽셀 밝기 ÷ 흰자 밝기** 만큼만 되돌린다.
+ * 똑같이 빼면 어두운 속눈썹 옆(라이너 띠)이 과하게 보정돼 "그렸다" 가 됐다 (color-corr K2)
+ */
+export function colorShiftCorr(light: LightCorr, baseSclera: { a: number; b: number }, curSclera: { a: number; b: number; L: number }): LightCorr {
+  const da = curSclera.a - baseSclera.a, db = curSclera.b - baseSclera.b, Ls = Math.max(1, curSclera.L);
+  return (lab) => {
+    const l = light(lab), k = Math.min(1, lab.L / Ls);
+    return { L: l.L, a: l.a - da * k, b: l.b - db * k };
+  };
 }
 
 /** 부위 채점 결과 (상태를 정하기 전). decide()·toOutcome() 의 입력 */
@@ -223,7 +267,8 @@ export interface LinerEyeMetrics {
 
 export function compareLinerEye(base: LinerStrip, cur: LinerStrip, corr: LightCorr, p: ScoreParams = PARAMS): LinerEyeMetrics {
   const { offs, isWing, tFromCorner, wingLen, thick: guideThick } = cur.meta;
-  const half = guideThick / 2;
+  // 띠 = 속눈썹 선(o = 0)에서 위로 guideThick — ② 가이드(guides.ts linerOutline)와 같은 뜻 (#153).
+  // 전엔 속눈썹 선을 가운데 두고 ±thick/2 라, 두꺼운 화장을 가이드대로 칠해도 윗부분이 '번짐' 이었다
   const N = Math.min(base.lab.length, cur.lab.length), M = offs.length;
   const step = M > 1 ? offs[1]! - offs[0]! : 0.0092;
   // 속눈썹 선 아래(−)는 눈을 뜨고 있으면 눈알이다. 시선·홍채가 조금만 움직여도 색이 크게 변해 "선 아래 잉크"로 오인된다.
@@ -241,9 +286,9 @@ export function compareLinerEye(base: LinerStrip, cur: LinerStrip, corr: LightCo
       const o = offs[j]!;
       if (!wing && !useBelow && o < -p.tol.band) continue;   // 눈알 칸 — 어느 계산에도 안 넣는다
       const hit = deltaE(base.lab[i]![j]!, corr(cur.lab[i]![j]!)) >= p.dEThresh.liner;
-      if (Math.abs(o) <= half + p.tol.band) {
+      if (o >= -p.tol.band && o <= guideThick + p.tol.band) {
         if (hit) bandHit = true;   // 가이드 밴드(두께 + 허용) 안에 감지가 있으면 그 행은 덮임
-      } else if (Math.abs(o) > half + p.tol.out + blurW) {   // 번진 폭만큼 바깥 판정을 민다
+      } else if (o > guideThick + p.tol.out + blurW || o < -(p.tol.out + blurW)) {   // 번진 폭만큼 바깥 판정을 민다
         outN++;                    // 밴드 밖 번짐
         if (hit) outHit++;
       }
@@ -305,7 +350,8 @@ export function linerResult(perEye: Record<Side, LinerEyeMetrics>, baseAsym = 0,
 /** 영역 격자 (눈썹): 점 K개. inside = 테두리 안, tail = 꼬리 구간 */
 export interface RegionGrid {
   lab: Lab[];
-  meta: { inside: readonly boolean[]; tail: readonly boolean[]; side: readonly Side[]; lift?: readonly number[] };
+  /** hidden: 머리카락에 가린 칸 (마스크가 있을 때만) — 두 사진 중 한쪽이라도 가렸으면 비교에서 뺀다 */
+  meta: { inside: readonly boolean[]; tail: readonly boolean[]; side: readonly Side[]; lift?: readonly number[]; hidden?: readonly boolean[] };
 }
 
 export interface RegionSideMetrics {
@@ -322,6 +368,7 @@ export function compareRegion(base: RegionGrid, cur: RegionGrid, corr: LightCorr
   const zero = () => ({ inN: 0, inHit: 0, outN: 0, outHit: 0, tailN: 0, tailHit: 0, liftSum: 0, liftN: 0 });
   const acc = { R: zero(), L: zero() };
   for (let i = 0; i < K; i++) {
+    if (base.meta.hidden?.[i] || cur.meta.hidden?.[i]) continue;
     const a = acc[cur.meta.side[i]!], b = base.lab[i]!;
     const th = b.L < 40 ? thresh * 0.5 : thresh;   // 맨얼굴에서 이미 어두운 점(눈썹 털)은 펜슬 변화가 작으므로 임계를 절반으로
     const hit = deltaE(b, corr(cur.lab[i]!)) >= th;
@@ -488,6 +535,27 @@ export interface DecideContext {
   noFace?: boolean;
   /** 이마 L* 변화량 (현재 − 기준) */
   lightShift?: number;
+  /** 기준 얼굴에 맞춘 정렬 잔차 (안정 점 평균 거리 ÷ 눈 폭). 고개·표정이 달라 틀이 안 맞으면 커진다 */
+  alignResidual?: number;
+  /** 부위가 머리카락에 가린 비율 (0~1, 두 사진·좌우 중 큰 쪽). 머리카락 마스크가 있을 때만 */
+  hairFrac?: number;
+  /** 템플릿 색을 이 사람 맨얼굴(이마)에 발랐을 때 예상 색 차이 (templateContrast). 템플릿 색을 줬을 때만 */
+  templateDeltaE?: number;
+}
+
+/** 부위 검출 기준 — 형태 부위는 ΔE 임계, 강도 부위는 유무 임계 */
+function presenceThreshold(partId: PartId, p: ScoreParams): number | null {
+  if (partId === "liner" || partId === "brow" || partId === "lip") return p.dEThresh[partId];
+  if (partId === "shadow" || partId === "cheek") return p.tPresent[partId];
+  return null;
+}
+
+/**
+ * 템플릿 색을 이 피부에 발랐을 때 예상되는 색 차이 — 피부와 색 차이 × 발리는 비율(subtleCover).
+ * 템플릿 진하기(alpha)는 쓰지 않는다: 화면에 그릴 때의 투명도라 사람이 바르는 양과 다르다
+ */
+export function templateContrast(skin: Lab, color: readonly [number, number, number], p: ScoreParams = PARAMS): number {
+  return p.subtleCover * deltaE(skin, rgbToLab(color[0], color[1], color[2]));
 }
 
 export interface Decision {
@@ -500,7 +568,13 @@ export interface Decision {
 export function decide(partId: PartId, res: Pick<PartScore, "present" | "score">, ctx: DecideContext = {}, p: ScoreParams = PARAMS): Decision {
   const checkOnly = (reason: CheckReason): Decision => ({ status: "check_only", reason, score: null });
   if (ctx.noFace) return checkOnly("align");
+  if (ctx.alignResidual !== undefined && ctx.alignResidual > p.alignMax) return checkOnly("align");
   if (partId === "contour") return checkOnly("contour");
+  // 색이 피부와 가까운 화장 — 무엇을 그렸든 사진으로는 못 가른다. 다시 찍어도 같으니 가림·조명보다 먼저 (결정 2026-09-30)
+  const need = presenceThreshold(partId, p);
+  if (typeof ctx.templateDeltaE === "number" && need !== null && ctx.templateDeltaE < need) return checkOnly("subtle");
+  // 가림 (#155 — 손·머리카락 무엇이든)
+  if (typeof ctx.hairFrac === "number" && ctx.hairFrac > p.hairMax) return checkOnly("occluded");
   if (typeof ctx.lightShift === "number" && Math.abs(ctx.lightShift) > p.lightTol) return checkOnly("lighting");
   if (!res.present) return checkOnly("faint");
   if (res.score == null) return checkOnly("no_band");
@@ -530,7 +604,13 @@ export function toOutcome(partId: PartId, res: PartScore, ctx: DecideContext = {
     diagnosis: oneLiner(partId, d, res.codes),
     checkReason: d.reason,
     lrIndex: res.lrIndex,
-    metrics: res.metrics,
+    // 판정 근거도 같이 — 화면 5 ?tune·로그에서 "왜 확인만인지" 를 숫자로 본다 (2026-09-30 폰 시험: 밝기 차 원인 가리기)
+    metrics: {
+      ...res.metrics,
+      ...(ctx.lightShift !== undefined ? { lightShift: ctx.lightShift } : {}),
+      ...(ctx.hairFrac !== undefined ? { hairFrac: ctx.hairFrac } : {}),
+      ...(ctx.alignResidual !== undefined ? { alignResidual: ctx.alignResidual } : {}),
+    },
   };
 }
 
@@ -538,9 +618,10 @@ export function toOutcome(partId: PartId, res: PartScore, ctx: DecideContext = {
 
 /**
  * 화장·입·턱에 영향받지 않는 안정 점: 눈 안팎 끝, 콧대·코끝, 이마, 광대.
- * 얼굴 옆(234·454·127·356)과 턱(152)은 입을 벌리면 메시가 같이 벌어져 유사변환을 흔든다 — 실기기에서 확인, 제외
+ * 얼굴 옆(234·454·127·356)과 턱(152)은 입을 벌리면 메시가 같이 벌어져 유사변환을 흔든다 — 실기기에서 확인, 제외.
+ * 목록은 landmarks.RIGID_IDS 하나 — 화면 4 게이트도 같은 점을 쓴다 (#28)
  */
-export const STABLE_IDS = [33, 133, 362, 263, 168, 6, 197, 195, 5, 4, 10, 50, 280] as const;
+export const STABLE_IDS = RIGID_IDS;
 
 export interface SimilarityFit {
   /** 배율 */

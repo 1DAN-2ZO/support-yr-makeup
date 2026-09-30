@@ -6,6 +6,7 @@ import {
   lookDetail,
   tileState,
   tiles,
+  catalogTiles,
 } from "@core/look-view";
 import { CONTOUR_PRODUCTS, LOOKS, SUMMARY_TEMPLATE } from "@core/looks";
 import { computeSummary, DEFAULT_TEMPLATE } from "@core/review";
@@ -64,16 +65,16 @@ describe("타일 목록", () => {
   });
 
   it("끝난 것부터 고를 수 있다 — 다 올 때까지 안 기다린다", () => {
-    const ts = tiles(LOOKS, [job("smoky", "done", "/r/smoky.png"), job("coral", "running")]);
+    const ts = tiles(LOOKS, [job("edgy", "done", "/r/edgy.png"), job("autumn", "running")]);
     const byId = new Map(ts.map((t) => [t.lookId, t]));
-    expect(byId.get("smoky")?.selectable).toBe(true);
-    expect(byId.get("smoky")?.imageUrl).toBe("/r/smoky.png");
-    expect(byId.get("coral")?.selectable).toBe(false);
+    expect(byId.get("edgy")?.selectable).toBe(true);
+    expect(byId.get("edgy")?.imageUrl).toBe("/r/edgy.png");
+    expect(byId.get("autumn")?.selectable).toBe(false);
     expect(anySelectable(ts)).toBe(true);
   });
 
   it("고를 수 있는 룩의 안내 문구는 비어 있다", () => {
-    const ts = tiles(LOOKS, [job("daily", "done", "/r/daily.png")]);
+    const ts = tiles(LOOKS, [job(LOOKS[0]!.id, "done", "/r/first.png")]);
     expect(ts[0]?.note).toBe("");
     expect(ts[1]?.note).toBe("로딩 중");
   });
@@ -106,7 +107,7 @@ describe("제품 목록", () => {
 });
 
 describe("전체 완성 예상", () => {
-  const jobs = [job("daily", "done", "/r/daily.png"), job("smoky", "fallback")];
+  const jobs = [job("daily", "done", "/r/daily.png"), job("edgy", "fallback")];
 
   it("고른 룩의 결과만 쓴다", () => {
     expect(fullRenderUrl(jobs, "daily")).toBe("/r/daily.png");
@@ -114,8 +115,8 @@ describe("전체 완성 예상", () => {
 
   it("고르지 않았거나 실패했으면 없다", () => {
     expect(fullRenderUrl(jobs, null)).toBeNull();
-    expect(fullRenderUrl(jobs, "smoky")).toBeNull();
-    expect(fullRenderUrl(jobs, "rose")).toBeNull();
+    expect(fullRenderUrl(jobs, "edgy")).toBeNull();
+    expect(fullRenderUrl(jobs, "pure")).toBeNull();
   });
 });
 
@@ -165,5 +166,22 @@ describe("합산 설정 — 전 룩 공통 (결정 2026-09-22)", () => {
     const s = computeSummary(parts, SUMMARY_TEMPLATE);
     expect(s.total).toBe(80);
     expect(s.measuredCount).toBe(SUMMARY_TEMPLATE.partIds.length);
+  });
+});
+
+describe("화장 목록 타일 — 서버 그림 없이 (2026-09-29: Stable-Makeup 빼고 AR·VLM)", () => {
+  it("C1 화장 10개가 순서대로, 처음부터 전부 누를 수 있다", () => {
+    const ts = catalogTiles(LOOKS);
+    expect(ts.map((t) => t.lookId)).toEqual(LOOKS.map((l) => l.id));
+    expect(ts.every((t) => t.selectable)).toBe(true);
+  });
+
+  it("C2 대표 이미지가 있으면 그것, 없으면 그 화장의 색 견본(입술·볼·섀도)", () => {
+    const withImg = { ...LOOKS[0]!, image: "looks/daily.jpg" };
+    const [a, b] = catalogTiles([withImg, LOOKS[1]!]);
+    expect(a!.imageUrl).toBe("looks/daily.jpg");
+    expect(b!.imageUrl).toBeNull();
+    expect(b!.swatch.length).toBeGreaterThan(0);
+    expect(b!.swatch.every((c) => /^#[0-9a-f]{6}$/.test(c))).toBe(true);
   });
 });

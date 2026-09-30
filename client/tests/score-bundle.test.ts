@@ -1,4 +1,4 @@
-// 3-3 (#34) 확인받기 프레임 묶음 채점 — 3~5장을 각각 채점해 합친다. 가려진 장은 빼고, 다 가려지면 확인만(hand)
+// 3-3 (#34) 확인받기 프레임 묶음 채점 — 3~5장을 각각 채점해 합친다. 가려진 장은 빼고, 다 가려지면 확인만(occluded)
 // 점수는 중앙값: 흔들린 한 장이 점수를 끌고 가지 않게. 한 줄 평·사진은 중앙값에 가장 가까운 장(대표 장)에서.
 import { describe, expect, it } from "vitest";
 import { scoreBundle, scorePart, type BundleInput } from "@core/score-part";
@@ -38,10 +38,10 @@ describe("프레임 묶음 채점", () => {
     expect(b.outcome.metrics.frames).toEqual({ used: 2, excluded: 1 });
   });
 
-  it("전부 가려졌으면 확인만(hand) — 대표 장이 없다", () => {
+  it("전부 가려졌으면 확인만(occluded) — 대표 장이 없다", () => {
     const b = scoreBundle("liner", BARE, [fr(linerPaint(), true), fr(linerPaint(), true)], guide);
     expect(b.outcome.decision).toBe("check_only");
-    expect(b.outcome.checkReason).toBe("hand");
+    expect(b.outcome.checkReason).toBe("occluded");
     expect(b.outcome.score).toBeNull();
     expect(b.pick).toBeNull();
   });

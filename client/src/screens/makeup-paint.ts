@@ -13,7 +13,7 @@ import { faceAxis } from "../core/face-measure";
 import { GUIDE_PARAMS } from "../core/guides";
 import { LM, at } from "../core/landmarks";
 import type { Look } from "../core/looks";
-import { browStandard, linerOutline, lipOutline } from "../core/personal-guide";
+import { browOnFace, linerOutline, lipOutline } from "../core/personal-guide";
 import { PLAN_RULES, type LinerStyle, type PersonalPlan } from "../core/personalize";
 import type { Pt } from "../core/types";
 
@@ -34,10 +34,25 @@ export interface PaintLook {
   color: Partial<Record<PaintPart, string>>;
   alpha: Partial<Record<PaintPart, number>>;
   linerThick: number;
+  /** 섀도우 두 색 — at 0 = 속눈썹 쪽, 1 = 눈썹 쪽 (look-v0.2). 없으면 한 색이 위로 옅어진다 */
+  shadowStops?: { at: number; color: string }[];
+  /** 섀도우가 라이너 꼬리 방향으로 길게 이어진다 */
+  shadowTail: boolean;
+  /** 입술 가장자리 색 — 가운데(color) → 가장자리 그러데이션. 없으면 한 색 */
+  lipEdge?: string;
 }
+
+/** 섀도우 눈꼬리 연장 길이 (눈 폭 비율) — ④ 실험 화면(makeup-probe.ts)과 같은 값. 블러보다 확실히 크게 잡은 눈대중값 */
+const SHADOW_TAIL_RATIO = 0.35;
 
 /** 쉐딩·하이라이트는 룩에 없다(얼굴형 규칙 부위, F-04) — 기본 색·진하기 */
 const CONTOUR = { color: { contour: "#a07a66", highlight: "#fff3e6" }, alpha: { contour: 0.35, highlight: 0.45 } };
+
+/**
+ * 눈썹 기본 색 — 화장 템플릿(rules/looks.json)에 눈썹 색이 없으면 이것으로 칠한다.
+ * 폰 시험(2026-09-30): 10개 모두 눈썹 색이 비어 눈썹이 아예 안 그려졌다. 템플릿 값을 대표 이미지(#77·#121)에서 재면 그 색으로
+ */
+export const BROW_DEFAULT_COLOR = "#5a4032";
 
 const hex = (c: readonly number[]): string => "#" + c.map((v) => Math.round(v).toString(16).padStart(2, "0")).join("");
 
@@ -47,7 +62,14 @@ export function paintLookOf(look: Look): PaintLook {
     if (p.color) color[k] = hex(p.color);
     alpha[k] = p.alpha ?? p.alphaR ?? 0.5;
   }
-  return { color, alpha, linerThick: look.parts.liner?.thick ?? GUIDE_PARAMS.liner.thick };
+  color.brow ??= BROW_DEFAULT_COLOR;
+  const sh = look.parts.shadow, lip = look.parts.lip;
+  return {
+    color, alpha, linerThick: look.parts.liner?.thick ?? GUIDE_PARAMS.liner.thick,
+    ...(sh?.stops?.length ? { shadowStops: sh.stops.map((s) => ({ at: s.at, color: hex(s.color) })) } : {}),
+    shadowTail: !!sh?.tailExtend,
+    ...(lip?.edge ? { lipEdge: hex(lip.edge) } : {}),
+  };
 }
 
 export interface Layers { mul: CanvasRenderingContext2D; col: CanvasRenderingContext2D; light: CanvasRenderingContext2D }
@@ -90,23 +112,39 @@ export function paintMakeup(layers: Layers, off: HTMLCanvasElement, lm: readonly
     o.fillStyle = color;
     o.beginPath();
     if (p.id === "brow") {
-      const std = browStandard({ lm, unit }, plan?.brow);
+      // 가이드 테두리와 같은 자리 — 표준 모양을 실제 눈썹 높이에 맞춘 것 (personal-guide browOnFace)
+      const std = browOnFace({ lm, unit }, plan?.brow);
       if (std) for (const s of ["R", "L"] as const) path(o, std[s].outline);
       else for (const { brow } of SIDES) path(o, [...brow.upper.map(P), ...[...brow.lower].reverse().map(P)]);
       o.fill();
     } else if (p.id === "shadow") {
-      // 속눈썹 선에서 가장 진하고 위로 갈수록 옅어진다
-      for (const { eye, brow } of SIDES) {
+      // 속눈썹 선에서 가장 진하고 위로 갈수록 옅어진다. 두 색 화장은 속눈썹 쪽 → 눈썹 쪽 두 색 (④ 실험 화면과 같은 방법)
+      // 눈꼬리 연장: 라이너 꼬리 "방향"으로 눈 폭 × SHADOW_TAIL_RATIO 만큼 쐐기를 더한다 (라이너 자체 길이는 번짐에 뭉개져서)
+      const linerOut = look.shadowTail ? linerOutline({ lm, unit }, look.linerThick * (plan?.linerThick.scale ?? 1), style) : null;
+      for (const [side, { eye, brow }] of SIDES.entries()) {
         const lid = eye.upper.map(P), lo = brow.lower.map(P);
         const top = lid.map((q, i) => mix(q, lo[Math.min(lo.length - 1, Math.round((i / (lid.length - 1)) * (lo.length - 1)))]!, GUIDE_PARAMS.shadow.rangeRatio * (plan?.shadow.range ?? 1)));
+        const tip = linerOut ? (side === 0 ? linerOut.R : linerOut.L)[eye.upper.length] : undefined;
+        const outer = lid[0]!;
+        const wingTip = tip ? (() => {
+          const dx = tip.x - outer.x, dy = tip.y - outer.y, len = Math.hypot(dx, dy) || 1;
+          return { x: outer.x + (dx / len) * SHADOW_TAIL_RATIO * unit.eye, y: outer.y + (dy / len) * SHADOW_TAIL_RATIO * unit.eye };
+        })() : null;
+        const band = wingTip ? [...lid, ...[...top].reverse(), mix(top[0]!, wingTip, 0.5), wingTip] : [...lid, ...[...top].reverse()];
         const a = lid[Math.floor(lid.length / 2)]!, b = top[Math.floor(top.length / 2)]!;
         const grad = o.createLinearGradient(a.x, a.y, b.x, b.y);
-        grad.addColorStop(0, rgba(color, 1));
-        grad.addColorStop(0.55, rgba(color, 0.6));
-        grad.addColorStop(1, rgba(color, 0));
+        if (look.shadowStops) {
+          for (const st of look.shadowStops) grad.addColorStop(Math.max(0, Math.min(1, st.at)), st.color);
+          const last = look.shadowStops[look.shadowStops.length - 1]!;
+          if (last.at < 1) grad.addColorStop(1, rgba(last.color, 0));   // 눈썹 쪽으로 스며들듯
+        } else {
+          grad.addColorStop(0, rgba(color, 1));
+          grad.addColorStop(0.55, rgba(color, 0.6));
+          grad.addColorStop(1, rgba(color, 0));
+        }
         o.fillStyle = grad;
         o.beginPath();
-        path(o, [...lid, ...[...top].reverse()]);
+        path(o, band);
         o.fill();
       }
     } else if (p.id === "liner") {
@@ -137,8 +175,17 @@ export function paintMakeup(layers: Layers, off: HTMLCanvasElement, lm: readonly
         o.restore();
       }
     } else if (p.id === "lip") {
+      const inner = LIP_INNER.map(P);
+      if (look.lipEdge) {
+        // 가운데 → 가장자리 그러데이션 (④ 실험 화면과 같은 방법): 입 안쪽 가운데에서 입꼬리 폭 절반까지
+        const cx = inner.reduce((s, q) => s + q.x, 0) / inner.length, cy = inner.reduce((s, q) => s + q.y, 0) / inner.length;
+        const grad = o.createRadialGradient(cx, cy, 0, cx, cy, Math.hypot(P(291).x - P(61).x, P(291).y - P(61).y) / 2);
+        grad.addColorStop(0.2, color);
+        grad.addColorStop(1, look.lipEdge);
+        o.fillStyle = grad;
+      }
       path(o, lipOutline(lm, plan?.lip.overline ?? 0));
-      path(o, LIP_INNER.map(P));
+      path(o, inner);
       o.fill("evenodd");
     } else {
       const bands = contourOutline(lm, plan?.faceShape ?? "oval", { tZone: plan?.highlight.tZone ?? true });

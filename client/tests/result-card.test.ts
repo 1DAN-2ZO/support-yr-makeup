@@ -8,6 +8,7 @@ import {
   CARD_H,
   CARD_W,
   cardLayout,
+  fitText,
   partValueText,
   saveCard,
   type CardInput,
@@ -194,5 +195,29 @@ describe("결과 저장", () => {
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:x");
     click.mockRestore();
     vi.unstubAllGlobals();
+  });
+});
+
+describe("긴 글자는 폭에 맞춰 말줄임 (#79)", () => {
+  const measure = (t: string) => t.length * 10;   // 글자당 10px 인 가짜 폭
+
+  it("F1 들어가면 그대로", () => {
+    expect(fitText(measure, "데일리", 30)).toBe("데일리");
+  });
+
+  it("F2 넘치면 '…' 을 붙여 폭 안에 들어가는 만큼만", () => {
+    expect(fitText(measure, "가나다라마바", 35)).toBe("가나…");
+    expect(measure(fitText(measure, "가나다라마바사아자차", 55))).toBeLessThanOrEqual(55);
+  });
+
+  it("F3 '…' 도 안 들어가면 빈 글자", () => {
+    expect(fitText(measure, "가나다", 5)).toBe("");
+  });
+
+  it("F4 카드의 화장 이름·조명 안내 줄은 폭 제한을 갖는다 (글자 수로 자르지 않는다)", () => {
+    const ops = cardLayout(input({ lookName: "아주아주아주아주 긴 화장 이름입니다", lightingNote: "조명이 달라서 색은 참고만 해 주세요" }));
+    const ts = ops.filter((o) => o.op === "text") as { text: string; maxW?: number }[];
+    expect(ts.find((o) => o.text.startsWith("아주"))?.maxW).toBeGreaterThan(0);
+    expect(ts.find((o) => o.text.startsWith("조명이"))?.maxW).toBeGreaterThan(0);
   });
 });

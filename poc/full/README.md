@@ -20,7 +20,7 @@ cd poc/full && node tests.mjs        # 흐름·촬영 게이트·세션·룩·�
 | `poc/screen2` (firefox1234123) `poc/look-tryon/` | 서버 화장 전이(Stable-Makeup Gradio 호출)와 부위별 3점 아핀 실시간 워핑 → `lib/tryon.js` | 화면 2: 패널 "서버 룩"에 참조 사진을 넣으면 서버가 만든 "서버 생성 룩"이 목록에 추가되고, 카메라 모드에서는 선택한 룩을 라이브 얼굴에 워핑해 미리보기 |
 | 같은 브랜치 `server-bench/` | RTX 3060 실측: Stable-Makeup fp16 8 step 2.55초 / 10 step 3.15초, VRAM 5.3GB. SHMT는 비상업 | README 표에 인용. 룩당 3초 목표는 fp16 + 8~10 step으로 가능 |
 | `poc/screen3` (soyoon) `poc/screen3/core.js`·`rules.js` | 얼굴형 5종 쉐딩·하이라이트 규칙(`contourOutline`, 밴드 폴리곤·라벨)과 크롭 진단(`cropSpec`: covered·clamped·zoom) → `lib/screen3-core.js`·`lib/screen3-rules.js` | 화면 3·4·5의 쉐딩·하이라이트 테두리와 멘트, 쉐딩 좌우 지수 샘플링(규칙 폴리곤 기준), 내부 상태 탭의 크롭 진단 |
-| `docs/tech-stack-and-datasets` (jeakeun) | 샘플 사진 경로 `poc/samples/phone-portraits-20/` | 두 경로 중 있는 쪽을 자동으로 씀 |
+| `docs/tech-stack-and-datasets` (jeakeun) | 샘플 사진 경로 `poc/samples/phone-portraits-20/` | 한 벌로 합침 (#88) — 업스케일본 1080×1440 을 이 경로에 두고 루트 `danghaeung_poc_3x4_20/` 은 지움 |
 
 화면 1은 `poc/screen2`의 촬영(버튼 1회, 게이트 없음) 대신 이 POC의 자동 셔터·게이트 버전을 쓴다. 각 브랜치가 `docs/*`도 따로 고쳤으므로 문서는 별도 병합이 필요하다.
 

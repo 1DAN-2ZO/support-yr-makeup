@@ -7,24 +7,25 @@
  *   stderr  진행·요약 (stdout 은 JSON 만)
  *
  * 항목 하나 (양식은 eval/golden/manifest.json item_fields — ⑤ 와 2026-09-22 합의. 경로는 data_dir 기준 상대 경로):
- *   { "id": "ffhq_0001_liner", "person_id": "ffhq_0001", "part": "liner", "look": "smoky",
+ *   { "id": "ffhq_0001_liner", "person_id": "ffhq_0001", "part": "liner", "look": "edgy",
  *     "bare": "ffhq/0001_bare.png", "makeup": "ffhq/0001_makeup.png",
  *     "bare_lm": "ffhq/0001_bare.lm.json", "makeup_lm": "ffhq/0001_makeup.lm.json",
  *     "sha256": { "bare": "…", "makeup": "…" }, "label": "ok" }
  *   - 사진은 PNG. 랜드마크는 MediaPipe 478점 JSON — [{x,y}] 또는 [[x,y]], 픽셀 또는 0~1 정규화 둘 다 받는다
  *     (전부 0~1 이면 정규화로 보고 사진 크기를 곱한다). Node 에서는 MediaPipe 가 안 돌아서 ⑤ 가 파이썬으로 뽑는다
- *   - look: rules/looks.json 의 id. 라이너 두께 등 잣대가 룩을 따라간다. 비어 있으면 기본 룩(smoky)으로 재고 행의 look 에 적는다
+ *   - look: rules/looks.json 의 id. 라이너 두께 등 잣대가 룩을 따라간다. 비어 있으면 기본 룩(edgy — 세미 스모키)으로 재고 행의 look 에 적는다
  *   - sha256: 있으면 사진 파일 지문을 대조한다. 다르면 그 행은 error (사진이 바뀐 것)
  *   - label: ok | slight | off (3단계, #64). 없으면 null
  *
  * 채점 코드는 client/src/core/score-part.ts 를 esbuild 로 묶어서 그대로 쓴다 — 평가가 앱과 다른 것을 재면 안 된다.
- * 가이드 기하도 앱과 같은 파일(client/src/core/guide-poc.ts — ② guides.ts 전까지의 임시본)을 묶어 쓴다.
+ * 가이드 기하도 앱과 같은 파일(client/src/core/guides.ts lookGuide — 앱의 planGuide(룩, 계획 없음)와 같다)을 묶어 쓴다.
+ * 평가에는 VLM 개인화 계획이 없어서 룩 표준 모양으로 잰다 (2026-09-29).
  *
  * 혼자 돌려 보기:  echo '{"items":[...],"data_dir":"..."}' | node eval/score/score_cli.mjs
  */
 
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -34,8 +35,8 @@ const ROOT = resolve(HERE, "..", "..");
 const CLIENT = join(ROOT, "client");
 const require = createRequire(pathToFileURL(join(CLIENT, "package.json")));
 
-/** 룩 템플릿 전이라 시험지의 look 이 비어 있을 때 재는 룩 (⑤ 와 합의). 결과 행 look 에 그대로 적힌다 */
-const DEFAULT_LOOK = "smoky";
+/** 시험지의 look 이 비어 있을 때 재는 룩 (⑤ 와 합의 — 옛 smoky → look-v0.2 세미 스모키). 결과 행 look 에 그대로 적힌다 */
+const DEFAULT_LOOK = "edgy";
 const LOOKS = JSON.parse(readFileSync(join(ROOT, "rules", "looks.json"), "utf8")).looks;
 function lookParts(id) {
   const look = LOOKS.find((l) => l.id === id);
@@ -51,13 +52,20 @@ function foldLabel(score) {
   return "off";
 }
 
-const CORE_FILES = ["score-part", "score", "sampling", "landmarks", "color", "baseline", "flow", "types", "guide-poc"];
+/**
+ * 캐시 열쇠에 넣는 파일 — 앱 core 전부 + 규칙 파일 전부. 하나라도 바뀌면 다시 묶는다.
+ * 전엔 9개만 봐서 rules/score.json(임계)·guides.ts 가 바뀌어도 옛 묶음으로 채점될 수 있었다 (2026-09-29)
+ */
+function stampFiles() {
+  const core = readdirSync(join(CLIENT, "src", "core")).filter((f) => f.endsWith(".ts")).sort().map((f) => `client/src/core/${f}`);
+  const rules = readdirSync(join(ROOT, "rules")).filter((f) => f.endsWith(".json")).sort().map((f) => `rules/${f}`);
+  return [...core, ...rules];
+}
 
 /** client/src/core 를 하나의 ESM 으로 묶는다. 소스가 안 바뀌었으면 캐시를 그대로 쓴다 */
 async function loadCore() {
-  const srcDir = join(CLIENT, "src", "core");
   const stamp = createHash("sha1");
-  for (const f of CORE_FILES) stamp.update(readFileSync(join(srcDir, `${f}.ts`)));
+  for (const f of stampFiles()) stamp.update(readFileSync(join(ROOT, f)));
   const out = join(CLIENT, "node_modules", ".cache", "dhe-score-cli", `core-${stamp.digest("hex").slice(0, 12)}.mjs`);
   if (!existsSync(out)) {
     const esbuild = require("esbuild");
@@ -67,7 +75,8 @@ async function loadCore() {
           'export { alignedFrame, scorePart } from "./src/core/score-part";',
           'export { decide, toOutcome } from "./src/core/score";',
           'export { frameOf } from "./src/core/sampling";',
-          'export { pocGuide } from "./src/core/guide-poc";',
+          'export { lookGuide } from "./src/core/guides";',
+          'export { SCORE_VERSION } from "./src/core/score";',
         ].join("\n"),
         resolveDir: CLIENT,
         loader: "ts",
@@ -132,7 +141,9 @@ function scoreItem(core, guides, item, dataDir) {
   const makeIm = readPng(makePath);
   const base = core.frameOf(bareIm, readLandmarks(at(need(item, "bare_lm")), bareIm));
   const { frame, fit, biasPx } = core.alignedFrame(base, makeIm, readLandmarks(at(need(item, "makeup_lm")), makeIm));
-  const { result, ctx } = core.scorePart(part, base, frame, guide, { alignResidual: fit.residual });
+  // 앱 화면 5 와 같게 화장 색을 넘긴다 — 피부와 가까우면 확인만(subtle). 쉐딩은 룩 색이 없다
+  const templateColor = part === "contour" ? null : lookParts(look)[part]?.color ?? null;
+  const { result, ctx } = core.scorePart(part, base, frame, guide, { alignResidual: fit.residual, templateColor });
   const d = core.decide(part, result, ctx);
   return {
     look,
@@ -148,6 +159,13 @@ function scoreItem(core, guides, item, dataDir) {
 }
 
 async function main() {
+  // 평가가 앱과 같은 것을 재는지 확인용 — 어떤 가이드·어떤 파일·어떤 채점 버전 (test_score_run.py)
+  if (process.argv.includes("--meta")) {
+    const core = await loadCore();
+    const meta = { guide: "lookGuide", stamp_files: stampFiles(), score_version: core.SCORE_VERSION };
+    process.stdout.write(`${JSON.stringify(meta)}\n`);
+    return;
+  }
   const input = JSON.parse(readFileSync(0, "utf8") || "{}");
   const items = Array.isArray(input.items) ? input.items : [];
   const dataDir = input.data_dir ? resolve(String(input.data_dir)) : ROOT;
@@ -158,7 +176,7 @@ async function main() {
   const core = await loadCore();
   // 룩마다 가이드 하나 (라이너 두께가 룩을 따라간다). 같은 룩은 다시 만들지 않는다
   const cache = new Map();
-  const guides = { for: (look) => cache.get(look) ?? cache.set(look, core.pocGuide(lookParts(look))).get(look) };
+  const guides = { for: (look) => cache.get(look) ?? cache.set(look, core.lookGuide(lookParts(look))).get(look) };
   const out = [];
   let errors = 0;
   for (const item of items) {

@@ -19,7 +19,7 @@ import { createLogger, memorySink } from "@core/log";
 import { createCaptureEvents } from "@core/capture-events";
 import { foreheadStep, startForeheadTrack } from "@core/occlusion";
 import { settleStep, startSettle, type Settle } from "@core/capture-run";
-import { applyCameraLocks, applyUltraWideZoom, lockReportRow, requestWakeLock } from "@screens/camera-locks";
+import { applyCameraLocks, applyUltraWideZoom, camSnapshot, lockReportRow, requestWakeLock } from "@screens/camera-locks";
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -65,6 +65,11 @@ interface ProbeResult {
   consent: boolean;
   shots: ShotRecord[];
   lockRow: string;
+  /**
+   * 카메라 잠금 진단 (2026-09-30 S26 Ultra 가 잠금 뒤 밝아짐, S8+ 는 괜찮음).
+   * 주소에 ?lock=off | wb | wbfocus(기본, 앱과 같음) | all 로 잠금을 골라 비교한다. 잠금 전후 카메라 값과 이마 밝기 흐름(0.1초 간격)
+   */
+  camDiag: { mode: string; before: Record<string, unknown>; after: Record<string, unknown>; after2s: Record<string, unknown>; errors: Record<string, string> | null; trace: { t: number; L: number | null }[] } | null;
   /** 전면 카메라 zoom 지원 범위 (없으면 null). iPhone 초광각 대응 (b) 검토용 */
   zoom: { min: number; max: number; step: number } | null;
   /** 실제로 걸어 둔 확대 배율 (안 걸었으면 null). iPhone 초광각 대응 검토: 켠 것 / 끈 것 비교 */
@@ -105,6 +110,7 @@ const state = {
   frameMs: [] as number[],
   modelMs: 0,
   lockRow: "",
+  camDiag: null as ProbeResult["camDiag"],
   loop: false,
   paused: false,
   consent: false,
@@ -188,8 +194,24 @@ async function start(): Promise<void> {
   state.frameW = video.videoWidth; state.frameH = video.videoHeight; state.startedAt = new Date().toISOString();
   const track = stream.getVideoTracks()[0];
   if (track) {
-    await new Promise((r) => setTimeout(r, 1500));
-    const rep = await applyCameraLocks(track as unknown as Parameters<typeof applyCameraLocks>[0]);
+    // 잠금 진단: 켠 뒤 1.5초 동안 + 잠근 뒤 2초 동안 이마 밝기를 0.1초마다 적고, 잠금 전후 카메라 값을 남긴다
+    const t0 = performance.now(), trace: { t: number; L: number | null }[] = [];
+    const sample = (): void => {
+      if (!state.lm || video.readyState < 2) return;
+      const r = state.lm.detectForVideo(video, performance.now()).faceLandmarks[0];
+      const L = r ? foreheadLabOf(video, r.map((p) => ({ x: p.x * video.videoWidth, y: p.y * video.videoHeight })), video.videoWidth, video.videoHeight)?.raw?.L ?? null : null;
+      trace.push({ t: Math.round(performance.now() - t0), L: L === null ? null : r1(L) });
+    };
+    const traceFor = async (ms: number): Promise<void> => { const end = performance.now() + ms; while (performance.now() < end) { sample(); await new Promise((r) => setTimeout(r, 100)); } };
+    const mode = new URLSearchParams(location.search).get("lock") ?? "wbfocus";   // 기본 = 앱과 같이 노출은 안 잠금 (DEFAULT_LOCKS)
+    const only = mode === "off" ? [] : mode === "wb" ? ["whiteBalanceMode" as const] : mode === "wbfocus" ? ["whiteBalanceMode" as const, "focusMode" as const] : undefined;
+    const tl = track as unknown as Parameters<typeof applyCameraLocks>[0];
+    await traceFor(1500);
+    const before = camSnapshot(tl);
+    const rep = await applyCameraLocks(tl, only);
+    const after = camSnapshot(tl);
+    await traceFor(2000);
+    state.camDiag = { mode, before, after, after2s: camSnapshot(tl), errors: rep.errors ?? null, trace };
     state.lockRow = lockReportRow(navigator.userAgent, rep);
     const caps = (track.getCapabilities?.() ?? {}) as { zoom?: { min?: number; max?: number; step?: number } };
     state.zoom = caps.zoom && typeof caps.zoom.max === "number" ? { min: caps.zoom.min ?? 1, max: caps.zoom.max, step: caps.zoom.step ?? 0 } : null;
@@ -201,7 +223,12 @@ async function start(): Promise<void> {
   state.runStart = performance.now();
   state.shotStart = state.runStart;
   state.lostSince = null;
-  outEl.textContent = `모델 ${state.modelMs}ms · 프레임 ${video.videoWidth}×${video.videoHeight}\n${state.lockRow}`;
+  const cd = state.camDiag;
+  const Ls = (cd?.trace ?? []).filter((x) => x.L !== null);
+  const avg = (a: typeof Ls): string => (a.length ? String(r1(a.reduce((sum, x) => sum + (x.L ?? 0), 0) / a.length)) : "-");
+  outEl.textContent = `모델 ${state.modelMs}ms · 프레임 ${video.videoWidth}×${video.videoHeight}\n${state.lockRow}` +
+    (cd ? `\n잠금 ${cd.mode} · 이마 L* 잠금 전 ${avg(Ls.filter((x) => x.t < 1500))} → 뒤 ${avg(Ls.filter((x) => x.t >= 2500))}` +
+      `\n전 ${JSON.stringify(cd.before)}\n후 ${JSON.stringify(cd.after2s)}${cd.errors ? `\n오류 ${JSON.stringify(cd.errors)}` : ""}` : "");
   $<HTMLButtonElement>("retake").disabled = false;
   $<HTMLButtonElement>("finish").disabled = false;
   renderThumbs();
@@ -234,17 +261,19 @@ function frame(): void {
     const faceW = Math.abs(pt(lm, FACE_R).x - pt(lm, FACE_L).x);
     const crop = { x: Math.max(0, pt(lm, FACE_L).x - faceW * 0.2), y: Math.max(0, pt(lm, 10).y - faceW * 0.2), w: Math.min(sw, faceW * 1.4), h: Math.min(sh, faceW * 1.8) };
     const yaw = -ang.yaw;
-    const flab = foreheadLabOf(video, lm, sw, sh);
+    const fr = foreheadLabOf(video, lm, sw, sh);
+    const flab = fr?.skin;   // 밝기·색 조건 (앞머리 뺀 피부)
     const foreheadL = flab?.L;
     let fj = { jump: 0, occluded: false };
-    if (flab) {
-      const r = foreheadStep(state.fj, t0, flab, { yaw, pitch: ang.pitch });
+    if (fr?.raw) {   // 가림(급변)은 전체 평균 — 앱과 같은 규칙 (#212 리뷰)
+      const r = foreheadStep(state.fj, t0, fr.raw, { yaw, pitch: ang.pitch });
       state.fj = r.track; fj = r;
       state.fjAll.push(r.jump);
       if (r.occluded) state.fjOccluded += 1;
       state.fjRecent = [...state.fjRecent.filter((x) => t0 - x.t <= 2000), { t: t0, v: r.jump }];
       m.foreheadOccluded = r.occluded;
     }
+    if (!flab) m.foreheadHidden = true;   // 앱과 같은 규칙 — 이마 대부분이 머리카락
     const inset = faceInsetOf(lm, sw, sh);
     Object.assign(m, {
       yaw, pitch: ang.pitch,
@@ -265,7 +294,7 @@ function frame(): void {
   m.stableCount = state.stable;
   let gate = shotGate(shotId, m);
   if (shotId === "front_open") {
-    const sr = settleStep(state.settle ?? startSettle(t0), t0, m.foreheadL);
+    const sr = settleStep(state.settle ?? startSettle(), t0, m.foreheadL, m.faceDetected);
     state.settle = sr.state;
     if (gate.ok && !sr.ready) gate = { ok: false, firstFail: "stable", text: SHOT_TEXT.stable, stableCount: gate.stableCount };
   }
@@ -442,7 +471,7 @@ async function finish(): Promise<void> {
     ua: navigator.userAgent, startedAt: state.startedAt, frameW: state.frameW, frameH: state.frameH,
     modelMs: state.modelMs, frameMsAvg: r1(state.frameMs.reduce((a, b) => a + b, 0) / Math.max(1, state.frameMs.length)),
     totalSeconds: r1((performance.now() - state.runStart) / 1000), captureSeconds: r1((state.lastShotAt - state.runStart) / 1000),
-    consent: state.consent, shots, lockRow: state.lockRow, zoom: state.zoom,
+    consent: state.consent, shots, lockRow: state.lockRow, camDiag: state.camDiag, zoom: state.zoom,
     faceShapeBurst: state.burstResult,
     occlusionCalib: state.calibDone,
     gateLog: state.gateLog,

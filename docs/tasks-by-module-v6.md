@@ -60,7 +60,7 @@
 | --- | --- | --- | --- | --- |
 | 1 | 3-1 ★ | `score.js`·`sampling.js`·`review.js` → `client/src/core/score.ts`·`sampling.ts`·`review.ts` 이전, 검증 27 + 24 → vitest | TS + 테스트 | ⑥⑤ |
 | 1 | 3-2 ★ | `eval/score/score_cli.mjs` — 골든 세트 항목을 받아 채점기를 돌려 JSON을 내는 Node CLI (⑤의 `eval/score/run.py`가 부름) | CLI | ⑤ |
-| 1 | 3-3 | 프레임 묶음 평균 + 손 걸린 프레임 제외, 전부 더러우면 `check_only(reason='hand')` | 코드 + 테스트 | — |
+| 1 | 3-3 | 프레임 묶음 평균 + 손 걸린 프레임 제외, 전부 가렸으면 `check_only(reason='occluded')` (#155, 전엔 `hand`) | 코드 + 테스트 | — |
 | 1 | 3-4 | 볼·입술 `metrics.colorAb`, 눈썹 `metrics.lrDiff` 넘겨서 **조화·대칭 보정 실제로 켜기**. 조화 허용 범위는 룩 확정 전 null | 코드 + 테스트 | ⑥ |
 | 1 | 3-5 | 코드표(`DIAG_TEXT`)를 `score.ts` 한 곳으로, `review.ts`는 가져다 씀. `lrDiffMm` 등 이름을 비율로 정리 | 코드 | ⑥ |
 | 1 | 3-6 | 이벤트 찍기: `score{part, status, check_reason, ms}`, `part_status` | `log()` 호출 | ⑥ |

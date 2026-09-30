@@ -1,13 +1,14 @@
 // 세션 복원 규칙 (1-11, F-07): draft → 어느 화면으로, 무엇을 되살리나
 import { describe, expect, it } from "vitest";
-import { applyResult, createSession, setCurrentPart, setScreen, stripImages, type Session } from "@core/flow";
+import { applyResult, createSession, setCurrentPart, setPlan, setScreen, stripImages, withBaseline, type Session } from "@core/flow";
+import type { PersonalPlan } from "@core/personalize";
 import { planRestore, rebuildBaseline, toCapture } from "@core/restore";
 import type { Baseline } from "@core/types";
 
 const faceShape: Baseline["faceShape"] = { label: "oval", confidence: 0, method: "rule", version: "none" };
 const baseline: Baseline = {
   lm: [{ x: 1, y: 2 }], unit: { eye: 130, lip: 220, face: 620 }, foreheadL: 66,
-  scleraLab: { a: 1, b: 2 }, faceShape, bareImage: null, w: 1080, h: 1920,
+  scleraLab: { a: 1, b: 2 }, faceShape, bareImage: null, w: 1080, h: 1920, expression: { jawOpen: 0.1 },
 };
 const roundTrip = (s: Session) => JSON.parse(JSON.stringify(stripImages(s))) as ReturnType<typeof stripImages>;
 
@@ -66,6 +67,36 @@ describe("planRestore", () => {
     // 촬영 1080×1920 → 저장 사진 576×1024: 찾은 점을 촬영 크기로 되돌린다
     const b = rebuildBaseline(roundTrip(afterCapture()).baseline!, { lm: [{ x: 288, y: 512 }], w: 576, h: 1024 }, null);
     expect(b).toMatchObject({ lm: [{ x: 540, y: 960 }], unit: { eye: 130, lip: 220, face: 620 }, foreheadL: 66, scleraLab: { a: 1, b: 2 }, w: 1080, h: 1920 });
+  });
+
+  it("R5b 표정(expression)은 draft 에 없고, 복원 때 쌩얼 사진에서 다시 잰 값으로 채운다 (#177)", () => {
+    const d = roundTrip(afterCapture());
+    expect(d.baseline).not.toHaveProperty("expression");
+    const withExpr = rebuildBaseline(d.baseline!, { lm: [{ x: 1, y: 1 }], w: 1080, h: 1920, expression: { jawOpen: 0.3 } }, null);
+    expect(withExpr.expression).toEqual({ jawOpen: 0.3 });
+    const none = rebuildBaseline(d.baseline!, { lm: [{ x: 1, y: 1 }], w: 1080, h: 1920 }, null);
+    expect(none.expression).toBeNull();   // 못 쟀으면 null → 화면 4 표정 조건 생략
+  });
+
+  it("R7 화장별 개인화 계획(#181)은 draft 에 남고 복원 때 그대로 돌아온다 · 예전 draft 면 빈 값", () => {
+    const plan = { liner: { style: "winged" } } as unknown as PersonalPlan;
+    const s = setPlan(afterCapture(), "daily", plan);
+    const d = roundTrip(s);
+    expect(d.plans).toEqual({ daily: plan });
+    const p = planRestore(d);
+    expect(p.kind).toBe("resume");
+    if (p.kind === "resume") expect(p.session.plans).toEqual({ daily: plan });
+    const { plans: _drop, ...old } = d;
+    const q = planRestore(old as typeof d);
+    if (q.kind === "resume") expect(q.session.plans).toEqual({});
+  });
+
+  it("R8 얼굴이 바뀌면(정면 다시 찍기) 계획을 비우고, 쌩얼 사진만 붙는 갱신은 그대로 둔다 (#181)", () => {
+    const plan = { liner: { style: "extend" } } as unknown as PersonalPlan;
+    const s = setPlan(afterCapture(), "daily", plan);
+    expect(withBaseline(s, { ...s.baseline!, bareImage: null }).plans).toEqual({ daily: plan });   // 같은 lm
+    expect(withBaseline(s, { ...s.baseline!, lm: [{ x: 9, y: 9 }] }).plans).toEqual({});           // 새 얼굴
+    expect(createSession().plans).toEqual({});
   });
 
   it("R6 toCapture 는 동의를 두고 촬영 화면 새 세션", () => {

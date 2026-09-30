@@ -20,8 +20,8 @@ describe("log()", () => {
     const m = memorySink();
     const logger = createLogger({ sid: "s1", screen: "guide", part: "brow", ver }, m.sink);
     logger.setContext({ screen: "live", part: "liner" });
-    logger.log({ name: "gate_fail", first_fail: "hand" });
-    expect(m.events[0]).toMatchObject({ screen: "live", part: "liner", first_fail: "hand" });
+    logger.log({ name: "gate_fail", first_fail: "occluded" });
+    expect(m.events[0]).toMatchObject({ screen: "live", part: "liner", first_fail: "occluded" });
   });
 
   it("얼굴 데이터 필드는 거부한다", () => {

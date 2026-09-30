@@ -9,7 +9,7 @@ function measure(ab: number): FaceMeasure {
   const eye = (): EyeMeasure => ({ tiltDeg: 8.4, alphaDeg: 30 + ab / 2, betaDeg: 30 - ab / 2, outerCornerDown: ab > 0, aspect: 2.9, heightRatio: 0.34, lidGapRatio: 0.55 });
   return { rollDeg: 0, eye: { R: eye(), L: eye() }, brow: { R: { curvature: 0.15 }, L: { curvature: 0.16 } }, lip: { upperLowerRatio: 0.8, heightWidthRatio: 0.4 }, faceAspect: 0.82, mmPerPx: 0.3 };
 }
-const look = lookById("smoky")!;
+const look = lookById("edgy")!;
 
 describe("VLM 프롬프트", () => {
   it("측정값과 규칙의 판단을 글로 넘긴다 — VLM 이 사진만 보고 추측하지 않게", () => {

@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 import type { Lab } from "@core/color";
 import { applyResult, applySkip, createSession, nextPart } from "@core/flow";
 import {
+  CHECK_ACTION,
+  CHECK_REASON_SHORT,
   CHECK_REASON_TEXT,
   DIAG_TEXT,
   PARAMS,
@@ -273,10 +275,32 @@ describe("상태·한 줄 평", () => {
   const scored = (score: number, codes: PartScore["codes"] = []): PartScore => ({ present: true, score, codes, lrIndex: null, metrics: {} });
   const unseen: PartScore = { present: false, score: null, codes: [], lrIndex: null, metrics: {} };
 
-  it("D1 조명 급변 → 확인만(조명), 얼굴 없음 → 확인만", () => {
-    expect(decide("liner", scored(80), { lightShift: 15 }).reason).toBe("lighting");
-    expect(decide("liner", scored(80), { lightShift: 5 }).status).toBe("scored");
+  it("D0 판정 근거(밝기 차·머리카락 가림·정렬 어긋남)를 결과 측정값에 같이 담는다 — 화면 5 ?tune·로그용 (2026-09-30)", () => {
+    const o = toOutcome("liner", scored(80), { lightShift: 21.5, hairFrac: 0.1, alignResidual: 0.03 });
+    expect(o.metrics).toMatchObject({ lightShift: 21.5, hairFrac: 0.1, alignResidual: 0.03 });
+    expect(o.checkReason).toBe("lighting");
+  });
+
+  it("D1 조명 급변(이마 L* 차가 lightTol 넘음) → 확인만(조명), 그 아래면 채점, 얼굴 없음 → 확인만", () => {
+    expect(decide("liner", scored(80), { lightShift: PARAMS.lightTol + 1 }).reason).toBe("lighting");
+    expect(decide("liner", scored(80), { lightShift: -(PARAMS.lightTol + 1) }).reason).toBe("lighting");
+    expect(decide("liner", scored(80), { lightShift: PARAMS.lightTol - 1 }).status).toBe("scored");
     expect(decide("liner", scored(80), { noFace: true }).reason).toBe("align");
+  });
+
+  it("D1b 기준 얼굴과 정렬이 크게 어긋나면(잔차 > 눈 폭의 alignMax) 확인만(align) — 그 아래면 채점 (#43)", () => {
+    expect(decide("liner", scored(80), { alignResidual: PARAMS.alignMax + 0.01 })).toMatchObject({ status: "check_only", reason: "align" });
+    expect(decide("liner", scored(80), { alignResidual: PARAMS.alignMax - 0.01 }).status).toBe("scored");
+  });
+
+  it("D2b 확인만 문구: '재지 못했어요' 같은 기계 말투 없이 이유 + 할 일, 리뷰용은 이유만 (폰 시험 2026-09-30)", () => {
+    for (const [k, t] of Object.entries(CHECK_REASON_TEXT)) {
+      expect(t, k).not.toContain("재지 못했어요");
+      expect(t, k).toBe(k === "contour" ? CHECK_REASON_SHORT.contour : `${CHECK_REASON_SHORT[k as keyof typeof CHECK_REASON_SHORT]} ${CHECK_ACTION[k as keyof typeof CHECK_ACTION]}`);
+    }
+    // 다시 하면 되는 이유는 "다시 확인받아" 를 권한다
+    for (const k of ["lighting", "occluded", "align"] as const) expect(CHECK_ACTION[k]).toContain("다시 확인받아");
+    for (const t of Object.values(CHECK_REASON_SHORT)) { expect(hasDigit(t)).toBe(false); expect(t).not.toContain("다시 확인받아"); }
   });
 
   it("D2 한 줄 평: 모든 문구에 숫자 없음, 최대 두 문장, 코드가 없으면 '잘 됐어요'", () => {

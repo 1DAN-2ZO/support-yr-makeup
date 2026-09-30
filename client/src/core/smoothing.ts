@@ -73,6 +73,8 @@ export interface LandmarkSmootherOptions {
   smoothZ?: boolean;
   minCutoff?: number;
   beta?: number;
+  /** 속도 추정(edx) 자체를 스무딩하는 컷오프. 낮으면 빠른 움직임 시작 시 beta가 늦게 켜진다 (#173) */
+  dCutoff?: number;
 }
 
 /** 지정한 인덱스 집합의 랜드마크(x,y[,z])에 필터를 걸어주는 헬퍼 */
@@ -81,24 +83,26 @@ export class LandmarkSmoother {
   private filters = new Map<number, FilterTriple>();
   private wasLost = true;
 
-  constructor(trackedIdx: readonly number[], { smoothZ = false, minCutoff, beta }: LandmarkSmootherOptions = {}) {
+  constructor(trackedIdx: readonly number[], { smoothZ = false, minCutoff, beta, dCutoff }: LandmarkSmootherOptions = {}) {
     this.trackedIdx = trackedIdx;
     for (const i of trackedIdx) {
       this.filters.set(i, {
-        x: new OneEuroFilter(minCutoff, beta),
-        y: new OneEuroFilter(minCutoff, beta),
-        z: smoothZ ? new OneEuroFilter(minCutoff, beta) : null,
+        x: new OneEuroFilter(minCutoff, beta, dCutoff),
+        y: new OneEuroFilter(minCutoff, beta, dCutoff),
+        z: smoothZ ? new OneEuroFilter(minCutoff, beta, dCutoff) : null,
       });
     }
   }
 
-  setParams(minCutoff: number, beta: number): void {
+  setParams(minCutoff: number, beta: number, dCutoff: number): void {
     for (const f of this.filters.values()) {
       f.x.minCutoff = f.y.minCutoff = minCutoff;
       f.x.beta = f.y.beta = beta;
+      f.x.dCutoff = f.y.dCutoff = dCutoff;
       if (f.z) {
         f.z.minCutoff = minCutoff;
         f.z.beta = beta;
+        f.z.dCutoff = dCutoff;
       }
     }
   }

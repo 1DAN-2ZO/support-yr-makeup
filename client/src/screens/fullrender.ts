@@ -7,7 +7,7 @@
  *    매 프레임 얼굴 그물(삼각형 852개)로 지금 얼굴에 휘어 피부와 섞는다(makeup-gl.ts, WebGL2)
  *  - 떨림: 얼굴 점에 One-Euro 필터(④ smoothing.ts). 가만히 있으면 많이, 움직이면 덜 부드럽게 — 고정 스무딩처럼
  *    눈머리가 뒤처지지 않는다. 비교용으로 ?nosmooth 면 끈다 (2026-09-29 폰: "떨림이 심해")
- *  - 카메라·WebGL 을 못 쓰면 서버가 만든 그림(Stable-Makeup)을 보여 준다. 흐름은 막지 않는다
+ *  - 카메라·WebGL 을 못 쓰면 안내만 하고 흐름은 막지 않는다 (2026-09-29: Stable-Makeup 을 빼서 대신 보여 줄 그림이 없다)
  *
  * 근거 한 줄(개인화 계획의 rationale)과 쓰는 제품을 같이 보여 주고, "화장하러 가기" 로 부위 반복을 시작한다.
  * 사진은 저장하지 않는다 — 카메라 영상은 이 화면 안에서만 쓴다.
@@ -15,22 +15,30 @@
 
 import { measureFace } from "../core/face-measure";
 import { lookById } from "../core/looks";
-import type { LookJobSource } from "../core/look-jobs";
-import { fullRenderUrl, lookDetail } from "../core/look-view";
+import { lookDetail } from "../core/look-view";
 import { resolvePlan, type PersonalPlan } from "../core/personalize";
 import { LandmarkSmoother } from "../core/smoothing";
 import type { Pt } from "../core/types";
+import type { HairMask } from "../core/sampling";
+import { createHairTicker, type HairMasker } from "./hair-segmenter";
 import { createLandmarker } from "./landmarker";
 import { MakeupGl } from "./makeup-gl";
 import { paintLookOf, paintMakeup } from "./makeup-paint";
 import type { Screen, ScreenContext } from "./shell";
 
 export interface FullRenderDeps {
-  jobs: LookJobSource;
   getLookId: () => string | null;
   /** 룩 화면에서 만든 이 룩의 개인화 계획 (core/plan-queue.ts). 없으면 카메라 얼굴로 규칙 계획을 만든다 */
   getPlan?: (lookId: string) => PersonalPlan | null;
+  /** 머리카락 분할 (screens/hair-segmenter) — 주면 앞머리 위엔 보정·화장을 안 한다. 없으면 전과 같다 (#173) */
+  hairMask?: HairMasker;
 }
+
+/**
+ * 2-b AR 머리카락 분할 — intervalMs 마다 한 번, 영상을 width px 로 줄여서. 그 사이엔 마지막 마스크 (#173).
+ * 가정값 — 폰에서 ?tune 의 "머리카락 분할 ms" 를 보고 정한다. ?nohair 면 끄고 비교
+ */
+export const HAIR_AR = { intervalMs: 200, width: 320 };   // 폰(2026-09-30 Android): 분할 24~34ms → 500 에서 200 으로
 
 export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
   return {
@@ -96,30 +104,21 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
       row.append(go, back);
       wrap.append(row);
 
-      /** 카메라가 아직이거나 못 쓸 때: 서버 그림 */
+      /** 카메라가 아직이거나 못 쓸 때 — 안내만. 부위 반복은 그대로 시작할 수 있다 */
       function drawFallback(): void {
         if (live) return;
-        const url = fullRenderUrl(deps.jobs.current(), lookId);
         const figure = document.createElement("div");
-        figure.className = "full-img" + (url ? "" : " empty");
-        if (url) {
-          const img = document.createElement("img");
-          img.src = url;
-          img.alt = "전체 완성 예상";
-          figure.append(img);
-        } else {
-          figure.textContent = "준비 중";
-        }
+        figure.className = "full-img empty";
+        figure.textContent = "이 기기에서는 미리보기를 볼 수 없어요";
         stage.replaceChildren(figure);
-        // 완성 예상은 참고다. 실제 결과가 이것과 다르다고 점수가 깎이지 않는다
-        note.textContent = url ? "참고용 그림이에요. 순서대로 하나씩 따라가 볼게요." : "그림은 아직이지만 그대로 시작할 수 있어요.";
+        note.textContent = "그대로 시작할 수 있어요. 부위마다 그릴 자리를 보여 드릴게요.";
       }
 
-      const stopJobs = deps.jobs.subscribe(drawFallback);
       drawFallback();
 
       // ── AR ───────────────────────────────────────────
       let raf = 0;
+      /** 지금 AR 장면을 저장한다 — AR 이 화장을 입혀 보여 줄 때만 채워진다 */
       let stream: MediaStream | null = null;
       let closeLandmarker: (() => void) | null = null;
       let disposeGl: (() => void) | null = null;
@@ -147,8 +146,31 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
           const paintLook = paintLookOf(look);
           let ref: Pt[] | null = null;
           const q = new URLSearchParams(location.search);
-          const smoother = q.has("nosmooth") ? null : new LandmarkSmoother(Array.from({ length: 478 }, (_, i) => i), { minCutoff: SMOOTH.minCutoff, beta: SMOOTH.beta });
+          const smoother = q.has("nosmooth") ? null : new LandmarkSmoother(Array.from({ length: 478 }, (_, i) => i), { minCutoff: SMOOTH.minCutoff, beta: SMOOTH.beta, dCutoff: SMOOTH.dCutoff });
           if (smoother && q.has("tune")) wrap.insertBefore(tuner(smoother), stage.nextSibling);
+          // 머리카락: 간격마다 줄인 영상으로 분할 → 셰이더가 그 위엔 보정·화장을 안 한다 (#173)
+          const hairOn = !!deps.hairMask && !q.has("nohair");
+          const ticker = createHairTicker(HAIR_AR.intervalMs);
+          const small = document.createElement("canvas");
+          let hair: HairMask | null = null;
+          const hairInfo = q.has("tune") && hairOn ? document.createElement("p") : null;
+          if (hairInfo) { hairInfo.className = "ar-tune"; hairInfo.textContent = "머리카락 분할 준비 중"; wrap.insertBefore(hairInfo, stage.nextSibling); }
+          const segment = (now: number, w: number, hh: number): void => {
+            const g = small.getContext("2d", { willReadFrequently: true });
+            if (!g || !deps.hairMask) return;
+            ticker.start(now);
+            small.width = HAIR_AR.width;
+            small.height = Math.round((hh * HAIR_AR.width) / w);
+            g.drawImage(video, 0, 0, small.width, small.height);
+            const px = g.getImageData(0, 0, small.width, small.height), t0 = performance.now();
+            deps.hairMask({ data: px.data, w: small.width, h: small.height })
+              .then((m) => {
+                if (m) hair = m;
+                if (hairInfo) hairInfo.textContent = `머리카락 분할 ${Math.round(performance.now() - t0)}ms · 간격 ${HAIR_AR.intervalMs}ms`;
+              })
+              .catch(() => {})
+              .finally(() => ticker.done());
+          };
 
           const tick = (): void => {
             if (!alive) return;
@@ -178,7 +200,8 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
                 const p = plan ?? resolvePlan(measureFace(ref));
                 paintMakeup({ mul: atlas.mul.getContext("2d")!, col: atlas.col.getContext("2d")!, light: atlas.light.getContext("2d")! }, off, ref, paintLook, p, p.liner.plan.style);
               }
-              gl.render(video, w, hh, atlas.mul, atlas.col, atlas.light, lm && ref ? { lm, ref, beauty: 0.3, radius: w * 0.004 } : null);
+              if (hairOn && lm && ref && ticker.due(now)) segment(now, w, hh);
+              gl.render(video, w, hh, atlas.mul, atlas.col, atlas.light, lm && ref ? { lm, ref, beauty: 0.3, radius: w * 0.004, hair } : null);
               if (!live) {
                 live = true;
                 stage.replaceChildren(canvas);
@@ -211,7 +234,6 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
 
       return () => {
         cleanup();
-        stopJobs();
       };
     },
   };
@@ -234,27 +256,33 @@ export function goodRef(lm: readonly Pt[], w: number, h: number): boolean {
 /**
  * One-Euro 값. ④ 기본값(2.5 / 0.08)은 움직이기 시작할 때 뒤처졌다 (2026-09-29 폰: "트래킹이 느려졌다").
  * 기준(minCutoff)↑ = 가만히 있을 때도 덜 부드럽게(더 딱 붙음), 반응성(beta)↑ = 움직일 때 더 빨리 따라감.
+ * dCutoff↑ = 속도 추정(edx)이 더 빨리 반응 → beta가 더 일찍 켜짐 (#173, 기존 1.0 고정이 원인 후보).
  * 폰에서 ?tune 으로 맞춰 보고 여기 값을 정한다
  */
-export const SMOOTH = { minCutoff: 4, beta: 0.3 };
+export const SMOOTH = { minCutoff: 4, beta: 0.3, dCutoff: 1 };
 
-/** [개발용 ?tune] 슬라이더 두 개 — POC(look-tryon) 와 같은 방식 */
+/** [개발용 ?tune] 슬라이더 세 개 — POC(look-tryon) 와 같은 방식 */
 function tuner(sm: LandmarkSmoother): HTMLElement {
   const box = document.createElement("div");
   box.className = "ar-tune";
   const v = { ...SMOOTH };
   const out = document.createElement("p");
-  const show = (): void => { out.textContent = `기준 ${v.minCutoff.toFixed(1)} · 반응성 ${v.beta.toFixed(2)}`; };
+  const show = (): void => { out.textContent = `기준 ${v.minCutoff.toFixed(1)} · 반응성 ${v.beta.toFixed(2)} · dCutoff ${v.dCutoff.toFixed(1)}`; };
   const slider = (label: string, key: keyof typeof v, min: number, max: number, step: number): HTMLLabelElement => {
     const l = document.createElement("label");
     l.textContent = label;
     const r = document.createElement("input");
     Object.assign(r, { type: "range", min: String(min), max: String(max), step: String(step), value: String(v[key]) });
-    r.addEventListener("input", () => { v[key] = Number(r.value); sm.setParams(v.minCutoff, v.beta); show(); });
+    r.addEventListener("input", () => { v[key] = Number(r.value); sm.setParams(v.minCutoff, v.beta, v.dCutoff); show(); });
     l.append(r);
     return l;
   };
-  box.append(slider("기준 (높을수록 딱 붙음)", "minCutoff", 0.5, 10, 0.1), slider("반응성 (높을수록 빨리 따라감)", "beta", 0.01, 1, 0.01), out);
+  box.append(
+    slider("기준 (높을수록 딱 붙음)", "minCutoff", 0.5, 10, 0.1),
+    slider("반응성 (높을수록 빨리 따라감)", "beta", 0.01, 1, 0.01),
+    slider("dCutoff (높을수록 반응성이 빨리 켜짐)", "dCutoff", 0.5, 5, 0.1),
+    out,
+  );
   show();
   return box;
 }
