@@ -42,6 +42,13 @@ describe("evaluateGate", () => {
     expect(r.text).toBe("조금만 정면으로");
   });
 
+  it("V4b 얼굴이 45° 넘게 누우면(자동 회전 꺼짐) 가장 먼저 '자동 회전' 안내 (#204 C2)", () => {
+    const r = evaluateGate("liner", good({ roll: 80, yaw: 40 }));
+    expect(r.firstFail).toBe("angle");
+    expect(r.text).toBe(GATE_TEXT.rotate);
+    expect(evaluateGate("liner", good({ roll: 40 })).ok).toBe(true);
+  });
+
   it("V5 정면 한계: yaw ±15°, pitch ±10°", () => {
     expect(evaluateGate("lip", good({ yaw: 14, baseYaw: 14 })).ok).toBe(true);
     expect(evaluateGate("lip", good({ yaw: -16, baseYaw: -16 })).firstFail).toBe("angle");
@@ -78,7 +85,7 @@ describe("evaluateGate", () => {
 
   it("V8 가림(이마 급변) — 선명보다 먼저, 문구는 정의서 97행 그대로", () => {
     const r = evaluateGate("liner", good({ occluded: true, sharpness: 10 }));
-    expect(r.firstFail).toBe("hand");
+    expect(r.firstFail).toBe("occluded");
     expect(r.text).toBe("얼굴을 가리지 말아 주세요");
   });
 

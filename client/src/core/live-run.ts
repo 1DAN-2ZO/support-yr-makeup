@@ -11,6 +11,7 @@
 
 import type { Lab } from "./color";
 import { unitScale } from "./baseline";
+import { faceRoll } from "./crop";
 import type { Rect } from "./crop";
 import { createBundleCollector, type BundleState } from "./capture-bundle";
 import { exprDiff } from "./expression";
@@ -109,7 +110,7 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
         }
         const r = gateStep(stable, opt.partId, {
           // 정면 여부(절대 각도)는 화면 1 과 같은 식, 기준 사진과의 차는 강체 점으로 (입을 벌려도 안 흔들림, #28)
-          faceDetected: true, ...pose, poseDiff: rigidPoseDiff(opt.baseline.lm, f.lm),
+          faceDetected: true, roll: faceRoll(f.lm), ...pose, poseDiff: rigidPoseDiff(opt.baseline.lm, f.lm),
           ...optExpr(exprDiff(opt.partId, opt.baseExpr, f.expr)),
           partVisible: partInRect(opt.partId, f.lm, f.view ?? { x: 0, y: 0, w: f.w, h: f.h }),
           ...(occluded !== null ? { occluded } : {}),

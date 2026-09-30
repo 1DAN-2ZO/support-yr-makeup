@@ -1,7 +1,7 @@
 // 화면 3 (부위 완성본) 표시 규칙 · 부위 확대 박스 — 순수 함수 검증
 // 정의서 3-1: 3-2b 완성본 범위(부위 크롭), 3-3 확대(눈: 양 끝 + 여백 15%, 입술·볼: 부위 2~3배), 3-5 근거 한 줄, 3-6 필요한 것 한 줄
 import { describe, expect, it } from "vitest";
-import { coverView, cropSpec, scaleLm } from "@core/crop";
+import { EYE_CROP_MARGIN, coverView, cropSpec, scaleLm } from "@core/crop";
 import { partCard } from "@core/guide-view";
 import { LOOKS, LOOK_PART_ORDER, CONTOUR_RATIONALE } from "@core/looks";
 import { LM, PART_POINTS } from "@core/landmarks";
@@ -59,9 +59,9 @@ describe("cropSpec", () => {
     }
   });
 
-  it("C2 눈 부위: 양쪽 눈 끝에서 끝 + 여백 15%씩 (폭 1.3배)", () => {
+  it("C2 눈 부위: 두 눈꼬리 거리 × EYE_CROP_MARGIN (확대를 줄여 흔들림을 덜 보이게, #204 — 전에는 1.3)", () => {
     const span = LMS[LM.eyeB.outer]!.x - LMS[LM.eyeA.outer]!.x;
-    expect(cropSpec("liner", LMS, 16 / 9).w).toBeCloseTo(span * 1.3, 6);
+    expect(cropSpec("liner", LMS, 16 / 9).w).toBeCloseTo(span * EYE_CROP_MARGIN, 6);
   });
 
   it("C3 입술: 입술 폭의 2.5배 (확대 2~3배)", () => {
