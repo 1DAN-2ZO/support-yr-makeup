@@ -42,7 +42,7 @@ import { captureScreen, type CaptureDeps, type ShotData } from "./screens/captur
 import { consentScreen, deniedScreen, type ConsentDeps } from "./screens/consent";
 import { doneScreen, type DoneDeps } from "./screens/done";
 import { landmarksFromImage } from "./screens/landmarker";
-import { createHairMasker } from "./screens/hair-segmenter";
+import { createHairMasker, maskOfImage } from "./screens/hair-segmenter";
 import { guideScreen, type GuideDeps } from "./screens/guide";
 import { liveScreen, type LiveDeps } from "./screens/live";
 import { fullRenderScreen, type FullRenderDeps } from "./screens/fullrender";
@@ -342,6 +342,8 @@ async function boot(): Promise<void> {
       // 화면 3 완성본(#192) = 쌩얼 정면 + 같은 개인화 계획 화장. 원본은 메모리에만 있어 앱을 다시 켜면 저장한 쌩얼
       getPlan: () => planFor(session.lookId),
       getBareSource: () => (session.shots.front_open as ShotData | undefined)?.cv ?? null,
+      // 앞머리 위엔 화장·보정을 안 한다 — 화면 5 채점과 같은 분할기 (#173 셰이더, ⑥)
+      getHairMask: (d) => maskOfImage(hairMask, d.img, d.w, d.h),
       getGuide: guideFor,
     },
     {

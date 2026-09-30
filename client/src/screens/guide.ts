@@ -22,6 +22,7 @@ import type { PersonalPlan } from "@core/personalize";
 import type { GuideSource } from "@core/score-part";
 import { wantedOrientation } from "@core/screens";
 import type { Baseline, FaceShape, PartId, Pt } from "@core/types";
+import type { HairMask } from "@core/sampling";
 import { paintCompleted, type Drawable } from "./completed";
 import { strokeOutline } from "./outline-draw";
 import type { Screen, ScreenContext } from "./shell";
@@ -39,6 +40,11 @@ export interface GuideDeps {
   getBareSource?: () => HTMLCanvasElement | null;
   /** 완성본 그리기 — 테스트에서 바꿔 끼운다 (기본 completed.paintCompleted) */
   paint?: typeof paintCompleted;
+  /**
+   * 쌩얼 사진 → 머리카락 마스크 (⑥ screens/hair-segmenter). 주면 앞머리 위엔 화장·보정을 안 한다.
+   * 없거나 실패·null 이면 마스크 없이 전과 같이 그린다 (docs/research/hair-skin-2026-09-29)
+   */
+  getHairMask?: (d: Drawable) => Promise<HairMask | null>;
   /** Blob → 그림. 테스트에서 바꿔 끼운다 (기본 createImageBitmap) */
   toBitmap?: (b: Blob) => Promise<ImageBitmap>;
   /** 테두리 모양 — 화면 4·5 와 같은 것. 없으면 lookGuide(getLook().parts). ⑥ 개인화 계획이 여기 꽂힌다 */
@@ -140,8 +146,10 @@ export function guideScreen<S>(deps: GuideDeps): Screen<S> {
         // 그리다 오류가 나도(WebGL 컨텍스트 잃음 등) 쌩얼 + 테두리는 보인다 — 안 감싸면 바깥 catch 로 가서 그림 칸이 빈다 (#195 리뷰)
         let painted: HTMLCanvasElement | null = null;
         if (plan) {
+          const hair = deps.getHairMask ? await deps.getHairMask(bare).catch(() => null) : null;
+          if (!alive) { bare.close?.(); return; }
           try {
-            painted = (deps.paint ?? paintCompleted)(bare, lm, look, plan);
+            painted = (deps.paint ?? paintCompleted)(bare, lm, look, plan, hair);
           } catch (e) {
             ctx.log.log({ name: "error", where: "guide", msg: `paint:${String(e).slice(0, 120)}` });
           }

@@ -8,6 +8,7 @@
 
 import type { Look } from "@core/looks";
 import type { PersonalPlan } from "@core/personalize";
+import type { HairMask } from "@core/sampling";
 import type { Pt } from "@core/types";
 import { MakeupGl } from "./makeup-gl";
 import { paintLookOf, paintMakeup } from "./makeup-paint";
@@ -19,7 +20,8 @@ const BEAUTY = 0.3;
 const RADIUS = 0.004;
 
 /** 못 그리면(WebGL2 없음 등) null — 화면은 쌩얼로 대신한다 */
-export function paintCompleted(d: Drawable, lm: readonly Pt[], look: Look, plan: PersonalPlan): HTMLCanvasElement | null {
+/** hair: 쌩얼 사진의 머리카락 마스크 — 있으면 앞머리 위엔 화장·보정을 안 한다 (makeup-gl) */
+export function paintCompleted(d: Drawable, lm: readonly Pt[], look: Look, plan: PersonalPlan, hair: HairMask | null = null): HTMLCanvasElement | null {
   const mk = (): HTMLCanvasElement => {
     const c = document.createElement("canvas");
     c.width = d.w; c.height = d.h;
@@ -38,7 +40,7 @@ export function paintCompleted(d: Drawable, lm: readonly Pt[], look: Look, plan:
     return null;
   }
   try {
-    gl.render(d.img, d.w, d.h, mul, col, light, { lm, ref: lm, beauty: BEAUTY, radius: d.w * RADIUS });
+    gl.render(d.img, d.w, d.h, mul, col, light, { lm, ref: lm, beauty: BEAUTY, radius: d.w * RADIUS, hair });
     // WebGL 은 곧 돌려준다(살아 있는 개수 제한, #172 리뷰) — 결과를 2D 캔버스로 옮겨 둔다
     const out = mk();
     const g = out.getContext("2d");
