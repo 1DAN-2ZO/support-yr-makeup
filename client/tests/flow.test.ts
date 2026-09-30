@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CAPTURE_GUIDE,
+  CAPTURE_LIMITS,
   FACE_SHAPE_BURST,
   PART_ORDER,
   SCREENS,
@@ -316,5 +317,27 @@ describe("P 세션", () => {
     expect(s0.parts[0]!.status).toBe("not_started");
     expect(s1.parts[0]!.status).toBe("in_progress");
     expect(s2.parts[0]!.status).toBe("passed");
+  });
+});
+
+describe("45° 장 밝기·색 허용 차 (2026-09-30 1차 실측: 정면 최대 7.5·4.1 / 45° 최대 11.6·8.0, × 1.5)", () => {
+  const side: ShotMeasure = { ...OK, yaw: -40 };   // 왼쪽 45° 범위
+  const ab = (a: number, b: number) => ({ foreheadAb: { a, b }, baselineAb: { a: 0, b: 0 } });
+
+  it("T1 밝기 차 13: 정면은 막고 45° 는 통과", () => {
+    expect(shotGate("front_closed", { ...OK, closedA: true, closedB: true, foreheadL: 83 }).firstFail).toBe("bright");
+    expect(shotGate("left_45", { ...side, foreheadL: 83 }).ok).toBe(true);
+  });
+  it("T2 45° 도 밝기 차 19 는 막는다 (brightTol45 18)", () => {
+    expect(shotGate("left_45", { ...side, foreheadL: 51 }).firstFail).toBe("bright");
+    expect(shotGate("right_45", { ...side, yaw: 40, baselineL: 60, foreheadL: 79 }).firstFail).toBe("bright");   // +19, 절대 범위(40~85) 안
+  });
+  it("T3 색 차 8: 정면은 막고(6) 45° 는 통과, 45° 도 13 은 막는다 (12)", () => {
+    expect(shotGate("front_closed", { ...OK, closedA: true, closedB: true, ...ab(8, 0) }).firstFail).toBe("color");
+    expect(shotGate("left_45", { ...side, ...ab(8, 0) }).ok).toBe(true);
+    expect(shotGate("left_45", { ...side, ...ab(13, 0) }).firstFail).toBe("color");
+  });
+  it("T4 값: 정면 12·6 그대로, 45° 18·12", () => {
+    expect(CAPTURE_LIMITS).toMatchObject({ brightTol: 12, colorTol: 6, brightTol45: 18, colorTol45: 12 });
   });
 });

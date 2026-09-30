@@ -3,7 +3,10 @@ import { describe, expect, it } from "vitest";
 import { ULTRA_WIDE_ZOOM, applyCameraLocks, applyUltraWideZoom, bindGlContext, bindVisibility, lockReportRow, releaseCameraLocks, requestWakeLock, ultraWideZoom } from "../src/screens/camera-locks";
 import type { TrackLike } from "../src/screens/camera-locks";
 
-function track(caps: ReturnType<NonNullable<TrackLike["getCapabilities"]>> | null, failOn: string[] = []): TrackLike & { applied: Record<string, unknown>[] } {
+/** 지금 설정값 (getSettings) — 잠글 때 이 값을 그대로 고정해야 한다 */
+const NOW = { exposureTime: 166.6, iso: 400, colorTemperature: 4800, focusDistance: 0.3 };
+
+function track(caps: ReturnType<NonNullable<TrackLike["getCapabilities"]>> | null, failOn: string[] = [], settings: Record<string, unknown> | null = NOW): TrackLike & { applied: Record<string, unknown>[] } {
   const applied: Record<string, unknown>[] = [];
   const t: TrackLike & { applied: Record<string, unknown>[] } = {
     applied,
@@ -15,6 +18,7 @@ function track(caps: ReturnType<NonNullable<TrackLike["getCapabilities"]>> | nul
     },
   };
   if (caps) t.getCapabilities = () => caps;
+  if (settings) t.getSettings = () => settings;
   return t;
 }
 
@@ -24,7 +28,26 @@ describe("applyCameraLocks", () => {
     const r = await applyCameraLocks(t);
     expect(r).toMatchObject({ capsSupported: true, whiteBalance: "locked", exposure: "unsupported", focus: "unsupported", maxWidth: 1920, maxHeight: 1080 });
     expect(t.applied).toHaveLength(1);
-    expect(t.applied[0]).toEqual({ advanced: [{ whiteBalanceMode: "manual" }] });
+    expect(t.applied[0]).toEqual({ advanced: [{ whiteBalanceMode: "manual", colorTemperature: 4800 }] });
+  });
+  it("잠글 때 지금 노출 시간·ISO·색온도를 같이 넘긴다 — 'manual' 만 보내면 Android 에서 하얗게 날아간다 (2026-09-30)", async () => {
+    const t = track({ whiteBalanceMode: ["manual"], exposureMode: ["manual"] });
+    const r = await applyCameraLocks(t);
+    expect(r).toMatchObject({ whiteBalance: "locked", exposure: "locked" });
+    expect(t.applied).toContainEqual({ advanced: [{ exposureMode: "manual", exposureTime: 166.6, iso: 400 }] });
+    expect(t.applied).toContainEqual({ advanced: [{ whiteBalanceMode: "manual", colorTemperature: 4800 }] });
+  });
+  it("S26 Ultra: 자동일 때 색온도·초점 거리를 0(모름)으로 알려 주면 그 항목은 시도하지 않는다 (2026-09-30)", async () => {
+    const t = track({ whiteBalanceMode: ["manual"], exposureMode: ["manual"], focusMode: ["manual"] }, [], { exposureTime: 332.4, iso: 250, exposureCompensation: 0, colorTemperature: 0, focusDistance: 0 });
+    const r = await applyCameraLocks(t);
+    expect(r).toMatchObject({ exposure: "locked", whiteBalance: "unsupported", focus: "unsupported" });
+    expect(t.applied).toEqual([{ advanced: [{ exposureMode: "manual", exposureTime: 332.4, iso: 250, exposureCompensation: 0 }] }]);
+  });
+  it("지금 노출 시간·색온도를 못 읽으면 잠그지 않는다 (unsupported)", async () => {
+    const t = track({ whiteBalanceMode: ["manual"], exposureMode: ["manual"] }, [], { iso: 400 });
+    const r = await applyCameraLocks(t);
+    expect(r).toMatchObject({ whiteBalance: "unsupported", exposure: "unsupported" });
+    expect(t.applied).toHaveLength(0);
   });
   it("getCapabilities 가 없으면(iOS 사파리) 전부 unsupported, throw 없음", async () => {
     const r = await applyCameraLocks(track(null));
