@@ -6,7 +6,7 @@
  *   look      `rules/looks.json` 의 version        ← 지금 여기서 읽는다
  *   score     `rules/score.json` 의 version        ← ③ 이 PARAMS 를 옮길 때 만든다. 그때까지 기본값
  *   faceshape 모델 파일 이름                        ← ⑤ 가 모델을 올릴 때 setVersions 로 알린다
- *   transfer  서버 `/health` 응답의 ver.transfer    ← ④ 호출 결과에서 setVersions 로 알린다
+ *   transfer  (안 씀) Stable-Makeup 화장 전이 버전 — 2026-09-29 뺐다(#221). 로그 형식(Event.ver)을 바꾸지 않으려고 칸만 남김
  *   app       빌드할 때 박는 git 짧은 해시           ← 배포 스크립트가 넣는다
  *
  * 각 모듈은 자기 버전만 `setVersions({ ... })` 로 알린다. 남의 칸은 건드리지 않는다.
