@@ -1,6 +1,6 @@
 name: notify
 
-# PR 이 올라오거나 닫히면 디스코드 #github-pr 로 알린다.
+# PR · 이슈가 올라오거나 닫히면 디스코드로 알린다 (같은 웹후크 채널).
 # 규칙상 작성자가 PR 을 올리면 ⑥ 이 받아서 병합하는데(§0-1-1), 말로 알리는 걸 잊으면
 # PR 이 그냥 떠 있게 된다. 이 알림이 그 자리를 메운다.
 #
@@ -11,12 +11,16 @@ on:
   pull_request:
     # synchronize(커밋 추가)는 뺐다 — 작업 중에 계속 울린다
     types: [opened, reopened, ready_for_review, closed]
+  issues:
+    # 다른 모듈에 일을 넘길 때 이슈로 남기는데, 말로 알리지 않으면 못 보고 지나간다.
+    # 댓글·라벨·담당 변경은 뺐다 — 너무 자주 울린다
+    types: [opened, reopened, closed]
 
 jobs:
   discord:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    # 포크에서 온 PR 은 시크릿을 못 읽는다. 조직 저장소라 해당 없지만 명시해 둔다
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    # 포크에서 온 PR 은 시크릿을 못 읽는다(위 if). 조직 저장소라 해당 없지만 명시해 둔다
     steps:
       - name: 디스코드로 보내기
         env:
@@ -92,6 +96,75 @@ jobs:
           code=$(curl -sS -o resp.txt -w '%{http_code}' \
             -H 'Content-Type: application/json' \
             -d @payload.json "${WEBHOOK}") || code="000"
+
+          echo "디스코드 응답: ${code}"
+          if [ "${code}" != "204" ] && [ "${code}" != "200" ]; then
+            echo "::warning::디스코드 알림 실패 (${code})"
+            cat resp.txt || true
+          fi
+
+  discord-issue:
+    if: github.event_name == 'issues'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 디스코드로 보내기
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          ACTION: ${{ github.event.action }}
+          REASON: ${{ github.event.issue.state_reason }}
+          NUM: ${{ github.event.issue.number }}
+          TITLE: ${{ github.event.issue.title }}
+          URL: ${{ github.event.issue.html_url }}
+          AUTHOR: ${{ github.event.issue.user.login }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          if [ -z "${WEBHOOK}" ]; then
+            echo "DISCORD_WEBHOOK_URL 이 없습니다 — 알림을 건너뜁니다"
+            exit 0
+          fi
+
+          # 이슈엔 브랜치가 없다 — 제목 앞 [guide][app] 머리말이 받을 모듈이다 (여러 개면 전부)
+          MODULE=""
+          for tag in $(printf '%s' "${TITLE}" | grep -o '^\(\[[a-z]*\]\)*' | grep -o '[a-z]\+'); do
+            case "${tag}" in
+              capture) m="① 촬영·기준" ;;
+              guide)   m="② 가이드·실시간" ;;
+              score)   m="③ 채점·합산" ;;
+              server)  m="④ 서버·생성" ;;
+              model)   m="⑤ 모델·데이터·평가" ;;
+              app)     m="⑥ 앱·통합" ;;
+              *)       m="${tag}" ;;
+            esac
+            MODULE="${MODULE:+${MODULE} · }${m}"
+          done
+          MODULE="${MODULE:-정해지지 않음}"
+
+          if [ "${ACTION}" = "closed" ] && [ "${REASON}" = "not_planned" ]; then
+            HEAD="이슈 닫힘"; COLOR=10070709; NOTE="하지 않기로 하고 닫았습니다"
+          elif [ "${ACTION}" = "closed" ]; then
+            HEAD="이슈 해결"; COLOR=5763719; NOTE="해결되어 닫았습니다"
+          elif [ "${ACTION}" = "reopened" ]; then
+            HEAD="이슈 다시 열림"; COLOR=15105570; NOTE="다시 열었습니다"
+          else
+            HEAD="새 이슈"; COLOR=15844367; NOTE="받을 모듈이 확인해 주세요"
+          fi
+
+          jq -n             --arg head "${HEAD}"             --arg num "${NUM}"             --arg title "${TITLE}"             --arg url "${URL}"             --arg author "${AUTHOR}"             --arg actor "${ACTOR}"             --arg module "${MODULE}"             --arg note "${NOTE}"             --argjson color "${COLOR}"             '{
+              username: "nudy 이슈",
+              embeds: [{
+                title: (("[" + $head + "] #" + $num + " " + $title)[0:250]),
+                url: $url,
+                color: $color,
+                fields: [
+                  { name: "모듈",   value: $module, inline: true },
+                  { name: "올린 이", value: $author, inline: true },
+                  { name: "처리",   value: $actor,  inline: true }
+                ],
+                footer: { text: $note }
+              }]
+            }' > payload.json
+
+          code=$(curl -sS -o resp.txt -w '%{http_code}'             -H 'Content-Type: application/json'             -d @payload.json "${WEBHOOK}") || code="000"
 
           echo "디스코드 응답: ${code}"
           if [ "${code}" != "204" ] && [ "${code}" != "200" ]; then
