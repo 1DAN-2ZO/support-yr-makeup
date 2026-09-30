@@ -273,9 +273,10 @@ describe("상태·한 줄 평", () => {
   const scored = (score: number, codes: PartScore["codes"] = []): PartScore => ({ present: true, score, codes, lrIndex: null, metrics: {} });
   const unseen: PartScore = { present: false, score: null, codes: [], lrIndex: null, metrics: {} };
 
-  it("D1 조명 급변 → 확인만(조명), 얼굴 없음 → 확인만", () => {
-    expect(decide("liner", scored(80), { lightShift: 15 }).reason).toBe("lighting");
-    expect(decide("liner", scored(80), { lightShift: 5 }).status).toBe("scored");
+  it("D1 조명 급변(이마 L* 차가 lightTol 넘음) → 확인만(조명), 그 아래면 채점, 얼굴 없음 → 확인만", () => {
+    expect(decide("liner", scored(80), { lightShift: PARAMS.lightTol + 1 }).reason).toBe("lighting");
+    expect(decide("liner", scored(80), { lightShift: -(PARAMS.lightTol + 1) }).reason).toBe("lighting");
+    expect(decide("liner", scored(80), { lightShift: PARAMS.lightTol - 1 }).status).toBe("scored");
     expect(decide("liner", scored(80), { noFace: true }).reason).toBe("align");
   });
 
