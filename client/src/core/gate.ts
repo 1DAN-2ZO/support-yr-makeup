@@ -10,11 +10,14 @@
  */
 
 import { yawFromLandmarks } from "./capture-measure";
+import { ROLL_MAX } from "./crop";
 import { CAPTURE_LIMITS, SHOT_TEXT } from "./flow";
 import { LM, at } from "./landmarks";
 import type { GateFail, GateResult, PartId, Pt } from "./types";
 
 export interface LiveLimits {
+  /** 얼굴 기울기(도) 한계 — 넘으면 자동 회전이 꺼진 채 폰을 돌린 것 (#204) */
+  rollMax: number;
   /** 정면 한계(°) */
   yaw: number;
   pitch: number;
@@ -33,6 +36,7 @@ export interface LiveLimits {
 
 /** 선명·밝기·색·안정은 화면 1 과 같은 값 (flow.ts CAPTURE_LIMITS 주석 "화면 4 게이트와 값을 맞춘다") */
 export const LIVE_LIMITS: LiveLimits = {
+  rollMax: ROLL_MAX,
   yaw: 15, pitch: 10, dYaw: 8, dPitch: 6, exprTol: 0.35,
   sharpMin: CAPTURE_LIMITS.sharpMin,
   brightTol: CAPTURE_LIMITS.brightTol,
@@ -46,6 +50,8 @@ export const LIVE_LIMITS: LiveLimits = {
 export const GATE_TEXT = {
   face: "",   // 얼굴이 없으면 문구 없이 테두리만 사라진다 (정의서 3-9)
   angle: SHOT_TEXT.front,
+  // 자동 회전이 꺼진 채 "가로로 돌리세요" 를 따르면 화면은 세로 그대로이고 영상 속 얼굴만 눕는다 (#204)
+  rotate: "화면이 안 돌아갔어요. 폰을 세로로 들거나 자동 회전을 켜 주세요",
   pose: "처음 찍을 때와 같은 각도로 봐 주세요",
   expr: "처음 찍을 때처럼 편한 표정으로 있어 주세요",
   eyes: "양쪽 눈이 보이게 해 주세요",
@@ -65,6 +71,8 @@ const EYE_PARTS: readonly PartId[] = ["brow", "liner", "shadow"];
 /** 프레임에서 잰 값. 없는 항목(undefined)은 그 조건을 건너뛴다 */
 export interface LiveMeasure {
   faceDetected: boolean;
+  /** 얼굴 기울기(도, 크기만) — crop.faceRoll. 없으면 조건 생략 */
+  roll?: number;
   /** 화면(거울) 기준 각도 — poseOf() */
   yaw: number;
   pitch: number;
@@ -133,6 +141,8 @@ export function evaluateGate(partId: PartId, m: LiveMeasure, limits: LiveLimits 
   const fail = (firstFail: GateFail, text: string): GateResult => ({ ok: false, firstFail, text, stableCount });
 
   if (!m.faceDetected) return fail("face", GATE_TEXT.face);
+  // 누운 얼굴(자동 회전 꺼짐)은 정면 각도 식이 0 으로 나눠 깨지기도 해서 깨진 값 검사보다 먼저 본다. 기울기는 두 눈꼬리만 써서 누워도 멀쩡 (#204)
+  if (typeof m.roll === "number" && Number.isFinite(m.roll) && m.roll > limits.rollMax) return fail("angle", GATE_TEXT.rotate);
   // NaN·Infinity 는 비교가 전부 false 라 모든 조건을 통과해 버린다 (정의서 3-5 "깨진 측정값")
   if (!measureFinite(m)) return fail("face", GATE_TEXT.face);
   if (Math.abs(m.yaw) > limits.yaw || Math.abs(m.pitch) > limits.pitch) return fail("angle", GATE_TEXT.angle);
@@ -171,7 +181,7 @@ export function gateStep(stable: number, partId: PartId, m: LiveMeasure, limits:
 }
 
 function measureFinite(m: LiveMeasure): boolean {
-  const nums = [m.yaw, m.pitch, m.baseYaw, m.basePitch, m.poseDiff?.yaw, m.poseDiff?.pitch, m.exprDiff, m.sharpness, m.foreheadL, m.baselineL, m.stableCount,
+  const nums = [m.roll, m.yaw, m.pitch, m.baseYaw, m.basePitch, m.poseDiff?.yaw, m.poseDiff?.pitch, m.exprDiff, m.sharpness, m.foreheadL, m.baselineL, m.stableCount,
     m.foreheadAb?.a, m.foreheadAb?.b, m.baselineAb?.a, m.baselineAb?.b];
   return nums.every((v) => v === undefined || Number.isFinite(v));
 }

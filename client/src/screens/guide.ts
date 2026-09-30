@@ -71,7 +71,8 @@ async function load(b: Blob | ImageBitmap, toBitmap: (b: Blob) => Promise<ImageB
 function drawPart(cv: HTMLCanvasElement, d: Drawable, part: PartId, lm: readonly Pt[], guide: GuideSource): boolean {
   const aspect = wantedOrientation(part) === "landscape" ? 16 / 9 : 3 / 4;
   const outline = outlineOf(part, lm, guide);
-  const crop = cropSpec(part, lm, aspect);
+  // 테두리(표준 눈썹 꼬리 등)가 얼굴 점 밖으로 나가도 창에 다 담는다 (#204)
+  const crop = cropSpec(part, lm, aspect, [...outline.polys.flat(), ...outline.lines.flat()]);
   const cw = aspect >= 1 ? VIEW_W : Math.round(VIEW_W * aspect), ch = Math.round(cw / aspect);
   cv.width = cw; cv.height = ch;
   const g = cv.getContext("2d");

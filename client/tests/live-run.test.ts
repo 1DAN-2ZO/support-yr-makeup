@@ -2,6 +2,7 @@
 // 프레임마다: 게이트 한 줄 · 가이드 테두리 · (확인받기 뒤) 묶음 모으기
 import { describe, expect, it } from "vitest";
 import { createLiveRun, type LiveFrame } from "@core/live-run";
+import { GATE_TEXT } from "@core/gate";
 import { linerOutline, lookGuide } from "@core/guides";
 import type { GuideSource } from "@core/score-part";
 import { unitScale } from "@core/baseline";
@@ -199,5 +200,11 @@ describe("live run", () => {
     let r = lr.step(frame({ lm: open }));
     for (let i = 0; i < 5; i++) r = lr.step(frame({ lm: open }));
     expect(r.gate.firstFail).not.toBe("pose_diff");
+  });
+
+  it("L20 누운 얼굴이면 '자동 회전' 안내 — 게이트가 기울기를 스스로 잰다 (#204)", () => {
+    const t = Math.PI / 2, lying = FACE.map((p) => ({ x: 300 - (p.y - 300), y: 300 + (p.x - 300) }));
+    void t;
+    expect(run("liner").step(frame({ lm: lying })).gate.text).toBe(GATE_TEXT.rotate);
   });
 });
