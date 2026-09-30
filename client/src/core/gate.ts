@@ -145,6 +145,18 @@ export function rigidPoseDiff(baseLm: readonly Pt[], curLm: readonly Pt[], k: { 
   return { yaw: ((c.x - b.x) / k.kYaw) * deg + 0, pitch: ((c.y - b.y) / k.kPitch) * deg + 0 };
 }
 
+/**
+ * 화면 4 의 정면 각도 (#193) — **지금 얼굴의 턱·얼굴 옆을 안 쓴다.**
+ * poseOf 는 턱 끝(152)·얼굴 옆(234·454)을 써서 입을 크게 벌리면 숙인 것으로 잡혀(합성 얼굴 약 -9°) "조금만 정면으로" 로 막혔다.
+ * 맨얼굴 사진의 각도(촬영 관문을 통과한 입 다문 정면이라 poseOf 가 믿을 만함) + 맨얼굴 대비 변화(rigidPoseDiff, 강체 점)로 잰다.
+ * 부호는 poseOf 와 같게: 강체 yaw 는 이미지 오른쪽이 + 라 거울 기준 poseOf 와 반대 → 뺀다.
+ * 화면 1(촬영)은 그대로 poseOf — 맨얼굴을 찍을 땐 입을 다물고 있고, 기준이 되는 사진이라 따로 잴 것이 없다
+ */
+export function livePose(baseLm: readonly Pt[], curLm: readonly Pt[]): { yaw: number; pitch: number } {
+  const b = poseOf(baseLm), d = rigidPoseDiff(baseLm, curLm);
+  return { yaw: b.yaw - d.yaw, pitch: b.pitch + d.pitch };
+}
+
 /** 원점을 지나는 기울기 (최소제곱). 환산 계수 보정용 — 점이 없으면 null */
 export function slopeFit(pairs: readonly (readonly [number, number])[]): number | null {
   let xy = 0, xx = 0;
