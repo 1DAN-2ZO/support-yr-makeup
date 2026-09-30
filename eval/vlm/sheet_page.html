@@ -1,0 +1,38 @@
+<!doctype html><meta charset=utf-8><title>nudy 개인화 평가</title>
+<!-- VLM 선정 실험 5·6단계 평가지 틀 — report.py --sheet 가 {{CARDS}}·{{MODEL}} 을 채운다. 사진이 들어가므로 결과 파일은 DHE_DATA_DIR 에만 -->
+<style>
+body { font-family: sans-serif; max-width: 860px; margin: auto; padding: 16px; }
+section { border-top: 1px solid #ccc; padding: 12px 0; }
+img { width: 240px; border-radius: 8px; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.why { margin: 4px 0; color: #666; }
+</style>
+<h1>개인화 계획 비교 평가</h1>
+<p>A·B 중 어느 쪽이 VLM 인지는 모릅니다. 사진과 두 계획을 보고 골라 주세요. 다 하면 맨 아래 "결과 받기".</p>
+<p>평가자 이름 <input id=who></p>
+{{CARDS}}
+<button onclick="save()">결과 받기</button>
+<script>
+const MODEL = {{MODEL}};
+function val(s, name) {
+  const picked = s.querySelector('[name=' + name + ']:checked');
+  if (picked) return picked.type === 'checkbox' ? true : picked.value;
+  const num = s.querySelector('input[type=number][name=' + name + ']');
+  return num ? num.value : null;
+}
+function save() {
+  const r = { who: document.getElementById('who').value, model: MODEL, items: [] };
+  document.querySelectorAll('section').forEach((s) => {
+    const n = s.dataset.n;
+    r.items.push({
+      n: +n, pick: val(s, 'p' + n),
+      fa: val(s, 'fa' + n), fb: val(s, 'fb' + n), na: val(s, 'na' + n), nb: val(s, 'nb' + n),
+      xa: !!s.querySelector('[name=xa' + n + ']').checked, xb: !!s.querySelector('[name=xb' + n + ']').checked,
+    });
+  });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(r)], { type: 'application/json' }));
+  a.download = 'rating-' + (r.who || 'noname') + '.json';
+  a.click();
+}
+</script>

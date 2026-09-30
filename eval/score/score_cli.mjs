@@ -18,13 +18,14 @@
  *   - label: ok | slight | off (3단계, #64). 없으면 null
  *
  * 채점 코드는 client/src/core/score-part.ts 를 esbuild 로 묶어서 그대로 쓴다 — 평가가 앱과 다른 것을 재면 안 된다.
- * 가이드 기하도 앱과 같은 파일(client/src/core/guide-poc.ts — ② guides.ts 전까지의 임시본)을 묶어 쓴다.
+ * 가이드 기하도 앱과 같은 파일(client/src/core/guides.ts lookGuide — 앱의 planGuide(룩, 계획 없음)와 같다)을 묶어 쓴다.
+ * 평가에는 VLM 개인화 계획이 없어서 룩 표준 모양으로 잰다 (2026-09-29).
  *
  * 혼자 돌려 보기:  echo '{"items":[...],"data_dir":"..."}' | node eval/score/score_cli.mjs
  */
 
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -51,13 +52,20 @@ function foldLabel(score) {
   return "off";
 }
 
-const CORE_FILES = ["score-part", "score", "sampling", "landmarks", "color", "baseline", "flow", "types", "guide-poc"];
+/**
+ * 캐시 열쇠에 넣는 파일 — 앱 core 전부 + 규칙 파일 전부. 하나라도 바뀌면 다시 묶는다.
+ * 전엔 9개만 봐서 rules/score.json(임계)·guides.ts 가 바뀌어도 옛 묶음으로 채점될 수 있었다 (2026-09-29)
+ */
+function stampFiles() {
+  const core = readdirSync(join(CLIENT, "src", "core")).filter((f) => f.endsWith(".ts")).sort().map((f) => `client/src/core/${f}`);
+  const rules = readdirSync(join(ROOT, "rules")).filter((f) => f.endsWith(".json")).sort().map((f) => `rules/${f}`);
+  return [...core, ...rules];
+}
 
 /** client/src/core 를 하나의 ESM 으로 묶는다. 소스가 안 바뀌었으면 캐시를 그대로 쓴다 */
 async function loadCore() {
-  const srcDir = join(CLIENT, "src", "core");
   const stamp = createHash("sha1");
-  for (const f of CORE_FILES) stamp.update(readFileSync(join(srcDir, `${f}.ts`)));
+  for (const f of stampFiles()) stamp.update(readFileSync(join(ROOT, f)));
   const out = join(CLIENT, "node_modules", ".cache", "dhe-score-cli", `core-${stamp.digest("hex").slice(0, 12)}.mjs`);
   if (!existsSync(out)) {
     const esbuild = require("esbuild");
@@ -67,7 +75,8 @@ async function loadCore() {
           'export { alignedFrame, scorePart } from "./src/core/score-part";',
           'export { decide, toOutcome } from "./src/core/score";',
           'export { frameOf } from "./src/core/sampling";',
-          'export { pocGuide } from "./src/core/guide-poc";',
+          'export { lookGuide } from "./src/core/guides";',
+          'export { SCORE_VERSION } from "./src/core/score";',
         ].join("\n"),
         resolveDir: CLIENT,
         loader: "ts",
@@ -148,6 +157,13 @@ function scoreItem(core, guides, item, dataDir) {
 }
 
 async function main() {
+  // 평가가 앱과 같은 것을 재는지 확인용 — 어떤 가이드·어떤 파일·어떤 채점 버전 (test_score_run.py)
+  if (process.argv.includes("--meta")) {
+    const core = await loadCore();
+    const meta = { guide: "lookGuide", stamp_files: stampFiles(), score_version: core.SCORE_VERSION };
+    process.stdout.write(`${JSON.stringify(meta)}\n`);
+    return;
+  }
   const input = JSON.parse(readFileSync(0, "utf8") || "{}");
   const items = Array.isArray(input.items) ? input.items : [];
   const dataDir = input.data_dir ? resolve(String(input.data_dir)) : ROOT;
@@ -158,7 +174,7 @@ async function main() {
   const core = await loadCore();
   // 룩마다 가이드 하나 (라이너 두께가 룩을 따라간다). 같은 룩은 다시 만들지 않는다
   const cache = new Map();
-  const guides = { for: (look) => cache.get(look) ?? cache.set(look, core.pocGuide(lookParts(look))).get(look) };
+  const guides = { for: (look) => cache.get(look) ?? cache.set(look, core.lookGuide(lookParts(look))).get(look) };
   const out = [];
   let errors = 0;
   for (const item of items) {

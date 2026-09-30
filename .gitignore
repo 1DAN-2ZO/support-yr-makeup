@@ -34,3 +34,6 @@ server/assets/*.task
 # 모듈 ① 폰 실측 프로브 — 결과 JSON 과 로컬 모델 사본 (저장소 밖)
 client/.probe/
 client/public/models/
+
+# VLM 선정 실험 — PC 마다 모델 경로가 다르다 (eval/vlm/models.example.json 을 복사)
+eval/vlm/models.json

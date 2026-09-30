@@ -8,6 +8,7 @@
  * 가이드 모양(꼬리 선·부위 영역)은 ② 가이드가 주인이다. 여기서는 만들지 않고 인자로 받는다.
  */
 
+import scoreRules from "../../../rules/score.json";
 import { unitScale } from "./baseline";
 import type { Lab, RgbaImage } from "./color";
 import { foreheadLab, labAt, meanLabPoly, pointInPoly, rgbToLab } from "./color";
@@ -90,7 +91,7 @@ export function eyeClosed(lm: readonly Pt[], side: Side): boolean {
  *   1×1 — σ6 부터 맨얼굴 15/15 오채점 · 2×2 — σ10 에서 15/15 · **3×3 — 전부 0, 그린 라이너 ≥91 · 눈썹 ≥94 · 입술 ≥93**
  *   4×4~6×6 — 오채점 0 이지만 가는 라이너가 흐려져 88 → 82
  */
-export const SAMPLE = { boxRatio: 1 / 30 };
+export const SAMPLE = { boxRatio: scoreRules.sample.boxRatio };   // 값은 rules/score.json (#44)
 
 const boxOf = (eyePx: number): number => Math.max(1, Math.round(eyePx * SAMPLE.boxRatio));
 

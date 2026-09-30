@@ -8,6 +8,7 @@
  *   session = applyResult(session, partId, toOutcome(partId, result, ctx));
  */
 
+import scoreRules from "../../../rules/score.json";
 import type { Lab, RgbaImage } from "./color";
 import { deltaE } from "./color";
 import { LM, at } from "./landmarks";
@@ -77,6 +78,8 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
   const lit = foreBase && foreCur ? { corr: lightCorr(foreBase.L, foreCur.L), shift: foreCur.L - foreBase.L } : null;
   const corr = lit?.corr ?? noCorr;
   const ctx: DecideContext = lit ? { lightShift: lit.shift } : {};
+  // 정렬 잔차는 눈 폭으로 나눠 해상도와 상관없게 (#43)
+  if (opts.alignResidual !== undefined && cur.unit.eye > 0) ctx.alignResidual = opts.alignResidual / cur.unit.eye;
 
   let result: PartScore;
   if (partId === "liner") {
@@ -145,7 +148,7 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
  * minGain: 안 옮긴 자리보다 비용(밝아진 L*)이 이만큼 줄어야 옮긴다 (#174 리뷰: 잡음 속에서 엉뚱하게 옮겨 라이너 96 → 84).
  *   합성 실측(잡음 σ 0~10): 진짜 1~2px 어긋남은 라이너 2.2~3.6 · 눈썹 0.1~0.2 줄고, 잡음 때문에 옮길 때는 0.03 이하
  */
-export const REGISTER = { range: 0.022, minGain: 0.1 };
+export const REGISTER = { ...scoreRules.register };   // 값은 rules/score.json (#44)
 
 function shiftFrame(f: SampleFrame, dx: number, dy: number): SampleFrame {
   return { ...f, lm: f.lm.map((q) => ({ ...q, x: q.x + dx, y: q.y + dy })) };

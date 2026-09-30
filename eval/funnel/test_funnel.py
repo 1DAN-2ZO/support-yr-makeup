@@ -155,3 +155,85 @@ def test_운영_숫자():
 
 def test_로그가_없으면_빈_결과():
     assert aggregate([]) == []
+
+
+def vlm(
+    sid: str, t: int, *, ms: int = 3000, tries: int = 1, fail=None, left: int = 0, model="qwen3-vl-8b"
+) -> dict:
+    return ev(
+        sid,
+        t,
+        "vlm_plan",
+        screen="looks",
+        look_id="daily",
+        ms=ms,
+        tries=tries,
+        first_rejected=1 if tries > 1 else 0,
+        left_rejected=left,
+        model=model,
+        fail=fail,
+    )
+
+
+def test_개인화_성공률과_실패_이유():
+    """성공 = fail 없음 또는 retry_failed(재질문은 실패했지만 첫 답으로 계획이 나옴).
+    복원 때 규칙 계획은 VLM 호출이 아니라 따로 센다"""
+    events = [
+        vlm("a", 1),
+        vlm("a", 2, tries=2, fail="retry_failed", ms=6000),
+        vlm("a", 3, fail="busy", ms=1500),
+        vlm("b", 1, fail="timeout", ms=25000),
+        ev(
+            "b",
+            2,
+            "vlm_plan",
+            screen="looks",
+            look_id="daily",
+            ms=0,
+            tries=0,
+            first_rejected=0,
+            left_rejected=0,
+            model=None,
+            fail="restored_rule",
+        ),
+    ]
+    m = rows_by_metric(aggregate(events))
+    assert m["개인화 성공률(%)"] == 50.0
+    assert m["개인화 실패 · busy(회)"] == 1
+    assert m["개인화 실패 · timeout(회)"] == 1
+    assert m["개인화 · 재질문 실패로 첫 답 사용(회)"] == 1
+    assert m["개인화 · 앱 다시 켜 규칙 계획으로 봄(회)"] == 1
+    assert "개인화 실패 · restored_rule(회)" not in m
+
+
+def test_개인화_시간과_재질문():
+    """시간은 계획이 나온 호출만 (실패는 시간 제한까지 기다린 값이라 섞으면 흐려진다)"""
+    events = [
+        vlm("a", i, ms=ms, tries=2 if i == 0 else 1, left=1 if i == 1 else 0)
+        for i, ms in enumerate([2000, 3000, 4000, 5000])
+    ]
+    events.append(vlm("a", 9, fail="timeout", ms=25000))
+    m = rows_by_metric(aggregate(events))
+    assert m["개인화 시간 중앙값(ms)"] == 3500
+    assert m["개인화 시간 p95(ms)"] == 5000
+    assert m["개인화 · 재질문 비율(%)"] == 25.0
+    assert m["개인화 · 재질문해도 거절 남음(%)"] == 25.0
+    assert m["개인화 모델 · qwen3-vl-8b(회)"] == 4
+
+
+def test_개인화_실패_뒤_이탈():
+    """개인화가 한 번이라도 실패한 세션 중 2-b(fullrender)까지 못 간 비율"""
+    stay = [
+        ev("a", 0, "screen_enter", screen="looks"),
+        vlm("a", 1, fail="busy"),
+        vlm("a", 2),
+        ev("a", 3, "screen_enter", screen="fullrender"),
+    ]
+    left = [ev("b", 0, "screen_enter", screen="looks"), vlm("b", 1, fail="unavailable")]
+    m = rows_by_metric(aggregate(stay + left))
+    assert m["개인화 실패 뒤 이탈(%)"] == 50.0
+
+
+def test_개인화_기록이_없으면_개인화_줄도_없다():
+    m = rows_by_metric(aggregate(full_session("a")))
+    assert not [k for k in m if k.startswith("개인화")]

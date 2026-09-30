@@ -186,6 +186,9 @@ export function topMisses(records: readonly SessionRecord[], n = 5, top = 2): Mi
     .map((e) => ({ code: e.code, partId: e.partId, part: PART_NAME[e.partId], text: diagText(e.code) ?? e.code, count: e.count, n: recent.length }));
 }
 
+/** 조명 차 안내 한 줄 (화면 6·결과 카드). 숫자 없이 (F-09) */
+export const LIGHTING_NOTE = "조명이 달라서 색은 참고만 해 주세요";
+
 /** 조명 참조(이마 L*) 차이가 임계 이상이면 "조명 다름" */
 export function lightingDiffers(a: { foreheadL: number } | null, b: { foreheadL: number } | null, threshold = 8): boolean {
   if (!a || !b) return false;
