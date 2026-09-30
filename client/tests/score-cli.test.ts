@@ -72,23 +72,23 @@ describe("score_cli.mjs", () => {
     expect(runCli({ items: [], data_dir: dir }).rows).toEqual([]);
   });
 
-  it("가이드대로 그린 라이너 → scored · pred ok · 앱의 scorePart 와 같은 점수 · look 이 비면 smoky", () => {
+  it("가이드대로 그린 라이너 → scored · pred ok · 앱의 scorePart 와 같은 점수 · look 이 비면 edgy", () => {
     const { rows } = runCli({ items: [item("a", "liner", "liner.png")], data_dir: dir });
     expect(rows).toHaveLength(1);
     const r = rows[0]!;
-    expect(r).toMatchObject({ id: "a", part: "liner", look: "smoky", label: "ok", status: "scored", pred: "ok", check_reason: null, error: null });
+    expect(r).toMatchObject({ id: "a", part: "liner", look: "edgy", label: "ok", status: "scored", pred: "ok", check_reason: null, error: null });
     expect(r.score).toBeGreaterThanOrEqual(85);
     // 평가가 앱과 같은 것을 재는가: TS 쪽 scorePart(같은 룩 두께) 와 CLI(guide-poc.mjs) 점수가 같다
-    const app = scorePart("liner", BARE, made(linerPaint()), appGuideFor("smoky")).result;
+    const app = scorePart("liner", BARE, made(linerPaint()), appGuideFor("edgy")).result;
     expect(r.score).toBe(app.score);
     expect(r.codes).toEqual(app.codes);
     expect(r.ms).toBeGreaterThan(0);
   });
 
   it("look 을 주면 그 룩의 라이너 두께로 잰다 — 같은 그림이 룩에 따라 다르게 판정된다", () => {
-    const { rows } = runCli({ items: [item("d", "liner", "liner.png", { look: "daily" }), item("s", "liner", "liner.png", { look: "smoky" })], data_dir: dir });
-    expect(rows.map((r) => r.look)).toEqual(["daily", "smoky"]);
-    for (const [row, look] of [[rows[0]!, "daily"], [rows[1]!, "smoky"]] as const) {
+    const { rows } = runCli({ items: [item("d", "liner", "liner.png", { look: "daily" }), item("s", "liner", "liner.png", { look: "edgy" })], data_dir: dir });
+    expect(rows.map((r) => r.look)).toEqual(["daily", "edgy"]);
+    for (const [row, look] of [[rows[0]!, "daily"], [rows[1]!, "edgy"]] as const) {
       const app = scorePart("liner", BARE, made(linerPaint()), appGuideFor(look)).result;
       expect(row.score, look).toBe(app.score);
       expect(row.codes, look).toEqual(app.codes);

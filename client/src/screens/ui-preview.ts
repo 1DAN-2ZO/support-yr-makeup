@@ -61,7 +61,7 @@ const ctx = (screen: string): ScreenContext<null> => ({
   log: createLogger({ sid: "preview", screen: screen as never, part: null, ver }, () => {}),
 });
 
-let lookId: string | null = "smoky";
+let lookId: string | null = "edgy";
 
 const SCREENS: Record<string, () => Promise<Screen<null>>> = {
   "서버 처리": async () => processingScreen<null>({ jobs: mutableJobSource(LOOKS.map((l) => ({ ...job(l.id, "running", 0) }))) }),

@@ -30,6 +30,8 @@ export interface ResultDeps {
   getCapture: (part: PartId) => CaptureBundle | null;
   /** 고른 룩 기준의 가이드 (② guides.ts, 그 전엔 guide-poc.ts) */
   guide: () => GuideSource;
+  /** 고른 화장의 이 부위 색 (rules/looks.json). 피부와 너무 가까우면 확인만(subtle) — 안 주면 전과 같다 */
+  templateColor?: (part: PartId) => readonly [number, number, number] | null;
   /** 세션 반영 (①의 applyResult / applySkip / nextPart) */
   apply: (part: PartId, outcome: ScoreOutcome) => void;
   skip: (part: PartId) => void;
@@ -148,7 +150,7 @@ export function resultScreen<S>(deps: ResultDeps): Screen<S> {
           // 쌩얼끼리인데 눈썹 70점 · 가짜 "밝기가 달라요". 화면 3 guide.ts 와 같은 scaleLm)
           const baseLm = scaleLm(baseline.lm, { w: baseline.w, h: baseline.h }, { w: bareIm.w, h: bareIm.h });
           const base = frameOf(bareIm, baseLm, bareHair ?? undefined);
-          const b = scoreBundle(part, base, ims.map((im, i) => ({ im, pts: bundle.pts[i]!, occluded: bundle.handOverlap[i] ?? null, ...(hairs[i] ? { hair: hairs[i] } : {}) })), guide);
+          const b = scoreBundle(part, base, ims.map((im, i) => ({ im, pts: bundle.pts[i]!, occluded: bundle.handOverlap[i] ?? null, ...(hairs[i] ? { hair: hairs[i] } : {}) })), guide, { templateColor: deps.templateColor?.(part) ?? null });
           outcome = b.outcome;
           if (b.pick !== null && b.cur) drawOverlay(canvas, bundle.frames[b.pick]!, ims[b.pick]!, guideOutline(part, b.cur.lm, guide(part, b.cur)));
           ctx.log.log({ name: "score", part, status: outcome.decision === "scored" ? "passed" : "check_only", check_reason: outcome.checkReason, ms: Math.round(performance.now() - t0) });

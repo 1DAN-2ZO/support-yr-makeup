@@ -9,7 +9,7 @@
           $DHE_DATA_DIR/golden/raw/<person_id>/<부위>[_<화장>][_<메모>].jpg  화장 사진 (부위마다)
           예) p01/bare.jpg · p01/liner_smoky.jpg · p01/liner_smoky_off.jpg · p01/lip.jpg
           - 부위: brow · liner · lip · shadow · cheek (manifest parts)
-          - 화장: rules/looks.json 의 id (daily·smoky…). 없으면 null → 채점기가 기본 화장으로 잰다
+          - 화장: rules/looks.json 의 id (daily·edgy…). 없으면 null → 채점기가 기본 화장으로 잰다
           - 메모: 아무 말 (off·test2 등) — 같은 부위를 여러 장 찍을 때 이름이 겹치지 않게
           - person_id 는 이름 대신 p01 같은 번호로 (결과 표에 남는다)
 만드는 것 $DHE_DATA_DIR/golden/work/<person_id>/<이름>.png · .lm.json  — 채점기가 읽는 PNG 와 얼굴 점 478개

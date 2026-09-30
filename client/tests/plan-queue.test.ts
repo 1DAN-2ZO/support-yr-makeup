@@ -15,69 +15,69 @@ describe("룩별 개인화 대기열", () => {
   it("처음 누른 룩은 계산하고, 결과를 기억한다", async () => {
     const f = fakeCompute();
     const q = createPlanQueue(f.compute);
-    const p = q.request("smoky");
-    expect(q.get("smoky")).toBeUndefined();
-    await f.finish("smoky");
-    expect(await p).toBe("plan:smoky");
-    expect(q.get("smoky")).toBe("plan:smoky");
+    const p = q.request("edgy");
+    expect(q.get("edgy")).toBeUndefined();
+    await f.finish("edgy");
+    expect(await p).toBe("plan:edgy");
+    expect(q.get("edgy")).toBe("plan:edgy");
   });
 
   it("이미 계산한 룩은 다시 계산하지 않는다", async () => {
     const f = fakeCompute();
     const q = createPlanQueue(f.compute);
-    const first = q.request("smoky");
-    await f.finish("smoky");
+    const first = q.request("edgy");
+    await f.finish("edgy");
     await first;
-    expect(await q.request("smoky")).toBe("plan:smoky");
-    expect(f.calls).toEqual(["smoky"]);
+    expect(await q.request("edgy")).toBe("plan:edgy");
+    expect(f.calls).toEqual(["edgy"]);
   });
 
   it("계산 중인 룩을 또 눌러도 한 번만 계산한다", async () => {
     const f = fakeCompute();
     const q = createPlanQueue(f.compute);
-    const a = q.request("smoky"), b = q.request("smoky");
-    await f.finish("smoky");
-    expect(await a).toBe("plan:smoky");
-    expect(await b).toBe("plan:smoky");
-    expect(f.calls).toEqual(["smoky"]);
+    const a = q.request("edgy"), b = q.request("edgy");
+    await f.finish("edgy");
+    expect(await a).toBe("plan:edgy");
+    expect(await b).toBe("plan:edgy");
+    expect(f.calls).toEqual(["edgy"]);
   });
 
   it("계산 중에 여러 개를 누르면 마지막에 누른 룩부터 — 시작한 계산은 끝까지 한다", async () => {
     const f = fakeCompute();
     const q = createPlanQueue(f.compute);
-    const all = ["daily", "smoky", "coral", "rose"].map((id) => q.request(id));
+    const all = ["daily", "edgy", "coral", "rose"].map((id) => q.request(id));
     expect(f.calls).toEqual(["daily"]);            // 처음 것은 바로 시작
     await f.finish("daily");
     expect(f.calls).toEqual(["daily", "rose"]);    // 다음은 마지막에 누른 것
     await f.finish("rose");
     expect(f.calls).toEqual(["daily", "rose", "coral"]);
     await f.finish("coral");
-    await f.finish("smoky");
-    expect(await Promise.all(all)).toEqual(["plan:daily", "plan:smoky", "plan:coral", "plan:rose"]);
+    await f.finish("edgy");
+    expect(await Promise.all(all)).toEqual(["plan:daily", "plan:edgy", "plan:coral", "plan:rose"]);
   });
 
   it("기다리던 룩을 다시 누르면 맨 앞으로 온다", async () => {
     const f = fakeCompute();
     const q = createPlanQueue(f.compute);
-    void q.request("daily"); void q.request("smoky"); void q.request("coral");
-    void q.request("smoky");                        // smoky 를 다시 누름
+    void q.request("daily"); void q.request("edgy"); void q.request("coral");
+    void q.request("edgy");                        // edgy 를 다시 누름
     await f.finish("daily");
-    expect(f.calls).toEqual(["daily", "smoky"]);
+    expect(f.calls).toEqual(["daily", "edgy"]);
   });
 
   it("계산이 실패하면 기억하지 않고, 다시 누르면 다시 계산한다", async () => {
     let n = 0;
     const q = createPlanQueue((id: string) => (n++ === 0 ? Promise.reject(new Error("VLM 끊김")) : Promise.resolve(`plan:${id}`)));
-    await expect(q.request("smoky")).rejects.toThrow("VLM 끊김");
-    expect(q.get("smoky")).toBeUndefined();
-    expect(await q.request("smoky")).toBe("plan:smoky");
+    await expect(q.request("edgy")).rejects.toThrow("VLM 끊김");
+    expect(q.get("edgy")).toBeUndefined();
+    expect(await q.request("edgy")).toBe("plan:edgy");
   });
 
   it("clear 하면 기억한 것을 모두 지운다 (새 세션·다시 찍기)", async () => {
     const q = createPlanQueue((id: string) => Promise.resolve(`plan:${id}`));
-    await q.request("smoky");
+    await q.request("edgy");
     q.clear();
-    expect(q.get("smoky")).toBeUndefined();
+    expect(q.get("edgy")).toBeUndefined();
   });
   it("계산이 바로(동기로) 던져도 큐가 멈추지 않는다 — 다음 요청은 돈다 (#172 리뷰)", async () => {
     let n = 0;

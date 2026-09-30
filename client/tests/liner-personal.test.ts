@@ -122,8 +122,8 @@ describe("라이너 개인화 — 꼬리 모양 (ILoveEye 2022)", () => {
   });
 
   it("두께는 스타일과 무관하게 룩에서 온다", () => {
-    const smoky = lookById("smoky").parts;
-    expect(styledGuide(smoky, "extend")("liner", BARE).liner!.thick).toBe(0.052);
+    const edgy = lookById("edgy").parts;
+    expect(styledGuide(edgy, "extend")("liner", BARE).liner!.thick).toBe(0.06);
   });
 
   it("화면용 윤곽도 같은 꼬리 끝을 쓴다 — 가이드와 채점이 어긋나지 않게", () => {
