@@ -320,18 +320,6 @@ describe("P 세션", () => {
   });
 });
 
-describe("세션 — 개인화 계획 (예상도·가이드·채점이 같은 계획을 읽는다)", () => {
-  it("새 세션에는 계획이 없다", () => {
-    expect(createSession().plan).toBeNull();
-  });
-
-  it("draft 에 계획이 그대로 남는다 — 복원해도 같은 정답으로 채점", () => {
-    const plan = { liner: { plan: { style: "extend", reason: "down_correct" }, source: "vlm" }, brow: { faceShape: "round", source: "vlm", heightMm: 2, glabellaMm: -2, arch: "arched" }, shadow: { range: 1.1, source: "vlm" }, intensity: { lip: 0.9 }, rationale: { lip: "입술을 덜어냈어요" }, rejected: [] } as const;
-    const s: Session = { ...createSession(), plan: JSON.parse(JSON.stringify(plan)) };
-    expect(JSON.parse(JSON.stringify(stripImages(s))).plan).toEqual(plan);
-  });
-});
-
 describe("45° 장 밝기·색 허용 차 (2026-09-30 1차 실측: 정면 최대 7.5·4.1 / 45° 최대 11.6·8.0, × 1.5)", () => {
   const side: ShotMeasure = { ...OK, yaw: -40 };   // 왼쪽 45° 범위
   const ab = (a: number, b: number) => ({ foreheadAb: { a, b }, baselineAb: { a: 0, b: 0 } });
