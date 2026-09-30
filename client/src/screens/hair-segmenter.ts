@@ -116,3 +116,19 @@ export function createHairMasker(load: () => Promise<HairSegmenter> = loadHairSe
     }
   };
 }
+
+/**
+ * 그림(캔버스·ImageBitmap) 한 장 → 머리카락 마스크. 화면 3 완성본이 쓴다 (#173 셰이더).
+ * 처음엔 모델을 내려받아서, timeoutMs 안에 안 오면 null — 마스크 없이 그린다 (화면 5 와 같은 원칙)
+ */
+export async function maskOfImage(masker: HairMasker, img: CanvasImageSource, w: number, h: number, timeoutMs = 3000): Promise<HairMask | null> {
+  const cv = document.createElement("canvas");
+  cv.width = w;
+  cv.height = h;
+  const g = cv.getContext("2d", { willReadFrequently: true });
+  if (!g) return null;
+  g.drawImage(img, 0, 0, w, h);
+  const px = g.getImageData(0, 0, w, h);
+  const late = new Promise<null>((r) => setTimeout(() => r(null), timeoutMs));
+  return Promise.race([masker({ data: px.data, w, h }).catch(() => null), late]);
+}
