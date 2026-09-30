@@ -13,7 +13,8 @@
       .note { margin: 0 0 12px; opacity: .75; font-size: 13px; }
       .wrap { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
       .stage { flex: 1 1 480px; max-width: 820px; position: relative; }
-      #guidecv { position: absolute; left: 0; top: 0; pointer-events: none; background: transparent; }
+      #guidecv, #lashcv { position: absolute; left: 0; top: 0; pointer-events: none; background: transparent; }
+      #lashcv { mix-blend-mode: multiply; }
       canvas { width: 100%; height: auto; transform: scaleX(-1); border-radius: 8px; background: #000; }
       .panel { flex: 1 1 300px; max-width: 420px; }
       .buttons { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 12px; }
@@ -32,6 +33,7 @@
       <div class="stage">
         <canvas id="cv" width="1280" height="720"></canvas>
         <canvas id="glcv" width="1280" height="720" hidden></canvas>
+        <canvas id="lashcv" width="1280" height="720"></canvas>
         <canvas id="guidecv" width="1280" height="720"></canvas>
         <video id="v" autoplay playsinline muted hidden></video>
       </div>
@@ -57,6 +59,12 @@
               <option value="mesh" selected>그물 필터 (WebGL, SNOW 방식)</option>
               <option value="filter">필터 (캔버스)</option>
               <option value="sticker">스티커 (전처럼)</option>
+            </select>
+          </label>
+          <label>마스카라
+            <select id="lashMode">
+              <option value="texture" selected>PNG 텍스처 (Ulike·SODA 방식)</option>
+              <option value="code">코드 생성 (이전)</option>
             </select>
           </label>
         </div>

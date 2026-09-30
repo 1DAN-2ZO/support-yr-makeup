@@ -21,6 +21,8 @@ import { LOOKS } from "@core/looks";
 import { PLAN_RULES, droopDeg, planLiner, resolvePlan, type LinerStyle, type PersonalPlan } from "@core/personalize";
 import type { Pt } from "@core/types";
 import { buildVlmPrompt } from "@core/vlm-prompt";
+import type { LashState } from "@core/lash";
+import { LashTextures, drawLashes } from "./lash-render";
 import { MakeupGl } from "./makeup-gl";
 
 const $ = <T extends HTMLElement>(id: string): T => {
@@ -664,6 +666,9 @@ function drawMakeup(lm: readonly Pt[], style: LinerStyle): void {
         ctx.fill("evenodd");
         return;
       } else if (p.id === "lash") {
+        // PNG 텍스처 방식은 여기서 그리지 않는다 — 지금 얼굴(lm)로 lashcv 에 따로 그린다(drawLashLayer).
+        // 그물 모드는 기준 얼굴(ref)에 그려 휘는데, 눈 뜸 3단계는 지금 얼굴로 정해야 해서다
+        if (lashMode() === "texture") return;
         // 마스카라(인조 스티커 컨셉): 실제 속눈썹이 자라는 눈꺼풀 길이(eye.upper/lower) 안에서만 —
         // 라이너 꼬리는 피부 위에 그리는 선이라 속눈썹이 없는 자리까지 뻗으면 안 된다(#158 정정)
         ctx.filter = "none";
@@ -703,6 +708,32 @@ function drawMakeup(lm: readonly Pt[], style: LinerStyle): void {
   }
 }
 
+// ── 마스카라 PNG 텍스처 (Ulike·SODA 방식, 2026-09-30) ─────────────
+// 눈꺼풀 선을 따라 띠를 만들고 PNG 를 삼각형 단위로 휘어 붙인다. 눈 뜬 정도로 위·중간·아래 그림을 뚝 끊어 바꾼다(섞지 않음).
+// 그림·규격: client/public/lashes/ (scripts/gen_lash_textures.py). 계산: core/lash.ts
+const lashModeSel = $<HTMLSelectElement>("lashMode");
+const lashMode = (): "texture" | "code" => (lashModeSel.value === "code" ? "code" : "texture");
+const lashcv = $<HTMLCanvasElement>("lashcv");
+const lg = lashcv.getContext("2d")!;
+const lashes = new LashTextures("/lashes/");
+void lashes.load().catch((e) => { console.warn("속눈썹 텍스처를 못 불러왔어요", e); });
+const lashPrev: [LashState | null, LashState | null] = [null, null];
+
+/** 지금 얼굴(lm)로 속눈썹 층을 그린다. 끄거나 텍스처가 없으면 비운다. 반환: 상태 글 (예 "R up · L mid") */
+function drawLashLayer(lm: readonly Pt[] | null, w: number, h: number): string {
+  if (lashcv.width !== w || lashcv.height !== h) { lashcv.width = w; lashcv.height = h; }
+  lg.setTransform(1, 0, 0, 1, 0, 0);
+  lg.clearRect(0, 0, w, h);
+  lashcv.style.width = `${(glcv.hidden ? cv : glcv).clientWidth}px`;
+  lashcv.style.transform = "scaleX(-1)";
+  lashcv.style.mixBlendMode = natural() ? "multiply" : "normal";
+  const s = sliders.get("lash")!, color = currentTpl().color.lash;
+  if (!lm || bare || lashMode() !== "texture" || !lashes.ready || !color || !s.on.checked) { lashPrev[0] = lashPrev[1] = null; return ""; }
+  const states = drawLashes(lg, lashes, lm, color, Math.min(1, Number(s.input.value)), lashPrev);
+  lashPrev[0] = states[0]; lashPrev[1] = states[1];
+  return `R ${states[0]} · L ${states[1]}`;
+}
+
 // ── 설정 받기 (JSON) ────────────────────────────────
 // 화면에서 조정한 값(부위 켜기·진하기·색, 피부 보정, 입히기, 눈썹 모양, 룩)과 그때 쓰인 개인화 계획을 파일로 내려받는다.
 // 사진·얼굴 점은 넣지 않는다 — 숫자 설정만.
@@ -718,6 +749,7 @@ function settingsJson(): string {
     render: renderSel.value,
     beauty: Number(beautyIn.value),
     browShape: browShapeSel.value,
+    lashMode: lashModeSel.value,
     linerThick: t.linerThick,
     parts,
     rules: { guide: GUIDE_PARAMS, plan: PLAN_RULES },
@@ -829,9 +861,11 @@ function tick(): void {
     glcv.hidden = !meshMode();
     cv.hidden = meshMode();
     drawGuide(lm, w, h, plan);
-    if (!statusEl.textContent?.startsWith("VLM")) statusEl.textContent = `라이너 꼬리: ${style}${bare ? " · 맨얼굴" : ""}${stillLm ? " · 찍은 사진" : ""}`;
+    const lashShown = drawLashLayer(lm, w, h);
+    if (!statusEl.textContent?.startsWith("VLM")) statusEl.textContent = `라이너 꼬리: ${style}${lashShown ? ` · 속눈썹 ${lashShown}` : ""}${bare ? " · 맨얼굴" : ""}${stillLm ? " · 찍은 사진" : ""}`;
   } else {
     statusEl.innerHTML = `<span class="warn">얼굴을 찾지 못했어요</span>`;
+    drawLashLayer(null, w, h);
     if (meshMode() && glr) glr.render(video, w, h, atlasMul, atlasCol, atlasLight, null);
   }
   requestAnimationFrame(tick);
