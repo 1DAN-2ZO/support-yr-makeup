@@ -17,6 +17,7 @@
     "lightTol": 20,
     "alignMax": 0.08,
     "hairMax": 0.4,
+    "colorCorr": "L",
     "band": {
       "cheek": [
         25,

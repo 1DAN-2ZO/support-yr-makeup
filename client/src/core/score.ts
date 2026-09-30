@@ -59,6 +59,11 @@ export interface ScoreParams {
   alignMax: number;
   /** 부위가 머리카락에 이만큼 넘게 가리면 확인만(가림) — 가정값 (docs/research/hair-skin-2026-09-29) */
   hairMax: number;
+  /**
+   * 조명 보정 방식 (S-4 #40). "L" = 이마 L* 비율만(지금). "sclera" = 거기에 눈 흰자 a*b* 가 돈 만큼 조명 색을 되돌림 —
+   * 합성 얼굴: 노란·파란 불빛의 맨얼굴이 "L" 이면 눈썹·라이너·입술 66~70점, "sclera" 면 화장 없음 (color-corr.test)
+   */
+  colorCorr: "L" | "sclera";
   /** 목표 지수 밴드. 룩 템플릿 값이 우선이고, 없으면 확인만 */
   band: Partial<Record<IntensityPartId, Band>>;
   tol: {
@@ -171,6 +176,19 @@ export const noCorr: LightCorr = (lab) => lab;
 export function lightCorr(baseForeheadL: number, curForeheadL: number): LightCorr {
   const r = baseForeheadL / Math.max(1, curForeheadL);
   return (lab) => ({ L: lab.L * r, a: lab.a, b: lab.b });
+}
+
+/**
+ * 밝기(이마 L* 비율) + 조명 색(흰자 a*b* 차이를 되돌림). 흰자는 원래 흰색이라 흰자가 돈 만큼 조명이 돈 것 (S-4 #40).
+ * 색이 도는 양은 밝을수록 크다(곱으로 도는 불빛) — 흰자에서 잰 차이를 **그 픽셀 밝기 ÷ 흰자 밝기** 만큼만 되돌린다.
+ * 똑같이 빼면 어두운 속눈썹 옆(라이너 띠)이 과하게 보정돼 "그렸다" 가 됐다 (color-corr K2)
+ */
+export function colorShiftCorr(light: LightCorr, baseSclera: { a: number; b: number }, curSclera: { a: number; b: number; L: number }): LightCorr {
+  const da = curSclera.a - baseSclera.a, db = curSclera.b - baseSclera.b, Ls = Math.max(1, curSclera.L);
+  return (lab) => {
+    const l = light(lab), k = Math.min(1, lab.L / Ls);
+    return { L: l.L, a: l.a - da * k, b: l.b - db * k };
+  };
 }
 
 /** 부위 채점 결과 (상태를 정하기 전). decide()·toOutcome() 의 입력 */
