@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <title>화장 얹어 보기 — 당화응</title>
+    <!-- [dev 전용] 룩 템플릿 색을 웹캠 얼굴에 얹어 본다. 사진은 저장하지 않는다. -->
+    <style>
+      :root { color-scheme: light dark; --line: #8884; }
+      body { margin: 0; padding: 16px; font: 14px/1.5 system-ui, "Malgun Gothic", sans-serif; background: Canvas; color: CanvasText; }
+      h1 { font-size: 18px; margin: 0 0 4px; }
+      .note { margin: 0 0 12px; opacity: .75; font-size: 13px; }
+      .wrap { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+      .stage { flex: 1 1 480px; max-width: 820px; position: relative; }
+      #guidecv, #lashcv { position: absolute; left: 0; top: 0; pointer-events: none; background: transparent; }
+      #lashcv { mix-blend-mode: multiply; }
+      canvas { width: 100%; height: auto; transform: scaleX(-1); border-radius: 8px; background: #000; }
+      .panel { flex: 1 1 300px; max-width: 420px; }
+      .buttons { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 12px; }
+      button, select { font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--line); background: ButtonFace; color: ButtonText; }
+      .part { display: grid; grid-template-columns: 18px 20px 44px 1fr 40px; gap: 8px; align-items: center; margin: 6px 0; }
+      .part i { width: 18px; height: 18px; border-radius: 4px; border: 1px solid var(--line); }
+      .part output { font-variant-numeric: tabular-nums; text-align: right; }
+      #status { font-size: 13px; margin: 8px 0; }
+      .warn { color: #d9480f; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <h1>화장 얹어 보기</h1>
+    <p class="note">템플릿 색을 얼굴 자리에 얹습니다. 라이너 꼬리(기술 B)와 표준 눈썹(기술 C-1)은 얼굴을 재서 정합니다. 윤곽선: 주황 = 표준, 하늘 = 내 눈썹. <b>맨얼굴 버튼을 누르고 있는 동안 비교</b>.</p>
+    <div class="wrap">
+      <div class="stage">
+        <canvas id="cv" width="1280" height="720"></canvas>
+        <canvas id="glcv" width="1280" height="720" hidden></canvas>
+        <canvas id="lashcv" width="1280" height="720"></canvas>
+        <canvas id="guidecv" width="1280" height="720"></canvas>
+        <video id="v" autoplay playsinline muted hidden></video>
+      </div>
+      <div class="panel">
+        <div class="buttons">
+          <button id="start" type="button">카메라 시작</button>
+          <button id="bare" type="button" disabled>맨얼굴 (누르고 있기)</button>
+          <button id="shot" type="button" disabled>사진 찍기</button>
+          <button id="send" type="button" disabled>VLM 개인화</button>
+        </div>
+        <div class="buttons">
+          <label>룩 <select id="look"></select></label>
+          <label>눈썹 모양
+            <select id="browShape">
+              <option value="standard">표준 (개인화, JKSC)</option>
+              <option value="own">내 눈썹 그대로</option>
+            </select>
+          </label>
+          <label><input id="lines" type="checkbox" /> 눈썹 윤곽선</label>
+          <label><input id="guideOn" type="checkbox" /> 가이드 선 (개인화 정답)</label>
+          <label>입히기
+            <select id="render">
+              <option value="mesh" selected>그물 필터 (WebGL, SNOW 방식)</option>
+              <option value="filter">필터 (캔버스)</option>
+              <option value="sticker">스티커 (전처럼)</option>
+            </select>
+          </label>
+          <label>마스카라
+            <select id="lashMode">
+              <option value="texture" selected>PNG 텍스처 (Ulike·SODA 방식)</option>
+              <option value="code">코드 생성 (이전)</option>
+            </select>
+          </label>
+        </div>
+        <div class="buttons">
+          <label>피부 보정 <input id="beauty" type="range" min="0" max="1" step="0.05" value="0.35" /></label>
+          <button id="reref" type="button">기준 얼굴 다시 잡기</button>
+        </div>
+        <div id="parts"></div>
+        <div class="buttons">
+          <button id="exportJson" type="button">설정 받기 (JSON)</button>
+          <span id="exportMsg" style="font-size:12px;opacity:.75"></span>
+        </div>
+        <details open>
+          <summary>VLM 개인화 제안 붙여 넣기</summary>
+          <textarea id="vlm" rows="5" style="width:100%;font:12px monospace" placeholder='{"liner":{"style":"winged"},"faceShape":{"label":"oval"},...}'></textarea>
+          <div class="buttons"><button id="vlmApply" type="button">적용</button><button id="vlmClear" type="button">규칙만</button></div>
+          <pre id="plan" style="white-space:pre-wrap;font-size:12px;margin:0"></pre>
+        </details>
+        <div id="status">카메라 시작을 눌러 주세요.</div>
+      </div>
+    </div>
+    <script type="module" src="/src/screens/makeup-probe.ts"></script>
+  </body>
+</html>
