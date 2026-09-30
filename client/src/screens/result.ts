@@ -16,7 +16,7 @@ import type { ScoreOutcome } from "../core/flow";
 import { guideOutline } from "../core/overlay";
 import { frameOf, type HairMask } from "../core/sampling";
 import { scoreBundle, type GuideSource } from "../core/score-part";
-import { PART_NAME } from "../core/score";
+import { PARAMS, PART_NAME } from "../core/score";
 import type { Baseline, CaptureBundle, PartId, PartStatus } from "../core/types";
 import type { Screen, ScreenContext } from "./shell";
 
@@ -42,6 +42,8 @@ export interface ResultDeps {
   hairMask?: (im: RgbaImage) => Promise<HairMask | null>;
   /** 마스크를 이만큼만 기다린다 (ms). 처음엔 모델을 내려받는데, 폰 네트워크가 멈추면 "채점 중…" 에 영영 서 있게 된다 */
   hairTimeoutMs?: number;
+  /** 개발용(?tune): 판정 근거 숫자를 한 줄로 — 밝기 차·머리카락 가림·정렬·쓴 장 수. 사용자 화면엔 안 나온다 */
+  tune?: boolean;
 }
 
 const HAIR_TIMEOUT_MS = 3000;
@@ -108,6 +110,7 @@ export function resultScreen<S>(deps: ResultDeps): Screen<S> {
           return;
         }
         fill(scoreEl, say, extra, part, outcome);
+        if (deps.tune) row.before(tuneLine(outcome));
         row.replaceWith(buttons(ctx, deps, part, outcome));
       })();
 
@@ -116,6 +119,15 @@ export function resultScreen<S>(deps: ResultDeps): Screen<S> {
       };
     },
   };
+}
+
+/** [개발용 ?tune] 판정 근거 한 줄 — "밝기가 달라요" 가 왜 떴는지 폰에서 바로 본다 */
+function tuneLine(o: ScoreOutcome): HTMLElement {
+  const m = (o.metrics ?? {}) as { lightShift?: number; hairFrac?: number; alignResidual?: number; frames?: { used: number; excluded: number } };
+  const f = (v: number | undefined, d = 1): string => (typeof v === "number" ? v.toFixed(d) : "-");
+  const p = line("result-tune muted", "");
+  p.textContent = `밝기 차 ${f(m.lightShift)} (한계 ${PARAMS.lightTol}) · 머리카락 ${f(m.hairFrac, 2)} (한계 ${PARAMS.hairMax}) · 정렬 ${f(m.alignResidual, 3)} (한계 ${PARAMS.alignMax}) · 사용 ${m.frames?.used ?? "-"}장 / 제외 ${m.frames?.excluded ?? "-"}장 · ${o.checkReason ?? "채점"}`;
+  return p;
 }
 
 /** 점수(또는 확인만) · 한 줄 평 · 강도 부위 한 줄. 숫자는 점수뿐 */

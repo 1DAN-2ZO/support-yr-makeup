@@ -332,6 +332,8 @@ async function boot(): Promise<void> {
       nextPart: (after) => nextPart(session, after),
       // 앞머리·옆머리 칸을 채점에서 뺀다 (#201). 모델은 화면 5 에 처음 들어갈 때 한 번 — 못 불러오면 전처럼 채점
       hairMask,
+      // 개발용: 주소에 ?tune 이면 판정 근거 숫자 (밝기 차 등)
+      tune: new URLSearchParams(location.search).has("tune"),
     },
     // 서버 처리 화면은 흐름에서 빠졌다 (등록만 남김 — 되살린 세션은 위에서 화장 선택으로 보낸다)
     { jobs: emptyJobSource() },
