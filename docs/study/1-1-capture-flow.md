@@ -23,7 +23,7 @@
 
 | 데이터 | 무엇 | 쓴 곳 |
 |---|---|---|
-| 팀 샘플 20장 (`danghaeung_poc_3x4_20/`, 5명 × 4장, 1080×1440) | 정면 눈뜸·정면 눈감음·좌45·우45 | 게이트 임계값이 실제 사진에서 맞는지 (6장). 이 크기면 홍채 35~55px 로 스펙(25px) 충족 |
+| 팀 샘플 20장 (`poc/samples/phone-portraits-20/` (#88 전 `danghaeung_poc_3x4_20/`), 5명 × 4장, 1080×1440) | 정면 눈뜸·정면 눈감음·좌45·우45 | 게이트 임계값이 실제 사진에서 맞는지 (6장). 이 크기면 홍채 35~55px 로 스펙(25px) 충족 |
 | POC `tests.mjs` S1~S5·P1~P3 | 게이트 순서·문구·세션 전이 기대값 | vitest 로 이전 (13개) |
 | 계약 타입 `client/src/core/types.ts` | `GateFail`·`GateResult`·`PartResult`·`Baseline` | flow.ts 의 입출력 모양 |
 
