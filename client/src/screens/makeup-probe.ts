@@ -360,6 +360,8 @@ const TEMPLATES: Tpl[] = [
   {
     name: "뉴트럴 (Clean Girl)",
     // 2026-09-30 갱신: "그림자 음영" 컨셉(어두운 샌드/올리브)에서 "유리알 글래스스킨"(맑은 피치·아이보리)으로 다시 받음
+    // TODO liner/lash가 섀도우색(#e6c5b8, 피부톤에 가까운 밝기)을 그대로 따라가서 캠에서 거의 안 보일 수 있음 —
+    // "청순" 템플릿처럼 라이너만 따로 어둡게 분리하는 게 나을 수 있다. 캠으로 확인 후 나중에 손보기.
     color: { brow: "#6e5a48", shadow: "#e6c5b8", liner: "#e6c5b8", lash: "#e6c5b8", cheek: "#f2b8a2", lip: "#e29a86", contour: "#b49a86", highlight: "#fff3e6", aegyo: "#f3e3d3" },
     lipEdge: "#f2b8a2",
     alpha: { brow: 0.28, shadow: 0.28, liner: 0.45, lash: 0.45, cheek: 0.25, lip: 0.4, contour: 0.3, highlight: 0.55, aegyo: 0.2 },
