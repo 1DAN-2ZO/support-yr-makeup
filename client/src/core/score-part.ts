@@ -12,9 +12,9 @@ import scoreRules from "../../../rules/score.json";
 import type { Lab, RgbaImage } from "./color";
 import { deltaE } from "./color";
 import { LM, at } from "./landmarks";
-import type { SampleFrame } from "./sampling";
+import type { HairMask, SampleFrame } from "./sampling";
 import { frameOf, sampleBrow, sampleForehead, sampleLiner, sampleLip, sampleRegion } from "./sampling";
-import type { Band, DecideContext, LightCorr, LinerStrip, PartScore, ScoreParams, Side, SimilarityFit } from "./score";
+import type { Band, DecideContext, LightCorr, LinerStrip, PartScore, RegionGrid, ScoreParams, Side, SimilarityFit } from "./score";
 import { PARAMS, alignToBaseline, browResult, compareLinerEye, compareLip, compareRegion, intensityIndex, intensityResult, lightCorr, linerResult, makeupBiasPx, noCorr, oneLiner, toOutcome } from "./score";
 import type { ScoreOutcome } from "./flow";
 import type { CheckReason, PartId, Pt } from "./types";
@@ -58,9 +58,9 @@ export type GuideSource = (partId: PartId, f: SampleFrame) => PartGeometry;
 const MAKEUP_IDS: readonly number[] = [...LM.lipsOuter, ...LM.eyeA.upper, ...LM.eyeB.upper];
 
 /** 확인받기 프레임을 기준 좌표계에 맞춘다: 재검출 랜드마크 대신 기준 랜드마크를 안정 점으로 옮겨 쓴다 */
-export function alignedFrame(base: SampleFrame, im: RgbaImage, detectedLm: readonly Pt[]): { frame: SampleFrame; fit: SimilarityFit; biasPx: number } {
+export function alignedFrame(base: SampleFrame, im: RgbaImage, detectedLm: readonly Pt[], hair?: HairMask): { frame: SampleFrame; fit: SimilarityFit; biasPx: number } {
   const { lm, fit } = alignToBaseline(base.lm, detectedLm);
-  return { frame: frameOf(im, lm), fit, biasPx: makeupBiasPx(lm, detectedLm, MAKEUP_IDS) };
+  return { frame: frameOf(im, lm, hair), fit, biasPx: makeupBiasPx(lm, detectedLm, MAKEUP_IDS) };
 }
 
 export interface ScorePartOptions {
@@ -95,7 +95,10 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
   } else if (partId === "brow") {
     const gb = sampleBrow(base);
     const cost = (f: SampleFrame) => meanLighter(gb.lab, sampleBrow(f).lab, corr);
-    result = browResult(compareRegion(gb, sampleBrow(register(cur, cost)), corr, p.dEThresh.brow));
+    const gc = sampleBrow(register(cur, cost));
+    result = browResult(compareRegion(gb, gc, corr, p.dEThresh.brow));
+    const hf = browHidden(gb, gc);
+    if (hf !== null) ctx.hairFrac = hf;
   } else if (partId === "lip") {
     const lc = sampleLip(cur, lipOf(guide, cur).offset);
     result = compareLip(sampleLip(base, lipOf(guide, base).offset), lc, corr, p);
@@ -110,6 +113,7 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
     const side = (s: Side) => {
       const b = sampleRegion(base, regionOf(guide, partId, base, s), s, halves), c = sampleRegion(cur, regionOf(guide, partId, cur, s), s, halves);
       if (!b || !c) return { delta: 0, index: 0, dir: 0, color: null as Lab | null };   // 영역이 사진 밖 → 화장 없음으로 (확인만)
+      if (b.hidden !== undefined || c.hidden !== undefined) ctx.hairFrac = Math.max(ctx.hairFrac ?? 0, b.hidden ?? 0, c.hidden ?? 0);
       const dir = b.outer && b.inner && c.outer && c.inner ? deltaE(b.outer, corr(c.outer)) - deltaE(b.inner, corr(c.inner)) : 0;
       return { ...intensityIndex(b.part, c.part, b.ring, c.ring, corr, p), dir, color: c.part as Lab | null };
     };
@@ -129,6 +133,18 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
   }
   if (opts.alignResidual !== undefined) result.metrics.alignResidual = opts.alignResidual;
   return { result, ctx };
+}
+
+/** 눈썹 안쪽 칸 중 머리카락에 가린 비율 — 두 사진 중 한쪽이라도 가렸으면 가림, 좌우 중 큰 쪽. 마스크가 없으면 null */
+function browHidden(base: RegionGrid, cur: RegionGrid): number | null {
+  if (!base.meta.hidden && !cur.meta.hidden) return null;
+  const n = { R: 0, L: 0 }, h = { R: 0, L: 0 };
+  cur.meta.side.forEach((s, i) => {
+    if (!cur.meta.inside[i]) return;
+    n[s]++;
+    if (base.meta.hidden?.[i] || cur.meta.hidden?.[i]) h[s]++;
+  });
+  return Math.max(n.R ? h.R / n.R : 0, n.L ? h.L / n.L : 0);
 }
 
 // ---------- 부위별 미세 정렬 (#169 — 맨얼굴 오채점) ----------

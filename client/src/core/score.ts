@@ -57,6 +57,8 @@ export interface ScoreParams {
   lightTol: number;
   /** 기준 얼굴과 정렬 잔차(안정 점 평균, 눈 폭 비율)가 이만큼 넘으면 확인만(align) — 가정값, 실사진 잔차 분포로 정한다 (#43) */
   alignMax: number;
+  /** 부위가 머리카락에 이만큼 넘게 가리면 확인만(가림) — 가정값 (docs/research/hair-skin-2026-09-29) */
+  hairMax: number;
   /** 목표 지수 밴드. 룩 템플릿 값이 우선이고, 없으면 확인만 */
   band: Partial<Record<IntensityPartId, Band>>;
   tol: {
@@ -131,7 +133,7 @@ export const CHECK_REASON_TEXT: Record<CheckReason, string> = {
   faint: "색이 옅어서 재지 못했어요. 직접 보고 넘어가세요",
   lighting: "조명이 달라져서 재지 못했어요. 직접 보고 넘어가세요",
   align: "얼굴을 제대로 맞추지 못해 재지 못했어요. 직접 보고 넘어가세요",
-  hand: "손에 가려서 재지 못했어요. 직접 보고 넘어가세요",
+  hand: "손이나 머리카락에 가려서 재지 못했어요. 직접 보고 넘어가세요",
   no_baseline: "맨얼굴 기준이 없어서 재지 못했어요. 직접 보고 넘어가세요",
   no_band: "이 화장은 진하기 기준이 없어요. 직접 보고 넘어가세요",
   contour: "확인하고 넘어가세요.",
@@ -306,7 +308,8 @@ export function linerResult(perEye: Record<Side, LinerEyeMetrics>, baseAsym = 0,
 /** 영역 격자 (눈썹): 점 K개. inside = 테두리 안, tail = 꼬리 구간 */
 export interface RegionGrid {
   lab: Lab[];
-  meta: { inside: readonly boolean[]; tail: readonly boolean[]; side: readonly Side[]; lift?: readonly number[] };
+  /** hidden: 머리카락에 가린 칸 (마스크가 있을 때만) — 두 사진 중 한쪽이라도 가렸으면 비교에서 뺀다 */
+  meta: { inside: readonly boolean[]; tail: readonly boolean[]; side: readonly Side[]; lift?: readonly number[]; hidden?: readonly boolean[] };
 }
 
 export interface RegionSideMetrics {
@@ -323,6 +326,7 @@ export function compareRegion(base: RegionGrid, cur: RegionGrid, corr: LightCorr
   const zero = () => ({ inN: 0, inHit: 0, outN: 0, outHit: 0, tailN: 0, tailHit: 0, liftSum: 0, liftN: 0 });
   const acc = { R: zero(), L: zero() };
   for (let i = 0; i < K; i++) {
+    if (base.meta.hidden?.[i] || cur.meta.hidden?.[i]) continue;
     const a = acc[cur.meta.side[i]!], b = base.lab[i]!;
     const th = b.L < 40 ? thresh * 0.5 : thresh;   // 맨얼굴에서 이미 어두운 점(눈썹 털)은 펜슬 변화가 작으므로 임계를 절반으로
     const hit = deltaE(b, corr(cur.lab[i]!)) >= th;
@@ -491,6 +495,8 @@ export interface DecideContext {
   lightShift?: number;
   /** 기준 얼굴에 맞춘 정렬 잔차 (안정 점 평균 거리 ÷ 눈 폭). 고개·표정이 달라 틀이 안 맞으면 커진다 */
   alignResidual?: number;
+  /** 부위가 머리카락에 가린 비율 (0~1, 두 사진·좌우 중 큰 쪽). 머리카락 마스크가 있을 때만 */
+  hairFrac?: number;
 }
 
 export interface Decision {
@@ -505,6 +511,8 @@ export function decide(partId: PartId, res: Pick<PartScore, "present" | "score">
   if (ctx.noFace) return checkOnly("align");
   if (ctx.alignResidual !== undefined && ctx.alignResidual > p.alignMax) return checkOnly("align");
   if (partId === "contour") return checkOnly("contour");
+  // 가림 — 계약 이름은 아직 "hand" (#155 에서 "occluded")
+  if (typeof ctx.hairFrac === "number" && ctx.hairFrac > p.hairMax) return checkOnly("hand");
   if (typeof ctx.lightShift === "number" && Math.abs(ctx.lightShift) > p.lightTol) return checkOnly("lighting");
   if (!res.present) return checkOnly("faint");
   if (res.score == null) return checkOnly("no_band");

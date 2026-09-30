@@ -26,14 +26,35 @@ export interface SampleFrame {
   im: RgbaImage;
   lm: readonly Pt[];
   unit: Baseline["unit"];
+  /** 머리카락 확률 마스크 (있으면 그 칸·픽셀을 비교에서 뺀다). docs/research/hair-skin-2026-09-29 보고서 3번 */
+  hair?: HairMask;
+}
+
+/**
+ * 머리카락 확률 0~1. 사진과 같은 구도, 크기는 달라도 된다(분할 모델은 256·512 로 준다 — 비율로 맞춘다).
+ * 안 뒤집힌 카메라 좌표 (사진과 같게)
+ */
+export interface HairMask {
+  w: number;
+  h: number;
+  data: ArrayLike<number>;
 }
 
 /**
  * 내 화장 프레임은 재검출한 랜드마크가 아니라 score.ts alignToBaseline() 으로 옮긴 기준 랜드마크를 넘긴다.
  * 화장이 랜드마크를 미는 만큼 샘플 위치가 같이 밀리는 것을 막는다
  */
-export function frameOf(im: RgbaImage, lm: readonly Pt[]): SampleFrame {
-  return { im, lm, unit: unitScale(lm) };
+export function frameOf(im: RgbaImage, lm: readonly Pt[], hair?: HairMask): SampleFrame {
+  return { im, lm, unit: unitScale(lm), ...(hair ? { hair } : {}) };
+}
+
+/** 이 픽셀이 머리카락인가 (마스크 확률 ≥ hairCut). 마스크가 없으면 false */
+export function isHair(f: SampleFrame, x: number, y: number): boolean {
+  const m = f.hair;
+  if (!m) return false;
+  const mx = Math.max(0, Math.min(m.w - 1, Math.floor((x * m.w) / f.im.w)));
+  const my = Math.max(0, Math.min(m.h - 1, Math.floor((y * m.h) / f.im.h)));
+  return (m.data[my * m.w + mx] ?? 0) >= SAMPLE.hairCut;
 }
 
 const sub = (a: Pt, b: Pt): Pt => ({ x: a.x - b.x, y: a.y - b.y });
@@ -91,7 +112,7 @@ export function eyeClosed(lm: readonly Pt[], side: Side): boolean {
  *   1×1 — σ6 부터 맨얼굴 15/15 오채점 · 2×2 — σ10 에서 15/15 · **3×3 — 전부 0, 그린 라이너 ≥91 · 눈썹 ≥94 · 입술 ≥93**
  *   4×4~6×6 — 오채점 0 이지만 가는 라이너가 흐려져 88 → 82
  */
-export const SAMPLE = { boxRatio: scoreRules.sample.boxRatio };   // 값은 rules/score.json (#44)
+export const SAMPLE = { boxRatio: scoreRules.sample.boxRatio, hairCut: scoreRules.sample.hairCut };   // 값은 rules/score.json (#44)
 
 const boxOf = (eyePx: number): number => Math.max(1, Math.round(eyePx * SAMPLE.boxRatio));
 
@@ -136,7 +157,7 @@ const BROW_U = 24;
 
 /** 눈썹 격자 (양쪽): 가로 24 × 세로 9. u = 0 이 바깥 꼬리, 1 이 안쪽. 두 사진에서 점 개수·순서가 같다 */
 export function sampleBrow(f: SampleFrame): RegionGrid {
-  const lab: Lab[] = [], inside: boolean[] = [], tail: boolean[] = [], side: Side[] = [], lift: number[] = [];
+  const lab: Lab[] = [], inside: boolean[] = [], tail: boolean[] = [], side: Side[] = [], lift: number[] = [], hidden: boolean[] = [];
   const along = (pts: readonly Pt[], u: number): Pt => {
     const t = u * (pts.length - 1), i = Math.min(pts.length - 2, Math.floor(t));
     return add(pts[i]!, mul(sub(pts[i + 1]!, pts[i]!), t - i));
@@ -157,6 +178,7 @@ export function sampleBrow(f: SampleFrame): RegionGrid {
       for (const v of BROW_V) {
         const q = add(a, mul(sub(b, a), v));
         lab.push(labBox(f.im, q.x, q.y, boxOf(f.unit.eye)));
+        hidden.push(isHair(f, q.x, q.y));
         inside.push(v >= 0 && v <= 1);
         lift.push((v * thick) / (f.unit.eye || 1));   // 그 눈썹 아래 선에서 위로 (눈 폭 비율) — 좌우 높이 차(#35)
         tail.push(u < 0.4);
@@ -164,7 +186,8 @@ export function sampleBrow(f: SampleFrame): RegionGrid {
       }
     }
   }
-  return { lab, meta: { inside, tail, side, lift } };
+  // 가린 칸 표시는 마스크가 있을 때만 — 없으면 전과 같은 모양
+  return { lab, meta: { inside, tail, side, lift, ...(f.hair ? { hidden } : {}) } };
 }
 
 /** 입술 경계 스트립: 바깥 윤곽을 따라 60행, 안쪽(−) … 바깥쪽(+) 25칸. offset = 가이드 경계 오프셋 (입술 폭 비율, ② 값) */
@@ -187,22 +210,28 @@ export interface RegionSample {
   ring: Lab;
   outer?: Lab;
   inner?: Lab;
+  /** 영역 픽셀 중 머리카락 비율 (마스크가 있을 때만). part·ring·outer·inner 는 머리카락 픽셀을 뺀 평균 */
+  hidden?: number;
 }
 
 /** 영역이 사진 밖이라 픽셀이 없으면 null */
 export function sampleRegion(f: SampleFrame, poly: readonly Pt[], side: Side, halves = false): RegionSample | null {
-  const part = meanLabPoly(f.im, poly);
+  const skin = f.hair ? (_lab: Lab, x: number, y: number) => !isHair(f, x, y) : undefined;
+  const all = f.hair ? meanLabPoly(f.im, poly) : null;
+  const part = meanLabPoly(f.im, poly, 2, skin);
   const hole = scalePoly(poly, 1.3);
-  const ring = meanLabPoly(f.im, scalePoly(poly, 1.8), 2, (_lab, x, y) => !pointInPoly(x, y, hole));
+  const ring = meanLabPoly(f.im, scalePoly(poly, 1.8), 2, (lab, x, y) => !pointInPoly(x, y, hole) && (!skin || skin(lab, x, y)));
+  // 전부 머리카락 — 잴 게 없다. 가린 비율 1 로 넘겨 확인만(가림)이 되게
+  if (all && (!part || !ring)) return { part: all.lab, ring: all.lab, hidden: 1 };
   if (!part || !ring) return null;
-  const out: RegionSample = { part: part.lab, ring: ring.lab };
+  const out: RegionSample = { part: part.lab, ring: ring.lab, ...(all ? { hidden: 1 - part.n / all.n } : {}) };
   if (halves) {
     const xs = poly.map((p) => p.x), mid = (Math.min(...xs) + Math.max(...xs)) / 2;
     // 눈꼬리 쪽 = 얼굴 바깥쪽. R(이미지 왼쪽 눈)은 x 가 작은 쪽, L 은 큰 쪽
     const outerPts = poly.filter((p) => (side === "R" ? p.x <= mid : p.x >= mid));
     const innerPts = poly.filter((p) => (side === "R" ? p.x > mid : p.x < mid));
-    out.outer = (outerPts.length > 2 ? meanLabPoly(f.im, outerPts) : null)?.lab ?? part.lab;
-    out.inner = (innerPts.length > 2 ? meanLabPoly(f.im, innerPts) : null)?.lab ?? part.lab;
+    out.outer = (outerPts.length > 2 ? meanLabPoly(f.im, outerPts, 2, skin) : null)?.lab ?? part.lab;
+    out.inner = (innerPts.length > 2 ? meanLabPoly(f.im, innerPts, 2, skin) : null)?.lab ?? part.lab;
   }
   return out;
 }
