@@ -109,9 +109,15 @@ class Canvas:
             s = i / n
             hw = max(0.25 * SS, w0 * PPU * SS * (1 - s) ** 0.9)  # 뿌리 굵고 끝 뾰족
             # 픽셀 좌표는 y 가 뒤집혀 있어 법선의 y 부호를 바꾼다
-            left.append((x + nx * hw, y - ny * hw))
-            right.append((x - nx * hw, y + ny * hw))
+            left.append(self.keep_side(x + nx * hw, y - ny * hw, sign))
+            right.append(self.keep_side(x - nx * hw, y + ny * hw, sign))
         self.add(left + right[::-1], alpha)
+
+    def keep_side(self, x: float, y: float, sign: int) -> tuple[float, float]:
+        """가닥이 뿌리 선(v=0) 반대편으로 삐져나오지 않게 한다.
+        기울어진 굵은 가닥의 뭉툭한 밑면이 눈 쪽으로 튀어나왔다."""
+        root = self.v_max * PPU * SS
+        return (x, min(y, root + 0.5 * SS)) if sign > 0 else (x, max(y, root - 0.5 * SS))
 
     def root_band(self, u0: float, u1: float, thick: float, alpha: float, sign: int = 1) -> None:
         """뿌리 선을 따라 얇게 진한 띠 — 점막을 채운 듯한 느낌. 양끝은 가늘어진다."""
@@ -132,134 +138,157 @@ class Canvas:
         img.save(OUT / name, optimize=True)
 
 
-def clumps(rnd: random.Random, u0: float, u1: float, n: int, size: tuple[int, int]) -> list[list[float]]:
-    """u0~u1 에 n 가닥을 놓고 size 개씩 뭉치로 묶는다 (가닥 u 값 목록의 목록)."""
-    us = sorted(lerp(u0, u1, (i + 0.5) / n) + rnd.uniform(-0.35, 0.35) * (u1 - u0) / n for i in range(n))
-    out, i = [], 0
-    while i < len(us):
-        k = rnd.randint(*size)
-        out.append(us[i : i + k])
-        i += k
-    return out
+# ── 디자인 v2 (2026-09-30) ──
+# 참고: 사용자 제공 "Anime Extensions — Round Design + Under Lash" 사진 2장, IMG_2509
+# 뭉친 스파이크(뿌리는 벌어지고 끝은 한 점으로 모이는 가닥 묶음) + 사이사이 가는 잔털.
+# 윗속눈썹: 가운데(동공 위)가 가장 길고 곧게 서며, 눈꼬리 쪽 1/3 은 긴 스파이크가 촘촘하게 바깥으로 쓸린다.
+#           눈 앞머리는 안쪽으로 휘는 짧은 스파이크 하나.
+# 아랫속눈썹: 고르게 떨어진 작은 스파이크 + 가는 잔털.
+# (u, 길이, 기울기°, 끝 휨°, 가닥 수, 뿌리 폭) — 길이·폭은 눈 폭 단위, 기울기는 바깥(+u) 쪽이 +
+# v3 (2026-09-30 피드백: "너무 길다, 더 덩어리지게") — 길이 약 70%, 뭉치당 가닥 +2, 뿌리 폭은 좁게
+UPPER_SPIKES = [
+    (0.09, 0.11, -38, -28, 5, 0.03),
+    (0.21, 0.18, -14, -10, 6, 0.035),
+    (0.34, 0.16, -5, -4, 5, 0.03),
+    (0.48, 0.28, 1, 0, 8, 0.04),
+    (0.60, 0.19, 16, 6, 6, 0.035),
+    (0.71, 0.24, 30, 10, 7, 0.04),
+    (0.80, 0.25, 44, 12, 7, 0.04),
+    (0.88, 0.23, 57, 12, 7, 0.035),
+    (0.96, 0.19, 70, 10, 6, 0.03),
+]
+LOWER_SPIKES = [
+    (u, 0.07 + 0.04 * u, -12 + 45 * u, 4, 4, 0.018) for u in (0.2, 0.32, 0.44, 0.56, 0.68, 0.79, 0.9)
+]
 
 
-def upper(
-    name: str,
-    v_min: float,
-    v_max: float,
+def spike(
+    cv: Canvas,
+    rnd: random.Random,
+    u: float,
+    length: float,
+    theta: float,
+    curl: float,
+    k: int,
+    spread: float,
     *,
     sign: int,
+    w0: float,
+    alpha: float,
+) -> None:
+    """뿌리를 spread 만큼 벌려 k 가닥을 놓고, 끝을 한 점으로 모은다 — 애니 속눈썹의 뾰족한 뭉치."""
+    r = math.radians(theta + curl * 0.6)
+    tip = (u + math.sin(r) * length, sign * math.cos(r) * length)
+    for i in range(k):
+        f = i / (k - 1) - 0.5 if k > 1 else 0.0
+        cv.strand(
+            u + f * spread * 1.1,
+            theta + rnd.uniform(-3, 3),
+            length * rnd.uniform(0.96, 1.02),
+            curl,
+            w0 * rnd.uniform(0.85, 1.15) * (1.2 - abs(f) * 0.6),  # 가운데 가닥이 굵다
+            alpha * rnd.uniform(0.92, 1.0),
+            (tip[0] + rnd.uniform(-0.004, 0.004), tip[1]),
+            0.9,
+            sign,
+        )
+    # 가운데 굵은 심 — 참고 사진의 뭉치는 끝까지 한 덩어리로 진하고, 양옆에만 낱가닥이 벌어진다
+    cv.strand(u, theta, length * 0.98, curl, w0 * (2.8 + 0.35 * k), alpha, tip, 1.0, sign)
+
+
+def wisps(
+    cv: Canvas,
+    rnd: random.Random,
     n: int,
+    *,
+    sign: int,
     len_fn,
     theta_fn,
     curl: float,
-    pull_k: float,
-    band: bool,
-    seed: int,
-    w0: float = 0.0042,
+    w0: float,
+    alpha: tuple[float, float],
+    u_range: tuple[float, float] = (0.03, 1.0),
+) -> None:
+    """스파이크 사이 잔털. 낱가닥이 아니라 3가닥씩 끝을 모은 작은 뭉치로 — 마스카라 바른 덩어리 느낌.
+    눈꼬리 쪽이 더 촘촘하다 (u 를 치우친 분포로 뽑는다). n = 가닥 수."""
+    for _ in range(max(1, n // 3)):
+        u = lerp(u_range[0], u_range[1], rnd.random() ** 0.8)
+        th, length, cu = (
+            theta_fn(u) + rnd.uniform(-6, 6),
+            len_fn(u) * rnd.uniform(0.75, 1.1),
+            curl * rnd.uniform(0.6, 1.2),
+        )
+        r = math.radians(th + cu * 0.6)
+        tip = (u + math.sin(r) * length, sign * math.cos(r) * length)
+        a = rnd.uniform(*alpha)
+        for f in (-1, 0, 1):
+            cv.strand(u + f * 0.004, th, length, cu, w0 * (1.6 if f == 0 else 1.0), a, tip, 0.8, sign)
+
+
+def upper_tex(
+    name: str, v_min: float, v_max: float, *, sign: int, scale: float, fan: float, seed: int, wisp_n: int
 ) -> dict:
+    """윗속눈썹 한 장. scale = 길이 배율(정면에서 짧아 보이는 정도),
+    fan = 바깥 쪽으로 더 눕히는 각(°, 눈꼬리일수록 크게)."""
     rnd = random.Random(seed)
     cv = Canvas(v_min, v_max)
-    if band:
-        cv.root_band(0.02, 1.0, 0.012, 0.85, sign=-sign)
-    for group in clumps(rnd, 0.03, 1.0, n, (2, 3) if n < 30 else (3, 6)):
-        um = sum(group) / len(group)
-        L, th = len_fn(um), theta_fn(um)
-        r = math.radians(th + curl * 0.7)
-        tip = (um + math.sin(r) * L * 0.95, sign * math.cos(r) * L * 0.95)
-        for u in group:
-            cv.strand(
-                u,
-                theta_fn(u) + rnd.uniform(-6, 6),
-                len_fn(u) * rnd.uniform(0.8, 1.08),
-                curl,
-                w0 * rnd.uniform(0.6, 1.3),
-                rnd.uniform(0.72, 0.96),
-                tip,
-                pull_k,
-                sign,
-            )
-    # 뭉치 사이 짧은 잔털 — 빈틈을 메운다
-    for _ in range(n // 2):
-        u = rnd.uniform(0.05, 0.98)
-        cv.strand(
-            u,
-            theta_fn(u) + rnd.uniform(-10, 10),
-            len_fn(u) * rnd.uniform(0.35, 0.6),
-            curl * 0.5,
-            w0 * 0.6,
-            rnd.uniform(0.5, 0.75),
-            sign=sign,
+    cv.root_band(0.02, 1.0, 0.012, 0.85, sign=-sign)
+    fan_at = lambda u: fan * max(0.0, u - 0.3) / 0.7  # noqa: E731
+    wisps(
+        cv,
+        rnd,
+        wisp_n,
+        sign=sign,
+        curl=10,
+        w0=0.0026,
+        alpha=(0.7, 0.92),
+        len_fn=lambda u: scale * (0.07 + 0.1 * smooth(0.0, 0.9, u)),
+        theta_fn=lambda u: lerp(-10, 62, u**1.25) + fan_at(u),
+    )
+    for u, length, theta, curl, k, spread in UPPER_SPIKES:
+        spike(
+            cv, rnd, u, length * scale, theta + fan_at(u), curl, k, spread, sign=sign, w0=0.0036, alpha=0.95
         )
+    cv.save(name)
+    return {"file": name, "vMin": v_min, "vMax": v_max}
+
+
+def lower_tex(name: str, v_min: float, v_max: float, *, seed: int) -> dict:
+    rnd = random.Random(seed)
+    cv = Canvas(v_min, v_max)
+    wisps(
+        cv,
+        rnd,
+        26,
+        sign=1,
+        curl=3,
+        w0=0.002,
+        alpha=(0.4, 0.65),
+        u_range=(0.12, 0.97),
+        len_fn=lambda u: 0.04 + 0.03 * u,
+        theta_fn=lambda u: lerp(-15, 40, u),
+    )
+    for u, length, theta, curl, k, spread in LOWER_SPIKES:
+        spike(cv, rnd, u, length, theta, curl, k, spread, sign=1, w0=0.0019, alpha=0.9)
     cv.save(name)
     return {"file": name, "vMin": v_min, "vMax": v_max}
 
 
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
-    peak = lambda u, lo, hi: lo + (hi - lo) * smooth(0.0, 0.62, u) - (hi - lo) * 0.18 * smooth(0.88, 1.0, u)  # noqa: E731
     tex = {
-        # 눈 뜸: 위로 선다. 정면에서 보면 앞으로 뻗은 만큼 짧아 보인다.
-        # 앞머리는 안쪽으로, 눈꼬리는 바깥으로 펼쳐진다
-        "up": upper(
-            "upper-up.png",
-            -0.05,
-            0.42,
-            sign=1,
-            n=62,
-            seed=11,
-            curl=14,
-            pull_k=0.62,
-            band=True,
-            len_fn=lambda u: peak(u, 0.10, 0.34),
-            theta_fn=lambda u: lerp(-14, 58, u**1.35),
-        ),
-        # 반쯤 감음: 속눈썹이 카메라 쪽을 향해 짧게 보이고, 옆으로 퍼진다
-        "mid": upper(
-            "upper-mid.png",
-            -0.22,
-            0.2,
-            sign=1,
-            n=54,
-            seed=12,
-            curl=22,
-            pull_k=0.55,
-            band=True,
-            len_fn=lambda u: peak(u, 0.06, 0.17),
-            theta_fn=lambda u: lerp(-30, 102, u**1.2),
-        ),
-        # 눈 감음: 아래로 늘어진다 (IMG_2509 관찰 — 뭉친 가닥, 가운데~바깥이 길고 눈꼬리는 옆으로 쓸림)
-        "down": upper(
-            "upper-down.png",
-            -0.5,
-            0.05,
-            sign=-1,
-            n=66,
-            seed=13,
-            curl=10,
-            pull_k=0.66,
-            band=True,
-            len_fn=lambda u: peak(u, 0.12, 0.42),
-            theta_fn=lambda u: lerp(-12, 68, u**1.5),
-        ),
-        # 아랫속눈썹: 짧고 성기다. 눈 감음 때는 윗속눈썹에 가려 그리지 않는다
-        "lower": upper(
-            "lower.png",
-            -0.04,
-            0.18,
-            sign=1,
-            n=24,
-            seed=14,
-            curl=3,
-            pull_k=0.45,
-            band=False,
-            w0=0.0032,
-            len_fn=lambda u: 0.05 + 0.07 * smooth(0.1, 0.85, u),
-            theta_fn=lambda u: lerp(-12, 40, u),
-        ),
+        # 눈 뜸: 위로 선다 (참고 사진 그대로)
+        "up": upper_tex("upper-up.png", -0.05, 0.36, sign=1, scale=1.0, fan=0, seed=21, wisp_n=120),
+        # 반쯤 감음: 카메라 쪽을 향해 짧아 보이고, 눈꼬리 쪽이 옆으로 더 눕는다
+        "mid": upper_tex("upper-mid.png", -0.16, 0.2, sign=1, scale=0.5, fan=35, seed=22, wisp_n=100),
+        # 눈 감음: 같은 스파이크가 아래로 늘어진다 (IMG_2509 — 촘촘하게, 정면에서 안 줄어든 길이)
+        "down": upper_tex("upper-down.png", -0.4, 0.05, sign=-1, scale=1.05, fan=0, seed=23, wisp_n=140),
+        # 아랫속눈썹: 고르게 떨어진 작은 스파이크. 눈 감음 때는 그리지 않는다
+        "lower": lower_tex("lower.png", -0.04, 0.2, seed=24),
     }
     meta = {
-        "version": 1,
+        "version": 2,
+        "design": "anime-spike",
         "note": (
             "scripts/gen_lash_textures.py 가 만든다. 규격은 그 파일 머리말 참고. "
             "그림을 바꿀 땐 같은 u/v 범위를 지킨다."
