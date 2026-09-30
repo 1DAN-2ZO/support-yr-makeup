@@ -83,10 +83,63 @@ const at = (lm: readonly Pt[], i: number): Pt => {
   return p;
 };
 
-/** 이마 참조: 이마 다각형 안 평균 Lab. L* 는 밝기 조건, a*b* 는 색(조명 색온도) 조건에 쓴다 */
-export function foreheadLab(im: RgbaImage, lm: readonly Pt[]): Lab | null {
-  const r = meanLabPoly(im, FOREHEAD_POLY.map((i) => at(lm, i)), 2);
-  return r ? r.lab : null;
+/**
+ * 앞머리 대응 (2026-09-30 #175 리뷰, docs/research/hair-skin-2026-09-29 보고서 2번).
+ * FOREHEAD_POLY 는 머리선 바로 아래라 앞머리가 내려오면 평균이 머리카락 값으로 끌린다 → 밝기 하한(40)·어두울 때 가림 임계(L* 50)가
+ * 앞머리만으로 켜진다. ③ 채점(sampleForehead)은 중앙값 + 머리카락 마스크로 풀었지만 촬영·실시간은 모델을 더 안 받는다(첫 로딩).
+ * 그래서 새 모델 없이: 양 볼(LM 50·280) 중앙값 L* 를 피부 기준으로, 그보다 darkDL 넘게 어두운 이마 픽셀은 머리카락으로 빼고
+ * 남은 픽셀의 채널별 중앙값. 볼도 같은 조명을 받으므로 조명이 어두워져도 기준이 같이 내려간다.
+ * 남은 피부가 minSkin 보다 적으면(이마 대부분이 머리카락) 조명을 모른다 → null. 촬영 게이트는 "앞머리를 넘겨 주세요".
+ * **가정값** darkDL 20 · minSkin 0.25 — 촬영 세션(#58) 앞머리 장으로 확정.
+ */
+export const FOREHEAD_SKIN = { cheekBox: 0.03, darkDL: 20, minSkin: 0.25 } as const;
+
+const CHEEK_A = 50, CHEEK_B = 280;
+
+function median(v: number[]): number {
+  v.sort((p, q) => p - q);
+  const m = v.length >> 1;
+  return v.length % 2 ? v[m]! : (v[m - 1]! + v[m]!) / 2;
+}
+
+/** 볼 두 곳(작은 사각형) 의 L* 중앙값 — 이마 피부 판정 기준. 점이 모자라면 null */
+function cheekL(im: RgbaImage, lm: readonly Pt[], box: number): number | null {
+  if (lm.length <= Math.max(CHEEK_A, CHEEK_B, FACE_R)) return null;
+  const faceW = Math.hypot(at(lm, FACE_R).x - at(lm, FACE_L).x, at(lm, FACE_R).y - at(lm, FACE_L).y);
+  const r = Math.max(2, faceW * box);
+  const L: number[] = [];
+  for (const c of [at(lm, CHEEK_A), at(lm, CHEEK_B)]) {
+    for (let y = Math.max(0, Math.round(c.y - r)); y <= Math.min(im.h - 1, Math.round(c.y + r)); y += 2) {
+      for (let x = Math.max(0, Math.round(c.x - r)); x <= Math.min(im.w - 1, Math.round(c.x + r)); x += 2) L.push(labAt(im, x, y).L);
+    }
+  }
+  return L.length ? median(L) : null;
+}
+
+/** 이마 피부만의 채널별 중앙값과, 이마 중 피부로 남은 비율 */
+export function foreheadSkin(im: RgbaImage, lm: readonly Pt[], opt = FOREHEAD_SKIN): { lab: Lab; skinFrac: number } | null {
+  const poly = FOREHEAD_POLY.map((i) => at(lm, i));
+  const ref = cheekL(im, lm, opt.cheekBox);
+  const xs = poly.map((p) => p.x), ys = poly.map((p) => p.y);
+  const L: number[] = [], A: number[] = [], B: number[] = [];
+  let total = 0;
+  for (let y = Math.max(0, Math.floor(Math.min(...ys))); y <= Math.min(im.h - 1, Math.max(...ys)); y += 2) {
+    for (let x = Math.max(0, Math.floor(Math.min(...xs))); x <= Math.min(im.w - 1, Math.max(...xs)); x += 2) {
+      if (!pointInPoly(x, y, poly)) continue;
+      total++;
+      const lab = labAt(im, x, y);
+      if (ref !== null && lab.L < ref - opt.darkDL) continue;   // 볼보다 한참 어두움 = 머리카락
+      L.push(lab.L); A.push(lab.a); B.push(lab.b);
+    }
+  }
+  if (!L.length) return null;
+  return { lab: { L: median(L), a: median(A), b: median(B) }, skinFrac: L.length / total };
+}
+
+/** 이마 참조: 이마 피부 중앙값 Lab (앞머리 뺌). L* 는 밝기 조건, a*b* 는 색(조명 색온도) 조건에 쓴다. 이마 대부분이 가려지면 null */
+export function foreheadLab(im: RgbaImage, lm: readonly Pt[], opt = FOREHEAD_SKIN): Lab | null {
+  const r = foreheadSkin(im, lm, opt);
+  return r && r.skinFrac >= opt.minSkin ? r.lab : null;
 }
 
 /**

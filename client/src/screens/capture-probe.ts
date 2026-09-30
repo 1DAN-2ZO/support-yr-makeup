@@ -244,6 +244,8 @@ function frame(): void {
       if (r.occluded) state.fjOccluded += 1;
       state.fjRecent = [...state.fjRecent.filter((x) => t0 - x.t <= 2000), { t: t0, v: r.jump }];
       m.foreheadOccluded = r.occluded;
+    } else {
+      m.foreheadHidden = true;   // 앱과 같은 규칙 — 이마 대부분이 머리카락
     }
     const inset = faceInsetOf(lm, sw, sh);
     Object.assign(m, {

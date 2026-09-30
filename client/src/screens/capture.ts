@@ -269,6 +269,8 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
               m.foreheadOccluded = r.occluded;
               m.foreheadL = lab.L;
               m.foreheadAb = { a: lab.a, b: lab.b };
+            } else {
+              m.foreheadHidden = true;   // 이마 대부분이 머리카락 — 조명 기준을 못 잰다 (color.foreheadLab)
             }
             Object.assign(m, {
               yaw, pitch: ang.pitch, ...eyesClosed(lm, bs),
