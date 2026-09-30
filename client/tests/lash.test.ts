@@ -53,30 +53,31 @@ describe("눈꺼풀 띠", () => {
     expect(t[24]).toBe(1);
   });
 
-  it("세로줄마다 [vMin, 0, vMax] 세 점, 양끝은 uMin·uMax 까지 늘어난다", () => {
+  it("세로줄마다 [vMin, 0, vMax] 세 점, u 는 실제 눈꺼풀 범위(0~1) 밖으로 안 늘어난다(2026-09-30 결정 — 윙은 아이라인 몫)", () => {
     const tex = meta.textures.up;
-    const cols = lidStrip(arch(20), { x: 0, y: -1 }, 100, meta, tex);
-    expect(cols).toHaveLength(LASH_RULES.segments + 1 + (meta.uMin < 0 ? 1 : 0) + (meta.uMax > 1 ? 1 : 0));
+    const cols = lidStrip(arch(20), { x: 0, y: -1 }, 100, tex);
+    expect(cols).toHaveLength(LASH_RULES.segments + 1);
     for (const c of cols) expect(c.map((q) => q.v)).toEqual([tex.vMin, 0, tex.vMax]);
-    expect(cols[0]![0]!.u).toBe(meta.uMin);
-    expect(cols.at(-1)![0]!.u).toBe(meta.uMax);
-    // 눈꼬리 밖으로 늘어난 줄은 바깥(오른쪽)에 있다
-    expect(cols.at(-1)![1]!.at.x).toBeGreaterThan(100);
+    expect(cols[0]![0]!.u).toBe(0);
+    expect(cols.at(-1)![0]!.u).toBe(1);
+    // 양끝 다 실제 눈꺼풀 점(0~100) 범위 안 — 바깥으로 뻗은 줄이 없다
+    expect(cols[0]![1]!.at.x).toBeCloseTo(0, 6);
+    expect(cols.at(-1)![1]!.at.x).toBeCloseTo(100, 6);
   });
 
   it("+v 는 outward 쪽 — 윗눈꺼풀은 눈썹 쪽(화면 위), 아랫눈꺼풀은 볼 쪽(화면 아래)", () => {
-    const up = lidStrip(arch(20), { x: 0, y: -1 }, 100, meta, meta.textures.up);
+    const up = lidStrip(arch(20), { x: 0, y: -1 }, 100, meta.textures.up);
     const mid = up[Math.floor(up.length / 2)]!;
     expect(mid[2]!.at.y).toBeLessThan(mid[1]!.at.y);
-    const low = lidStrip(flat(), { x: 0, y: 1 }, 100, meta, meta.textures.lower);
+    const low = lidStrip(flat(), { x: 0, y: 1 }, 100, meta.textures.lower);
     const lm = low[Math.floor(low.length / 2)]!;
     expect(lm[2]!.at.y).toBeGreaterThan(lm[1]!.at.y);
   });
 
   it("고개를 기울이면 띠도 같이 돈다 — 화면 세로축에 묶이지 않는다", () => {
     const rot = (p: Pt): Pt => ({ x: p.x * Math.cos(0.5) - p.y * Math.sin(0.5), y: p.x * Math.sin(0.5) + p.y * Math.cos(0.5) });
-    const a = lidStrip(arch(20), { x: 0, y: -1 }, 100, meta, meta.textures.up);
-    const b = lidStrip(arch(20).map(rot), rot({ x: 0, y: -1 }), 100, meta, meta.textures.up);
+    const a = lidStrip(arch(20), { x: 0, y: -1 }, 100, meta.textures.up);
+    const b = lidStrip(arch(20).map(rot), rot({ x: 0, y: -1 }), 100, meta.textures.up);
     a.forEach((col, i) => col.forEach((q, r) => {
       const e = rot(q.at), g = b[i]![r]!.at;
       expect(g.x).toBeCloseTo(e.x, 6);
@@ -85,8 +86,8 @@ describe("눈꺼풀 띠", () => {
   });
 
   it("눈 폭에 비례해 커진다", () => {
-    const small = lidStrip(arch(20), { x: 0, y: -1 }, 100, meta, meta.textures.down);
-    const big = lidStrip(arch(20).map((p) => ({ x: p.x * 2, y: p.y * 2 })), { x: 0, y: -1 }, 200, meta, meta.textures.down);
+    const small = lidStrip(arch(20), { x: 0, y: -1 }, 100, meta.textures.down);
+    const big = lidStrip(arch(20).map((p) => ({ x: p.x * 2, y: p.y * 2 })), { x: 0, y: -1 }, 200, meta.textures.down);
     const len = (c: typeof small[number]): number => Math.hypot(c[0]!.at.x - c[2]!.at.x, c[0]!.at.y - c[2]!.at.y);
     expect(len(big[10]!)).toBeCloseTo(len(small[10]!) * 2, 6);
   });

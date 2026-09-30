@@ -20,12 +20,17 @@ eval = [
     "pillow>=10.3",
     "opencv-python-headless>=4.10",
 ]
-# 서버 GPU 워커 (Stable-Makeup 환경은 poc/screen2 server-bench README의 conda 절차를 따른다. 여기엔 큐·API만)
+# 서버 (VLM 중간 서버 #180). Stable-Makeup 워커·잡 큐는 2026-09-29 뺐다(#221) — redis·rq 는 지금 안 쓴다(정리는 ④). 옛 실험은 poc/look-tryon/server-bench
 server = [
     "redis>=5.0",
     "rq>=1.16",
     # 화장 레이어 추출(#49): numpy Lab 변환 + 얼굴 랜드마크(Face Landmarker .task는 저장소 밖, DHE_FACE_LANDMARKER_PATH)
     "numpy>=1.26",
+    "pillow>=10.3",
+    "mediapipe>=0.10.14",
+]
+# VLM 선정 실험 (eval/vlm) — 학원 PC 에서 llama-server 와 함께
+vlm = [
     "pillow>=10.3",
     "mediapipe>=0.10.14",
 ]
@@ -47,7 +52,7 @@ addopts = "-q"
 [tool.ruff]
 line-length = 110
 target-version = "py311"
-extend-exclude = ["poc", "node_modules", "danghaeung_poc_3x4_20"]
+extend-exclude = ["poc", "node_modules"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]

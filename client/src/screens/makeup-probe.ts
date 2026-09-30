@@ -9,11 +9,10 @@
 import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 import { unitScale } from "@core/baseline";
 import { measureFace } from "@core/face-measure";
-import { estimateHairline, withHairline } from "@core/face-mesh";
-import { FOREHEAD_POLY } from "@core/color";
 import { contourOutline } from "@core/contour";
 import { faceAxis } from "@core/face-measure";
-import { GUIDE_PARAMS, browStandard, linerOutline, lipOutline, planGuide } from "@core/guides";
+import { GUIDE_PARAMS, browStandard, lipOutline, planGuide } from "@core/guides";
+import { linerOutline } from "@core/personal-guide";
 import { guideOutline } from "@core/overlay";
 import type { SampleFrame } from "@core/sampling";
 import { LM, at, dist } from "@core/landmarks";
@@ -503,25 +502,6 @@ function drawGuide(lm: readonly Pt[], w: number, h: number, p: PersonalPlan): vo
     }
   }
   gg.restore();
-
-  // [디버그] 이마 경계(파란, 실측 FOREHEAD_POLY) vs 추정 헤어라인(빨간, 합성) 점을 직접 찍는다.
-  // "피부 보정이 이마 중간에서 끊긴다"는 자리가 실제로 이 파란 점들 자리인지 눈으로 비교하려고
-  const P2 = (i: number): Pt => at(lm, i);
-  const real = FOREHEAD_POLY.map((i) => P2(i));
-  const hair = estimateHairline(lm);
-  gg.save();
-  for (const pt of real) { gg.beginPath(); gg.fillStyle = "#3b82f6"; gg.arc(pt.x, pt.y, 4, 0, Math.PI * 2); gg.fill(); }
-  for (const pt of hair) { gg.beginPath(); gg.fillStyle = "#ef4444"; gg.arc(pt.x, pt.y, 4, 0, Math.PI * 2); gg.fill(); }
-  gg.strokeStyle = "#ef4444";
-  gg.lineWidth = 1;
-  gg.setLineDash([]);
-  for (let i = 0; i < real.length; i++) {
-    gg.beginPath();
-    gg.moveTo(real[i]!.x, real[i]!.y);
-    gg.lineTo(hair[i]!.x, hair[i]!.y);
-    gg.stroke();
-  }
-  gg.restore();
 }
 const rgba = (hex: string, a: number): string => {
   const n = parseInt(hex.slice(1), 16);
@@ -888,7 +868,7 @@ function tick(): void {
       aLight.clearRect(0, 0, w, h);
       if (!bare) drawMakeup(ref, style);
       glr ??= new MakeupGl(glcv);
-      glr.render(stillLm ? still : video, w, h, atlasMul, atlasCol, atlasLight, { lm: withHairline(lm), ref: withHairline(ref), beauty: bare ? 0 : Number(beautyIn.value), radius: unitScale(lm).face * 0.012 });
+      glr.render(stillLm ? still : video, w, h, atlasMul, atlasCol, atlasLight, { lm, ref, beauty: bare ? 0 : Number(beautyIn.value), radius: unitScale(lm).face * 0.012 });
     } else {
       if (!bare) drawMakeup(lm, style);
       if (linesChk.checked) drawBrowLines(lm);

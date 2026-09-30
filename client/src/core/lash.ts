@@ -91,12 +91,13 @@ export interface StripVertex { u: number; v: number; at: Pt }
  * 눈꺼풀 선(안쪽 → 바깥 순) 위에 텍스처를 붙일 띠 격자를 만든다.
  * outward: 눈에서 먼 쪽을 가리키는 대략의 방향(윗눈꺼풀이면 눈 → 눈썹). 각 점의 법선을 이쪽으로 맞춘다.
  * 반환은 세로줄(column) 목록 — 각 줄은 [vMin, 0, vMax] 세 점. 이웃 두 줄 사이를 삼각형 넷으로 그리면 된다.
- * 양끝은 u 범위(uMin<0, uMax>1)만큼 접선 방향으로 곧게 늘린다 — 눈꼬리 밖으로 뻗는 윙 가닥 자리.
+ * u 는 실제 눈꺼풀 범위(0=눈앞머리 ~ 1=눈꼬리) 안으로만 잡는다 — 속눈썹은 눈꺼풀에서만 자라므로 그 밖으로는
+ * 안 늘린다. 눈꼬리 밖으로 뻗는 "윙"은 아이라인의 몫이다(2026-09-30 결정). 텍스처(uMin<0, uMax>1)에
+ * 그려진 여백은 texPx 보정용일 뿐, 화면에는 그 안쪽(0~1) 부분만 쓴다.
  */
-export function lidStrip(lid: readonly Pt[], outward: Pt, eyeWidth: number, meta: Pick<LashMeta, "uMin" | "uMax">, tex: Pick<LashTexMeta, "vMin" | "vMax">, segments = LASH_RULES.segments): StripVertex[][] {
+export function lidStrip(lid: readonly Pt[], outward: Pt, eyeWidth: number, tex: Pick<LashTexMeta, "vMin" | "vMax">, segments = LASH_RULES.segments): StripVertex[][] {
   const { p, t } = resampleLid(lid, segments);
   const n = p.length - 1;
-  const lidLen = p.slice(1).reduce((a, q, i) => a + Math.hypot(q.x - p[i]!.x, q.y - p[i]!.y), 0) || 1;
   const tangent = (i: number): Pt => {
     const a = p[Math.max(0, i - 1)]!, b = p[Math.min(n, i + 1)]!;
     const l = Math.hypot(b.x - a.x, b.y - a.y) || 1;
@@ -107,13 +108,7 @@ export function lidStrip(lid: readonly Pt[], outward: Pt, eyeWidth: number, meta
     return nx * outward.x + ny * outward.y >= 0 ? { x: nx, y: ny } : { x: -nx, y: -ny };
   };
   const cols: { u: number; at: Pt; n: Pt }[] = [];
-  const t0 = tangent(0), tn = tangent(n);
-  if (meta.uMin < 0) cols.push({ u: meta.uMin, at: { x: p[0]!.x + t0.x * meta.uMin * lidLen, y: p[0]!.y + t0.y * meta.uMin * lidLen }, n: normal(t0) });
   for (let i = 0; i <= n; i++) cols.push({ u: t[i]!, at: p[i]!, n: normal(tangent(i)) });
-  if (meta.uMax > 1) {
-    const e = (meta.uMax - 1) * lidLen;
-    cols.push({ u: meta.uMax, at: { x: p[n]!.x + tn.x * e, y: p[n]!.y + tn.y * e }, n: normal(tn) });
-  }
   return cols.map((c) => [tex.vMin, 0, tex.vMax].map((v) => ({ u: c.u, v, at: { x: c.at.x + c.n.x * v * eyeWidth, y: c.at.y + c.n.y * v * eyeWidth } })));
 }
 

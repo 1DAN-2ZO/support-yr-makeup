@@ -1,6 +1,6 @@
 // 카메라 잠금·Wake Lock·탭 전환·WebGL 복구 검증 (1-8·1-3). 브라우저 객체는 전부 가짜
 import { describe, expect, it } from "vitest";
-import { applyCameraLocks, bindGlContext, bindVisibility, lockReportRow, releaseCameraLocks, requestWakeLock } from "../src/screens/camera-locks";
+import { ULTRA_WIDE_ZOOM, applyCameraLocks, applyUltraWideZoom, bindGlContext, bindVisibility, lockReportRow, releaseCameraLocks, requestWakeLock, ultraWideZoom } from "../src/screens/camera-locks";
 import type { TrackLike } from "../src/screens/camera-locks";
 
 function track(caps: ReturnType<NonNullable<TrackLike["getCapabilities"]>> | null, failOn: string[] = []): TrackLike & { applied: Record<string, unknown>[] } {
@@ -82,5 +82,28 @@ describe("bindVisibility / bindGlContext", () => {
     expect(calls).toEqual(["lost", "restored"]);
     off();
     expect(Object.keys(handlers)).toHaveLength(0);
+  });
+});
+
+describe("초광각 확대 (2026-09-23 iPad)", () => {
+  const t = (label: string, zoom?: { min?: number; max?: number }): TrackLike & { applied: Record<string, unknown>[] } => {
+    const applied: Record<string, unknown>[] = [];
+    return { label, applied, getCapabilities: () => (zoom ? { zoom } : {}), async applyConstraints(c) { applied.push(c); } };
+  };
+  it("초광각 + zoom 지원이면 1.5배", async () => {
+    expect(ultraWideZoom(t("전면 울트라 와이드 카메라", { min: 1, max: 10 }))).toBe(ULTRA_WIDE_ZOOM);
+    const tr = t("Front Ultra Wide Camera", { min: 1, max: 10 });
+    expect(await applyUltraWideZoom(tr)).toBe(1.5);
+    expect(tr.applied).toEqual([{ advanced: [{ zoom: 1.5 }] }]);
+  });
+  it("초광각이 아니거나 zoom 이 없으면 안 건다 (Android 등)", async () => {
+    expect(ultraWideZoom(t("camera 1, facing front", { min: 1, max: 8 }))).toBeNull();
+    expect(ultraWideZoom(t("Front Ultra Wide Camera"))).toBeNull();
+    expect(ultraWideZoom(t("Front Ultra Wide Camera", { min: 1, max: 1.2 }))).toBeNull();
+    expect(await applyUltraWideZoom(t("front camera", { max: 10 }))).toBeNull();
+  });
+  it("applyConstraints 가 실패하면 null", async () => {
+    const tr: TrackLike = { label: "초광각", getCapabilities: () => ({ zoom: { max: 10 } }), applyConstraints: () => Promise.reject(new Error("x")) };
+    expect(await applyUltraWideZoom(tr)).toBeNull();
   });
 });

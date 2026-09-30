@@ -2,7 +2,8 @@
 // 계획이 없으면 지금 가이드(lookGuide = pocGuide)와 똑같아야 한다 — 개인화 전 점수가 바뀌지 않게.
 import { describe, expect, it } from "vitest";
 import type { EyeMeasure, FaceMeasure } from "@core/face-measure";
-import { GUIDE_PARAMS, browStandard, lipOutline, lookGuide, planGuide } from "@core/guides";
+import { GUIDE_PARAMS, lookGuide } from "@core/guides";
+import { browOnFace, lipOutline, planGuide, styledGuide } from "@core/personal-guide";
 import { contourOutline } from "@core/contour";
 import { LM, dist } from "@core/landmarks";
 import { lookById } from "@core/looks";
@@ -37,7 +38,7 @@ describe("개인화 가이드 — 계획이 없을 때", () => {
 describe("개인화 가이드 — 계획이 정답을 바꾼다", () => {
   it("라이너 꼬리는 계획의 스타일", () => {
     const g = planGuide(smoky, plan({ liner: { style: "extend" } }));
-    expect(g("liner", BARE)).toEqual(lookGuide(smoky, "extend")("liner", BARE));
+    expect(g("liner", BARE)).toEqual(styledGuide(smoky, "extend")("liner", BARE));
   });
 
   it("섀도 범위는 계획의 배율만큼 눈썹 쪽으로 넓어진다", () => {
@@ -50,10 +51,10 @@ describe("개인화 가이드 — 계획이 정답을 바꾼다", () => {
     expect(dist(lid, topOf(wide))).toBeCloseTo(dist(lid, topOf(base)) * 1.2, 6);
   });
 
-  it("눈썹은 표준 눈썹(얼굴형 조정 포함)이 정답 영역", () => {
+  it("눈썹은 표준 눈썹(얼굴형 조정 포함)을 실제 눈썹 높이에 맞춘 것이 정답 영역 (폰 시험 2026-09-30)", () => {
     const p = plan({ faceShape: { label: "round" } });
     const g = planGuide(smoky, p)("brow", MEASURED);
-    const std = browStandard(MEASURED, p.brow)!;
+    const std = browOnFace(MEASURED, p.brow)!;
     expect(g.regions).toEqual({ R: std.R.outline, L: std.L.outline });
   });
 

@@ -117,13 +117,23 @@ export const inHighlight = (s: Side) => { const poly = geomOf("contour").contour
 /** 가운데(콧대) 하이라이트 밴드 */
 export const inNoseHighlight = () => { const poly = geomOf("contour").contour!.highlight[2]!; return (x: number, y: number) => pointInPoly(x, y, poly); };
 
-/** 속눈썹 선 + 꼬리를 폭 4px 로 그린다. lift 는 꼬리 끝을 위로 올리는 양(px) */
+/** 속눈썹 선 바로 위 피부에 폭 4px 로 그린다 (선 아래는 눈알이라 못 그린다). lift 는 꼬리 끝을 위로 올리는 양(px) */
 export function linerPaint(lift: Partial<Record<Side, number>> = {}, sides: readonly Side[] = ["R", "L"]): Paint {
+  const up = (p: Pt): Pt => ({ x: p.x, y: p.y - 2 });
   const paths = sides.map((s) => {
     const [, end] = geomOf("liner").liner!.wing[s];
-    return [...eyeOf(s).upper.map(P).reverse(), { x: end.x, y: end.y - (lift[s] ?? 0) }];
+    return [...eyeOf(s).upper.map(P).reverse().map(up), up({ x: end.x, y: end.y - (lift[s] ?? 0) })];
   });
   return (x, y) => (paths.some((path) => distToPath(x, y, path) <= 2) ? INK : null);
+}
+/** 눈알: 속눈썹 선 아래 3~12px 띠 (홍채가 움직인 것처럼 색을 바꾸는 데 쓴다) */
+export function eyeballPaint(color: Rgb, sides: readonly Side[] = ["R", "L"]): Paint {
+  // 눈알은 눈 양 끝 사이에만 있다 — 끝점 둘레까지 칠하면 꼬리 밑(피부)에 걸린다
+  const eyes = sides.map((s) => {
+    const xs = [P(eyeOf(s).outer).x, P(eyeOf(s).inner).x];
+    return { path: eyeOf(s).upper.map(P).reverse(), x0: Math.min(...xs) + 4, x1: Math.max(...xs) - 4 };
+  });
+  return (x, y) => (eyes.some((e) => x > e.x0 && x < e.x1 && distToPath(x, y - 7, e.path) <= 4.5) ? color : null);
 }
 export const browPaint: Paint = (x, y) => {
   for (const b of [LM.browA, LM.browB]) if (pointInPoly(x, y, [...b.upper.map(P), ...b.lower.map(P).reverse()])) return BROWN;
@@ -136,3 +146,22 @@ export const regionPaint = (partId: PartId, color: Rgb, sides: readonly Side[] =
 };
 
 export const made = (paint: Paint, gain = 1): SampleFrame => frameOf(image(paint, gain), LMS);
+
+// ---------- 자연 맨얼굴 (#169 — 맨얼굴 오채점) ----------
+// 살색 판(BARE)은 속눈썹·눈썹이 없어서 "맨얼굴끼리 비교" 가 너무 쉽게 통과했다.
+// 실제 맨얼굴에는 속눈썹 선(라이너 채점 띠 바로 그 자리)과 눈썹 털이 있다 — 1~2px 만 어긋나도 "새 선" 처럼 보인다.
+export const LASH: Rgb = [45, 35, 35], SCLERA: Rgb = [215, 205, 200], HAIR: Rgb = [150, 115, 95];
+const lids = (["R", "L"] as const).map((s) => eyeOf(s).upper.map(P));
+/** 속눈썹(선 위아래 1.5px) · 눈알 · 옅은 눈썹 털(눈썹 자리 세 칸에 하나) */
+export const naturalPaint: Paint = (x, y) => {
+  for (const l of lids) {
+    if (distToPath(x, y, l) <= 1.5) return LASH;
+    if (distToPath(x, y - 7, l) <= 4.5) return SCLERA;
+  }
+  return (x + y) % 3 === 0 && browPaint(x, y) ? HAIR : null;
+};
+/** top 이 칠한 곳은 top, 아니면 under */
+export const over = (top: Paint, under: Paint): Paint => (x, y) => top(x, y) ?? under(x, y);
+/** 사진 전체를 (dx, dy) px 옮긴다 — 랜드마크는 그대로 = 랜드마크가 그만큼 어긋난 것과 같다 */
+export const shifted = (p: Paint, dx: number, dy: number): Paint => (x, y) => p(x - dx, y - dy);
+export const NATURAL: SampleFrame = frameOf(image(naturalPaint), LMS);

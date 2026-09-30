@@ -10,7 +10,7 @@
 import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 import { unitScale } from "@core/baseline";
 import { IPD_MM, measureFace, type FaceMeasure } from "@core/face-measure";
-import { linerOutline } from "@core/guides";
+import { linerOutline } from "@core/personal-guide";
 import { LM, at, dist } from "@core/landmarks";
 import { planLiner, type LinerAdapt, type LinerReason, type LinerStyle } from "@core/personalize";
 import type { Pt } from "@core/types";

@@ -32,6 +32,11 @@ export interface Baseline {
   bareImage: Blob | ImageBitmap | null;
   w: number;
   h: number;
+  /**
+   * 맨얼굴 정면 눈 뜸 장의 표정 점수 (MediaPipe 블렌드셰이프 이름 → 0~1). 못 쟀으면 null.
+   * draft 에는 안 남기고 복원 때 쌩얼 사진에서 다시 잰다. 화면 4 표정 게이트(#27)가 쓴다 (#177)
+   */
+  expression: Record<string, number> | null;
 }
 
 /** ⑤ 모델 → ② 가이드 */
@@ -74,7 +79,7 @@ export type GateFail =
   | "sharp"
   | "bright"
   | "color"
-  | "hand"
+  | "occluded"
   | "visible"
   | "pose_diff"
   | "expr_diff"
@@ -97,7 +102,7 @@ export interface CaptureBundle {
 }
 
 /** no_band: 룩 템플릿에 진하기 목표 밴드가 없어 강도 부위 점수를 못 낸다 */
-export type CheckReason = "faint" | "lighting" | "align" | "hand" | "no_baseline" | "no_band" | "contour";
+export type CheckReason = "faint" | "lighting" | "align" | "occluded" | "no_baseline" | "no_band" | "contour";
 
 /** ③ 채점 → ⑥ */
 export interface PartResult {
@@ -167,6 +172,7 @@ export type EventName =
   | "part_status"
   | "score"
   | "look_job"
+  | "vlm_plan"
   | "restore"
   | "session_end"
   | "error";
@@ -189,6 +195,11 @@ export type EventFields =
   | { name: "part_status"; part: PartId; from: PartStatus; to: PartStatus; score: number | null }
   | { name: "score"; part: PartId; status: PartStatus; check_reason: CheckReason | null; ms: number }
   | { name: "look_job"; look_id: string; ms: number | null; identity_cos: number | null; error: string | null }
+  /**
+   * 개인화 한 번 (2026-09-29): VLM 에 몇 번 물었나, 첫 답에서 거절된 수, 마지막까지 남은 거절 수(규칙값으로 대신한 항목), 실패 이유.
+   * fail: null 성공 · "retry_failed" 다시 묻다 실패해 첫 답을 씀 · "restored_rule" 앱을 다시 켜 규칙 계획을 씀 · 그 밖 VlmFailure 이유
+   */
+  | { name: "vlm_plan"; look_id: string; ms: number; tries: number; first_rejected: number; left_rejected: number; model: string | null; fail: string | null }
   | { name: "restore"; ok: boolean; had_images: boolean }
   | { name: "session_end"; reason: "finish" | "abandon" | "error"; last_screen: string }
   | { name: "error"; where: string; msg: string };

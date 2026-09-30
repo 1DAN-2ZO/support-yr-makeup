@@ -9,7 +9,7 @@
  *  - HistoryStore·topMisses·trendSeries 는 로드맵(기록 화면)용으로만 남긴다
  */
 
-import { CHECK_REASON_TEXT, PART_NAME, diagText } from "./score";
+import { CHECK_REASON_SHORT, CHECK_REASON_TEXT, PARAMS, PART_NAME, diagText } from "./score";
 import type { LookTemplate, PartId, PartResult, PartStatus, SessionSummary, Versions } from "./types";
 import { LOOK_PART_IDS } from "./types";
 
@@ -44,7 +44,8 @@ export function reviewLine(p: ReviewPart): string {
     const side = Math.abs(lr) >= 10 ? (lr > 0 ? " 오른쪽이 조금 진해요" : " 왼쪽이 조금 진해요") : "";
     return CHECK_REASON_TEXT.contour + side;
   }
-  if (p.status === "check_only") return CHECK_REASON_TEXT[p.checkReason ?? "faint"];
+  // 리뷰는 다 끝난 뒤라 할 일("다시 확인받아") 없이 이유만
+  if (p.status === "check_only") return CHECK_REASON_SHORT[p.checkReason ?? "faint"];
   if (p.status === "skipped") return "건너뛴 부위예요";
   if (p.status !== "passed") return "";
   if (p.diagnosis) return p.diagnosis;
@@ -186,8 +187,14 @@ export function topMisses(records: readonly SessionRecord[], n = 5, top = 2): Mi
     .map((e) => ({ code: e.code, partId: e.partId, part: PART_NAME[e.partId], text: diagText(e.code) ?? e.code, count: e.count, n: recent.length }));
 }
 
-/** 조명 참조(이마 L*) 차이가 임계 이상이면 "조명 다름" */
-export function lightingDiffers(a: { foreheadL: number } | null, b: { foreheadL: number } | null, threshold = 8): boolean {
+/** 조명 차 안내 한 줄 (화면 6·결과 카드). 숫자 없이 (F-09) */
+export const LIGHTING_NOTE = "조명이 달라서 색은 참고만 해 주세요";
+
+/**
+ * 조명 참조(이마 L*) 차이가 임계 이상이면 "조명 다름". 임계는 채점 조명 한계(PARAMS.lightTol)와 같다 —
+ * 전엔 8 이라 채점은 된 결과에 "조명이 달라서 색은 참고만" 이 붙었다 (2026-09-30 조명 한계 맞추기)
+ */
+export function lightingDiffers(a: { foreheadL: number } | null, b: { foreheadL: number } | null, threshold = PARAMS.lightTol): boolean {
   if (!a || !b) return false;
   return Math.abs(a.foreheadL - b.foreheadL) >= threshold;
 }

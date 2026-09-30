@@ -1,23 +1,32 @@
 /**
  * 화면 2 — 룩 선택 (F-03, F-04). 모듈 ⑥.
  *
- * 서버가 룩 10개를 각각 그려서 보내 준다. 다 올 때까지 기다리지 않고
- * **끝난 것부터 고를 수 있게** 한다. 못 그린 룩은 "준비 중"으로 두고 넘어간다.
- * 고르면 제품 목록을 접지 않고 전부 보여 준다 (F-04).
+ * 화장 10개를 처음부터 전부 보여 준다 — 대표 이미지(없으면 색 견본)와 이름 (2026-09-29: Stable-Makeup 을 빼서
+ * 기다릴 서버 그림이 없다). 누르면 "개인화 중입니다" → VLM 이 이 얼굴에 맞춘 계획 → 2-b(AR).
  *
  * 표시 규칙은 `core/look-view.ts` 에 순수 함수로 있다. 여기는 DOM 만 그린다.
  */
 
 import { LOOKS } from "../core/looks";
-import type { LookJobSource } from "../core/look-jobs";
-import { allUnavailable, anySelectable, lookDetail, tiles, type LookTile } from "../core/look-view";
-import type { LookJob } from "../core/types";
+import { catalogTiles, type CatalogTile } from "../core/look-view";
+import { VlmFailure } from "../core/vlm-client";
 import type { Screen, ScreenContext } from "./shell";
 
 export interface LooksDeps {
-  jobs: LookJobSource;
   getLookId: () => string | null;
   setLookId: (lookId: string) => void;
+  /**
+   * 누른 룩을 이 얼굴에 맞게 개인화한다 (VLM 이 정하고 규칙 관문이 거름, 룩마다 한 번 — core/plan-queue.ts · vlm-flow.ts).
+   * 끝나면 2-b(AR)로 간다. 안 주면 개인화 없이 바로 간다.
+   */
+  personalize?: (lookId: string) => Promise<void>;
+  /** 이미 개인화한 화장인가 — 그러면 기다림 화면 없이 바로 2-b (화장마다 한 번) */
+  isPersonalized?: (lookId: string) => boolean;
+  /**
+   * "개인화 중입니다" 를 최소 이만큼은 보여 준다(ms, 기본 0). 규칙 계획은 순식간이라 안 보이고 지나갔다 (2026-09-29 폰).
+   * 사용자가 "내 얼굴에 맞추는 단계" 가 있다는 걸 알아야 2-b 의 근거 문장이 이어진다
+   */
+  minBusyMs?: number;
 }
 
 export function looksScreen<S>(deps: LooksDeps): Screen<S> {
@@ -27,59 +36,44 @@ export function looksScreen<S>(deps: LooksDeps): Screen<S> {
       wrap.className = "looks";
       ctx.root.append(wrap);
 
-      // 끝난 작업을 한 번씩만 로그로 남긴다 — 같은 작업이 폴링마다 다시 오기 때문
-      const logged = new Set<string>();
+      /** 개인화를 기다리는 룩 — 마지막에 누른 것만 2-b 로 넘어간다 */
+      let wanted: string | null = null;
+      /** 누를 때마다 새 번호 — 취소하고 같은 화장을 다시 눌러도 앞 요청이 넘어가지 않게 */
+      let ticket = 0;
+      /** 개인화 실패 안내 (없으면 null) */
+      let failed: string | null = null;
+      let alive = true;
+
+      const ts = catalogTiles(LOOKS);
 
       function draw(): void {
-        const jobs = deps.jobs.current();
-        logTerminal(jobs);
-
-        const ts = tiles(LOOKS, jobs);
         const picked = deps.getLookId();
         wrap.textContent = "";
-        wrap.append(head(ts));
+        wrap.append(head());
         wrap.append(grid(ts, picked));
-        if (picked) wrap.append(detail(picked));
-        wrap.append(startRow(ts, picked));
+        if (failed) wrap.append(note(failed));
+        if (wanted) wrap.append(busy());
       }
 
-      function logTerminal(jobs: readonly LookJob[]): void {
-        for (const j of jobs) {
-          if (j.status !== "done" && j.status !== "fallback" && j.status !== "error") continue;
-          if (logged.has(j.job_id)) continue;
-          logged.add(j.job_id);
-          ctx.log.log({
-            name: "look_job",
-            look_id: j.look_id,
-            ms: j.ms,
-            identity_cos: j.identity.cos,
-            error: j.status === "done" ? null : (j.error ?? j.status),
-          });
-        }
-      }
-
-      function head(ts: readonly LookTile[]): HTMLElement {
+      function head(): HTMLElement {
         const el = document.createElement("div");
         const h = document.createElement("h1");
-        h.textContent = "어떤 느낌으로 할까요?";
+        h.textContent = "어떤 화장으로 할까요";
         const p = document.createElement("p");
         p.className = "muted";
-        // 다 죽었을 때만 다른 말을 한다. 몇 개 남았는지 숫자로 재촉하지 않는다
-        p.textContent = allUnavailable(ts)
-          ? "지금은 미리보기를 만들 수 없어요. 잠시 후 다시 열어 주세요."
-          : "준비된 것부터 골라 볼 수 있어요.";
+        p.textContent = "누르면 내 얼굴에 맞춰 조정해요.";
         el.append(h, p);
         return el;
       }
 
-      function grid(ts: readonly LookTile[], picked: string | null): HTMLElement {
+      function grid(ts: readonly CatalogTile[], picked: string | null): HTMLElement {
         const ul = document.createElement("ul");
         ul.className = "look-grid";
         for (const t of ts) ul.append(card(t, picked));
         return ul;
       }
 
-      function card(t: LookTile, picked: string | null): HTMLElement {
+      function card(t: CatalogTile, picked: string | null): HTMLElement {
         const li = document.createElement("li");
         const btn = document.createElement("button");
         btn.type = "button";
@@ -88,14 +82,22 @@ export function looksScreen<S>(deps: LooksDeps): Screen<S> {
         btn.setAttribute("aria-pressed", String(t.lookId === picked));
 
         const thumb = document.createElement("div");
-        thumb.className = `look-thumb st-${t.state}`;
+        thumb.className = "look-thumb";
         if (t.imageUrl) {
           const img = document.createElement("img");
           img.src = t.imageUrl;
-          img.alt = `${t.name} 미리보기`;
+          img.alt = `${t.name} 대표 이미지`;
           thumb.append(img);
         } else {
-          thumb.textContent = t.note;
+          // 대표 이미지가 오기 전 — 그 화장의 입술·볼·섀도 색
+          const sw = document.createElement("span");
+          sw.className = "swatch";
+          for (const c of t.swatch) {
+            const dot = document.createElement("i");
+            dot.style.background = c;
+            sw.append(dot);
+          }
+          thumb.append(sw);
         }
 
         const name = document.createElement("span");
@@ -103,52 +105,79 @@ export function looksScreen<S>(deps: LooksDeps): Screen<S> {
         name.textContent = t.name;
 
         btn.append(thumb, name);
-        btn.addEventListener("click", () => {
-          ctx.log.log({ name: "button", button: `look:${t.lookId}` });
-          deps.setLookId(t.lookId);
-          draw();
-        });
+        btn.addEventListener("click", () => pick(t.lookId));
         li.append(btn);
         return li;
       }
 
-      /** 고른 룩의 제품 목록 — 접기 없이 전부 (F-04) */
-      function detail(lookId: string): HTMLElement {
-        const { look, products } = lookDetail(lookId);
-        const box = document.createElement("section");
-        box.className = "look-detail";
-        const h = document.createElement("h2");
-        h.textContent = `${look.name} — 쓰는 것`;
-        const ul = document.createElement("ul");
-        for (const p of products) {
-          const li = document.createElement("li");
-          li.textContent = p;
-          ul.append(li);
+      /** 룩을 누름 = 고름 → 개인화 → 2-b. 개인화 중에 다른 룩을 누르면 마지막 것만 넘어간다 */
+      function pick(lookId: string): void {
+        ctx.log.log({ name: "button", button: `look:${lookId}` });
+        deps.setLookId(lookId);
+        failed = null;
+        if (!deps.personalize || deps.isPersonalized?.(lookId)) {
+          ctx.go("fullrender");
+          return;
         }
-        box.append(h, ul);
+        wanted = lookId;
+        const my = ++ticket;
+        draw();
+        const minWait = new Promise<void>((r) => setTimeout(r, deps.minBusyMs ?? 0));
+        Promise.all([deps.personalize(lookId), minWait]).then(
+          () => {
+            if (!alive || ticket !== my) return;
+            wanted = null;
+            ctx.go("fullrender");
+          },
+          (e: unknown) => {
+            if (!alive || ticket !== my) return;
+            ctx.log.log({ name: "error", where: "personalize", msg: e instanceof Error ? e.message : String(e) });
+            wanted = null;
+            failed = e instanceof VlmFailure && e.reason === "busy"
+              ? "지금 사람이 많아요. 잠시 후 다시 눌러 주세요"
+              : "지금 개인화를 할 수 없어요. 잠시 후 다시 눌러 주세요";
+            draw();
+          },
+        );
+      }
+
+      /** "개인화 중입니다" — 한 페이지로 덮는다. "다른 화장 고르기" 로 돌아가면 끝나도 넘어가지 않는다 (계획은 큐에 남아 다음엔 바로) */
+      function busy(): HTMLElement {
+        const box = document.createElement("div");
+        box.className = "personalizing";
+        box.setAttribute("role", "status");
+        const t = document.createElement("strong");
+        t.textContent = "개인화 중입니다…";
+        const p = document.createElement("p");
+        p.textContent = "이 얼굴에 맞게 화장을 조정하고 있어요";
+        const bar = document.createElement("div");
+        bar.className = "wait-bar";
+        bar.append(document.createElement("span"));
+        const back = document.createElement("button");
+        back.type = "button";
+        back.className = "ghost";
+        back.textContent = "다른 화장 고르기";
+        back.addEventListener("click", () => {
+          ctx.log.log({ name: "button", button: "personalize_cancel" });
+          wanted = null;
+          ticket++;
+          draw();
+        });
+        box.append(t, p, bar, back);
         return box;
       }
 
-      function startRow(ts: readonly LookTile[], picked: string | null): HTMLElement {
-        const row = document.createElement("div");
-        row.className = "row";
-        const go = document.createElement("button");
-        go.type = "button";
-        go.className = "primary";
-        go.textContent = "이 룩으로 시작";
-        // 고르지 않았거나 아직 아무것도 안 왔으면 못 누른다
-        go.disabled = !picked || !anySelectable(ts);
-        go.addEventListener("click", () => {
-          ctx.log.log({ name: "button", button: "look_start" });
-          ctx.go("fullrender");
-        });
-        row.append(go);
-        return row;
+      function note(text: string): HTMLElement {
+        const p = document.createElement("p");
+        p.className = "muted";
+        p.textContent = text;
+        return p;
       }
 
-      const stop = deps.jobs.subscribe(draw);
       draw();
-      return stop;
+      return () => {
+        alive = false;
+      };
     },
   };
 }

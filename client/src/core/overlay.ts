@@ -31,7 +31,7 @@ export function guideOutline(partId: PartId, lm: readonly Pt[], g: PartGeometry)
       break;
     }
     case "brow":
-      // 개인화 계획이 정답 눈썹(표준 + 얼굴형 조정)을 주면 그것, 아니면 지금 눈썹 윤곽
+      // 개인화 계획이 정답 눈썹(표준 눈썹)을 주면 그것, 아니면 지금 눈썹 윤곽
       if (g.regions) polys.push([...g.regions.R], [...g.regions.L]);
       else for (const b of [LM.browA, LM.browB]) polys.push([...b.upper.map(P), ...b.lower.map(P).reverse()]);
       break;

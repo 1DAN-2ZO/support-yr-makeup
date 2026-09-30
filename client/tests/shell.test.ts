@@ -126,4 +126,11 @@ describe("껍데기", () => {
     expect(hintRoot.hidden).toBe(false);
     expect(hintRoot.textContent).toBe("폰을 가로로 돌리세요");
   });
+
+  it("부위 화면이 아니면(리뷰 등) 마지막 부위가 남아 있어도 방향 안내를 안 띄운다 (#169 3번)", () => {
+    const { shell, hintRoot } = setup({ screen: "review", currentPart: "liner" });
+    shell.render();
+    expect(hintRoot.hidden).toBe(true);
+    expect(hintRoot.textContent).toBe("");
+  });
 });

@@ -1,0 +1,10 @@
+<section data-n="{{N}}"><h2>{{N}}. 화장 {{LOOK}}</h2><img src="{{IMG}}">
+<div class=pair><div><h3>A</h3>{{A}}</div><div><h3>B</h3>{{B}}</div></div>
+<p>이 얼굴에 더 맞는 쪽
+  <label><input type=radio name=p{{N}} value=A>A</label>
+  <label><input type=radio name=p{{N}} value=B>B</label>
+  <label><input type=radio name=p{{N}} value=same>비슷함</label></p>
+<p>맞는 정도(1~5) A <input type=number min=1 max=5 name=fa{{N}}> B <input type=number min=1 max=5 name=fb{{N}}></p>
+<p>근거 문장 자연스러움(1~5) A <input type=number min=1 max=5 name=na{{N}}> B <input type=number min=1 max=5 name=nb{{N}}></p>
+<p><label><input type=checkbox name=xa{{N}}>A 근거가 사진·측정과 다름(지어냄)</label>
+  <label><input type=checkbox name=xb{{N}}>B 근거가 다름</label></p></section>

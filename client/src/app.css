@@ -1,10 +1,15 @@
-/* 껍데기 기본 뼈대만. 화면별 모양은 각 모듈이 자기 화면에서 */
+/* 껍데기 기본 뼈대 + 공용 모양. 디자인은 POC(poc/full/style.css)를 따른다 (2026-09-28) */
 :root {
   --bg: #f7f5f1;
   --ink: #2b2b2b;
   --muted: #6b6b6b;
   --line: #e6e2da;
   --accent: #2a8c85;
+  --accent-bg: #e6f1f0;
+  --teal: #3fd1c4;
+  --gray: #8a8a8a;
+  --gray-bg: #efece6;
+  --card: #fff;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -12,6 +17,9 @@
     --ink: #ece8e2;
     --muted: #9a948c;
     --line: #35322e;
+    --accent-bg: #1f3634;
+    --gray-bg: #2a2825;
+    --card: #23211f;
   }
 }
 * { box-sizing: border-box; }
@@ -21,8 +29,17 @@ body {
   color: var(--ink);
   font: 15px/1.5 system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
 }
-#app { min-height: 100dvh; display: flex; flex-direction: column; }
-.screen { flex: 1; padding: 16px; }
+#app { min-height: 100dvh; display: flex; flex-direction: column; background: var(--bg); }
+.screen { flex: 1; padding: 14px 16px 20px; }
+/* POC 공용: 제목·버튼 */
+.screen h1 { font-size: 18px; font-weight: 700; margin: 6px 0 4px; }
+.btns { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.btns button, button.secondary, button.ghost {
+  width: 100%; padding: 12px 14px; border-radius: 12px; font: inherit; font-size: 14px; cursor: pointer;
+}
+button.secondary { border: 1px solid #d9d4ca; background: var(--card); color: var(--ink); }
+button.ghost { border: 1px solid transparent; background: transparent; color: var(--muted); }
+button:disabled { opacity: 0.45; cursor: default; }
 .chips { display: flex; gap: 6px; overflow-x: auto; padding: 8px 16px; border-bottom: 1px solid var(--line); }
 .chips[hidden] { display: none; }
 .chip {
@@ -48,30 +65,57 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   padding: 12px; border: 1px solid var(--line); border-radius: 10px;
   background: transparent; color: var(--ink); font: inherit; cursor: pointer;
 }
-.look-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; padding: 0; list-style: none; }
+.look-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; padding: 0; margin: 10px 0 0; list-style: none; }
 .look-card {
-  width: 100%; padding: 0; border: 2px solid transparent; border-radius: 12px;
-  background: transparent; color: inherit; font: inherit; cursor: pointer;
+  position: relative; width: 100%; padding: 0; border: 2px solid transparent; border-radius: 10px;
+  background: transparent; color: inherit; font: inherit; cursor: pointer; overflow: hidden;
 }
 .look-card.picked { border-color: var(--accent); }
 .look-card:disabled { cursor: default; opacity: 0.6; }
 .look-thumb {
   display: flex; align-items: center; justify-content: center;
-  aspect-ratio: 3 / 4; border-radius: 10px; background: var(--line);
-  color: var(--muted); font-size: 13px; overflow: hidden;
+  aspect-ratio: 3 / 4; border-radius: 8px; background: #e9e5de;
+  color: var(--gray); font-size: 11px; overflow: hidden;
 }
 .look-thumb img { width: 100%; height: 100%; object-fit: cover; }
-.look-name { display: block; padding: 6px 2px; font-size: 14px; }
-.look-detail { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 12px; }
+/* 대표 이미지가 오기 전 — 그 화장의 입술·볼·섀도 색 동그라미 (2026-09-29) */
+.look-thumb .swatch { display: flex; gap: 4px; align-items: center; justify-content: center; width: 100%; height: 100%; }
+.look-thumb .swatch i { width: 22%; aspect-ratio: 1; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08); }
+.look-name {
+  position: absolute; left: 0; right: 0; bottom: 0; padding: 2px 0;
+  font-size: 9px; text-align: center; background: rgba(0, 0, 0, 0.45); color: #fff;
+  border-radius: 0 0 8px 8px;
+}
+/* 화장을 누른 뒤 개인화 기다림 — 한 페이지로 덮는다 (2026-09-29 폰: 아래 작은 상자는 안 보였다) */
+.personalizing {
+  position: fixed; inset: 0; z-index: 10;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  padding: 24px; text-align: center; background: var(--bg);
+}
+.personalizing strong { display: block; font-size: 20px; }
+.personalizing p { margin: 0; color: var(--muted); font-size: 14px; }
+.personalizing .wait-bar { margin-top: 16px; width: min(70%, 240px); }
+.look-detail { margin-top: 14px; background: var(--card); border: 1px solid #ebe7df; border-radius: 14px; padding: 14px; }
 .look-detail h2 { font-size: 15px; margin: 0 0 8px; }
 .look-detail ul { margin: 0; padding-left: 18px; }
 .look-detail li { margin-bottom: 4px; }
 .full-img {
   display: flex; align-items: center; justify-content: center;
-  aspect-ratio: 3 / 4; border-radius: 12px; background: var(--line); color: var(--muted);
+  aspect-ratio: 3 / 4; border-radius: 14px; background: #e9e5de; color: var(--muted);
   overflow: hidden;
 }
 .full-img img { width: 100%; height: 100%; object-fit: contain; }
+/* 2-b AR — 전면 카메라라 거울처럼 뒤집는다 */
+/* 2-b 개발용 ?tune 슬라이더 */
+.ar-tune { display: grid; gap: 6px; margin: 8px 0; font-size: 13px; }
+.ar-tune input { width: 100%; }
+.ar-tune p { margin: 0; color: var(--muted); }
+/* 2-b 맨 위 뒤로 가기 */
+.fullrender > .back { align-self: flex-start; padding: 6px 4px; font-size: 15px; }
+.ar-stage { aspect-ratio: 3 / 4; border-radius: 14px; overflow: hidden; background: #111; margin-top: 6px; }
+.ar-stage .full-img { height: 100%; aspect-ratio: auto; border-radius: 0; }
+.ar-canvas { display: block; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+.ar-why { margin: 10px 0 0; padding: 12px 14px 12px 30px; border-radius: 14px; background: var(--accent-bg); font-size: 13px; line-height: 1.6; }
 
 /* 카메라를 못 여는 환경 안내 (6-3) */
 .warn { padding: 12px 16px; background: #8c2a2a; color: #fff; }
@@ -79,42 +123,42 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
 .warn .warn-hint { margin-top: 4px; font-size: 12px; opacity: 0.85; word-break: break-all; }
 
 /* 화면 6 — 전체 리뷰 (모듈 6) */
-.total { text-align: center; padding: 8px 0 20px; }
-.total-num { font-size: 76px; font-weight: 700; line-height: 1; letter-spacing: -0.02em; }
+.total { text-align: center; padding: 16px; margin: 6px 0 4px; border-radius: 16px; background: var(--accent-bg); }
+.total-num { font-size: 52px; font-weight: 700; line-height: 1; letter-spacing: -0.02em; }
+.total-unit { margin-left: 6px; font-size: 15px; color: var(--muted); }
 .lighting-note { text-align: center; margin: -8px 0 16px; }
-.photo-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.photo-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
 .photo { margin: 0; }
 .photo-slot {
   display: flex; align-items: center; justify-content: center;
-  aspect-ratio: 3 / 4; border-radius: 10px; background: var(--line);
+  aspect-ratio: 9 / 11; border-radius: 12px; background: #e9e5de;
   color: var(--muted); font-size: 13px; overflow: hidden;
 }
 .photo-slot img { width: 100%; height: 100%; object-fit: cover; }
 .photo figcaption { padding-top: 6px; text-align: center; font-size: 13px; color: var(--muted); }
-.part-list { list-style: none; margin: 20px 0 0; padding: 0; }
+.part-list { list-style: none; margin: 8px 0 0; padding: 0; }
 .part-row {
-  display: grid; grid-template-columns: 5.5em 1fr 3em; grid-template-areas: "name bar val" "say say say";
-  gap: 4px 10px; align-items: center; width: 100%; padding: 10px 2px;
-  border: 0; border-top: 1px solid var(--line); background: transparent;
+  display: grid; grid-template-columns: 96px 1fr 52px; grid-template-areas: "name bar val" "say say say";
+  gap: 2px 8px; align-items: center; width: 100%; padding: 8px 2px;
+  border: 0; border-bottom: 1px solid #e9e5de; background: transparent;
   color: inherit; font: inherit; text-align: left; cursor: pointer;
 }
-.part-name { grid-area: name; }
+.part-name { grid-area: name; font-weight: 600; font-size: 13px; }
 .part-bar { grid-area: bar; height: 8px; border-radius: 999px; background: var(--line); overflow: hidden; }
 .part-fill { display: block; height: 100%; background: var(--accent); }
-.part-val { grid-area: val; text-align: right; color: var(--muted); }
-.part-say { grid-area: say; }
+.part-val { grid-area: val; text-align: right; font-weight: 700; }
+.part-say { grid-area: say; margin: 0; font-size: 12px; }
 .save-msg:empty { display: none; }
 
 /* 화면 5·5-b — 부위 결과 (모듈 3). 숫자는 점수 하나뿐 */
-.result-part { margin: 0 0 8px; font-size: 13px; color: var(--muted); }
-.result-photo { border-radius: 10px; overflow: hidden; background: var(--line); aspect-ratio: 3 / 4; }
+.result-part { position: relative; z-index: 1; margin: 0 0 -28px; padding: 8px 0 0; font-size: 12px; color: #fff; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6); }
+.result-photo { margin: -14px -16px 0; overflow: hidden; background: #111; aspect-ratio: 3 / 4; }
 .result-photo canvas { display: block; width: 100%; height: 100%; object-fit: cover; }
 .result-score { padding: 16px 0 4px; font-size: 20px; }
-.result-num { font-size: 56px; font-weight: 700; line-height: 1; letter-spacing: -0.02em; }
-.result-unit { margin-left: 6px; color: var(--muted); font-size: 14px; }
+.result-num { font-size: 52px; font-weight: 700; line-height: 1; letter-spacing: -0.02em; }
+.result-unit { margin-left: 6px; color: var(--muted); font-size: 15px; }
 .result-say { margin: 4px 0 0; }
 .result-extra:empty { display: none; }
-.result-buttons .ghost { display: block; width: 100%; margin-top: 10px; padding: 10px; border: 0; background: transparent; color: var(--muted); font: inherit; cursor: pointer; }
 
 /* 서버 처리 · 끝 (모듈 6) */
 .processing, .done { text-align: center; padding-top: 48px; }
@@ -136,3 +180,53 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
 @media (prefers-reduced-motion: reduce) {
   .wait-bar span { animation: none; width: 100%; opacity: 0.5; }
 }
+
+/* 화면 1 동의·촬영 (모듈 1) */
+.consent { padding-top: 32px; }
+.capture-guide ul { padding-left: 20px; }
+.capture-guide li { margin: 6px 0; }
+.cam-step { margin: 0 0 8px; font-weight: 600; }
+.cam { position: relative; width: 100%; max-width: 480px; margin: 0 auto; aspect-ratio: 3 / 4; overflow: hidden; border-radius: 12px; background: #000; }
+.cam-video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+.cam-oval {
+  position: absolute; left: 50%; top: 46%; width: 62%; height: 70%; transform: translate(-50%, -50%);
+  border: 3px dashed rgba(255, 255, 255, 0.8); border-radius: 50%; pointer-events: none;
+}
+.cam-oval.ready { border-style: solid; border-color: var(--accent); }
+.cam-flash { position: absolute; inset: 0; background: #fff; opacity: 0.7; }
+.cam-flash[hidden] { display: none; }
+.cam-gate { min-height: 1.5em; margin: 12px 0 4px; text-align: center; font-size: 17px; }
+.cam-gate.ready { color: var(--accent); font-weight: 600; }
+.cam-hint { margin: 0; text-align: center; color: var(--muted); font-size: 13px; }
+.cam-hint[hidden] { display: none; }
+.cam-progress { display: flex; gap: 6px; justify-content: center; list-style: none; padding: 0; margin: 12px 0 0; }
+.cam-progress li { width: 40px; height: 6px; border-radius: 3px; background: var(--line); }
+.cam-progress li.on { background: var(--accent); }
+.shot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; list-style: none; padding: 0; }
+.shot-cell { display: flex; flex-direction: column; gap: 4px; }
+.shot-thumb { width: 100%; height: auto; border-radius: 8px; background: var(--line); }
+.shot-name { font-size: 13px; }
+.shot-retake { padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--ink); font: inherit; font-size: 13px; }
+
+/* 화면 6 들어올 때 "지금" 얼굴 정면 1장 (#79) — 카메라는 화면 1 과 같은 .cam */
+.review-shot { margin: 16px 0; }
+.review-shot .shot-title { margin: 0 0 8px; font-weight: 600; text-align: center; }
+.review-shot .ghost { display: block; margin: 8px auto 0; }
+
+/* VLM 서버가 없거나 꺼져 있을 때 (2026-09-29 — 개인화가 핵심이라 시작하지 않는다) */
+.unavailable { padding-top: 64px; text-align: center; }
+.unavailable .primary { margin-top: 16px; }
+
+/* 화면 4 실시간 테두리 (②). 영상은 숨기고 부위 확대 창만 캔버스에 거울로 그린다 (#23) */
+.live-cam { max-width: 720px; aspect-ratio: auto; height: 72vh; }
+.live-view { display: block; width: 100%; height: 100%; }
+.live-src { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.live-jitter { position: absolute; left: 8px; top: 8px; margin: 0; padding: 2px 6px; border-radius: 6px; background: rgba(0, 0, 0, 0.6); color: #fff; font-size: 12px; cursor: pointer; }
+
+/* 화면 3 부위 완성본 (②) */
+.guide-img { margin: 8px auto; max-width: 720px; text-align: center; }
+.guide-img.empty { padding: 48px 0; border-radius: 12px; background: var(--line); color: var(--muted); }
+.guide-canvas { width: 100%; height: auto; border-radius: 12px; }
+.guide-note { margin: 4px 0 0; font-size: 13px; }
+.guide-why { font-size: 17px; margin: 12px 0 4px; }
+.guide-need { margin: 0 0 8px; }
