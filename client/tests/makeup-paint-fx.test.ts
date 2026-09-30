@@ -22,18 +22,18 @@ function fakeCtx(calls: Call[]) {
       if (k === "createRadialGradient") return grad("radial");
       return rec(k);
     },
-    set(t, k: string, v) { t[k] = v; if (k === "fillStyle") calls.push({ op: "fillStyle", args: [v] }); return true; },
+    set(t, k: string, v) { t[k] = v; if (k === "fillStyle" || k === "filter") calls.push({ op: k, args: [v] }); return true; },
   }) as unknown as CanvasRenderingContext2D;
 }
 
-function paintCalls(look: Look): Call[] {
-  const calls: Call[] = [];
+function paintAll(look: Look): { calls: Call[]; light: Call[]; mul: Call[] } {
+  const calls: Call[] = [], light: Call[] = [], mul: Call[] = [];
   const off = { width: 600, height: 600, getContext: () => fakeCtx(calls) } as unknown as HTMLCanvasElement;
-  const layer = () => fakeCtx([]);
-  const layers: Layers = { mul: layer(), col: layer(), light: layer() };
+  const layers: Layers = { mul: fakeCtx(mul), col: fakeCtx([]), light: fakeCtx(light) };
   paintMakeup(layers, off, LMS, paintLookOf(look), null, "winged");
-  return calls;
+  return { calls, light, mul };
 }
+const paintCalls = (look: Look): Call[] => paintAll(look).calls;
 
 type Grad = { kind: string; stops: [number, string][] };
 const grads = (calls: Call[], kind: string): Grad[] => calls.filter((c) => c.op === kind).map((c) => c.args[0] as Grad);
@@ -44,7 +44,8 @@ const shadowGrads = (calls: Call[]) => grads(calls, "linear");
 function plain(look: Look): Look {
   const { stops: _s, tailExtend: _t, finish: _f, axis: _a, ...shadow } = look.parts.shadow!;
   const { edge: _e, ...lip } = look.parts.lip!;
-  return { ...look, parts: { ...look.parts, shadow, lip } };
+  const { extras: _x, ...rest } = look;
+  return { ...rest, parts: { ...look.parts, shadow, lip } };
 }
 
 describe("화장 새 효과 — 앱 그리기 (#250 1단계)", () => {
@@ -89,7 +90,49 @@ describe("화장 새 효과 — 앱 그리기 (#250 1단계)", () => {
   it("F6 새 칸이 없는 화장은 그리는 순서·호출이 전과 같다 (출근/학생의 입술 등)", () => {
     const daily = lookById("daily");
     expect(daily.parts.lip!.edge).toBeUndefined();
-    const a = paintCalls(plain(daily)).map((c) => c.op), b = paintCalls({ ...daily, parts: { ...daily.parts, shadow: plain(daily).parts.shadow! } }).map((c) => c.op);
+    const { extras: _x, ...noExtras } = daily;
+    const a = paintCalls(plain(daily)).map((c) => c.op), b = paintCalls({ ...noExtras, parts: { ...daily.parts, shadow: plain(daily).parts.shadow! } }).map((c) => c.op);
     expect(b).toEqual(a);
+  });
+});
+
+describe("화장 새 효과 — 글리터 · 애교살 (#250 2단계)", () => {
+  const drawsOnLight = (look: Look) => paintAll(look).light.filter((c) => c.op === "drawImage").length;
+  const count = (calls: Call[], op: string) => calls.filter((c) => c.op === op).length;
+
+  it("G1 paintLookOf 가 애교살 색·진하기와 글리터 여부를 넘긴다", () => {
+    const k = paintLookOf(lookById("kitsch"));
+    expect(k.color.aegyo).toBe("#ffd1dc");
+    expect(k.alpha.aegyo).toBeCloseTo(0.55);
+    expect(k.glitter).toEqual({ shadow: true, aegyo: true });
+    const d = paintLookOf(lookById("daily"));
+    expect(d.color.aegyo).toBe("#f5f5dc");
+    expect(d.glitter).toEqual({ shadow: false, aegyo: false });
+    expect(paintLookOf(plain(lookById("daily"))).color.aegyo).toBeUndefined();
+  });
+
+  it("G2 애교살은 밝히기 층에 — 하이라이트와 함께 두 장 · 애교살이 없는 화장은 하이라이트 한 장(전과 같음)", () => {
+    expect(drawsOnLight(lookById("daily"))).toBe(2);
+    expect(drawsOnLight(plain(lookById("daily")))).toBe(1);
+  });
+
+  it("G3 글리터 화장은 섀도우 띠(두 눈)·애교살 안에만 점을 흩뿌린다 — 번짐 없이", () => {
+    const { calls } = paintAll(lookById("kitsch"));
+    expect(count(calls, "clip")).toBe(3);   // 섀도우 두 눈 + 애교살
+    expect(count(calls, "arc")).toBeGreaterThan(100);
+    // 점을 찍기 직전에 번짐을 끈다 — 번지면 점이 아니라 흐린 얼룩이 된다
+    const clipAt = calls.findIndex((c) => c.op === "clip");
+    expect(calls.slice(0, clipAt).reverse().find((c) => c.op === "filter")?.args[0]).toBe("none");
+  });
+
+  it("G4 글리터가 아닌 화장은 점을 안 찍는다", () => {
+    const { calls } = paintAll(lookById("daily"));
+    expect(count(calls, "clip")).toBe(0);
+  });
+
+  it("G5 점 자리는 매번 같다 — AR 에서 반짝이며 흔들리지 않게 (고정 시드)", () => {
+    const arcs = () => paintAll(lookById("idol")).calls.filter((c) => c.op === "arc").map((c) => c.args.slice(0, 3));
+    expect(arcs().length).toBeGreaterThan(100);
+    expect(arcs()).toEqual(arcs());
   });
 });
