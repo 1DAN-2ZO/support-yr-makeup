@@ -334,6 +334,8 @@ async function boot(): Promise<void> {
       hairMask,
       // 개발용: 주소에 ?tune 이면 판정 근거 숫자 (밝기 차 등)
       tune: new URLSearchParams(location.search).has("tune"),
+      // ?tune "채점 사진 저장" 에 같이 — PC 에서 같은 가이드로 재현하려고
+      tuneInfo: () => ({ lookId: session.lookId, plan: planFor(session.lookId), ver: getVersions() }),
     },
     // 서버 처리 화면은 흐름에서 빠졌다 (등록만 남김 — 되살린 세션은 위에서 화장 선택으로 보낸다)
     { jobs: emptyJobSource() },
