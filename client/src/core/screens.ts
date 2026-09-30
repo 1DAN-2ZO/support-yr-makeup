@@ -55,8 +55,7 @@ export function orientationHint(part: PartId | null, now: Orientation): string |
   if (!part) return null;
   const want = wantedOrientation(part);
   if (want === now) return null;
-  // 권하는 말 — 돌리지 않아도 쓸 수 있다(#213: 세로 칸이면 세로 창, 자동 회전이 꺼져 있으면 돌려도 안 바뀐다)
-  return want === "landscape" ? "가로로 돌리면 더 크게 보여요" : "세로로 돌리면 더 잘 보여요";
+  return want === "landscape" ? "폰을 가로로 돌리세요" : "폰을 세로로 돌리세요";
 }
 
 // ---------- 진행 칩 (F-04) ----------
