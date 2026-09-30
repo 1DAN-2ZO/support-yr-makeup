@@ -137,7 +137,15 @@ export function guideScreen<S>(deps: GuideDeps): Screen<S> {
         const lm = scaleLm(baseline.lm, { w: baseline.w, h: baseline.h }, { w: bare.w, h: bare.h });
         let d: Drawable = bare;
         const plan = deps.getPlan?.() ?? null;
-        const painted = plan ? (deps.paint ?? paintCompleted)(bare, lm, look, plan) : null;
+        // 그리다 오류가 나도(WebGL 컨텍스트 잃음 등) 쌩얼 + 테두리는 보인다 — 안 감싸면 바깥 catch 로 가서 그림 칸이 빈다 (#195 리뷰)
+        let painted: HTMLCanvasElement | null = null;
+        if (plan) {
+          try {
+            painted = (deps.paint ?? paintCompleted)(bare, lm, look, plan);
+          } catch (e) {
+            ctx.log.log({ name: "error", where: "guide", msg: `paint:${String(e).slice(0, 120)}` });
+          }
+        }
         if (painted) {
           bare.close?.();
           d = { img: painted, w: bare.w, h: bare.h };

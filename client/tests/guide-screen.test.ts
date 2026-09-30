@@ -14,12 +14,13 @@ function setup(over: Partial<GuideDeps> = {}) {
   document.body.innerHTML = `<div id="root"></div>`;
   const root = document.getElementById("root") as HTMLElement;
   const go = vi.fn(), goPart = vi.fn();
-  const ctx: ScreenContext<null> = { root, session: null, go, goPart, log: createLogger({ sid: "s1", screen: "guide", part: "liner", ver }, memorySink().sink) };
+  const sink = memorySink();
+  const ctx: ScreenContext<null> = { root, session: null, go, goPart, log: createLogger({ sid: "s1", screen: "guide", part: "liner", ver }, sink.sink) };
   const deps: GuideDeps = {
     getPart: () => "liner", firstPart: () => "brow", getBaseline: () => null, getLook: () => look,
     getFaceShape: () => null, ...over,
   };
-  return { root, ctx, go, goPart, deps };
+  return { root, ctx, go, goPart, deps, events: sink.events };
 }
 
 describe("화면 3", () => {
@@ -110,5 +111,16 @@ describe("화면 3", () => {
     guideScreen<null>(deps).mount(ctx);
     await flush();
     expect(seen[0]).toEqual({ x: 20, y: 40 });
+  });
+
+  it("GS11 화장을 그리다 오류가 나도(예: WebGL 컨텍스트 잃음) 쌩얼 + 테두리는 뜬다 · 오류는 기록 (#195 리뷰)", async () => {
+    const { seen, getGuide } = spyGuide();
+    const paint = vi.fn(() => { throw new Error("context lost"); });
+    const { ctx, deps, events } = setup({ getBaseline: () => baseline, getPlan: () => plan, getBareSource: original, paint, getGuide });
+    guideScreen<null>(deps).mount(ctx);
+    await flush();
+    expect(paint).toHaveBeenCalledTimes(1);
+    expect(seen[0]).toEqual({ x: 20, y: 40 });   // 쌩얼로 그리기까지 갔다
+    expect(events.some((e) => e.name === "error" && (e as { where?: string }).where === "guide")).toBe(true);
   });
 });
