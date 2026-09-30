@@ -27,26 +27,36 @@ export const SLOW_HINT = "머리카락이나 손이 얼굴을 가리지 않았�
  * 그 장이 기준이 되면 다음 장이 "밝기" 로 53초 막혔다. 사용자도 "켜지자마자 찍힌다" 고 했다.
  *  - minMs: 그 장 차례가 된 뒤 최소 이만큼은 기다린다 (준비할 틈)
  *  - settleMs 동안 이마 L* 의 폭이 settleL 이하여야 한다 (카메라가 멈췄다)
+ *  - maxWaitMs 가 지나면 자리 잡기는 건너뛴다 — 이마를 계속 못 재면(드묾) 다른 조건이 다 맞아도
+ *    "잠시만 그대로" 에 영원히 멈추기 때문 (#168 ⑥ 리뷰)
+ *  - 세 시간(minMs·maxWaitMs)은 모두 **얼굴이 처음 잡힌 때부터** 센다. 얼굴을 놓치면 다시 (#175 ⑥ 리뷰)
+ *    — 차례가 된 때부터 세면, 안내를 읽다 6초 뒤에 얼굴을 맞춘 사람은 이미 시간이 지나 곧바로 찍힌다.
+ *      얼굴이 들어오는 순간 노출이 다시 움직이는 기기(노출 잠금 안 되는 iPhone)에서 날아간 기준 장이 다시 생긴다.
  */
-export const BASE_SETTLE = { minMs: 1500, settleMs: 500, settleL: 2 } as const;
+export const BASE_SETTLE = { minMs: 1500, settleMs: 500, settleL: 2, maxWaitMs: 5000 } as const;
 
 export interface Settle {
-  notBefore: number;
+  /** 얼굴이 (이번에 이어서) 처음 잡힌 시각. 얼굴이 없으면 null */
+  faceSince: number | null;
   hist: readonly { t: number; L: number }[];
 }
 
-export function startSettle(now: number, opt = BASE_SETTLE): Settle {
-  return { notBefore: now + opt.minMs, hist: [] };
+export function startSettle(): Settle {
+  return { faceSince: null, hist: [] };
 }
 
-/** 프레임마다. L 이 없으면(이마 못 잼) 기록을 비운다 */
-export function settleStep(st: Settle, now: number, L: number | undefined, opt = BASE_SETTLE): { state: Settle; ready: boolean } {
-  if (L === undefined || !Number.isFinite(L)) return { state: { ...st, hist: [] }, ready: false };
+/** 프레임마다. 얼굴이 없으면 처음부터, L 이 없으면(얼굴은 있는데 이마를 못 잼) 기록만 비운다 */
+export function settleStep(st: Settle, now: number, L: number | undefined, face: boolean, opt = BASE_SETTLE): { state: Settle; ready: boolean } {
+  if (!face) return { state: startSettle(), ready: false };
+  const faceSince = st.faceSince ?? now;
+  const elapsed = now - faceSince;
+  const timedOut = elapsed >= opt.maxWaitMs;
+  if (L === undefined || !Number.isFinite(L)) return { state: { faceSince, hist: [] }, ready: timedOut };
   const hist = [...st.hist.filter((h) => now - h.t <= opt.settleMs), { t: now, L }];
   const Ls = hist.map((h) => h.L);
   const spanOk = now - (hist[0]?.t ?? now) >= opt.settleMs * 0.8;
-  const ready = now >= st.notBefore && spanOk && Math.max(...Ls) - Math.min(...Ls) <= opt.settleL;
-  return { state: { ...st, hist }, ready };
+  const ready = timedOut || (elapsed >= opt.minMs && spanOk && Math.max(...Ls) - Math.min(...Ls) <= opt.settleL);
+  return { state: { faceSince, hist }, ready };
 }
 
 export interface RunState {
@@ -61,7 +71,7 @@ export interface RunState {
 
 export function startRun(shots: Partial<Record<ShotId, unknown>>, now: number): RunState {
   const shot = nextShot(shots);
-  return { shot, stable: 0, since: now, settle: shot === "front_open" ? startSettle(now) : null };
+  return { shot, stable: 0, since: now, settle: shot === "front_open" ? startSettle() : null };
 }
 
 export interface RunStep {
@@ -81,7 +91,7 @@ export function runStep(st: RunState, m: ShotMeasure, now: number): RunStep {
   let gate = shotGate(st.shot, { ...m, stableCount: stable });
   let settle = st.settle;
   if (settle) {
-    const r = settleStep(settle, now, m.foreheadL);
+    const r = settleStep(settle, now, m.foreheadL, m.faceDetected);
     settle = r.state;
     // 다른 조건은 다 맞는데 카메라가 아직 자리 잡는 중 → "잠시만 그대로"
     if (gate.ok && !r.ready) gate = { ok: false, firstFail: "stable", text: SHOT_TEXT.stable, stableCount: stable };

@@ -18,8 +18,11 @@ import type { Lab } from "./color";
  *    (2026-09-23 iPad 실측: 고개 돌 때 이마 ΔE p99 18.6, 가림 없이 프레임 21% 가 가림으로 잡혀 45° 장이 안 찍혔다)
  * jumpDE 20 확정 (2026-09-23 iPad 가림 측정, 3초씩 최대 ΔE): 가만히 3.0 · 불 끄고 켜기 2.8 | 손 63.1 · 브러시 43.8 → 둘 다 잡힘.
  * 앞머리는 천천히 내려와 18.5 라 안 잡힌다 — 낮추면 촬영 중 자연 변동(p99 18)과 겹치므로 찍기 전 안내(CAPTURE_GUIDE)에 맡긴다.
+ * 어두울 때 (2026-09-28 Android 어두움 실측): 카메라 잡음으로 손을 안 댔는데 이마 급변이 최대 39.8 (밝을 때 p99 3.5),
+ * "가리지 말아 주세요" 가 130프레임 떠 첫 장이 48초 걸렸다 → 창 안 L* 중앙값(가림 중이면 가리기 전 값)이 darkL 미만이면 jumpDE·releaseDE 를 darkScale 배.
+ * **가정값** (40 = 어두움 최대 39.8 과 손 63 사이). 촬영 세션(#58)에서 어두울 때 손·브러시 값을 재고 확정한다.
  */
-export const FOREHEAD_JUMP = { windowMs: 300, jumpDE: 20, releaseDE: 8, settleMs: 1500, poseDeg: 5 } as const;
+export const FOREHEAD_JUMP = { windowMs: 300, jumpDE: 20, releaseDE: 8, settleMs: 1500, poseDeg: 5, darkL: 50, darkScale: 2 } as const;
 
 export interface ForeheadTrack {
   /** 최근 windowMs 안의 이마 값 (오래된 것부터) */
@@ -28,6 +31,11 @@ export interface ForeheadTrack {
   ref: Lab | null;
   /** 가림 중 마지막으로 크게 움직인 시각 */
   movedAt: number;
+}
+
+function medianL(h: readonly { lab: Lab }[]): number {
+  const v = h.map((x) => x.lab.L).sort((a, b) => a - b);
+  return v[Math.floor(v.length / 2)] ?? 0;
 }
 
 export function startForeheadTrack(): ForeheadTrack {
@@ -47,11 +55,15 @@ export function foreheadStep(
   const oldest = first.lab;
   const jump = deltaE(lab, oldest);
   let { ref, movedAt } = tr;
+  // 어두우면 잡음이 커서 임계를 올린다. 가림 중이면 가리기 전 값(ref), 아니면 창 안 L* 의 중앙값으로 본다
+  // — 잡음 한 프레임이 튀어도 창 시작이 "밝음" 으로 안 바뀌고, 밝은 이마를 손이 막 가린 순간은 여전히 밝음(임계 20)이다
+  const k = (ref ? ref.L : medianL(hist)) < opt.darkL ? opt.darkScale : 1;
+  const jumpDE = opt.jumpDE * k, releaseDE = opt.releaseDE * k;
   if (ref === null) {
-    if (jump > opt.jumpDE) { ref = oldest; movedAt = t; }
-  } else if (deltaE(lab, ref) < opt.releaseDE) {
+    if (jump > jumpDE) { ref = oldest; movedAt = t; }
+  } else if (deltaE(lab, ref) < releaseDE) {
     ref = null;
-  } else if (jump > opt.releaseDE) {
+  } else if (jump > releaseDE) {
     movedAt = t;
   } else if (t - movedAt >= opt.settleMs) {
     ref = null;

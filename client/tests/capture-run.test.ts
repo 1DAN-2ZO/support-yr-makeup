@@ -9,7 +9,8 @@ describe("runStep", () => {
   it("K1 조건을 stableFrames 프레임 연속 통과해야 찍는다", () => {
     let st = startRun({}, 0);
     expect(st.shot).toBe("front_open");
-    // 기준 장은 켠 뒤 1.5초가 지나야 하므로 2초부터 100ms 간격으로
+    // 기준 장은 얼굴이 잡힌 뒤 1.5초가 지나야 한다 — 0~2초는 얼굴은 보이지만 눈을 감고 있어(조건 미달) 안정이 안 쌓임
+    for (let t = 0; t < 2000; t += 100) st = runStep(st, { ...OK, closedA: true, closedB: true }, t).state;
     for (let i = 1; i < CAPTURE_LIMITS.stableFrames; i++) {
       const r = runStep(st, OK, 2000 + i * 100);
       expect(r.take).toBe(false);
@@ -80,10 +81,46 @@ describe("기준 장 자리 잡기 (2026-09-28 실내등: 켜자마자 찍힌 �
     expect(tookAt).toBeLessThan(BASE_SETTLE.minMs);
   });
 
+  it("S5 이마를 계속 못 재도 5초가 지나면 자리 잡기를 건너뛰고 찍는다 (#168 리뷰)", () => {
+    let st = startRun({}, 0);
+    let tookAt = -1;
+    for (let t = 0; tookAt < 0 && t < 10000; t += 50) {
+      const { foreheadL: _L, ...noForehead } = OK;
+      const r = runStep(st, noForehead, t);
+      if (r.take) tookAt = t;
+      st = r.state;
+    }
+    expect(tookAt).toBeGreaterThanOrEqual(BASE_SETTLE.maxWaitMs);
+    expect(tookAt).toBeLessThan(BASE_SETTLE.maxWaitMs + 500);
+  });
+
+  it("S6 차례가 된 지 6초 뒤에 얼굴이 들어오면, 그때부터 1.5초 대기·자리 잡기를 거친다 (#175 리뷰)", () => {
+    let st = startRun({}, 0);
+    for (let t = 0; t < 6000; t += 50) st = runStep(st, { ...OK, faceDetected: false }, t).state;   // 안내 읽는 중 — 얼굴 없음
+    let tookAt = -1;
+    for (let t = 6000; tookAt < 0 && t < 20000; t += 50) {
+      const r = runStep(st, OK, t);
+      if (r.take) tookAt = t;
+      st = r.state;
+    }
+    expect(tookAt).toBeGreaterThanOrEqual(6000 + BASE_SETTLE.minMs);
+  });
+
+  it("S7 얼굴을 놓치면 대기를 처음부터 다시 센다", () => {
+    let s = startSettle();
+    s = settleStep(s, 0, 60, true).state;
+    s = settleStep(s, 4000, 60, true).state;
+    s = settleStep(s, 4100, undefined, false).state;   // 얼굴 놓침
+    expect(s.faceSince).toBeNull();
+    const r = settleStep(s, 4200, 60, true);
+    expect(r.state.faceSince).toBe(4200);
+    expect(r.ready).toBe(false);
+  });
+
   it("S4 settleStep: 이마를 못 재면 기록을 비운다", () => {
-    let s = startSettle(0);
-    s = settleStep(s, 2000, 60).state;
-    const r = settleStep(s, 2100, undefined);
+    let s = startSettle();
+    s = settleStep(s, 2000, 60, true).state;
+    const r = settleStep(s, 2100, undefined, true);
     expect(r.ready).toBe(false);
     expect(r.state.hist).toHaveLength(0);
   });
