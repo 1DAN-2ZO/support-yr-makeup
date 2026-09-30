@@ -1,10 +1,10 @@
 name: notify
 
-# PR · 이슈가 올라오거나 닫히면 디스코드로 알린다 (같은 웹후크 채널).
+# PR · 이슈가 올라오거나 닫히면 디스코드로 알린다. PR 은 #github-pr, 이슈는 따로 된 채널.
 # 규칙상 작성자가 PR 을 올리면 ⑥ 이 받아서 병합하는데(§0-1-1), 말로 알리는 걸 잊으면
 # PR 이 그냥 떠 있게 된다. 이 알림이 그 자리를 메운다.
 #
-# 준비: 저장소 시크릿 DISCORD_WEBHOOK_URL (디스코드 채널 웹후크 주소)
+# 준비: 저장소 시크릿 DISCORD_WEBHOOK_URL (PR 채널 웹후크) · DISCORD_ISSUE_WEBHOOK_URL (이슈 채널 웹후크)
 # 시크릿이 없으면 조용히 건너뛴다 — 알림 때문에 CI 가 빨개지면 안 된다.
 
 on:
@@ -109,7 +109,7 @@ jobs:
     steps:
       - name: 디스코드로 보내기
         env:
-          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          WEBHOOK: ${{ secrets.DISCORD_ISSUE_WEBHOOK_URL }}
           ACTION: ${{ github.event.action }}
           REASON: ${{ github.event.issue.state_reason }}
           NUM: ${{ github.event.issue.number }}
@@ -119,7 +119,7 @@ jobs:
           ACTOR: ${{ github.actor }}
         run: |
           if [ -z "${WEBHOOK}" ]; then
-            echo "DISCORD_WEBHOOK_URL 이 없습니다 — 알림을 건너뜁니다"
+            echo "DISCORD_ISSUE_WEBHOOK_URL 이 없습니다 — 알림을 건너뜁니다 (PR 채널로 대신 보내지 않는다)"
             exit 0
           fi
 
