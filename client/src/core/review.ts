@@ -9,7 +9,7 @@
  *  - HistoryStore·topMisses·trendSeries 는 로드맵(기록 화면)용으로만 남긴다
  */
 
-import { CHECK_REASON_TEXT, PARAMS, PART_NAME, diagText } from "./score";
+import { CHECK_REASON_SHORT, CHECK_REASON_TEXT, PARAMS, PART_NAME, diagText } from "./score";
 import type { LookTemplate, PartId, PartResult, PartStatus, SessionSummary, Versions } from "./types";
 import { LOOK_PART_IDS } from "./types";
 
@@ -44,7 +44,8 @@ export function reviewLine(p: ReviewPart): string {
     const side = Math.abs(lr) >= 10 ? (lr > 0 ? " 오른쪽이 조금 진해요" : " 왼쪽이 조금 진해요") : "";
     return CHECK_REASON_TEXT.contour + side;
   }
-  if (p.status === "check_only") return CHECK_REASON_TEXT[p.checkReason ?? "faint"];
+  // 리뷰는 다 끝난 뒤라 할 일("다시 확인받아") 없이 이유만
+  if (p.status === "check_only") return CHECK_REASON_SHORT[p.checkReason ?? "faint"];
   if (p.status === "skipped") return "건너뛴 부위예요";
   if (p.status !== "passed") return "";
   if (p.diagnosis) return p.diagnosis;

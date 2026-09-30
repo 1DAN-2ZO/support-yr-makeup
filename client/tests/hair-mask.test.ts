@@ -89,7 +89,7 @@ describe("채점 — 머리카락 마스크", () => {
   });
 
   it("H7 가림 안내 문구가 손만 말하지 않는다", () => {
-    expect(CHECK_REASON_TEXT.occluded).toContain("머리카락");
+    expect(CHECK_REASON_TEXT.occluded).toContain("앞머리");
   });
 });
 
