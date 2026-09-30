@@ -17,6 +17,15 @@ jobs:
       - run: uv python install 3.11
       - run: uv sync --frozen --extra dev --extra eval
       - run: uv run ruff check . && uv run ruff format --check .
+      # 평가 도구(eval/score/score_cli.mjs · eval/vlm/vlm_core.mjs)가 앱 코드를 client/node_modules 의 esbuild 로 묶어 쓴다
+      # — "평가가 앱과 같은 것을 잰다" 시험이 여기 걸려 있다. client 를 안 깔면 node 가 exit 1 (#218)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+        working-directory: client
       - run: uv run pytest
 
   client:
