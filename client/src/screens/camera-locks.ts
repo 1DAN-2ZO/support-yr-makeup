@@ -31,7 +31,24 @@ export interface LockReport {
   maxWidth: number | null;
   maxHeight: number | null;
   label: string;
+  /** 잠금이 던진 오류 (항목 → 메시지). 기기별 원인 추적용 */
+  errors?: Partial<Record<"whiteBalanceMode" | "exposureMode" | "focusMode", string>>;
 }
+
+/** 카메라가 지금 실제로 쓰는 값 (진단용). 없는 항목은 빠진다 */
+export function camSnapshot(track: TrackLike): Record<string, unknown> {
+  const s = track.getSettings ? track.getSettings() : {};
+  const keep = ["exposureMode", "exposureTime", "iso", "exposureCompensation", "whiteBalanceMode", "colorTemperature", "focusMode", "focusDistance", "zoom", "width", "height", "frameRate"];
+  return Object.fromEntries(keep.filter((k) => s[k] !== undefined).map((k) => [k, s[k]]));
+}
+
+/**
+ * 기본으로 잠그는 항목 — **노출은 잠그지 않는다** (2026-09-30 결정).
+ * S26 Ultra 는 자동일 때 실제와 상관없는 고정값(노출 33ms·ISO 250, 색온도·초점 0)을 알려 줘서, 그 값으로 노출을 잠그면
+ * 오히려 흔들렸다: 창가·불 끔 A/B 각 2회 — 노출 잠금 켬 정면 두 장 밝기 차 +7.5·+4.8 / 끔 0.0·+0.3.
+ * 정의서도 웹은 exposureLocked=false, 이마·흰자로 보정. 색·초점은 기기가 실제 값(0 이 아닌 값)을 알려 줄 때만 잠근다
+ */
+export const DEFAULT_LOCKS = ["whiteBalanceMode", "focusMode"] as const;
 
 /**
  * 'manual' 로 바꿀 때 **지금 값을 같이 넘기는** 칸. 'manual' 만 보내면 Android Chrome 은 기본 노출 시간·색온도로 바꿔
@@ -48,22 +65,27 @@ const LOCK_VALUE: Record<"whiteBalanceMode" | "exposureMode" | "focusMode", read
  * 순서: 1) 'continuous' 로 두고 안정될 시간을 준 뒤(호출 쪽) 2) 이 함수로 'manual' 전환 — **그 순간의 값(getSettings)을 그대로 고정**.
  * manual 이 지원 목록에 없거나, 지금 값을 못 읽으면(노출 시간·색온도) 건너뛴다. applyConstraints 가 throw 하면 failed.
  */
-export async function applyCameraLocks(track: TrackLike): Promise<LockReport> {
+export async function applyCameraLocks(track: TrackLike, only?: readonly ("whiteBalanceMode" | "exposureMode" | "focusMode")[]): Promise<LockReport> {
   const caps: CameraCaps = track.getCapabilities ? track.getCapabilities() : {};
   const capsSupported = !!track.getCapabilities;
+  const errors: NonNullable<LockReport["errors"]> = {};
   const tryLock = async (key: "whiteBalanceMode" | "exposureMode" | "focusMode"): Promise<LockReport["whiteBalance"]> => {
+    if (only && !only.includes(key)) return "unsupported";
     const modes = caps[key];
     if (!modes || !modes.includes("manual")) return "unsupported";
     const now = track.getSettings ? track.getSettings() : {};
     const values: Record<string, unknown> = {};
-    for (const k of LOCK_VALUE[key]) if (typeof now[k] === "number" && Number.isFinite(now[k])) values[k] = now[k];
+    // 0 은 "모름" — S26 Ultra 는 자동일 때 colorTemperature·focusDistance 를 0 으로 알려 주고, 0 을 넘기면 범위 밖으로 거절된다 (2026-09-30)
+    for (const k of LOCK_VALUE[key]) { const v = now[k]; if (typeof v === "number" && Number.isFinite(v) && (v > 0 || k === "exposureCompensation")) values[k] = v; }
     // 노출은 노출 시간, WB 는 색온도를 꼭 알아야 한다 — 모르면 'manual' 이 기본값으로 튄다
     if (key === "exposureMode" && !("exposureTime" in values)) return "unsupported";
     if (key === "whiteBalanceMode" && !("colorTemperature" in values)) return "unsupported";
+    if (key === "focusMode" && !("focusDistance" in values)) return "unsupported";
     try {
       await track.applyConstraints({ advanced: [{ [key]: "manual", ...values }] });
       return "locked";
-    } catch {
+    } catch (e) {
+      errors[key] = String(e).slice(0, 120);
       return "failed";
     }
   };
@@ -75,6 +97,7 @@ export async function applyCameraLocks(track: TrackLike): Promise<LockReport> {
     maxWidth: caps.width?.max ?? null,
     maxHeight: caps.height?.max ?? null,
     label: track.label ?? "",
+    ...(Object.keys(errors).length ? { errors } : {}),
   };
 }
 

@@ -37,6 +37,12 @@ describe("applyCameraLocks", () => {
     expect(t.applied).toContainEqual({ advanced: [{ exposureMode: "manual", exposureTime: 166.6, iso: 400 }] });
     expect(t.applied).toContainEqual({ advanced: [{ whiteBalanceMode: "manual", colorTemperature: 4800 }] });
   });
+  it("S26 Ultra: 자동일 때 색온도·초점 거리를 0(모름)으로 알려 주면 그 항목은 시도하지 않는다 (2026-09-30)", async () => {
+    const t = track({ whiteBalanceMode: ["manual"], exposureMode: ["manual"], focusMode: ["manual"] }, [], { exposureTime: 332.4, iso: 250, exposureCompensation: 0, colorTemperature: 0, focusDistance: 0 });
+    const r = await applyCameraLocks(t);
+    expect(r).toMatchObject({ exposure: "locked", whiteBalance: "unsupported", focus: "unsupported" });
+    expect(t.applied).toEqual([{ advanced: [{ exposureMode: "manual", exposureTime: 332.4, iso: 250, exposureCompensation: 0 }] }]);
+  });
   it("지금 노출 시간·색온도를 못 읽으면 잠그지 않는다 (unsupported)", async () => {
     const t = track({ whiteBalanceMode: ["manual"], exposureMode: ["manual"] }, [], { iso: 400 });
     const r = await applyCameraLocks(t);
