@@ -129,6 +129,10 @@ async function boot(): Promise<void> {
   // 로그는 세션과 같은 IndexedDB 를 쓴다 — DB 를 두 벌 만들지 않는다.
   // 끝내기(sessionStore.clearAll)가 키를 전부 지우므로 로그도 같이 지워진다 (F-11).
   const sessionStore = await createSessionStore();
+  if (import.meta.env.DEV) {
+    // UI를 맞추는 동안은 이전 촬영 draft 때문에 안내 첫 화면이 건너뛰지 않게 한다.
+    await sessionStore.clearAll();
+  }
   const backend = (await indexedDbBackend()) ?? memoryBackend();
   const logStore = await createLogStore({ backend });
   const sid = crypto.randomUUID();

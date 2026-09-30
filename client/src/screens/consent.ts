@@ -47,11 +47,42 @@ export function consentScreen<S>(deps: ConsentDeps): Screen<S> {
           <span>nudy</span>
           <i aria-hidden="true"></i>
         </div>
+        <img class="nudy-coach-face" src="/ui/nudy-coach-simple.svg" alt="" aria-hidden="true" />
         <div class="intro-bottom-sheet">
           <div class="intro-checks">
-            <div class="intro-check"><b class="check-icon hair"></b><span>앞머리</span><i aria-hidden="true"></i></div>
-            <div class="intro-check"><b class="check-icon glasses"></b><span>안경</span><i aria-hidden="true"></i></div>
-            <div class="intro-check"><b class="check-icon light"></b><span>밝기</span><i aria-hidden="true"></i></div>
+            <div class="intro-check">
+              <svg class="check-icon" viewBox="0 0 48 48" aria-hidden="true">
+                <path d="M11 39V23C11 13 16.8 8 24 8s13 5 13 15v16" />
+                <path d="M16 39V25c0-4.7 2.5-8.2 7-10.2" />
+                <path d="M24 15c3.8 3.4 5.5 7.3 5.5 12.8V39" />
+                <path d="M18 25c3.8 1.4 8.2 1.4 12 0" />
+              </svg>
+              <span>앞머리</span><i aria-hidden="true"></i>
+            </div>
+            <div class="intro-check">
+              <svg class="check-icon" viewBox="0 0 48 48" aria-hidden="true">
+                <circle cx="17" cy="25" r="8" />
+                <circle cx="31" cy="25" r="8" />
+                <path d="M25 24.2c-.7-.5-1.3-.5-2 0" />
+                <path d="M9 22.5 5 20" />
+                <path d="m39 22.5 4-2.5" />
+              </svg>
+              <span>안경</span><i aria-hidden="true"></i>
+            </div>
+            <div class="intro-check">
+              <svg class="check-icon" viewBox="0 0 48 48" aria-hidden="true">
+                <circle cx="24" cy="24" r="8" />
+                <path d="M24 6v6" />
+                <path d="M24 36v6" />
+                <path d="M6 24h6" />
+                <path d="M36 24h6" />
+                <path d="m11.3 11.3 4.2 4.2" />
+                <path d="m32.5 32.5 4.2 4.2" />
+                <path d="m36.7 11.3-4.2 4.2" />
+                <path d="m15.5 32.5-4.2 4.2" />
+              </svg>
+              <span>밝기</span><i aria-hidden="true"></i>
+            </div>
           </div>
         </div>
       `;
@@ -75,6 +106,13 @@ export function consentScreen<S>(deps: ConsentDeps): Screen<S> {
         ctx.go(ok ? "capture" : "denied");
       };
       const start = button(CONSENT_TEXT.start, "intro-camera-start", openSheet);
+      start.innerHTML = `
+        <svg viewBox="0 0 48 48" aria-hidden="true">
+          <path d="M15 17h5l2.5-4h7L32 17h5a5 5 0 0 1 5 5v13a5 5 0 0 1-5 5H11a5 5 0 0 1-5-5V22a5 5 0 0 1 5-5h4Z" />
+          <circle cx="24" cy="29" r="8" />
+        </svg>
+        <span>${CONSENT_TEXT.start}</span>
+      `;
       const sheetTitle = document.createElement("h2");
       sheetTitle.textContent = CONSENT_TEXT.title;
       const sheetBody = document.createElement("p");
