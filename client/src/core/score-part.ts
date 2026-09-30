@@ -10,12 +10,12 @@
 
 import scoreRules from "../../../rules/score.json";
 import type { Lab, RgbaImage } from "./color";
-import { deltaE } from "./color";
+import { deltaE, scleraLab } from "./color";
 import { LM, at } from "./landmarks";
 import type { HairMask, SampleFrame } from "./sampling";
 import { frameOf, sampleBrow, sampleForehead, sampleLiner, sampleLip, sampleRegion } from "./sampling";
 import type { Band, DecideContext, LightCorr, LinerStrip, PartScore, RegionGrid, ScoreParams, Side, SimilarityFit } from "./score";
-import { PARAMS, alignToBaseline, browResult, compareLinerEye, compareLip, compareRegion, intensityIndex, intensityResult, lightCorr, linerResult, makeupBiasPx, noCorr, oneLiner, toOutcome } from "./score";
+import { PARAMS, alignToBaseline, colorShiftCorr, browResult, compareLinerEye, compareLip, compareRegion, intensityIndex, intensityResult, lightCorr, linerResult, makeupBiasPx, noCorr, oneLiner, toOutcome } from "./score";
 import type { ScoreOutcome } from "./flow";
 import type { CheckReason, PartId, Pt } from "./types";
 
@@ -76,7 +76,9 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
   // 조명: 이마(비화장)의 L* 비율로 맞춘다. 이마를 못 재면 보정 없이 간다 — 조명이 달라졌는지는 알 수 없다
   const foreBase = sampleForehead(base), foreCur = sampleForehead(cur);
   const lit = foreBase && foreCur ? { corr: lightCorr(foreBase.L, foreCur.L), shift: foreCur.L - foreBase.L } : null;
-  const corr = lit?.corr ?? noCorr;
+  // 조명 색 (S-4 #40): 흰자를 두 사진에서 다 재면 흰자 a*b* 차이도 되돌린다. 못 재면(눈 감음 등) 밝기만
+  const sb = p.colorCorr === "sclera" ? scleraLab(base.im, base.lm) : null, sc = sb ? scleraLab(cur.im, cur.lm) : null;
+  const corr = sb && sc ? colorShiftCorr(lit?.corr ?? noCorr, sb, sc) : lit?.corr ?? noCorr;
   const ctx: DecideContext = lit ? { lightShift: lit.shift } : {};
   // 정렬 잔차는 눈 폭으로 나눠 해상도와 상관없게 (#43)
   if (opts.alignResidual !== undefined && cur.unit.eye > 0) ctx.alignResidual = opts.alignResidual / cur.unit.eye;
