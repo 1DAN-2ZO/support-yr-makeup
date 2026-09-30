@@ -32,6 +32,8 @@ export interface LiveFrame<I> {
   lm: readonly Pt[] | null;
   w: number;
   h: number;
+  /** 지금 화면 방향 — 눈 부위는 가로에서만 (게이트) */
+  screen?: "landscape" | "portrait";
   /** 화면에 실제로 보이는 영역(영상 px, crop.coverView). 없으면 영상 전체 */
   view?: Rect;
   sharpness?: number;
@@ -110,7 +112,7 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
         }
         const r = gateStep(stable, opt.partId, {
           // 정면 여부(절대 각도)는 화면 1 과 같은 식, 기준 사진과의 차는 강체 점으로 (입을 벌려도 안 흔들림, #28)
-          faceDetected: true, roll: faceRoll(f.lm), ...pose, poseDiff: rigidPoseDiff(opt.baseline.lm, f.lm),
+          faceDetected: true, roll: faceRoll(f.lm), ...(f.screen ? { screen: f.screen } : {}), ...pose, poseDiff: rigidPoseDiff(opt.baseline.lm, f.lm),
           ...optExpr(exprDiff(opt.partId, opt.baseExpr, f.expr)),
           partVisible: partInRect(opt.partId, f.lm, f.view ?? { x: 0, y: 0, w: f.w, h: f.h }),
           ...(occluded !== null ? { occluded } : {}),

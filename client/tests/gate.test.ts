@@ -42,11 +42,24 @@ describe("evaluateGate", () => {
     expect(r.text).toBe("조금만 정면으로");
   });
 
-  it("V4b 얼굴이 45° 넘게 누우면(자동 회전 꺼짐) 가장 먼저 '자동 회전' 안내 (#204 C2)", () => {
-    const r = evaluateGate("liner", good({ roll: 80, yaw: 40 }));
-    expect(r.firstFail).toBe("angle");
-    expect(r.text).toBe(GATE_TEXT.rotate);
-    expect(evaluateGate("liner", good({ roll: 40 })).ok).toBe(true);
+  it("V4b 얼굴이 45° 넘게 누우면(자동 회전 꺼짐) 가장 먼저 — 눈 부위는 '자동 회전을 켜', 세로 부위는 '세로로 들어' (#204)", () => {
+    for (const p of ["brow", "liner", "shadow"] as const) {
+      const r = evaluateGate(p, good({ roll: 80, yaw: 40, screen: "portrait" }));
+      expect(r.firstFail).toBe("angle");
+      expect(r.text).toBe(GATE_TEXT.autoRotate);
+    }
+    for (const p of ["lip", "cheek", "contour"] as const) expect(evaluateGate(p, good({ roll: 80 })).text).toBe(GATE_TEXT.holdPortrait);
+    expect(evaluateGate("liner", good({ roll: 40, screen: "landscape" })).ok).toBe(true);
+  });
+
+  it("V4c 눈 부위는 가로 화면에서만 — 세로면 '폰을 가로로 돌려 주세요' 로 막는다 (팀 협의, 정의서 3-2)", () => {
+    for (const p of ["brow", "liner", "shadow"] as const) {
+      const r = evaluateGate(p, good({ screen: "portrait" }));
+      expect(r.firstFail).toBe("angle");
+      expect(r.text).toBe(GATE_TEXT.toLandscape);
+      expect(evaluateGate(p, good({ screen: "landscape" })).ok).toBe(true);
+    }
+    for (const p of ["lip", "cheek", "contour"] as const) expect(evaluateGate(p, good({ screen: "portrait" })).ok).toBe(true);
   });
 
   it("V5 정면 한계: yaw ±15°, pitch ±10°", () => {

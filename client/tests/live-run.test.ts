@@ -203,8 +203,12 @@ describe("live run", () => {
   });
 
   it("L20 누운 얼굴이면 '자동 회전' 안내 — 게이트가 기울기를 스스로 잰다 (#204)", () => {
-    const t = Math.PI / 2, lying = FACE.map((p) => ({ x: 300 - (p.y - 300), y: 300 + (p.x - 300) }));
-    void t;
-    expect(run("liner").step(frame({ lm: lying })).gate.text).toBe(GATE_TEXT.rotate);
+    const lying = FACE.map((p) => ({ x: 300 - (p.y - 300), y: 300 + (p.x - 300) }));
+    expect(run("liner").step(frame({ lm: lying, screen: "portrait" })).gate.text).toBe(GATE_TEXT.autoRotate);
+  });
+
+  it("L21 눈 부위를 세로 화면에서 하면 '가로로 돌려' 로 막는다 — 화면이 넘긴 방향으로 (팀 협의)", () => {
+    expect(run("liner").step(frame({ screen: "portrait" })).gate.text).toBe(GATE_TEXT.toLandscape);
+    expect(run("lip").step(frame({ screen: "portrait" })).gate.firstFail).not.toBe("angle");
   });
 });
