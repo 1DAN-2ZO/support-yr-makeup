@@ -24,8 +24,8 @@ cd "C:\Program Files (x86)\cloudflared"
 .\cloudflared.exe tunnel --no-tls-verify --url https://127.0.0.1:5173
 ```
 
-- 측정: `https://cowboy-observe-settlement-acts.trycloudflare.com/capture-probe.html` (9/30 터널 — 켜져 있는 동안만) — 한 회차 = 시작 → 동의 → 확인했어요 → 4장(장마다 확인) → 끝. 회차마다 새로고침.
-- 앱: `https://cowboy-observe-settlement-acts.trycloudflare.com`
+- 측정: `…/capture-probe.html` (**접속 주소는 이슈 #215** — 임시 터널이라 문서에 두지 않는다) — 한 회차 = 시작 → 동의 → 확인했어요 → 4장(장마다 확인) → 끝. 회차마다 새로고침.
+- 앱: `…/` (주소는 #215)
 
 ## 측정 (두 사람 모두, 약 20분)
 

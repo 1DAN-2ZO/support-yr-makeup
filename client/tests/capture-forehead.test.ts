@@ -1,6 +1,7 @@
 // 촬영·실시간 이마 참조 — 앞머리 (2026-09-30 #175 리뷰): 새 모델 없이 볼보다 한참 어두운 이마 픽셀을 머리카락으로 빼고 중앙값
 import { describe, expect, it } from "vitest";
-import { FOREHEAD_POLY, FOREHEAD_SKIN, foreheadLab, foreheadSkin, pointInPoly } from "@core/color";
+import { FOREHEAD_POLY, FOREHEAD_SKIN, foreheadLab, foreheadRawLab, foreheadSkin, pointInPoly, type Lab, type RgbaImage } from "@core/color";
+import { foreheadStep, startForeheadTrack } from "@core/occlusion";
 import { shotGate, SHOT_TEXT, type ShotMeasure } from "@core/flow";
 import { LMS, image } from "./helpers/synth-face";
 import type { Rgb } from "./helpers/synth-face";
@@ -34,5 +35,37 @@ describe("이마 참조 — 앞머리", () => {
     const m: ShotMeasure = { faceDetected: true, yaw: 0, pitch: 0, closedA: false, closedB: false, foreheadHidden: true };
     const g = shotGate("front_open", m);
     expect(g).toMatchObject({ ok: false, firstFail: "visible", text: SHOT_TEXT.bangs });
+  });
+});
+
+describe("가림 판정은 머리카락을 빼지 않은 이마 평균으로 (#212 리뷰)", () => {
+  const HAND: Rgb = [90, 62, 52];   // 그림자 진 손 — 볼보다 한참 어둡다 (그래서 피부 필터가 머리카락처럼 뺀다)
+  /** 이마 다각형 아래쪽 절반을 손으로 */
+  const handHalf = (x: number, y: number) => (y > y0 + (y1 - y0) * 0.5 && pointInPoly(x, y, poly) ? HAND : null);
+  /** 프레임을 33ms 간격으로 흘려 가림 여부를 모은다. ref = 이마 값을 뽑는 함수 */
+  const run = (frames: readonly RgbaImage[], ref: (im: RgbaImage) => Lab | null): boolean[] => {
+    let tr = startForeheadTrack();
+    return frames.map((im, i) => {
+      const lab = ref(im);
+      if (!lab) return false;
+      const r = foreheadStep(tr, i * 33, lab, { yaw: 0, pitch: 0 });
+      tr = r.track;
+      return r.occluded;
+    });
+  };
+  const bareIm = image(() => null), handIm = image(handHalf);
+  const seq = [...Array(15).fill(bareIm), ...Array(15).fill(handIm)] as RgbaImage[];
+
+  it("O1 볼보다 어두운 손이 이마 절반을 가리면 가림으로 잡힌다 (전체 평균)", () => {
+    expect(run(seq, (im) => foreheadRawLab(im, LMS)).slice(17).every(Boolean)).toBe(true);
+  });
+
+  it("O1' 피부만 남긴 값으로 판정하면 같은 손을 못 잡는다 — 그래서 가림에는 쓰지 않는다", () => {
+    expect(run(seq, (im) => foreheadLab(im, LMS)).some(Boolean)).toBe(false);
+  });
+
+  it("O2 가만히 있는 앞머리는 가림으로 안 잡힌다", () => {
+    const still = Array(30).fill(image(bangs(0.6))) as RgbaImage[];
+    expect(run(still, (im) => foreheadRawLab(im, LMS)).some(Boolean)).toBe(false);
   });
 });

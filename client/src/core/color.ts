@@ -136,7 +136,17 @@ export function foreheadSkin(im: RgbaImage, lm: readonly Pt[], opt = FOREHEAD_SK
   return { lab: { L: median(L), a: median(A), b: median(B) }, skinFrac: L.length / total };
 }
 
-/** 이마 참조: 이마 피부 중앙값 Lab (앞머리 뺌). L* 는 밝기 조건, a*b* 는 색(조명 색온도) 조건에 쓴다. 이마 대부분이 가려지면 null */
+/**
+ * 가림(급변) 판정용 이마 평균 — 머리카락을 빼지 않은 옛 방식 (#212 ⑥ 리뷰).
+ * 손·브러시는 그림자 때문에 볼보다 어두워서, 피부만 남기는 foreheadLab 에서는 **가린 손도 빠진다** → 가림을 못 잡는다.
+ * 그래서 가림(occlusion.foreheadStep)은 이것을, 밝기·색 조건은 foreheadLab 을 쓴다. 가만히 있는 앞머리는 급변이 아니라 가림으로 안 잡힌다.
+ */
+export function foreheadRawLab(im: RgbaImage, lm: readonly Pt[]): Lab | null {
+  const r = meanLabPoly(im, FOREHEAD_POLY.map((i) => at(lm, i)), 2);
+  return r ? r.lab : null;
+}
+
+/** 이마 참조: 이마 피부 중앙값 Lab (앞머리 뺌). L* 는 밝기 조건, a*b* 는 색(조명 색온도) 조건에 쓴다. 이마 대부분이 가려지면 null. 가림 판정에는 쓰지 않는다 (foreheadRawLab) */
 export function foreheadLab(im: RgbaImage, lm: readonly Pt[], opt = FOREHEAD_SKIN): Lab | null {
   const r = foreheadSkin(im, lm, opt);
   return r && r.skinFrac >= opt.minSkin ? r.lab : null;

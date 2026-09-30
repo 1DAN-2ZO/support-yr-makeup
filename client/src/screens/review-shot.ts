@@ -78,7 +78,7 @@ export function startReviewShot(host: HTMLElement, done: (r: ReviewShot | null) 
           const lm: Pt[] = raw.map((p) => ({ x: p.x * sw, y: p.y * sh }));
           const ang = yawFromLandmarks(lm);
           const bs = new Map((res.faceBlendshapes[0]?.categories ?? []).map((c) => [c.categoryName, c.score]));
-          const lab = foreheadLabOf(video, lm, sw, sh);
+          const lab = foreheadLabOf(video, lm, sw, sh)?.skin;   // 밝기 = 앞머리 뺀 이마 피부 (#212)
           if (lab) { ms.foreheadL = lab.L; L = lab.L; }
           Object.assign(ms, {
             yaw: -ang.yaw, pitch: ang.pitch, ...eyesClosed(lm, bs),

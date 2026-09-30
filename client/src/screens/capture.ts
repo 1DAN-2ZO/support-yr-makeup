@@ -262,11 +262,15 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
             const ang = yawFromLandmarks(lm);
             const bs = new Map((res.faceBlendshapes[0]?.categories ?? []).map((c) => [c.categoryName, c.score]));
             const yaw = -ang.yaw;   // 화면(거울) 기준
-            lab = foreheadLabOf(video, lm, sw, sh);
-            if (lab) {
-              const r = foreheadStep(fj, now, lab, { yaw, pitch: ang.pitch });
+            const fr = foreheadLabOf(video, lm, sw, sh);
+            lab = fr?.skin;
+            // 가림(급변)은 전체 평균으로 — 피부만 남기면 그림자 진 손도 빠져 가림을 못 잡는다 (#212 리뷰)
+            if (fr?.raw) {
+              const r = foreheadStep(fj, now, fr.raw, { yaw, pitch: ang.pitch });
               fj = r.track;
               m.foreheadOccluded = r.occluded;
+            }
+            if (lab) {
               m.foreheadL = lab.L;
               m.foreheadAb = { a: lab.a, b: lab.b };
             } else {
