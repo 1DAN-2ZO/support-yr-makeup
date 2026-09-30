@@ -23,6 +23,7 @@ import type { HairMask } from "../core/sampling";
 import { createHairTicker, type HairMasker } from "./hair-segmenter";
 import { createLandmarker } from "./landmarker";
 import { MakeupGl } from "./makeup-gl";
+import { LASHES } from "./lash-assets";
 import { paintLookOf, paintMakeup } from "./makeup-paint";
 import type { Screen, ScreenContext } from "./shell";
 
@@ -198,7 +199,7 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
                 ref = lm;
                 for (const c of [atlas.mul, atlas.col, atlas.light, off]) { c.width = w; c.height = hh; }
                 const p = plan ?? resolvePlan(measureFace(ref));
-                paintMakeup({ mul: atlas.mul.getContext("2d")!, col: atlas.col.getContext("2d")!, light: atlas.light.getContext("2d")! }, off, ref, paintLook, p, p.liner.plan.style);
+                paintMakeup({ mul: atlas.mul.getContext("2d")!, col: atlas.col.getContext("2d")!, light: atlas.light.getContext("2d")! }, off, ref, paintLook, p, p.liner.plan.style, LASHES);
               }
               if (hairOn && lm && ref && ticker.due(now)) segment(now, w, hh);
               gl.render(video, w, hh, atlas.mul, atlas.col, atlas.light, lm && ref ? { lm, ref, beauty: 0.3, radius: w * 0.004, hair } : null);
