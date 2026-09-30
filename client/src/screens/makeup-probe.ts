@@ -2,7 +2,7 @@
  * [dev 전용] 화장 얹어 보기 (makeup-probe.html) — 룩 템플릿의 색을 웹캠 얼굴 자리에 얹는다.
  *
  * 2-b(완성 예상)의 생성형 합성이 아니다. 자리(기하)와 색이 얼굴에 어떻게 앉는지 눈으로 보는 용도다.
- * 자리는 guides.ts 와 같은 계산을 쓴다 — 섀도 범위·볼 타원·라이너 윤곽(개인화 꼬리).
+ * 자리는 personal-guide.ts(+guides.ts 상수)와 같은 계산을 쓴다 — 섀도 범위·볼 타원·라이너 윤곽(개인화 꼬리).
  * 사진은 어디에도 저장하지 않는다.
  */
 
@@ -11,8 +11,8 @@ import { unitScale } from "@core/baseline";
 import { measureFace } from "@core/face-measure";
 import { contourOutline } from "@core/contour";
 import { faceAxis } from "@core/face-measure";
-import { GUIDE_PARAMS, browStandard, lipOutline, planGuide } from "@core/guides";
-import { linerOutline } from "@core/personal-guide";
+import { GUIDE_PARAMS } from "@core/guides";
+import { browStandard, linerOutline, lipOutline, planGuide } from "@core/personal-guide";
 import { guideOutline } from "@core/overlay";
 import type { SampleFrame } from "@core/sampling";
 import { LM, at, dist } from "@core/landmarks";
@@ -573,7 +573,7 @@ function drawMakeup(lm: readonly Pt[], style: LinerStyle): void {
         path(ctx, outline.R);
         path(ctx, outline.L);
       } else if (p.id === "cheek") {
-        // 볼: 계획의 위치(얼굴 위쪽으로 blushShift)·크기 배율 — guides.ts planGuide 의 cheek 과 같은 계산
+        // 볼: 계획의 위치(얼굴 위쪽으로 blushShift)·크기 배율 — personal-guide.ts planGuide 의 cheek 과 같은 계산
         const c0 = GUIDE_PARAMS.cheek, sz = plan?.blush.size ?? 1;
         const c = { ...c0, rx: c0.rx * sz, ry: c0.ry * sz };
         const ax = faceAxis(lm), shift = plan?.blush.position === "higher" ? PLAN_RULES.blushShift : plan?.blush.position === "lower" ? -PLAN_RULES.blushShift : 0;

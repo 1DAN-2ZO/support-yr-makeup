@@ -5,8 +5,8 @@
  * 테두리는 채점이 쓴 기하(PartGeometry) + 랜드마크에서 만든다 — 채점이 본 자리와 화면의 선이 같아야 한다.
  */
 
-import { lipOutline } from "./guides";
 import { LM, at } from "./landmarks";
+import { lipOutline } from "./personal-guide";
 import type { PartGeometry } from "./score-part";
 import type { PartId, Pt } from "./types";
 
