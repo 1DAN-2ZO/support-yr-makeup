@@ -209,57 +209,7 @@ function fillLashes(ctx: CanvasRenderingContext2D, span: readonly Pt[], dir: 1 |
   ctx.restore();
 }
 
-/** 쉐딩·하이라이트는 룩에 없다(얼굴형 규칙 부위, F-04) — 얹어 보기용 기본 색 */
-const CONTOUR_COLORS = { contour: "#a07a66", highlight: "#fff3e6" };
-const CONTOUR_ALPHA = { contour: 0.35, highlight: 0.45 };
-
-const hex = (c: readonly number[]): string => "#" + c.map((v) => Math.round(v).toString(16).padStart(2, "0")).join("");
-
-/**
- * rules/looks.json 화장 10종에는 마스카라 세기 데이터가 없다(그 파일은 이 화면 밖 공용 스키마라
- * 안 건드림) — 여기서만 이름 느낌으로 임시로 정한다. id 없으면(새 룩 추가 등) 미적용.
- */
-const LASH_INTENSITY_BY_LOOK_ID: Partial<Record<string, "natural" | "deep">> = {
-  daily: "natural", smoky: "deep", coral: "natural", rose: "natural", red: "natural",
-  peach: "natural", bronze: "natural", plum: "deep", doll: "deep",
-  // clean: 미적용 — 오피스라 마스카라도 뺀 예시
-};
-
 const TEMPLATES: Tpl[] = [
-  // 사진에서 뽑은 템플릿 (스크래치패드 extract.py 결과). 관찰색이라 보통 합성 + 불투명도로 얹는다. 불투명도는 눈대중 시작값
-  {
-    name: "사진 추출 (플럼 스모키)",
-    color: { brow: "#8b7371", shadow: "#4e3e44", liner: "#1a1217", lash: "#1a1217", cheek: "#dec0bd", lip: "#b31540", ...CONTOUR_COLORS },
-    lipEdge: "#c26375",
-    alpha: { brow: 0.45, shadow: 0.55, liner: 0.9, lash: 0.9, cheek: 0.35, lip: 0.75, ...CONTOUR_ALPHA },
-    linerThick: 0.045,
-    lashIntensity: "deep",
-  },
-  // 사진에서 뽑은 템플릿 2 (스크래치패드 extract_tpl.py 결과, before.png/after.png). 랜드마크 폴리곤 평균색 + ΔE 근사 alpha
-  {
-    name: "사진 추출 2 (로즈 브라운)",
-    color: { brow: "#bd9694", shadow: "#a7837f", liner: "#644646", lash: "#644646", cheek: "#d5b2af", lip: "#af7879", under: "#a87c7a", aegyo: "#c49995", ...CONTOUR_COLORS },
-    lipEdge: "#b98784",
-    alpha: { brow: 0.29, shadow: 0.47, liner: 0.32, lash: 0.32, cheek: 0.39, lip: 0.13, under: 0.36, aegyo: 0.61, ...CONTOUR_ALPHA },
-    linerThick: 0.076,
-    axis: { shadow: "vertical" },
-    stops: { shadow: [{ at: 0.0, color: "#3d282a" }, { at: 0.5, color: "#967674" }, { at: 1.0, color: "#aa827a" }] },
-    lashIntensity: "natural",
-  },
-  // 사진에서 뽑은 템플릿 3 (스크래치패드 extract_tpl.py 결과, before2.png/after2.png). 언더라인·애교살 포함(#166 논의 뒤 추가)
-  // 섀도우만 눈 감은 버전(before2_2/after2_2)으로 다시 재서 교체 — 뜬 눈은 윗눈꺼풀에 가려 실측이 부정확했다
-  // lash(마스카라)는 "인조 마스카라 스티커" 컨셉으로 바뀌면서(실측 아님) 라이너와 같은 진한 값으로 되돌림
-  {
-    name: "사진 추출 3 (윙드 라이너)",
-    color: { brow: "#b09495", shadow: "#8a6867", liner: "#463a40", lash: "#463a40", cheek: "#d2b7b8", lip: "#a98387", under: "#735b60", aegyo: "#b79697", ...CONTOUR_COLORS },
-    lipEdge: "#ac8386",
-    alpha: { brow: 0.27, shadow: 0.65, liner: 0.39, lash: 0.39, cheek: 0.14, lip: 0.11, under: 0.79, aegyo: 0.51, ...CONTOUR_ALPHA },
-    linerThick: 0.076,
-    axis: { shadow: "vertical" },
-    stops: { shadow: [{ at: 0.0, color: "#361f1c" }, { at: 0.5, color: "#a0807f" }, { at: 1.0, color: "#ab8484" }] },
-    tailExtend: { shadow: true },
-    lashIntensity: "natural",
-  },
   // 화장 10종 (2026-09-29, 사용자가 준 헥스값 그대로 반영 — 눈썹·라이너·쉐딩/하이라이트만 헥스가 없어서
   // 추정치. 섀도우 2색은 밝기를 비교해 어두운 쪽을 속눈썹 쪽(stops at:0), 밝은 쪽을 눈썹 쪽(at:1)으로 배치했다
   // (원문 나열 순서와 다를 수 있음 — 기존 "속눈썹에서 진하고 위로 옅어진다" 기본 그러데이션 방향과 맞춘 것).
@@ -370,23 +320,6 @@ const TEMPLATES: Tpl[] = [
     stops: { shadow: [{ at: 0.0, color: "#e6c5b8" }, { at: 1.0, color: "#f9ebe0" }] },
     lashIntensity: "natural",
   },
-  ...LOOKS.map((l): Tpl => {
-    const lashIntensity = LASH_INTENSITY_BY_LOOK_ID[l.id];
-    return {
-      name: l.name,
-      color: {
-        ...CONTOUR_COLORS, ...Object.fromEntries(Object.entries(l.parts).flatMap(([k, p]) => (p?.color ? [[k, hex(p.color)]] : []))),
-        // 마스카라는 라이너 색을 따라간다 — 미적용(lashIntensity 없음)이면 색도 안 준다(체크박스가 자동으로 꺼짐)
-        ...(lashIntensity && l.parts.liner?.color ? { lash: hex(l.parts.liner.color) } : {}),
-      },
-      alpha: {
-        ...CONTOUR_ALPHA, ...Object.fromEntries(Object.entries(l.parts).map(([k, p]) => [k, p?.alpha ?? p?.alphaR ?? 0.5])),
-        ...(lashIntensity ? { lash: l.parts.liner?.alpha ?? 0.5 } : {}),
-      },
-      linerThick: l.parts.liner?.thick ?? GUIDE_PARAMS.liner.thick,
-      ...(lashIntensity ? { lashIntensity } : {}),
-    };
-  }),
 ];
 TEMPLATES.forEach((t, i) => lookSel.add(new Option(t.name, String(i))));
 
