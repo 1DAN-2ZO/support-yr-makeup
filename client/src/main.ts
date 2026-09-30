@@ -40,6 +40,7 @@ import { captureScreen, type CaptureDeps, type ShotData } from "./screens/captur
 import { consentScreen, deniedScreen, type ConsentDeps } from "./screens/consent";
 import { doneScreen, type DoneDeps } from "./screens/done";
 import { landmarksFromImage } from "./screens/landmarker";
+import { createHairMasker } from "./screens/hair-segmenter";
 import { guideScreen, type GuideDeps } from "./screens/guide";
 import { liveScreen, type LiveDeps } from "./screens/live";
 import { fullRenderScreen, type FullRenderDeps } from "./screens/fullrender";
@@ -112,6 +113,8 @@ async function boot(): Promise<void> {
     { sid, screen: session.screen, part: session.currentPart, ver: getVersions() },
     logStore.sink,
   );
+  // 머리카락 분할 (screens/hair-segmenter) — 화면 5 채점용. 실패는 로그에 한 번 남기고 마스크 없이 간다
+  const hairMask = createHairMasker(undefined, (e) => log.log({ name: "error", where: "hair", msg: (e instanceof Error ? e.message : String(e)).slice(0, 120) }));
   const events = createCaptureEvents(log);
 
   // 세션을 바꾸는 곳은 전부 여기로 — 바뀔 때마다 draft 저장 (앱이 꺼져도 돌아오게, F-07)
@@ -318,6 +321,8 @@ async function boot(): Promise<void> {
         set(applySkip(session, part));
       },
       nextPart: (after) => nextPart(session, after),
+      // 앞머리·옆머리 칸을 채점에서 뺀다 (#201). 모델은 화면 5 에 처음 들어갈 때 한 번 — 못 불러오면 전처럼 채점
+      hairMask,
     },
     // 서버 처리 화면은 흐름에서 빠졌다 (등록만 남김 — 되살린 세션은 위에서 화장 선택으로 보낸다)
     { jobs: emptyJobSource() },

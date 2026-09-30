@@ -286,6 +286,8 @@ export interface BundleInput {
   im: RgbaImage;
   pts: readonly Pt[];
   occluded: boolean | null;
+  /** 이 장의 머리카락 마스크 (screens/hair-segmenter). 없으면 머리카락을 안 뺀다 */
+  hair?: HairMask;
 }
 
 export interface BundleScore {
@@ -318,7 +320,7 @@ export function scoreBundle(partId: PartId, base: SampleFrame, frames: readonly 
     return { outcome, pick: null, cur: null, used: 0, excluded };
   }
   const each = kept.map(({ f, i }) => {
-    const { frame, fit } = alignedFrame(base, f.im, f.pts);
+    const { frame, fit } = alignedFrame(base, f.im, f.pts, f.hair);
     const { result, ctx } = scorePart(partId, base, frame, guide, { ...opts, alignResidual: fit.residual }, p);
     return { i, cur: frame, out: toOutcome(partId, result, ctx, p) };
   });
