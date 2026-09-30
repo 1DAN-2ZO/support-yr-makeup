@@ -33,6 +33,8 @@ export interface BuildBaselineInput {
   image?: RgbaImage;
   faceShape: FaceShape;
   bareImage?: Baseline["bareImage"];
+  /** 그 장을 찍은 프레임의 블렌드셰이프 (#177). 없으면 null */
+  expression?: Baseline["expression"];
 }
 
 /** Baseline 한 묶음. 흰자 표본이 모자라면 scleraLab 은 null (③ 은 그때 이마 L* 만으로 보정) */
@@ -46,6 +48,7 @@ export function buildBaseline(input: BuildBaselineInput): Baseline {
     scleraLab: sclera ? { a: sclera.a, b: sclera.b } : null,
     faceShape: input.faceShape,
     bareImage: input.bareImage ?? null,
+    expression: input.expression ?? null,
     w: input.w,
     h: input.h,
   };

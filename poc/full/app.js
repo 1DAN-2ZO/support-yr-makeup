@@ -16,10 +16,9 @@ import { meanLabPoly } from './lib/sampling.js';
 
 const $ = (id) => document.getElementById(id);
 const KEY = 'dhe_full_session';
-let SAMPLE_DIR = '../../danghaeung_poc_3x4_20/';
-/** 샘플 폴더: docs 브랜치(jeakeun)는 poc/samples/phone-portraits-20/, main 은 저장소 루트. 있는 쪽을 쓴다 */
+// 샘플 폴더: 한 벌로 합침 (#88) — 업스케일본 1080×1440 이 poc/samples/phone-portraits-20/ 에 있다
+let SAMPLE_DIR = '../samples/phone-portraits-20/';
 async function resolveSampleDir() {
-  for (const d of ['../samples/phone-portraits-20/', '../../danghaeung_poc_3x4_20/']) { try { const r = await fetch(d + 'person_1_front_open.jpg', { method: 'HEAD' }); if (r.ok) { SAMPLE_DIR = d; return d; } } catch {} }
   return SAMPLE_DIR;
 }
 const hash = Object.fromEntries(location.hash.slice(1).split('&').filter(Boolean).map((kv) => { const [k, v] = kv.split('='); return [k, v == null ? true : decodeURIComponent(v)]; }));

@@ -23,6 +23,8 @@ import {
   toReviewParts,
   type ScreenId,
   type Session,
+  setPlan,
+  withBaseline,
 } from "./core/flow";
 import { planGuide } from "./core/personal-guide";
 import { LIGHTING_NOTE, lightingDiffers } from "./core/review";
@@ -213,6 +215,8 @@ async function boot(): Promise<void> {
         return res.proposal;
       });
       log.log({ name: "vlm_plan", look_id: lookId, ms: Math.round(performance.now() - t0), tries: r.tries, first_rejected: r.firstRejected.length, left_rejected: r.plan.rejected.length, model, fail: r.retryFailed ? "retry_failed" : null });
+      // 세션에 저장 — 앱을 다시 켜도 같은 계획 (① #181). 그 사이 얼굴이 바뀌었으면(정면 다시 찍기) 버린다
+      if (session.baseline === b) set(setPlan(session, lookId, r.plan));
       return r.plan;
     } catch (e) {
       // 첫 질문에서 실패 — 한 번 물었다
@@ -220,12 +224,12 @@ async function boot(): Promise<void> {
       throw e;
     }
   });
-  // 앱을 다시 켜면 큐가 비어 있다. 그 사이엔 규칙 계획으로 본다 — ① #181 이 계획을 세션에 저장하면 없어질 자리.
+  // 앱을 다시 켜면 큐는 비어 있지만 세션에 저장한 계획(① #181)이 있다 — 그것을 먼저 쓴다. 둘 다 없으면 규칙 계획.
   // 규칙 계획을 쓴 사실은 화장마다 한 번 로그로 남긴다 (#179 리뷰: VLM 계획과 구분이 안 됐다)
   const restoredRule = new Set<string>();
   const planFor = (lookId: string | null): PersonalPlan | null => {
     if (!lookId) return null;
-    const p = plans.get(lookId);
+    const p = session.plans[lookId] ?? plans.get(lookId);
     if (p) return p;
     if (vlm && !restoredRule.has(lookId)) {
       restoredRule.add(lookId);
@@ -258,8 +262,11 @@ async function boot(): Promise<void> {
       },
       getBaseline: () => session.baseline,
       setBaseline: (b) => {
-        plans.clear();   // 얼굴이 바뀌면 앞 얼굴로 만든 계획은 버린다
-        set({ ...session, baseline: b, faceShape: b?.faceShape ?? null });
+        // 얼굴이 바뀌면 앞 얼굴로 만든 계획은 버린다 — 세션 계획(#181)도 withBaseline 이 같이 비운다.
+        // 같은 얼굴에 쌩얼 사진만 붙는 갱신은 계획을 그대로 둔다
+        const next = withBaseline(session, b);
+        if (next.plans !== session.plans) plans.clear();
+        set(next);
       },
       // 쌩얼 저장도 draft 와 같은 줄에 세운다 — 끝내기(clearAll)가 인코딩·저장이 끝날 때까지 기다린다 (#162 리뷰)
       saveBare: (blob) => {
@@ -278,7 +285,7 @@ async function boot(): Promise<void> {
         set({ ...session, lookId });
       },
       personalize: (lookId) => plans.request(lookId).then(() => {}),
-      isPersonalized: (lookId) => plans.get(lookId) !== undefined,
+      isPersonalized: (lookId) => session.plans[lookId] !== undefined || plans.get(lookId) !== undefined,
       minBusyMs: 1500,
       getPlan: (lookId) => planFor(lookId),
     },
@@ -346,6 +353,8 @@ async function boot(): Promise<void> {
         return f ? { a: f.a, b: f.b } : null;
       },
       getLookParts: () => lookById(session.lookId).parts,
+      // 맨얼굴 정면 때 표정 — ① 이 촬영·복원 때 Baseline 에 채운다 (#177). 없으면 화면 4 가 표정 조건을 건너뛴다
+      getBaseExpr: () => session.baseline?.expression ?? null,
       getGuide: guideFor,
       setCapture: (part, bundle) => {
         set({ ...session, parts: session.parts.map((p) => (p.partId === part ? { ...p, captured: bundle } : p)) });

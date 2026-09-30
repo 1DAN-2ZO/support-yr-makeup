@@ -71,7 +71,7 @@ const SCREENS: Record<string, () => Promise<Screen<null>>> = {
     const bare = await bitmapOf(BARE_IMAGE), made = image(linerPaint());
     const frame = await bitmapOf(made);
     const bundle: CaptureBundle = { frames: [frame], pts: [LMS], handOverlap: [null], foreheadL: [70] };
-    const baseline = { lm: LMS, unit: { eye: 90, lip: 120, face: 400 }, foreheadL: 70, scleraLab: null, faceShape: { label: "oval" as const, confidence: 1, method: "rule" as const, version: "t" }, bareImage: bare, w: 600, h: 600 };
+    const baseline = { lm: LMS, unit: { eye: 90, lip: 120, face: 400 }, foreheadL: 70, scleraLab: null, faceShape: { label: "oval" as const, confidence: 1, method: "rule" as const, version: "t" }, bareImage: bare, w: 600, h: 600, expression: null };
     return resultScreen<null>({
       getPart: () => "liner", getBaseline: () => baseline, getCapture: () => bundle, guide: () => guide,
       getStatus: () => "in_progress", apply: () => {}, skip: () => {}, nextPart: () => "shadow",

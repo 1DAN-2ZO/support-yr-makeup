@@ -10,6 +10,7 @@
 
 import type { Baseline, FaceShape, GateFail, GateResult, PartId, PartResult, PartStatus } from "./types";
 import { LOOK_PART_IDS, PART_IDS } from "./types";
+import type { PersonalPlan } from "./personalize";
 
 // ---------- 화면 순서 ----------
 
@@ -33,7 +34,7 @@ export const SCREEN_NAME: Record<ScreenId, string> = {
   denied: "이용 불가",
   capture: "1 촬영",
   processing: "서버 처리",
-  looks: "2 룩",
+  looks: "2 화장",
   fullrender: "2-b 전체 완성 예상",
   guide: "3 완성본",
   live: "4 실시간 테두리",
@@ -305,6 +306,11 @@ export interface Session {
   currentPart: PartId | null;
   parts: SessionPart[];
   startedAt: number;
+  /**
+   * 화장(lookId)별 개인화 계획 (#181, 새 흐름 #179). VLM 이 매번 조금 달라서 다시 묻지 않고 저장본을 쓴다.
+   * 숫자·짧은 문장뿐이라 draft 에 그대로 남는다. 기준 얼굴이 바뀌면(정면 다시 찍기) 비운다 — withBaseline
+   */
+  plans: Record<string, PersonalPlan>;
 }
 
 const SETTLED: readonly PartStatus[] = ["passed", "check_only", "skipped"];
@@ -333,7 +339,22 @@ export function createSession(now: () => number = Date.now): Session {
       captured: null,
     })),
     startedAt: now(),
+    plans: {},
   };
+}
+
+/**
+ * 기준(Baseline) 바꾸기. **얼굴이 바뀌면**(정면을 다시 찍어 랜드마크가 달라지면) 앞 얼굴로 만든 개인화 계획을 비운다 (#181).
+ * 같은 얼굴에 쌩얼 사진만 붙는 갱신(encode 뒤 bareImage)은 계획을 그대로 둔다
+ */
+export function withBaseline(s: Session, b: Baseline | null): Session {
+  const sameFace = !!b && !!s.baseline && b.lm === s.baseline.lm;
+  return { ...s, baseline: b, faceShape: b?.faceShape ?? null, plans: sameFace ? s.plans : {} };
+}
+
+/** 화장 하나의 개인화 계획 저장 (#181) */
+export function setPlan(s: Session, lookId: string, plan: PersonalPlan): Session {
+  return { ...s, plans: { ...s.plans, [lookId]: plan } };
 }
 
 export function setScreen(s: Session, screen: ScreenId): Session {
@@ -433,6 +454,8 @@ export interface SessionDraft {
   currentPart: PartId | null;
   parts: (PartResult & { captured: boolean })[];
   startedAt: number;
+  /** 화장별 개인화 계획 — 얼굴 사진·점이 아니라 선택 값이라 draft 에 남긴다 (#181). 예전 draft 에는 없다 */
+  plans?: Record<string, PersonalPlan>;
 }
 
 /** 세션 draft 저장용. 사진·랜드마크는 뺀다 (얼굴 데이터는 draft 에 남기지 않는다) */
@@ -450,6 +473,7 @@ export function stripImages(s: Session): SessionDraft {
     currentPart: s.currentPart,
     parts: s.parts.map(({ captured, ...rest }) => ({ ...rest, captured: !!captured })),
     startedAt: s.startedAt,
+    plans: s.plans,
   };
 }
 
