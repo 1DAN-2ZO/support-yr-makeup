@@ -9,7 +9,7 @@
  *  - HistoryStore·topMisses·trendSeries 는 로드맵(기록 화면)용으로만 남긴다
  */
 
-import { CHECK_REASON_TEXT, PART_NAME, diagText } from "./score";
+import { CHECK_REASON_TEXT, PARAMS, PART_NAME, diagText } from "./score";
 import type { LookTemplate, PartId, PartResult, PartStatus, SessionSummary, Versions } from "./types";
 import { LOOK_PART_IDS } from "./types";
 
@@ -189,8 +189,11 @@ export function topMisses(records: readonly SessionRecord[], n = 5, top = 2): Mi
 /** 조명 차 안내 한 줄 (화면 6·결과 카드). 숫자 없이 (F-09) */
 export const LIGHTING_NOTE = "조명이 달라서 색은 참고만 해 주세요";
 
-/** 조명 참조(이마 L*) 차이가 임계 이상이면 "조명 다름" */
-export function lightingDiffers(a: { foreheadL: number } | null, b: { foreheadL: number } | null, threshold = 8): boolean {
+/**
+ * 조명 참조(이마 L*) 차이가 임계 이상이면 "조명 다름". 임계는 채점 조명 한계(PARAMS.lightTol)와 같다 —
+ * 전엔 8 이라 채점은 된 결과에 "조명이 달라서 색은 참고만" 이 붙었다 (2026-09-30 조명 한계 맞추기)
+ */
+export function lightingDiffers(a: { foreheadL: number } | null, b: { foreheadL: number } | null, threshold = PARAMS.lightTol): boolean {
   if (!a || !b) return false;
   return Math.abs(a.foreheadL - b.foreheadL) >= threshold;
 }

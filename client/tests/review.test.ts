@@ -1,4 +1,5 @@
 // 전체 리뷰 합산 검증 — 화면 6 POC 검증 24개를 vitest 로 옮김 (이슈 #32, 3-1)
+import { PARAMS } from "@core/score";
 import { describe, expect, it } from "vitest";
 import {
   CONTOUR_ID,
@@ -213,8 +214,11 @@ describe("기록 (로드맵용)", () => {
   });
 
   it("C6 조명 배지: 이마 L* 차가 임계 이상일 때만", () => {
-    expect(lightingDiffers({ foreheadL: 60 }, { foreheadL: 70 })).toBe(true);
-    expect(lightingDiffers({ foreheadL: 60 }, { foreheadL: 65 })).toBe(false);
+    // 채점 조명 한계(PARAMS.lightTol)와 같은 기준 — 채점은 됐는데 리뷰만 "조명이 달라서" 가 뜨지 않게 (2026-09-30)
+    expect(lightingDiffers({ foreheadL: 60 }, { foreheadL: 60 + PARAMS.lightTol })).toBe(true);
+    expect(lightingDiffers({ foreheadL: 60 }, { foreheadL: 60 - PARAMS.lightTol })).toBe(true);
+    expect(lightingDiffers({ foreheadL: 60 }, { foreheadL: 60 + PARAMS.lightTol - 1 })).toBe(false);
+    expect(lightingDiffers({ foreheadL: 60 }, { foreheadL: 70 })).toBe(false);
     expect(lightingDiffers(null, { foreheadL: 65 })).toBe(false);
   });
 
