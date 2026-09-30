@@ -101,8 +101,11 @@ export interface CaptureBundle {
   foreheadL: number[];
 }
 
-/** no_band: 룩 템플릿에 진하기 목표 밴드가 없어 강도 부위 점수를 못 낸다 */
-export type CheckReason = "faint" | "lighting" | "align" | "occluded" | "no_baseline" | "no_band" | "contour";
+/**
+ * no_band: 룩 템플릿에 진하기 목표 밴드가 없어 강도 부위 점수를 못 낸다
+ * subtle: 화장 색이 피부와 가까워 사진으로 그렸는지 가를 수 없다 (예: 뉴트럴 라이너 — 결정 2026-09-30)
+ */
+export type CheckReason = "faint" | "lighting" | "align" | "occluded" | "no_baseline" | "no_band" | "subtle" | "contour";
 
 /** ③ 채점 → ⑥ */
 export interface PartResult {

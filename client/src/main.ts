@@ -322,6 +322,8 @@ async function boot(): Promise<void> {
       getCapture: (part) => (session.parts.find((p) => p.partId === part)?.captured as CaptureBundle | null) ?? null,
       // 화면 3·4 테두리와 같은 계획 가이드로 채점한다 (2-b AR 에서 본 모양과 같은 기준)
       guide: guideFor,
+      // 화장 색이 피부와 가까우면(뉴트럴 라이너) 확인만(subtle) — 쉐딩은 룩이 아니라 얼굴형에서 와서 색이 없다
+      templateColor: (part) => (part === "contour" ? null : lookById(session.lookId).parts[part]?.color ?? null),
       getStatus: (part) => session.parts.find((p) => p.partId === part)?.status ?? "in_progress",
       apply: (part, outcome) => {
         set(applyResult(session, part, outcome));

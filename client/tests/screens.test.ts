@@ -106,7 +106,7 @@ describe("룩 템플릿 (rules/looks.json)", () => {
   });
 
   it("없는 id 는 첫 룩으로 떨어진다", () => {
-    expect(lookById("smoky").id).toBe("smoky");
+    expect(lookById("edgy").id).toBe("edgy");
     expect(lookById("없는룩").id).toBe(LOOKS[0]!.id);
     expect(lookById(null).id).toBe(LOOKS[0]!.id);
   });

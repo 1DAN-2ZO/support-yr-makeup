@@ -7,13 +7,13 @@
  *   stderr  진행·요약 (stdout 은 JSON 만)
  *
  * 항목 하나 (양식은 eval/golden/manifest.json item_fields — ⑤ 와 2026-09-22 합의. 경로는 data_dir 기준 상대 경로):
- *   { "id": "ffhq_0001_liner", "person_id": "ffhq_0001", "part": "liner", "look": "smoky",
+ *   { "id": "ffhq_0001_liner", "person_id": "ffhq_0001", "part": "liner", "look": "edgy",
  *     "bare": "ffhq/0001_bare.png", "makeup": "ffhq/0001_makeup.png",
  *     "bare_lm": "ffhq/0001_bare.lm.json", "makeup_lm": "ffhq/0001_makeup.lm.json",
  *     "sha256": { "bare": "…", "makeup": "…" }, "label": "ok" }
  *   - 사진은 PNG. 랜드마크는 MediaPipe 478점 JSON — [{x,y}] 또는 [[x,y]], 픽셀 또는 0~1 정규화 둘 다 받는다
  *     (전부 0~1 이면 정규화로 보고 사진 크기를 곱한다). Node 에서는 MediaPipe 가 안 돌아서 ⑤ 가 파이썬으로 뽑는다
- *   - look: rules/looks.json 의 id. 라이너 두께 등 잣대가 룩을 따라간다. 비어 있으면 기본 룩(smoky)으로 재고 행의 look 에 적는다
+ *   - look: rules/looks.json 의 id. 라이너 두께 등 잣대가 룩을 따라간다. 비어 있으면 기본 룩(edgy — 세미 스모키)으로 재고 행의 look 에 적는다
  *   - sha256: 있으면 사진 파일 지문을 대조한다. 다르면 그 행은 error (사진이 바뀐 것)
  *   - label: ok | slight | off (3단계, #64). 없으면 null
  *
@@ -35,8 +35,8 @@ const ROOT = resolve(HERE, "..", "..");
 const CLIENT = join(ROOT, "client");
 const require = createRequire(pathToFileURL(join(CLIENT, "package.json")));
 
-/** 룩 템플릿 전이라 시험지의 look 이 비어 있을 때 재는 룩 (⑤ 와 합의). 결과 행 look 에 그대로 적힌다 */
-const DEFAULT_LOOK = "smoky";
+/** 시험지의 look 이 비어 있을 때 재는 룩 (⑤ 와 합의 — 옛 smoky → look-v0.2 세미 스모키). 결과 행 look 에 그대로 적힌다 */
+const DEFAULT_LOOK = "edgy";
 const LOOKS = JSON.parse(readFileSync(join(ROOT, "rules", "looks.json"), "utf8")).looks;
 function lookParts(id) {
   const look = LOOKS.find((l) => l.id === id);
@@ -141,7 +141,9 @@ function scoreItem(core, guides, item, dataDir) {
   const makeIm = readPng(makePath);
   const base = core.frameOf(bareIm, readLandmarks(at(need(item, "bare_lm")), bareIm));
   const { frame, fit, biasPx } = core.alignedFrame(base, makeIm, readLandmarks(at(need(item, "makeup_lm")), makeIm));
-  const { result, ctx } = core.scorePart(part, base, frame, guide, { alignResidual: fit.residual });
+  // 앱 화면 5 와 같게 화장 색을 넘긴다 — 피부와 가까우면 확인만(subtle). 쉐딩은 룩 색이 없다
+  const templateColor = part === "contour" ? null : lookParts(look)[part]?.color ?? null;
+  const { result, ctx } = core.scorePart(part, base, frame, guide, { alignResidual: fit.residual, templateColor });
   const d = core.decide(part, result, ctx);
   return {
     look,

@@ -113,6 +113,17 @@ describe("화면 5 — 부위 결과", () => {
     expect(hasDigit(root.textContent ?? "")).toBe(false);   // 그 밖의 글에는 숫자가 없다
   });
 
+  it("RC1 고른 화장 색이 피부와 가까우면(뉴트럴 라이너 같은) '더 바르라' 가 아니라 '피부와 가까워 가르기 어려움' — 화장 색을 채점에 넘긴다", async () => {
+    const i = (Math.round(LMS[151]!.y) * bareIm.w + Math.round(LMS[151]!.x)) * 4;   // 이마 피부 한 점
+    const skin = [bareIm.data[i]!, bareIm.data[i + 1]!, bareIm.data[i + 2]!] as [number, number, number];
+    const templateColor = vi.fn(() => skin);
+    const { root, events } = setup("lip", bareIm, { templateColor });
+    await scored(root);
+    expect(templateColor).toHaveBeenCalledWith("lip");
+    expect(root.querySelector(".result-say")?.textContent).toBe(CHECK_REASON_TEXT.subtle);
+    expect(events.find((e) => e.name === "score")).toMatchObject({ status: "check_only", check_reason: "subtle" });
+  });
+
   it("맨얼굴 그대로(화장 없음): '확인만' + 이유, 다음을 누르면 check_only 로 반영", async () => {
     const { root, events, session } = setup("lip", bareIm);
     await scored(root);

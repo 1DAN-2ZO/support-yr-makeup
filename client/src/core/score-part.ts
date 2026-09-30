@@ -15,7 +15,7 @@ import { LM, at } from "./landmarks";
 import type { HairMask, SampleFrame } from "./sampling";
 import { frameOf, sampleBrow, sampleForehead, sampleLiner, sampleLip, sampleRegion } from "./sampling";
 import type { Band, DecideContext, LightCorr, LinerStrip, PartScore, RegionGrid, ScoreParams, Side, SimilarityFit } from "./score";
-import { PARAMS, alignToBaseline, colorShiftCorr, similarityFit, browResult, compareLinerEye, compareLip, compareRegion, intensityIndex, intensityResult, lightCorr, linerResult, makeupBiasPx, noCorr, oneLiner, toOutcome } from "./score";
+import { PARAMS, alignToBaseline, colorShiftCorr, similarityFit, browResult, compareLinerEye, compareLip, compareRegion, intensityIndex, intensityResult, lightCorr, linerResult, makeupBiasPx, noCorr, oneLiner, templateContrast, toOutcome } from "./score";
 import type { ScoreOutcome } from "./flow";
 import type { CheckReason, PartId, Pt } from "./types";
 
@@ -93,6 +93,8 @@ export interface ScorePartOptions {
   baseAsym?: number;
   /** alignedFrame() 의 fit.residual. metrics.alignResidual 로 남긴다 */
   alignResidual?: number;
+  /** 고른 화장의 이 부위 색 (rules/looks.json). 주면 맨얼굴 이마와 비교해 너무 가까우면 확인만(subtle) */
+  templateColor?: readonly [number, number, number] | null;
 }
 
 export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, guide: GuideSource, opts: ScorePartOptions = {}, p: ScoreParams = PARAMS): { result: PartScore; ctx: DecideContext } {
@@ -105,6 +107,8 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
   const ctx: DecideContext = lit ? { lightShift: lit.shift } : {};
   // 정렬 잔차는 눈 폭으로 나눠 해상도와 상관없게 (#43)
   if (opts.alignResidual !== undefined && cur.unit.eye > 0) ctx.alignResidual = opts.alignResidual / cur.unit.eye;
+  // 화장 색이 이 사람 피부와 가까운지 — 맨얼굴 이마를 피부로 본다 (이마를 못 재면 판단 안 함)
+  if (opts.templateColor && foreBase) ctx.templateDeltaE = templateContrast(foreBase, opts.templateColor, p);
 
   let result: PartScore;
   if (partId === "liner") {

@@ -65,16 +65,16 @@ describe("타일 목록", () => {
   });
 
   it("끝난 것부터 고를 수 있다 — 다 올 때까지 안 기다린다", () => {
-    const ts = tiles(LOOKS, [job("smoky", "done", "/r/smoky.png"), job("coral", "running")]);
+    const ts = tiles(LOOKS, [job("edgy", "done", "/r/edgy.png"), job("autumn", "running")]);
     const byId = new Map(ts.map((t) => [t.lookId, t]));
-    expect(byId.get("smoky")?.selectable).toBe(true);
-    expect(byId.get("smoky")?.imageUrl).toBe("/r/smoky.png");
-    expect(byId.get("coral")?.selectable).toBe(false);
+    expect(byId.get("edgy")?.selectable).toBe(true);
+    expect(byId.get("edgy")?.imageUrl).toBe("/r/edgy.png");
+    expect(byId.get("autumn")?.selectable).toBe(false);
     expect(anySelectable(ts)).toBe(true);
   });
 
   it("고를 수 있는 룩의 안내 문구는 비어 있다", () => {
-    const ts = tiles(LOOKS, [job("daily", "done", "/r/daily.png")]);
+    const ts = tiles(LOOKS, [job(LOOKS[0]!.id, "done", "/r/first.png")]);
     expect(ts[0]?.note).toBe("");
     expect(ts[1]?.note).toBe("로딩 중");
   });
@@ -107,7 +107,7 @@ describe("제품 목록", () => {
 });
 
 describe("전체 완성 예상", () => {
-  const jobs = [job("daily", "done", "/r/daily.png"), job("smoky", "fallback")];
+  const jobs = [job("daily", "done", "/r/daily.png"), job("edgy", "fallback")];
 
   it("고른 룩의 결과만 쓴다", () => {
     expect(fullRenderUrl(jobs, "daily")).toBe("/r/daily.png");
@@ -115,8 +115,8 @@ describe("전체 완성 예상", () => {
 
   it("고르지 않았거나 실패했으면 없다", () => {
     expect(fullRenderUrl(jobs, null)).toBeNull();
-    expect(fullRenderUrl(jobs, "smoky")).toBeNull();
-    expect(fullRenderUrl(jobs, "rose")).toBeNull();
+    expect(fullRenderUrl(jobs, "edgy")).toBeNull();
+    expect(fullRenderUrl(jobs, "pure")).toBeNull();
   });
 });
 

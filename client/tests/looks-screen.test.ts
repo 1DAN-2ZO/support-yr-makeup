@@ -9,6 +9,9 @@ import { fullRenderScreen } from "@screens/fullrender";
 import { looksScreen } from "@screens/looks";
 import type { ScreenContext } from "@screens/shell";
 
+/** 첫 화장 (rules/looks.json 순서) — id 를 박지 않는다: 화장 목록이 바뀌어도 "첫 카드" 의 뜻은 같다 */
+const FIRST = LOOKS[0]!.id;
+
 const ver: Versions = {
   app: "test",
   score: "score-v0.1",
@@ -78,8 +81,8 @@ describe("화면 2 — 룩 선택", () => {
     const { root, ctx, go, deps, state, personalize, finish } = setup();
     looksScreen<null>(deps).mount(ctx);
     (cards(root)[0] as HTMLButtonElement).click();
-    expect(state.lookId).toBe("daily");
-    expect(personalize).toHaveBeenCalledWith("daily");
+    expect(state.lookId).toBe(FIRST);
+    expect(personalize).toHaveBeenCalledWith(FIRST);
     expect(root.querySelector(".personalizing")?.textContent).toContain("개인화 중입니다");
     expect(go).not.toHaveBeenCalled();
     finish(true);
@@ -138,7 +141,7 @@ describe("화면 2 — 룩 선택", () => {
 
   it("이미 개인화한 화장은 기다리지 않고 바로 2-b 로 간다 (화장마다 한 번)", () => {
     const { root, ctx, go, deps, personalize } = setup();
-    looksScreen<null>({ ...deps, minBusyMs: 1500, isPersonalized: (id) => id === "daily" }).mount(ctx);
+    looksScreen<null>({ ...deps, minBusyMs: 1500, isPersonalized: (id) => id === FIRST }).mount(ctx);
     (cards(root)[0] as HTMLButtonElement).click();
     expect(go).toHaveBeenCalledWith("fullrender");
     expect(personalize).not.toHaveBeenCalled();
@@ -169,9 +172,9 @@ describe("화면 2 — 룩 선택", () => {
     looksScreen<null>(deps).mount(ctx);
     (cards(root)[0] as HTMLButtonElement).click();
     (cards(root)[1] as HTMLButtonElement).click();
-    expect(state.lookId).toBe("smoky");
-    expect(personalize).toHaveBeenLastCalledWith("smoky");
-    finish(true);                                   // 마지막 요청(smoky)이 끝남
+    expect(state.lookId).toBe("edgy");
+    expect(personalize).toHaveBeenLastCalledWith("edgy");
+    finish(true);                                   // 마지막 요청(edgy)이 끝남
     await new Promise((r) => setTimeout(r, 0));
     expect(go).toHaveBeenCalledTimes(1);
   });
@@ -183,7 +186,7 @@ describe("화면 2-b — AR 완성 예상 (카메라를 못 열면 서버 그림
   });
 
   it("카메라를 못 쓰면 안내하고, 그래도 '화장하러 가기' 로 부위 반복을 시작한다", () => {
-    const { root, ctx, go, deps } = setup("daily");
+    const { root, ctx, go, deps } = setup(FIRST);
     fullRenderScreen<null>(deps).mount(ctx);
     expect(root.querySelector("h1")?.textContent).toContain(LOOKS[0]?.name ?? "");
     expect(root.querySelector(".full-img")?.textContent).toContain("미리보기를 볼 수 없어요");
@@ -193,7 +196,7 @@ describe("화면 2-b — AR 완성 예상 (카메라를 못 열면 서버 그림
   });
 
   it("개인화 근거 문장과 쓰는 제품을 보여 준다 (제품 목록은 룩 화면에서 옮겨 옴)", () => {
-    const { root, ctx, deps } = setup("daily");
+    const { root, ctx, deps } = setup(FIRST);
     const plan = { rationale: { liner: "눈꼬리가 올라가 있어서 꼬리를 위로 뺐어요" } } as unknown as PersonalPlan;
     fullRenderScreen<null>({ ...deps, getPlan: () => plan }).mount(ctx);
     expect(root.querySelector(".ar-why")?.textContent).toContain("눈꼬리가 올라가 있어서");
@@ -202,13 +205,13 @@ describe("화면 2-b — AR 완성 예상 (카메라를 못 열면 서버 그림
   });
 
   it("계획이 없으면 근거 줄을 그리지 않는다", () => {
-    const { root, ctx, deps } = setup("daily");
+    const { root, ctx, deps } = setup(FIRST);
     fullRenderScreen<null>({ ...deps, getPlan: () => null }).mount(ctx);
     expect(root.querySelector(".ar-why")).toBeNull();
   });
 
   it("맨 위에도 뒤로 가기가 있다 — 카메라·제품 목록에 밀려 아래 버튼이 안 보여도 (2026-09-29 폰)", () => {
-    const { root, ctx, go, deps } = setup("daily");
+    const { root, ctx, go, deps } = setup(FIRST);
     fullRenderScreen<null>(deps).mount(ctx);
     const top = root.querySelector<HTMLButtonElement>(".fullrender > .back");
     expect(top).not.toBeNull();
@@ -218,14 +221,14 @@ describe("화면 2-b — AR 완성 예상 (카메라를 못 열면 서버 그림
   });
 
   it("'화장하러 가기' 는 부위 반복으로 간다 (화면 3 완성본은 쌩얼 + 같은 계획으로 다시 그림, #192)", () => {
-    const { root, ctx, go, deps } = setup("daily");
+    const { root, ctx, go, deps } = setup(FIRST);
     fullRenderScreen<null>(deps).mount(ctx);
     byText(root, "화장하러 가기").click();
     expect(go).toHaveBeenCalledWith("guide");
   });
 
   it("다른 화장 보기로 화면 2 로 돌아간다", () => {
-    const { root, ctx, go, deps } = setup("daily");
+    const { root, ctx, go, deps } = setup(FIRST);
     fullRenderScreen<null>(deps).mount(ctx);
     byText(root, "다른 화장 보기").click();
     expect(go).toHaveBeenCalledWith("looks");

@@ -11,7 +11,7 @@ import type { PartId, Pt } from "@core/types";
 import { BARE, LMS, linerPaint, lipPaint, made, regionPaint, BLUSH } from "./helpers/synth-face";
 
 const daily = lookById("daily").parts;
-const smoky = lookById("smoky").parts;
+const edgy = lookById("edgy").parts;
 const PARTS: PartId[] = ["liner", "lip", "shadow", "cheek", "contour", "brow"];
 
 /** 신발끈 공식 넓이 */
@@ -19,8 +19,8 @@ const area = (poly: readonly Pt[]): number => Math.abs(poly.reduce((s, p, i) => 
 
 describe("guides — 채점에 주는 값", () => {
   it("G1 라이너 두께는 고른 룩에서 온다", () => {
-    expect(lookGuide(daily)("liner", BARE).liner!.thick).toBe(0.03);
-    expect(lookGuide(smoky)("liner", BARE).liner!.thick).toBe(0.052);
+    expect(lookGuide(daily)("liner", BARE).liner!.thick).toBe(0.02);
+    expect(lookGuide(edgy)("liner", BARE).liner!.thick).toBe(0.06);
   });
 
   it("G2 룩에 두께가 없으면 기본값 — 룩이 빈 평가 문항", () => {
@@ -29,7 +29,7 @@ describe("guides — 채점에 주는 값", () => {
   });
 
   it("G3 임시 guide-poc 와 같은 값을 낸다 — 갈아끼워도 채점이 안 바뀐다", () => {
-    for (const parts of [daily, smoky, {}]) {
+    for (const parts of [daily, edgy, {}]) {
       for (const p of PARTS) expect(lookGuide(parts)(p, BARE)).toEqual(pocGuide(parts)(p, BARE));
     }
   });
