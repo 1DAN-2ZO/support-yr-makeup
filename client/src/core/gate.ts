@@ -50,8 +50,12 @@ export const LIVE_LIMITS: LiveLimits = {
 export const GATE_TEXT = {
   face: "",   // 얼굴이 없으면 문구 없이 테두리만 사라진다 (정의서 3-9)
   angle: SHOT_TEXT.front,
-  // 자동 회전이 꺼진 채 "가로로 돌리세요" 를 따르면 화면은 세로 그대로이고 영상 속 얼굴만 눕는다 (#204)
-  rotate: "화면이 안 돌아갔어요. 폰을 세로로 들거나 자동 회전을 켜 주세요",
+  // 눈 부위는 가로 화면에서만 한다 (팀 협의, 정의서 3-2) — 세로면 막는다
+  toLandscape: "폰을 가로로 돌려 주세요",
+  // 자동 회전이 꺼진 채 가로로 돌리면 화면은 세로 그대로이고 영상 속 얼굴만 눕는다 (#204)
+  autoRotate: "화면이 안 돌아갔어요. 화면 자동 회전을 켜 주세요",
+  // 세로 부위(입술·볼·쉐딩)에서 얼굴이 누웠으면 폰을 가로로 들고 있는 것
+  holdPortrait: "폰을 세로로 들어 주세요",
   pose: "처음 찍을 때와 같은 각도로 봐 주세요",
   expr: "처음 찍을 때처럼 편한 표정으로 있어 주세요",
   eyes: "양쪽 눈이 보이게 해 주세요",
@@ -73,6 +77,8 @@ export interface LiveMeasure {
   faceDetected: boolean;
   /** 얼굴 기울기(도, 크기만) — crop.faceRoll. 없으면 조건 생략 */
   roll?: number;
+  /** 지금 화면 방향. 없으면 조건 생략 — 눈 부위는 가로에서만 */
+  screen?: "landscape" | "portrait";
   /** 화면(거울) 기준 각도 — poseOf() */
   yaw: number;
   pitch: number;
@@ -142,7 +148,11 @@ export function evaluateGate(partId: PartId, m: LiveMeasure, limits: LiveLimits 
 
   if (!m.faceDetected) return fail("face", GATE_TEXT.face);
   // 누운 얼굴(자동 회전 꺼짐)은 정면 각도 식이 0 으로 나눠 깨지기도 해서 깨진 값 검사보다 먼저 본다. 기울기는 두 눈꼬리만 써서 누워도 멀쩡 (#204)
-  if (typeof m.roll === "number" && Number.isFinite(m.roll) && m.roll > limits.rollMax) return fail("angle", GATE_TEXT.rotate);
+  if (typeof m.roll === "number" && Number.isFinite(m.roll) && m.roll > limits.rollMax) {
+    return fail("angle", EYE_PARTS.includes(partId) ? GATE_TEXT.autoRotate : GATE_TEXT.holdPortrait);
+  }
+  // 눈썹·라이너·섀도우는 양쪽 눈을 한 화면에 크게 담아야 해서 가로에서만 (팀 협의 2026-09-30, 정의서 3-2)
+  if (m.screen === "portrait" && EYE_PARTS.includes(partId)) return fail("angle", GATE_TEXT.toLandscape);
   // NaN·Infinity 는 비교가 전부 false 라 모든 조건을 통과해 버린다 (정의서 3-5 "깨진 측정값")
   if (!measureFinite(m)) return fail("face", GATE_TEXT.face);
   if (Math.abs(m.yaw) > limits.yaw || Math.abs(m.pitch) > limits.pitch) return fail("angle", GATE_TEXT.angle);

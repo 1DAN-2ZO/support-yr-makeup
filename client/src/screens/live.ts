@@ -31,7 +31,7 @@ import type { Logger } from "@core/log";
 import type { LookPart, LookPartId } from "@core/looks";
 import type { GuideSource } from "@core/score-part";
 import type { Outline } from "@core/overlay";
-import type { ScreenId } from "@core/screens";
+import { wantedOrientation, type ScreenId } from "@core/screens";
 import type { Baseline, CaptureBundle, PartId, Pt } from "@core/types";
 import { faceCropOf } from "@core/capture-measure";
 import { applyCameraLocks, applyUltraWideZoom, bindVisibility, requestWakeLock, type WakeLockSentinelLike } from "./camera-locks";
@@ -251,8 +251,10 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         // 확대 창: 칸 비율이 바뀌면(방향 전환) 새로 잡는다. 얼굴을 3초 넘게 잃으면 옛 자리에서 미끄러져 오지 않게 새로 (3-9 자리 비움)
         const aspect = view.clientWidth && view.clientHeight ? view.clientWidth / view.clientHeight : 3 / 4;
         if (!follow || Math.abs(aspect - followAspect) > 0.01) { follow = createCropFollow(part!, aspect); followAspect = aspect; }
-        if (lm && faceRoll(lm) > ROLL_MAX) {
-          // 자동 회전이 꺼진 채 폰을 돌려 얼굴이 누웠다 — 확대하지 않고 전체를 보여 준다. 게이트가 "자동 회전" 안내 (#204)
+        const screen = window.matchMedia("(orientation: landscape)").matches ? "landscape" : "portrait";
+        if (lm && (faceRoll(lm) > ROLL_MAX || (screen === "portrait" && wantedOrientation(part!) === "landscape"))) {
+          // 얼굴이 누웠거나(자동 회전 꺼짐, #204) 눈 부위를 세로로 들고 있다(가로에서만 — 팀 협의) — 확대하지 않고 전체를 보여 준다.
+          // 게이트가 "자동 회전을 켜" / "가로로 돌려" 로 막는다
           crop = null;
           follow.reset();
         } else if (lm) {
@@ -264,7 +266,7 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         }
         const shown = crop ?? { x: 0, y: 0, w: sw, h: sh };
         // 부위 가시성은 사용자에게 보이는 창 안에서 본다
-        const f: LiveFrame<HTMLCanvasElement> = { t: now, lm, w: sw, h: sh, image: () => grabFrame(video), view: shown };
+        const f: LiveFrame<HTMLCanvasElement> = { t: now, lm, w: sw, h: sh, screen, image: () => grabFrame(video), view: shown };
         if (lm) {
           const bs = res.faceBlendshapes[0]?.categories;
           if (bs?.length) f.expr = Object.fromEntries(bs.map((c) => [c.categoryName, c.score]));
