@@ -38,7 +38,7 @@ export interface FullRenderDeps {
  * 2-b AR 머리카락 분할 — intervalMs 마다 한 번, 영상을 width px 로 줄여서. 그 사이엔 마지막 마스크 (#173).
  * 가정값 — 폰에서 ?tune 의 "머리카락 분할 ms" 를 보고 정한다. ?nohair 면 끄고 비교
  */
-export const HAIR_AR = { intervalMs: 500, width: 320 };
+export const HAIR_AR = { intervalMs: 200, width: 320 };   // 폰(2026-09-30 Android): 분할 24~34ms → 500 에서 200 으로
 
 export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
   return {

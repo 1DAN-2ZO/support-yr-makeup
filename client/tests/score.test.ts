@@ -275,6 +275,12 @@ describe("상태·한 줄 평", () => {
   const scored = (score: number, codes: PartScore["codes"] = []): PartScore => ({ present: true, score, codes, lrIndex: null, metrics: {} });
   const unseen: PartScore = { present: false, score: null, codes: [], lrIndex: null, metrics: {} };
 
+  it("D0 판정 근거(밝기 차·머리카락 가림·정렬 어긋남)를 결과 측정값에 같이 담는다 — 화면 5 ?tune·로그용 (2026-09-30)", () => {
+    const o = toOutcome("liner", scored(80), { lightShift: 21.5, hairFrac: 0.1, alignResidual: 0.03 });
+    expect(o.metrics).toMatchObject({ lightShift: 21.5, hairFrac: 0.1, alignResidual: 0.03 });
+    expect(o.checkReason).toBe("lighting");
+  });
+
   it("D1 조명 급변(이마 L* 차가 lightTol 넘음) → 확인만(조명), 그 아래면 채점, 얼굴 없음 → 확인만", () => {
     expect(decide("liner", scored(80), { lightShift: PARAMS.lightTol + 1 }).reason).toBe("lighting");
     expect(decide("liner", scored(80), { lightShift: -(PARAMS.lightTol + 1) }).reason).toBe("lighting");

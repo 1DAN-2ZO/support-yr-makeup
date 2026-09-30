@@ -15,7 +15,7 @@ import { LM, at } from "./landmarks";
 import type { HairMask, SampleFrame } from "./sampling";
 import { frameOf, sampleBrow, sampleForehead, sampleLiner, sampleLip, sampleRegion } from "./sampling";
 import type { Band, DecideContext, LightCorr, LinerStrip, PartScore, RegionGrid, ScoreParams, Side, SimilarityFit } from "./score";
-import { PARAMS, alignToBaseline, colorShiftCorr, browResult, compareLinerEye, compareLip, compareRegion, intensityIndex, intensityResult, lightCorr, linerResult, makeupBiasPx, noCorr, oneLiner, toOutcome } from "./score";
+import { PARAMS, alignToBaseline, colorShiftCorr, similarityFit, browResult, compareLinerEye, compareLip, compareRegion, intensityIndex, intensityResult, lightCorr, linerResult, makeupBiasPx, noCorr, oneLiner, toOutcome } from "./score";
 import type { ScoreOutcome } from "./flow";
 import type { CheckReason, PartId, Pt } from "./types";
 
@@ -59,8 +59,31 @@ const MAKEUP_IDS: readonly number[] = [...LM.lipsOuter, ...LM.eyeA.upper, ...LM.
 
 /** 확인받기 프레임을 기준 좌표계에 맞춘다: 재검출 랜드마크 대신 기준 랜드마크를 안정 점으로 옮겨 쓴다 */
 export function alignedFrame(base: SampleFrame, im: RgbaImage, detectedLm: readonly Pt[], hair?: HairMask): { frame: SampleFrame; fit: SimilarityFit; biasPx: number } {
-  const { lm, fit } = alignToBaseline(base.lm, detectedLm);
+  const { lm: whole, fit } = alignToBaseline(base.lm, detectedLm);
+  const lm = refineParts(whole, detectedLm);
   return { frame: frameOf(im, lm, hair), fit, biasPx: makeupBiasPx(lm, detectedLm, MAKEUP_IDS) };
+}
+
+/**
+ * 부위별로 한 번 더 맞춘다 (2026-09-30 폰 시험). 쌩얼(세로·아래에서)과 확인받기(가로·위에서)는 원근이 달라서
+ * 얼굴 전체를 안정 점으로 한 번에 옮기면 눈 점이 16px 아래(눈알 위)로 가 화면 5 정답 테두리가 눈동자에 떴다.
+ *  - 눈: 화장에 덜 밀리는 점(앞·뒤 끝·아랫눈꺼풀·눈동자)으로 맞춰 그 눈 전부에 — 라이너는 윗눈꺼풀 점을 위로 밀 수 있어서 빼고 맞춘다
+ *  - 눈썹: 눈썹 점끼리 — 원근이 바뀌면 눈과 눈썹 사이 거리가 달라져 눈 기준으로는 못 맞춘다
+ * 좌우 따로. 폰 사진 재현: 윗눈꺼풀 어긋남 16.6 → 3.6px (align-refine.test)
+ */
+function refineParts(aligned: readonly Pt[], detected: readonly Pt[]): Pt[] {
+  const lm = aligned.map((p) => ({ ...p }));
+  const move = (key: readonly number[], apply: readonly number[]): void => {
+    const k = [...new Set(key)].filter((i) => aligned[i] && detected[i]);
+    if (k.length < 3) return;
+    const f = similarityFit(k.map((i) => aligned[i]!), k.map((i) => detected[i]!));
+    for (const i of new Set(apply)) if (aligned[i]) lm[i] = f.apply(aligned[i]!);
+  };
+  for (const [eye, brow] of [[LM.eyeA, LM.browA], [LM.eyeB, LM.browB]] as const) {
+    move([eye.outer, eye.inner, ...eye.lower, ...eye.iris], [...eye.upper, ...eye.lower, ...eye.iris]);
+    move([...brow.upper, ...brow.lower], [...brow.upper, ...brow.lower]);
+  }
+  return lm;
 }
 
 export interface ScorePartOptions {
