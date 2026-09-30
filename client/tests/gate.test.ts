@@ -37,10 +37,14 @@ describe("evaluateGate", () => {
     expect(evaluateGate("liner", good({ sharpness: Infinity })).firstFail).toBe("face");
   });
 
-  it("V4 정면이 아니면 angle — 어두운 것보다 먼저 말한다", () => {
-    const r = evaluateGate("liner", good({ yaw: 30, foreheadL: 20 }));
+  it("V4 정면이 아니면 angle — 어두운 것보다 먼저, **어느 쪽으로** 돌리면 되는지 말한다 (폰 시험 2026-09-30)", () => {
+    const r = evaluateGate("liner", good({ yaw: 30, baseYaw: 30, foreheadL: 20 }));
     expect(r.firstFail).toBe("angle");
-    expect(r.text).toBe("조금만 정면으로");
+    // 방향은 화면 1 과 같은 기준: yaw 가 + 면 "왼쪽으로" (flow.ts left_45 = yaw 음수 = "고개를 왼쪽으로")
+    expect(r.text).toBe(GATE_TEXT.turnLeft);
+    expect(evaluateGate("liner", good({ yaw: -30, baseYaw: -30 })).text).toBe(GATE_TEXT.turnRight);
+    expect(evaluateGate("lip", good({ pitch: 12, basePitch: 12 })).text).toBe(GATE_TEXT.tiltUp);
+    expect(evaluateGate("lip", good({ pitch: -12, basePitch: -12 })).text).toBe(GATE_TEXT.tiltDown);
   });
 
   it("V4b 얼굴이 45° 넘게 누우면(자동 회전 꺼짐) 가장 먼저 — 눈 부위는 '자동 회전을 켜', 세로 부위는 '세로로 들어' (#204)", () => {
@@ -75,7 +79,17 @@ describe("evaluateGate", () => {
     expect(evaluateGate("liner", good({ pitch: -7 })).firstFail).toBe("pose_diff");
     expect(evaluateGate("liner", good({ yaw: 7, pitch: 5 })).ok).toBe(true);
     expect(evaluateGate("liner", good({ yaw: 9, baseYaw: undefined, basePitch: undefined })).ok).toBe(true);
-    expect(evaluateGate("liner", good({ yaw: 9 })).text).toBe("처음 찍을 때와 같은 각도로 봐 주세요");
+    expect(evaluateGate("liner", good({ yaw: 9 })).text).toBe(GATE_TEXT.turnLeft);
+    expect(evaluateGate("liner", good({ yaw: -9 })).text).toBe(GATE_TEXT.turnRight);
+    expect(evaluateGate("liner", good({ pitch: 7 })).text).toBe(GATE_TEXT.tiltUp);
+    expect(evaluateGate("liner", good({ pitch: -7 })).text).toBe(GATE_TEXT.tiltDown);
+  });
+
+  it("V6c 강체 각도 차(이미지 좌표, 코끝이 이미지 오른쪽이면 +)는 거울 기준으로 바꿔 방향을 말한다", () => {
+    expect(evaluateGate("liner", good({ poseDiff: { yaw: -9, pitch: 0 } })).text).toBe(GATE_TEXT.turnLeft);
+    expect(evaluateGate("liner", good({ poseDiff: { yaw: 9, pitch: 0 } })).text).toBe(GATE_TEXT.turnRight);
+    expect(evaluateGate("liner", good({ poseDiff: { yaw: 0, pitch: 7 } })).text).toBe(GATE_TEXT.tiltUp);
+    expect(evaluateGate("liner", good({ poseDiff: { yaw: 0, pitch: -7 } })).firstFail).toBe("pose_diff");
   });
 
   it("V6b 표정이 맨얼굴 때와 많이 다르면 expr_diff — 각도 차 다음, 부위 보임보다 먼저 (#27)", () => {

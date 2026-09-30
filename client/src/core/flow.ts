@@ -106,9 +106,16 @@ export interface CaptureLimits {
   eyeMinPx: number;
   /** 이마 a*·b* 가 첫 장 대비 이만큼 넘게 돌면 "조명 색이 바뀜" (1-9). 임계는 1-4 실측으로 확정, 지금은 가정값 */
   colorTol: number;
+  /**
+   * 45° 장 전용 밝기·색 허용 차. 고개를 돌리면 이마에 빛이 닿는 각도가 바뀌어 정면끼리보다 크게 흔들린다 (노출 잠금과 무관).
+   * 2026-09-30 1차 실측(15회, 폰 4종, 비정상 1회 제외): 정면 두 장 최대 밝기 7.5·색 4.1 / **45° 최대 밝기 11.6·색 8.0**.
+   * 규칙 "정상 최대 × 1.5" → 정면 12·6 (그대로), 45° 18·12. 내일(#215) 사람 2·3 조명 3종으로 검증 후 확정
+   */
+  brightTol45: number;
+  colorTol45: number;
   stableFrames: number;
 }
-export const CAPTURE_LIMITS: CaptureLimits = { pitch: 10, sharpMin: 150, brightTol: 12, brightMin: 40, brightMax: 85, eyeMinPx: 80, colorTol: 6, stableFrames: 5 };
+export const CAPTURE_LIMITS: CaptureLimits = { pitch: 10, sharpMin: 150, brightTol: 12, brightMin: 40, brightMax: 85, eyeMinPx: 80, colorTol: 6, brightTol45: 18, colorTol45: 12, stableFrames: 5 };
 
 /** 촬영 조건 문구. 숫자 없이 한 줄 (기능 정의서 F-01) */
 export const SHOT_TEXT = {
@@ -185,6 +192,7 @@ export function shotGate(shotId: ShotId, m: ShotMeasure, limits: CaptureLimits =
   const shot = SHOTS.find((s) => s.id === shotId);
   if (!shot) throw new Error(`알 수 없는 촬영 장: ${shotId}`);
   const stableCount = m.stableCount ?? 0;
+  const side = shotId === "left_45" || shotId === "right_45";   // 45° 장은 밝기·색 허용 차가 넓다 (brightTol45·colorTol45)
   const fail = (firstFail: GateFail, key: ShotTextKey): GateResult => ({ ok: false, firstFail, text: SHOT_TEXT[key], stableCount });
 
   if (!m.faceDetected) return fail("face", "none");
@@ -216,12 +224,13 @@ export function shotGate(shotId: ShotId, m: ShotMeasure, limits: CaptureLimits =
   if (typeof m.foreheadL === "number" && m.foreheadL > limits.brightMax) return fail("bright", "bright_high");
   if (typeof m.baselineL === "number" && typeof m.foreheadL === "number") {
     const d = m.foreheadL - m.baselineL;
-    if (d < -limits.brightTol) return fail("bright", "bright_low");
-    if (d > limits.brightTol) return fail("bright", "bright_high");
+    const tol = side ? limits.brightTol45 : limits.brightTol;
+    if (d < -tol) return fail("bright", "bright_low");
+    if (d > tol) return fail("bright", "bright_high");
   }
   if (m.foreheadAb && m.baselineAb) {
     const dab = Math.hypot(m.foreheadAb.a - m.baselineAb.a, m.foreheadAb.b - m.baselineAb.b);
-    if (dab > limits.colorTol) return fail("color", "color");
+    if (dab > (side ? limits.colorTol45 : limits.colorTol)) return fail("color", "color");
   }
   if (stableCount < limits.stableFrames) return fail("stable", "stable");
   return { ok: true, firstFail: null, text: SHOT_TEXT.ready, stableCount };

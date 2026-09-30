@@ -21,7 +21,7 @@ import { CAPTURE_GUIDE, SHOTS, burstShot, burstStep, nextShot, shotGate, startBu
 import { foreheadStep, startForeheadTrack } from "@core/occlusion";
 import type { Baseline, FaceShape, Pt } from "@core/types";
 import type { ScreenId } from "@core/screens";
-import { applyCameraLocks, applyUltraWideZoom, bindVisibility, requestWakeLock, type WakeLockSentinelLike } from "./camera-locks";
+import { DEFAULT_LOCKS, applyCameraLocks, applyUltraWideZoom, bindVisibility, requestWakeLock, type WakeLockSentinelLike } from "./camera-locks";
 import { foreheadLabOf, grabFrame, sharpnessOf } from "./frame-measure";
 import { encodeForStore } from "./image-encode";
 import { createLandmarker } from "./landmarker";
@@ -236,7 +236,10 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
           if (track) {
             // 자동 노출이 자리 잡은 뒤 잠근다 (1-3·1-8). 안 되는 기기는 보정으로만
             await new Promise((r) => setTimeout(r, 1500));
-            await applyCameraLocks(track as unknown as Parameters<typeof applyCameraLocks>[0]);
+            // 노출은 잠그지 않고 색·초점만 (DEFAULT_LOCKS, 2026-09-30 S26 A/B). 비교용으로 주소 ?lock=all(전부) · off(안 잠금)
+            const lockMode = new URLSearchParams(location.search).get("lock");
+            const only = lockMode === "all" ? undefined : lockMode === "off" ? ([] as const) : DEFAULT_LOCKS;
+            await applyCameraLocks(track as unknown as Parameters<typeof applyCameraLocks>[0], only);
             await applyUltraWideZoom(track as unknown as Parameters<typeof applyUltraWideZoom>[0]);
           }
           wake = await requestWakeLock(navigator.wakeLock as unknown as Parameters<typeof requestWakeLock>[0]);
