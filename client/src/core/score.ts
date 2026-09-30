@@ -128,16 +128,34 @@ export function diagText(code: string): string | undefined {
   return (DIAG_TEXT as Record<string, string>)[code];
 }
 
-/** "확인만" 이유 → 한 줄 문장. 숫자를 쓰지 않는다 */
-export const CHECK_REASON_TEXT: Record<CheckReason, string> = {
-  faint: "색이 옅어서 재지 못했어요. 직접 보고 넘어가세요",
-  lighting: "조명이 달라져서 재지 못했어요. 직접 보고 넘어가세요",
-  align: "얼굴을 제대로 맞추지 못해 재지 못했어요. 직접 보고 넘어가세요",
-  occluded: "손이나 머리카락에 가려서 재지 못했어요. 직접 보고 넘어가세요",
-  no_baseline: "맨얼굴 기준이 없어서 재지 못했어요. 직접 보고 넘어가세요",
-  no_band: "이 화장은 진하기 기준이 없어요. 직접 보고 넘어가세요",
+/**
+ * "확인만" 이유 → 짧은 이유 한 문장. 숫자를 쓰지 않는다. 리뷰(다 끝난 뒤)는 이것만 쓴다.
+ * 폰 시험(2026-09-30): "조명이 달라져서 재지 못했어요" 는 사용자를 탓하는 것 같고 기계 말투라 → 무엇이 다른지만 짧게
+ */
+export const CHECK_REASON_SHORT: Record<CheckReason, string> = {
+  faint: "아직 색이 잘 안 보여요.",
+  lighting: "처음 찍을 때와 밝기가 달라요.",
+  align: "얼굴이 처음과 달라 비교하기 어려워요.",
+  occluded: "앞머리나 손이 가리고 있어요.",
+  no_baseline: "맨얼굴 사진이 없어 비교할 수 없어요.",
+  no_band: "이 화장은 아직 진하기 기준이 없어요.",
   contour: "확인하고 넘어가세요.",
 };
+
+/** 화면 5 에서 이유 뒤에 붙이는 할 일 하나. 다시 하면 되는 이유는 다시 확인받기를 권한다 */
+export const CHECK_ACTION: Record<Exclude<CheckReason, "contour">, string> = {
+  faint: "조금 더 바르거나, 거울로 보고 넘어가세요",
+  lighting: "같은 자리에서 다시 확인받아 주세요",
+  align: "정면을 보고 다시 확인받아 주세요",
+  occluded: "치우고 다시 확인받아 주세요",
+  no_baseline: "거울로 보고 넘어가세요",
+  no_band: "거울로 보고 넘어가세요",
+};
+
+/** 화면 5 "확인만" 한 줄 = 이유 + 할 일. 쉐딩은 이유만 */
+export const CHECK_REASON_TEXT: Record<CheckReason, string> = Object.fromEntries(
+  (Object.keys(CHECK_REASON_SHORT) as CheckReason[]).map((k) => [k, k === "contour" ? CHECK_REASON_SHORT[k] : `${CHECK_REASON_SHORT[k]} ${CHECK_ACTION[k]}`]),
+) as Record<CheckReason, string>;
 
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
 const median = (arr: readonly number[]): number => {

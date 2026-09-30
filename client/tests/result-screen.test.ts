@@ -6,7 +6,7 @@ import { LM } from "@core/landmarks";
 import type { HairMask } from "@core/sampling";
 import { applyResult, applySkip, createSession, nextPart, setCurrentPart, type Session } from "@core/flow";
 import { createLogger, memorySink } from "@core/log";
-import { hasDigit } from "@core/score";
+import { CHECK_REASON_TEXT, hasDigit } from "@core/score";
 import type { Baseline, CaptureBundle, PartId, Versions } from "@core/types";
 import { resultScreen, type ResultDeps } from "@screens/result";
 import type { ScreenContext } from "@screens/shell";
@@ -116,7 +116,7 @@ describe("화면 5 — 부위 결과", () => {
     const { root, events, session } = setup("lip", bareIm);
     await scored(root);
     expect(root.querySelector(".result-score")?.textContent).toBe("확인만");
-    expect(root.querySelector(".result-say")?.textContent).toContain("색이 옅어서");
+    expect(root.querySelector(".result-say")?.textContent).toBe(CHECK_REASON_TEXT.faint);
     expect(events.find((e) => e.name === "score")).toMatchObject({ status: "check_only", check_reason: "faint" });
     btn(root, "다음").click();
     expect(session().parts.find((p) => p.partId === "lip")).toMatchObject({ status: "check_only", score: null, checkReason: "faint" });
@@ -184,7 +184,7 @@ describe("화면 5 — 머리카락 마스크", () => {
     await scored(root);
     expect(hairMask).toHaveBeenCalledTimes(2);
     expect(root.querySelector(".result-score")?.textContent).toBe("확인만");
-    expect(root.querySelector(".result-say")?.textContent).toContain("머리카락");
+    expect(root.querySelector(".result-say")?.textContent).toBe(CHECK_REASON_TEXT.occluded);
   });
 
   it("RH3 마스크가 시간 안에 안 오면(모델 내려받기가 멈춤) 기다리지 않고 마스크 없이 채점한다", async () => {
