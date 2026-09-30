@@ -17,10 +17,11 @@ import { cropSpec, scaleLm } from "@core/crop";
 import { partCard } from "@core/guide-view";
 import { lookGuide } from "@core/guides";
 import { outlineOf } from "@core/live-run";
+import { ROTATE_TEXT, mustRotate, nowOrientation } from "@core/orientation-lock";
 import type { Look } from "@core/looks";
 import type { PersonalPlan } from "@core/personalize";
 import type { GuideSource } from "@core/score-part";
-import { wantedOrientation } from "@core/screens";
+import { wantedOrientation, type Orientation } from "@core/screens";
 import type { Baseline, FaceShape, PartId, Pt } from "@core/types";
 import { paintCompleted, type Drawable } from "./completed";
 import { strokeOutline } from "./outline-draw";
@@ -39,6 +40,8 @@ export interface GuideDeps {
   getBareSource?: () => HTMLCanvasElement | null;
   /** 완성본 그리기 — 테스트에서 바꿔 끼운다 (기본 completed.paintCompleted) */
   paint?: typeof paintCompleted;
+  /** 지금 화면 방향 — 테스트에서 바꿔 끼운다 (기본 orientation 미디어 쿼리) */
+  orientation?: () => Orientation;
   /** Blob → 그림. 테스트에서 바꿔 끼운다 (기본 createImageBitmap) */
   toBitmap?: (b: Blob) => Promise<ImageBitmap>;
   /** 테두리 모양 — 화면 4·5 와 같은 것. 없으면 lookGuide(getLook().parts). ⑥ 개인화 계획이 여기 꽂힌다 */
@@ -100,6 +103,11 @@ export function guideScreen<S>(deps: GuideDeps): Screen<S> {
         // mount 안에서 바로 다시 그리면 안쪽 화면의 정리 함수가 바깥 render 에 덮여 안 불린다 → 끝난 뒤로 미룬다 (#167 리뷰)
         if (first) queueMicrotask(() => ctx.goPart(first));
         else wrap.append(el("p", "muted", GUIDE_TEXT.noPart));
+        return;
+      }
+      // 눈 부위는 가로에서만 (팀 협의) — 세로면 내용 대신 안내만. 돌리면 껍데기가 다시 그린다
+      if (mustRotate(part, (deps.orientation ?? nowOrientation)())) {
+        wrap.append(el("p", "rotate-lock", ROTATE_TEXT));
         return;
       }
       const look = deps.getLook();
