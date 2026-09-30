@@ -16,6 +16,7 @@ import type { Look } from "../core/looks";
 import { browOnFace, linerOutline, lipOutline } from "../core/personal-guide";
 import { PLAN_RULES, type LinerStyle, type PersonalPlan } from "../core/personalize";
 import type { Pt } from "../core/types";
+import { drawLashes, type LashTextures } from "./lash-render";
 
 export type PaintPart = "brow" | "shadow" | "liner" | "cheek" | "lip" | "contour" | "highlight" | "aegyo";
 
@@ -44,6 +45,8 @@ export interface PaintLook {
   lipEdge?: string;
   /** 글리터 마감 — 단색 대신 점을 흩뿌린다 (섀도우는 띠 위에 더해서, 애교살은 점만) */
   glitter: { shadow: boolean; aegyo: boolean };
+  /** 마스카라 (extras.lash) — 없으면 안 그린다 (예: 출근/학생). 채점 안 함 */
+  lash?: { color: string; alpha: number };
 }
 
 /** 섀도우 눈꼬리 연장 길이 (눈 폭 비율) — ④ 실험 화면(makeup-probe.ts)과 같은 값. 블러보다 확실히 크게 잡은 눈대중값 */
@@ -75,6 +78,7 @@ export function paintLookOf(look: Look): PaintLook {
     shadowTail: !!sh?.tailExtend,
     ...(lip?.edge ? { lipEdge: hex(lip.edge) } : {}),
     glitter: { shadow: sh?.finish === "glitter", aegyo: ae?.finish === "glitter" },
+    ...(look.extras?.lash ? { lash: { color: hex(look.extras.lash.color), alpha: look.extras.lash.alpha } } : {}),
   };
 }
 
@@ -137,8 +141,9 @@ const rgba = (h: string, a: number): string => {
 /**
  * 기준 얼굴 점(lm) 위에 화장 층을 그린다. layers 는 호출하는 쪽이 비워 둔다.
  * off 는 부위마다 번짐(blur)을 먹이는 작업용 캔버스 — layers 와 같은 크기.
+ * lashes: 불러 둔 마스카라 텍스처 (screens/lash-assets). 없거나 아직 못 불렀으면 마스카라만 빼고 그린다
  */
-export function paintMakeup(layers: Layers, off: HTMLCanvasElement, lm: readonly Pt[], look: PaintLook, plan: PersonalPlan | null, style: LinerStyle): void {
+export function paintMakeup(layers: Layers, off: HTMLCanvasElement, lm: readonly Pt[], look: PaintLook, plan: PersonalPlan | null, style: LinerStyle, lashes: LashTextures | null = null): void {
   const o = off.getContext("2d");
   if (!o) return;
   const P = (i: number): Pt => at(lm, i);
@@ -257,5 +262,14 @@ export function paintMakeup(layers: Layers, off: HTMLCanvasElement, lm: readonly
       layers.col.globalAlpha = alpha * 0.5;
       layers.col.drawImage(off, 0, 0);
     }
+  }
+  // 마스카라 — ④ 텍스처를 눈꺼풀 선에 휘어 붙인다 (screens/lash-render). 기준 얼굴의 눈 뜬 모양으로 한 번만 그리고,
+  // AR 은 셰이더가 다른 화장처럼 휘어 붙인다 — 프레임마다 다시 그리지 않는다. 번짐 없이, 곱하기 층 맨 위에
+  if (look.lash && lashes?.ready) {
+    o.filter = "none";
+    o.clearRect(0, 0, off.width, off.height);
+    drawLashes(o, lashes, lm, look.lash.color, Math.min(1, look.lash.alpha));
+    layers.mul.globalAlpha = 1;
+    layers.mul.drawImage(off, 0, 0);
   }
 }

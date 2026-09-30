@@ -49,6 +49,7 @@ import { fullRenderScreen, type FullRenderDeps } from "./screens/fullrender";
 import { looksScreen, type LooksDeps } from "./screens/looks";
 import { processingScreen, type ProcessingDeps } from "./screens/processing";
 import { resultScreen, type ResultDeps } from "./screens/result";
+import { loadLashes } from "./screens/lash-assets";
 import { reviewScreen, type ReviewDeps } from "./screens/review";
 import { startReviewShot } from "./screens/review-shot";
 import { faceImage } from "./screens/vlm-image";
@@ -117,6 +118,8 @@ async function boot(): Promise<void> {
   );
   // 머리카락 분할 (screens/hair-segmenter) — 화면 5 채점용. 실패는 로그에 한 번 남기고 마스크 없이 간다
   const hairMask = createHairMasker(undefined, (e) => log.log({ name: "error", where: "hair", msg: (e instanceof Error ? e.message : String(e)).slice(0, 120) }));
+  // 마스카라 텍스처 (#250) — 화면 3·2-b 전에 미리 받아 둔다. 실패하면 마스카라만 빼고 그린다 (다음 화장에서 다시 받는다)
+  void loadLashes().catch((e: unknown) => log.log({ name: "error", where: "lashes", msg: (e instanceof Error ? e.message : String(e)).slice(0, 120) }));
   const events = createCaptureEvents(log);
 
   // 세션을 바꾸는 곳은 전부 여기로 — 바뀔 때마다 draft 저장 (앱이 꺼져도 돌아오게, F-07)
