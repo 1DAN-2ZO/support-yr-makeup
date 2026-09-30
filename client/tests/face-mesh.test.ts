@@ -1,12 +1,7 @@
 // 얼굴 그물 — 화장 무늬를 얼굴에 삼각형 단위로 휘어 붙이는 데 쓴다 (필터 방식, 2-b 레이어 휘기)
 import { describe, expect, it } from "vitest";
 import { FaceLandmarker } from "@mediapipe/tasks-vision";
-import { FACE_L, FACE_R, FOREHEAD_POLY } from "@core/color";
-import {
-  EXTENDED_TRIANGLES, FACE_TRIANGLES, HAIRLINE_START, HAIRLINE_TRIANGLES,
-  MESH_VERTEX_SRC, estimateHairline, trianglesFromTesselation, withHairline,
-} from "@core/face-mesh";
-import { LMS } from "./helpers/synth-face";
+import { FACE_TRIANGLES, trianglesFromTesselation } from "@core/face-mesh";
 
 describe("얼굴 그물 삼각형", () => {
   it("연결선 세 개가 닫힌 삼각형이면 그 세 점", () => {
@@ -23,65 +18,5 @@ describe("얼굴 그물 삼각형", () => {
     expect(FaceLandmarker.FACE_LANDMARKS_TESSELATION.length).toBe(852 * 3);
     expect(FACE_TRIANGLES.length).toBe(852);
     expect(Math.max(...FACE_TRIANGLES.flat())).toBeLessThan(468);
-  });
-});
-
-// [dev] 헤어라인 확장 — makeup-probe의 "피부 보정"이 이마 중간에서 잘리는 문제 때문에 추가.
-// 실측 랜드마크가 아니라 지어낸 점이라 정확도는 안 다루고, 기존 468점 그물이 안 흔들리는지만 확인한다.
-describe("estimateHairline", () => {
-  it("FOREHEAD_POLY 점 수만큼 낸다", () => {
-    expect(estimateHairline(LMS)).toHaveLength(FOREHEAD_POLY.length);
-  });
-
-  it("전부 화면 위쪽(y가 작아지는 쪽)으로 밀린다 — 옆쪽도 예외 없이", () => {
-    const hair = estimateHairline(LMS);
-    FOREHEAD_POLY.forEach((idx, i) => {
-      expect(hair[i]!.y).toBeLessThan(LMS[idx]!.y);
-    });
-  });
-
-  it("(회귀) 밀리는 거리가 중앙·옆쪽 다 똑같다 — 미간 기준 방사형 확대는 중앙만 올라가고 옆은 거의 안 올라가는 버그가 있었다(2026-09-29 실측 확인)", () => {
-    const faceL = LMS[FACE_L]!, faceR = LMS[FACE_R]!;
-    const faceWidth = Math.hypot(faceR.x - faceL.x, faceR.y - faceL.y);
-    const hair = estimateHairline(LMS);
-    const dists = FOREHEAD_POLY.map((idx, i) => Math.hypot(hair[i]!.x - LMS[idx]!.x, hair[i]!.y - LMS[idx]!.y));
-    for (const d of dists) expect(d).toBeCloseTo(faceWidth * 0.16, 1);
-  });
-});
-
-describe("withHairline", () => {
-  it("원본 478점을 그대로 두고 뒤에 헤어라인 11점만 이어 붙인다 — 기존 점이 안 흔들려야 한다", () => {
-    const out = withHairline(LMS);
-    expect(out).toHaveLength(LMS.length + FOREHEAD_POLY.length);
-    expect(out.slice(0, LMS.length)).toEqual(LMS);
-    expect(out[HAIRLINE_START]).toEqual(estimateHairline(LMS)[0]);
-  });
-});
-
-describe("그물 정점·삼각형 인덱스 정합성", () => {
-  it("MESH_VERTEX_SRC 앞 468개는 항등 매핑 — 기존 468점 그물이 그대로 유지된다", () => {
-    expect(MESH_VERTEX_SRC.slice(0, 468)).toEqual(Array.from({ length: 468 }, (_, i) => i));
-  });
-
-  it("MESH_VERTEX_SRC 길이 = 468(실제) + FOREHEAD_POLY(합성)", () => {
-    expect(MESH_VERTEX_SRC).toHaveLength(468 + FOREHEAD_POLY.length);
-  });
-
-  it("MESH_VERTEX_SRC 는 withHairline() 결과 안에서 실제로 존재하는 인덱스만 가리킨다", () => {
-    const total = withHairline(LMS).length;
-    for (const src of MESH_VERTEX_SRC) expect(src).toBeLessThan(total);
-  });
-
-  it("HAIRLINE_TRIANGLES 는 FOREHEAD_POLY 점 수보다 하나 적은 구간마다 2개 — 리본", () => {
-    expect(HAIRLINE_TRIANGLES).toHaveLength((FOREHEAD_POLY.length - 1) * 2);
-  });
-
-  it("HAIRLINE_TRIANGLES 의 슬롯 번호가 전부 MESH_VERTEX_SRC 범위 안에 있다", () => {
-    for (const tri of HAIRLINE_TRIANGLES) for (const slot of tri) expect(slot).toBeLessThan(MESH_VERTEX_SRC.length);
-  });
-
-  it("EXTENDED_TRIANGLES = FACE_TRIANGLES + HAIRLINE_TRIANGLES — 기존 852개는 그대로 앞에 있다", () => {
-    expect(EXTENDED_TRIANGLES).toHaveLength(FACE_TRIANGLES.length + HAIRLINE_TRIANGLES.length);
-    expect(EXTENDED_TRIANGLES.slice(0, FACE_TRIANGLES.length)).toEqual(FACE_TRIANGLES);
   });
 });

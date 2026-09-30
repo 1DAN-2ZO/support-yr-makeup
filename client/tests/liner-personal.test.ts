@@ -3,7 +3,8 @@
 // VLM 이 제안을 내도 같은 검증 관문을 지난다 — 측정과 모순되면 규칙값으로 되돌린다.
 import { describe, expect, it } from "vitest";
 import type { FaceMeasure, EyeMeasure } from "@core/face-measure";
-import { PERSONAL_LINER, linerOutline, lookGuide } from "@core/guides";
+import { lookGuide } from "@core/guides";
+import { PERSONAL_LINER, linerOutline, styledGuide } from "@core/personal-guide";
 import { LM, dist } from "@core/landmarks";
 import { lookById } from "@core/looks";
 import { DROOP_MARGIN_DEG, planLiner, resolveLiner } from "@core/personalize";
@@ -78,7 +79,7 @@ describe("라이너 개인화 — 꼬리 모양 (ILoveEye 2022)", () => {
   const outer = LMS[LM.eyeA.outer]!, inner = LMS[LM.eyeA.inner]!;
   const apex = LMS[LM.eyeA.upper[4]]!;
   const len = PERSONAL_LINER.length * BARE.unit.eye;
-  const tip = (style: "winged" | "drop" | "extend") => lookGuide({}, style)("liner", BARE).liner!.wing.R;
+  const tip = (style: "winged" | "drop" | "extend") => styledGuide({}, style)("liner", BARE).liner!.wing.R;
 
   it("치수는 ILoveEye 값 — 15°, 눈 폭의 12%", () => {
     expect(PERSONAL_LINER).toEqual({ wingedDeg: 15, length: 0.12 });
@@ -109,20 +110,20 @@ describe("라이너 개인화 — 꼬리 모양 (ILoveEye 2022)", () => {
   });
 
   it("왼쪽 눈도 바깥 쪽으로 뻗는다", () => {
-    const [o, e] = lookGuide({}, "winged")("liner", BARE).liner!.wing.L;
+    const [o, e] = styledGuide({}, "winged")("liner", BARE).liner!.wing.L;
     expect(e.x).toBeGreaterThan(o.x);
     expect(e.y).toBeLessThan(o.y);
   });
 
   it("스타일을 주지 않으면 지금 가이드와 똑같다 — 개인화하지 않은 채점은 바뀌지 않는다", () => {
     const daily = lookById("daily").parts;
-    expect(lookGuide(daily)("liner", BARE)).toEqual(lookGuide(daily, undefined)("liner", BARE));
+    expect(lookGuide(daily)("liner", BARE)).toEqual(styledGuide(daily, undefined)("liner", BARE));
     expect(dist(...lookGuide(daily)("liner", BARE).liner!.wing.R) / BARE.unit.eye).toBeCloseTo(0.15, 6);
   });
 
   it("두께는 스타일과 무관하게 룩에서 온다", () => {
     const smoky = lookById("smoky").parts;
-    expect(lookGuide(smoky, "extend")("liner", BARE).liner!.thick).toBe(0.052);
+    expect(styledGuide(smoky, "extend")("liner", BARE).liner!.thick).toBe(0.052);
   });
 
   it("화면용 윤곽도 같은 꼬리 끝을 쓴다 — 가이드와 채점이 어긋나지 않게", () => {

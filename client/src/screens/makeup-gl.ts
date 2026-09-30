@@ -2,9 +2,8 @@
  * [dev] 화장 필터 렌더러 (WebGL2) — SNOW 같은 필터 방식.
  *
  * 1. 배경: 영상(또는 찍은 사진)을 그대로 깐다.
- * 2. 얼굴 그물(MediaPipe 852개 + 헤어라인 합성 리본 20개, face-mesh.ts EXTENDED_TRIANGLES): 점 위치는 지금 얼굴, 무늬 좌표는 기준 얼굴.
+ * 2. 얼굴 그물(삼각형 852개): 점 위치는 지금 얼굴, 무늬 좌표는 기준 얼굴.
  *    기준 얼굴 위에 그린 화장 무늬(atlas)가 삼각형마다 휘어 지금 얼굴에 붙는다.
- *    헤어라인 리본은 "피부 보정"이 이마 중간에서 잘리는 문제 때문에 늘렸다 — 실측 랜드마크가 아니라 지어낸 점이니 화장 자리 계산에는 안 쓴다.
  * 3. 셰이더에서 피부와 섞는다:
  *    - 곱하기 층: 피부 × 화장색 — 결·그늘·광이 그대로 비친다
  *    - 색 층(입술): 밝기는 피부 것을 두고 색만 옮긴다 — 입술 광이 산다
@@ -13,7 +12,8 @@
  * 무늬 캔버스는 영상과 같은 크기라, 기준 얼굴 점 px ÷ 크기 가 그대로 무늬 좌표다.
  */
 
-import { EXTENDED_TRIANGLES, MESH_VERTEX_SRC } from "@core/face-mesh";
+import { FACE_TRIANGLES } from "@core/face-mesh";
+import type { HairMask } from "@core/sampling";
 import type { Pt } from "@core/types";
 
 const VS_BG = `#version 300 es
@@ -49,6 +49,7 @@ uniform sampler2D uVideo;
 uniform sampler2D uMul;
 uniform sampler2D uCol;
 uniform sampler2D uLight;
+uniform sampler2D uHair;   // 머리카락 확률 (영상 좌표, R). 없으면 0 — docs/research/hair-skin-2026-09-29
 uniform vec2 uTexel;
 uniform float uRadius;
 uniform float uBeauty;
@@ -58,7 +59,9 @@ out vec4 o;
 const vec3 LUMA = vec3(0.299, 0.587, 0.114);
 void main() {
   vec3 base = texture(uVideo, vScreen).rgb;
-  if (uBeauty > 0.0) {
+  // 앞머리·옆머리 위에는 피부 보정도 화장도 안 한다 — 머리카락 결이 뭉개지고 화장색이 칠해졌다 (폰 시험 2026-09-30)
+  float keep = 1.0 - smoothstep(0.35, 0.65, texture(uHair, vScreen).r);
+  if (uBeauty > 0.0 && keep > 0.0) {
     vec3 sum = vec3(0.0);
     float wsum = 0.0;
     for (int i = -3; i <= 3; i++) {
@@ -71,17 +74,17 @@ void main() {
         wsum += w;
       }
     }
-    base = mix(base, sum / wsum, uBeauty);
+    base = mix(base, sum / wsum, uBeauty * keep);
   }
   vec4 m = texture(uMul, vAtlas);
-  vec3 col = base * mix(vec3(1.0), m.rgb, m.a);
+  vec3 col = base * mix(vec3(1.0), m.rgb, m.a * keep);
   vec4 c = texture(uCol, vAtlas);
   if (c.a > 0.0) {
     vec3 shifted = clamp(c.rgb + (dot(col, LUMA) - dot(c.rgb, LUMA)), 0.0, 1.0);
-    col = mix(col, shifted, c.a);
+    col = mix(col, shifted, c.a * keep);
   }
   vec4 l = texture(uLight, vAtlas);   // 하이라이트: 밝히기(screen)
-  col = 1.0 - (1.0 - col) * (1.0 - l.rgb * l.a);
+  col = 1.0 - (1.0 - col) * (1.0 - l.rgb * l.a * keep);
   o = vec4(col, 1.0);
 }`;
 
@@ -112,14 +115,26 @@ function texture(gl: WebGL2RenderingContext): WebGLTexture {
 }
 
 export interface GlFrame {
-  /** 지금 얼굴 점 (px). face-mesh.ts withHairline() 으로 헤어라인 합성점까지 붙여서 넘긴다 */
+  /** 지금 얼굴 점 (px) */
   lm: readonly Pt[];
-  /** 무늬를 그린 기준 얼굴 점 (px). 마찬가지로 withHairline() 통과한 것 */
+  /** 무늬를 그린 기준 얼굴 점 (px) */
   ref: readonly Pt[];
   /** 피부 보정 0~1 */
   beauty: number;
   /** 피부 보정 흐림 반경 (px) — 얼굴 크기에 맞춘다 */
   radius: number;
+  /** 머리카락 확률 마스크 (영상과 같은 구도, 크기는 달라도 됨). 있으면 그 위엔 보정·화장을 안 한다. 없으면 전과 같다 */
+  hair?: HairMask | null;
+}
+
+/** 머리카락 확률 0~1 → 셰이더용 0~255 한 채널. 범위 밖은 자르고, 음수·NaN 은 0 (머리카락 아님) */
+export function hairBytes(m: HairMask): Uint8Array {
+  const out = new Uint8Array(m.w * m.h);
+  for (let i = 0; i < out.length; i++) {
+    const v = m.data[i] ?? 0;
+    out[i] = Number.isFinite(v) && v > 0 ? Math.round(Math.min(1, v) * 255) : 0;
+  }
+  return out;
 }
 
 export class MakeupGl {
@@ -133,7 +148,22 @@ export class MakeupGl {
   private tMul: WebGLTexture;
   private tCol: WebGLTexture;
   private tLight: WebGLTexture;
-  private verts = new Float32Array(MESH_VERTEX_SRC.length * 4);
+  private tHair: WebGLTexture;
+  private hairShown: HairMask | null = null;
+  private verts = new Float32Array(468 * 4);
+
+  /**
+   * GPU 자원을 돌려준다. 화면을 떠날 때 부른다 — 브라우저는 살아 있는 WebGL 을 16개쯤으로 막아서,
+   * 2-b 를 여러 번 드나들면 오래된 것부터 강제로 잃는다 (#172 리뷰)
+   */
+  dispose(): void {
+    const gl = this.gl;
+    for (const t of [this.tVideo, this.tMul, this.tCol, this.tLight, this.tHair]) gl.deleteTexture(t);
+    for (const b of [this.bgBuf, this.vBuf, this.iBuf]) gl.deleteBuffer(b);
+    gl.deleteProgram(this.bg);
+    gl.deleteProgram(this.mesh);
+    gl.getExtension("WEBGL_lose_context")?.loseContext();
+  }
 
   constructor(private canvas: HTMLCanvasElement) {
     const gl = canvas.getContext("webgl2", { premultipliedAlpha: false, preserveDrawingBuffer: true });
@@ -147,16 +177,27 @@ export class MakeupGl {
     this.vBuf = gl.createBuffer()!;
     this.iBuf = gl.createBuffer()!;
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.iBuf);
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(EXTENDED_TRIANGLES.flat()), gl.STATIC_DRAW);
-    // [디버그] 생성 시 딱 한 번 — 이 인스턴스가 지금 코드(헤어라인 리본 포함, 872개)로 만들어졌는지 확인.
-    // 852만 찍히면 오래된 glr 인스턴스가 재사용된 것 — 탭을 완전히 새로 열어야 한다
-    console.log("[MakeupGl] 생성됨 — 삼각형", EXTENDED_TRIANGLES.length, "개, 정점 슬롯", MESH_VERTEX_SRC.length, "개 (기대값: 872 / 479)");
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(FACE_TRIANGLES.flat()), gl.STATIC_DRAW);
     this.tVideo = texture(gl);
     this.tMul = texture(gl);
     this.tCol = texture(gl);
     this.tLight = texture(gl);
+    this.tHair = texture(gl);
+    this.uploadHair(null);
     // 캔버스 무늬는 알파를 곱하지 않은 채로 받는다 — 셰이더가 색과 세기를 따로 쓴다
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+  }
+
+  /** 머리카락 마스크를 한 채널 텍스처로. 없으면 1×1 의 0 — 셰이더가 늘 같은 경로로 돈다. 같은 마스크면 다시 안 올린다 */
+  private uploadHair(m: HairMask | null): void {
+    if (m === this.hairShown && m !== null) return;
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D, this.tHair);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    if (m) gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, m.w, m.h, 0, gl.RED, gl.UNSIGNED_BYTE, hairBytes(m));
+    else gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, 1, 1, 0, gl.RED, gl.UNSIGNED_BYTE, new Uint8Array([0]));
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+    this.hairShown = m;
   }
 
   private upload(t: WebGLTexture, src: TexImageSource): void {
@@ -188,17 +229,12 @@ export class MakeupGl {
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     gl.disableVertexAttribArray(aBg);
     if (!f) return;
-    // 방어: lm/ref가 헤어라인 합성점(withHairline) 없이 넘어오면(HMR 반영 틈 등) 예외로 렌더 루프 전체가
-    // 멈추는 대신, 이 프레임만 배경만 그리고 건너뛴다 — 얼어붙은 옛 프레임이 "화장이 안 따라온다"로 보이는 사고를 막는다
-    const maxIdx = MESH_VERTEX_SRC[MESH_VERTEX_SRC.length - 1]!;
-    if (f.lm.length <= maxIdx || f.ref.length <= maxIdx) { console.warn(`[MakeupGl] lm/ref 길이 부족(${f.lm.length}/${f.ref.length}, ${maxIdx + 1} 필요) — 이 프레임 건너뜀`); return; }
 
     this.upload(this.tMul, mul);
     this.upload(this.tCol, col);
     this.upload(this.tLight, light);
-    for (let i = 0; i < MESH_VERTEX_SRC.length; i++) {
-      const li = MESH_VERTEX_SRC[i]!;
-      const p = f.lm[li]!, r = f.ref[li]!;
+    for (let i = 0; i < 468; i++) {
+      const p = f.lm[i]!, r = f.ref[i]!;
       this.verts.set([p.x, p.y, r.x, r.y], i * 4);
     }
     gl.useProgram(this.mesh);
@@ -217,8 +253,10 @@ export class MakeupGl {
     this.bindUnit(this.mesh, "uMul", 1, this.tMul);
     this.bindUnit(this.mesh, "uCol", 2, this.tCol);
     this.bindUnit(this.mesh, "uLight", 3, this.tLight);
+    this.uploadHair(f.hair ?? null);
+    this.bindUnit(this.mesh, "uHair", 4, this.tHair);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.iBuf);
-    gl.drawElements(gl.TRIANGLES, EXTENDED_TRIANGLES.length * 3, gl.UNSIGNED_SHORT, 0);
+    gl.drawElements(gl.TRIANGLES, FACE_TRIANGLES.length * 3, gl.UNSIGNED_SHORT, 0);
     gl.disableVertexAttribArray(aPos);
     gl.disableVertexAttribArray(aRef);
   }

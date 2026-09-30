@@ -18,6 +18,7 @@
   .overlay canvas { max-width: 100%; max-height: 60%; border-radius: 8px; border: 2px solid #2a8c85; }
   .overlay h3 { margin: 0; font-size: 18px; }
   .overlay p { margin: 0; font-size: 14px; color: #ccc; }
+  .overlay ul { margin: 0; padding-left: 20px; text-align: left; font-size: 15px; line-height: 1.6; }
   .bar { display: flex; gap: 8px; padding: 10px 12px; flex-wrap: wrap; justify-content: center; }
   button { font: inherit; padding: 10px 14px; border-radius: 8px; border: 0; background: #2a8c85; color: #fff; }
   button.alt { background: #555; }
@@ -40,6 +41,11 @@
     <p>맨얼굴 사진 3장(정면·좌·우)이 서버로 전송돼 처리된 뒤 즉시 삭제됩니다. 이 실측에서는 사진이 폰 밖으로 나가지 않고 숫자만 PC 로 보냅니다.</p>
     <div class="bar"><button id="agree">동의하고 시작</button><button id="deny" class="alt">거부</button></div>
   </div>
+  <div class="overlay" id="guide" hidden>
+    <h3 id="guideTitle"></h3>
+    <ul id="guideLines"></ul>
+    <div class="bar"><button id="guideOk"></button></div>
+  </div>
   <div class="overlay" id="confirm" hidden>
     <h3 id="confirmTitle">이 사진으로 할까요?</h3>
     <canvas id="confirmCv"></canvas>
@@ -50,7 +56,17 @@
 <div class="bar">
   <button id="start">시작 (전면 카메라)</button>
   <button id="retake" class="alt" disabled>마지막 장 다시</button>
+  <button id="zoom" class="alt">확대 1.5배</button>
+  <button id="shake" class="alt" disabled>흔들기 측정 (6초)</button>
   <button id="finish" class="alt" disabled>끝 → PC 로 보내기</button>
+</div>
+<div class="bar">
+  <span>가림 측정(3초씩):</span>
+  <button class="alt" data-calib="clean">가만히</button>
+  <button class="alt" data-calib="light">불 끄고 켜기</button>
+  <button class="alt" data-calib="hand">손</button>
+  <button class="alt" data-calib="brush">브러시</button>
+  <button class="alt" data-calib="hair">앞머리</button>
 </div>
 <div class="thumbs" id="thumbs"></div>
 <pre id="out">준비 중…</pre>

@@ -15,6 +15,8 @@ export const CHEEK = {
 };
 export const LIPS = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146];
 export const EYESHADOW_REACH = 0.45;
+// 비화장 기준(전역 편향 추정용) — server/app/regions.py FOREHEAD와 같은 값, 1:1 복제.
+export const FOREHEAD = [10, 109, 108, 151, 337, 338];
 
 export const REGION_KEYS = ["browR", "browL", "eyeR", "eyeL", "lips", "cheekR", "cheekL"];
 export const TRACKED_IDX = [...new Set([...BROW.R, ...BROW.L, ...EYES.R.upper, ...EYES.L.upper, ...LIPS, ...CHEEK.R, ...CHEEK.L])];
@@ -38,4 +40,9 @@ export function buildRegions(lm, w, h) {
   const eyeR = [...lidR, ...lidR.map((p) => lerp(p, browRC, EYESHADOW_REACH)).reverse()];
   const eyeL = [...lidL, ...lidL.map((p) => lerp(p, browLC, EYESHADOW_REACH)).reverse()];
   return { browR, browL, eyeR, eyeL, lips: LIPS.map(P), cheekR: CHEEK.R.map(P), cheekL: CHEEK.L.map(P) };
+}
+
+/** 이마 폴리곤(픽셀) — buildRegions와 분리: 화장 부위가 아니라 편향 추정 전용이라 REGION_KEYS엔 안 넣는다. */
+export function buildForehead(lm, w, h) {
+  return FOREHEAD.map((i) => landmarkPx(lm, i, w, h));
 }

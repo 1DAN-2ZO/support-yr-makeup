@@ -1,4 +1,4 @@
-# 당화응 (support-yr-makeup)
+# nudy (support-yr-makeup) — 전 이름 당화응
 
 **새로운 화장을 배우고 싶은 사람을 위한, 한 부위씩 잡아주는 화장 코치.**
 
@@ -46,7 +46,7 @@ poc/    브라우저 POC — 화면별 POC는 `poc/full` 브랜치에 모두 모
 server/ 서버 API (FastAPI, Python 3.11) — 큐·워커 인터페이스·삭제 정책. 스텁 워커로 흐름이 돈다
 eval/   평가 하네스 — 골든 세트·한 명령 재평가·결과표 자동 생성 (docs/eval-results-v6.md)
 client/ 모바일 웹 클라이언트 (TypeScript, Vite) — 모듈 계약 타입·공통 log(). POC lib 를 여기로 옮긴다
-danghaeung_poc_3x4_20/  촬영 세트 샘플 20장 (5명 × 정면 눈 뜸·감음·좌45·우45, 셀카 3:4 1080×1440, Real-ESRGAN 4배 초해상도) + 원본 시트
+poc/samples/phone-portraits-20/  촬영 세트 샘플 20장 (5명 × 정면 눈 뜸·감음·좌45·우45, 셀카 3:4 1080×1440, Real-ESRGAN 4배 초해상도) + 원본 시트
 ```
 
 일정·스프린트는 [`docs/sprints-v6.md`](docs/sprints-v6.md), 모듈별 할 일은 [`docs/tasks-by-module-v6.md`](docs/tasks-by-module-v6.md). 작업 항목은 GitHub 이슈·마일스톤에 들어가 있다.

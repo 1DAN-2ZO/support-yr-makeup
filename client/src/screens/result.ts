@@ -14,9 +14,9 @@
 import type { RgbaImage } from "../core/color";
 import type { ScoreOutcome } from "../core/flow";
 import { guideOutline } from "../core/overlay";
-import { frameOf } from "../core/sampling";
-import { alignedFrame, scorePart, type GuideSource } from "../core/score-part";
-import { PART_NAME, toOutcome } from "../core/score";
+import { frameOf, type HairMask } from "../core/sampling";
+import { scoreBundle, type GuideSource } from "../core/score-part";
+import { PART_NAME } from "../core/score";
 import type { Baseline, CaptureBundle, PartId, PartStatus } from "../core/types";
 import type { Screen, ScreenContext } from "./shell";
 
@@ -35,7 +35,16 @@ export interface ResultDeps {
   getStatus?: (part: PartId) => PartStatus;
   /** 이미지 → 픽셀. 안 주면 캔버스로. 테스트에서 바꿔 끼운다 */
   toRgba?: (src: ImageBitmap | Blob) => Promise<RgbaImage>;
+  /**
+   * 사진 → 머리카락 마스크 (screens/hair-segmenter createHairMasker). 주면 맨얼굴·확인받기 사진마다 만들어
+   * 앞머리·옆머리 칸을 채점에서 뺀다. 안 주거나 null 이면 전과 같이 (docs/research/hair-skin-2026-09-29)
+   */
+  hairMask?: (im: RgbaImage) => Promise<HairMask | null>;
+  /** 마스크를 이만큼만 기다린다 (ms). 처음엔 모델을 내려받는데, 폰 네트워크가 멈추면 "채점 중…" 에 영영 서 있게 된다 */
+  hairTimeoutMs?: number;
 }
+
+const HAIR_TIMEOUT_MS = 3000;
 
 const GUIDE_COLOR = "#3FD1C4";
 const INTENSITY: readonly PartId[] = ["shadow", "cheek"];
@@ -53,8 +62,7 @@ export function resultScreen<S>(deps: ResultDeps): Screen<S> {
       wrap.append(line("result-part", PART_NAME[part]));
 
       const baseline = deps.getBaseline(), bundle = deps.getCapture(part);
-      const frame = bundle?.frames[bundle.frames.length - 1], pts = bundle?.pts[bundle.pts.length - 1];
-      if (!baseline?.bareImage || !frame || !pts) {
+      if (!baseline?.bareImage || !bundle || !bundle.frames.length || bundle.pts.length !== bundle.frames.length) {
         wrap.append(line("muted", "확인받기 결과가 없어요. 다시 확인받아 주세요"));
         wrap.append(buttons(ctx, deps, part, null));
         return;
@@ -77,14 +85,20 @@ export function resultScreen<S>(deps: ResultDeps): Screen<S> {
       void (async () => {
         let outcome: ScoreOutcome;
         try {
-          const [bareIm, curIm] = await Promise.all([toRgba(baseline.bareImage!), toRgba(frame)]);
+          // 확인받기 묶음 전체를 채점한다 (3-3): 가려진 장은 빼고, 점수는 중앙값, 사진은 대표 장
+          const [bareIm, ...ims] = await Promise.all([toRgba(baseline.bareImage!), ...bundle.frames.map((f) => toRgba(f))]);
           if (!alive) return;
           const guide = deps.guide();
-          const base = frameOf(bareIm, baseline.lm);
-          const { frame: cur, fit } = alignedFrame(base, curIm, pts);
-          const { result, ctx: sctx } = scorePart(part, base, cur, guide, { alignResidual: fit.residual });
-          outcome = toOutcome(part, result, sctx);
-          drawOverlay(canvas, frame, curIm, guideOutline(part, cur.lm, guide(part, cur)));
+          // 머리카락 마스크 — 실패한 장은 null(그 장은 머리카락을 안 뺌). 맨얼굴 것도 같이: 한쪽이라도 가린 칸은 뺀다
+          // 늦으면 기다리지 않는다 — 마스크 없이 채점 (전과 같은 결과)
+          const hairOf = deps.hairMask ?? (async () => null);
+          const late = new Promise<null>((r) => setTimeout(() => r(null), deps.hairTimeoutMs ?? HAIR_TIMEOUT_MS));
+          const [bareHair, ...hairs] = await Promise.all([bareIm, ...ims].map((im) => Promise.race([hairOf(im).catch(() => null), late])));
+          if (!alive) return;
+          const base = frameOf(bareIm, baseline.lm, bareHair ?? undefined);
+          const b = scoreBundle(part, base, ims.map((im, i) => ({ im, pts: bundle.pts[i]!, occluded: bundle.handOverlap[i] ?? null, ...(hairs[i] ? { hair: hairs[i] } : {}) })), guide);
+          outcome = b.outcome;
+          if (b.pick !== null && b.cur) drawOverlay(canvas, bundle.frames[b.pick]!, ims[b.pick]!, guideOutline(part, b.cur.lm, guide(part, b.cur)));
           ctx.log.log({ name: "score", part, status: outcome.decision === "scored" ? "passed" : "check_only", check_reason: outcome.checkReason, ms: Math.round(performance.now() - t0) });
         } catch (e) {
           if (!alive) return;
@@ -174,9 +188,11 @@ function buttons<S>(ctx: ScreenContext<S>, deps: ResultDeps, part: PartId, outco
     goOn();
   });
 
-  const row = el("div", "row");
-  row.append(nextBtn, retry);
-  wrap.append(row, skip);
+  // POC: 다음 → 다시 확인받기 → 건너뛰기, 세로로 한 줄씩
+  retry.className = "secondary";
+  const row = el("div", "btns");
+  row.append(nextBtn, retry, skip);
+  wrap.append(row);
   return wrap;
 }
 

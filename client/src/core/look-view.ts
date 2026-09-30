@@ -89,3 +89,29 @@ export function fullRenderUrl(jobs: readonly LookJob[], lookId: string | null): 
   const job = jobs.find((j) => j.look_id === lookId);
   return job?.status === "done" ? job.result_url : null;
 }
+
+// ---------- 화장 목록 타일 (2026-09-29: Stable-Makeup 을 빼서 서버 그림이 없다) ----------
+
+export interface CatalogTile {
+  lookId: string;
+  name: string;
+  /** 대표 이미지. 없으면 null — 색 견본을 그린다 */
+  imageUrl: string | null;
+  /** 그 화장의 입술·볼·섀도 색 (#rrggbb). 대표 이미지가 없을 때 쓴다 */
+  swatch: string[];
+  /** 처음부터 전부 고를 수 있다 — 기다릴 서버 그림이 없다 */
+  selectable: true;
+}
+
+const hex = (c: readonly number[]): string => "#" + c.map((v) => Math.round(v).toString(16).padStart(2, "0")).join("");
+
+export function catalogTiles(looks: readonly Look[]): CatalogTile[] {
+  return looks.map((l) => ({
+    lookId: l.id,
+    name: l.name,
+    imageUrl: l.image ?? null,
+    swatch: (["lip", "cheek", "shadow"] as const).flatMap((p) => (l.parts[p]?.color ? [hex(l.parts[p]!.color!)] : [])),
+    selectable: true,
+  }));
+}
+

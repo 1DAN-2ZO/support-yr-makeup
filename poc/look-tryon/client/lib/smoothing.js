@@ -1,6 +1,6 @@
 // One Euro Filter — app.js(v2)에서 실사용 검증된 그대로. 매 프레임 독립 추정되는 랜드마크의
 // 프레임간 떨림(jitter)을 줄인다. 느리게 움직일 땐 많이 부드럽게, 빠르게 움직일 땐 덜 부드럽게
-// (지연 최소화) 자동 조절. app-webgl.js(C4)에서도 동일 기법 재사용 — 중복 구현 금지.
+// (지연 최소화) 자동 조절.
 
 class LowPassFilter {
   reset() { this.y = null; this.s = null; }
@@ -27,6 +27,41 @@ export class OneEuroFilter {
     const edx = this.dxFilt.filter(dx, this.alpha(this.dCutoff, dt));
     const cutoff = this.minCutoff + this.beta * Math.abs(edx);
     return this.xFilt.filter(x, this.alpha(cutoff, dt));
+  }
+}
+
+// 단순 지수이동평균(EMA) — guide 브랜치(poc/full/lib/gate.js Smoother)와 동일한 방식. One Euro Filter
+// 대비 포인트당 곱셈 두 번뿐이라 계산이 가볍고, 속도 추정·적응형 cutoff가 없어 위상 지연도 적다
+// (대신 정지 시 미세 떨림은 One Euro보다 더 남는다 — 선/점처럼 얇은 걸 그릴 땐 잘 안 띄고, 색을 칠하는
+// 용도엔 오히려 거슬릴 수 있어 용도에 따라 LandmarkSmoother와 골라 쓴다).
+export class EmaSmoother {
+  constructor(trackedIdx, { smoothZ = false, alpha = 0.5 } = {}) {
+    this.trackedIdx = trackedIdx;
+    this.smoothZ = smoothZ;
+    this.alpha = alpha;
+    this.prev = new Map();
+    this.wasLost = true;
+  }
+  setAlpha(alpha) { this.alpha = alpha; }
+  reset() { this.prev.clear(); }
+  // lm: 랜드마크 없음(null)이면 wasLost만 갱신. 있으면 새 배열(원본 불변) 반환. tMs는 인터페이스를
+  // LandmarkSmoother와 맞추려고 받지만 EMA 자체는 프레임 간격을 안 쓴다(guide와 동일).
+  smooth(lm, _tMs) {
+    if (!lm) { this.wasLost = true; return null; }
+    if (this.wasLost) this.reset(); // 다시 잡혔을 때 이전 위치로 확 당겨지는 것 방지
+    this.wasLost = false;
+    const out = lm.slice();
+    const a = this.alpha;
+    for (const i of this.trackedIdx) {
+      const cur = lm[i];
+      const p = this.prev.get(i);
+      const next = p
+        ? { x: p.x + a * (cur.x - p.x), y: p.y + a * (cur.y - p.y), z: this.smoothZ ? p.z + a * (cur.z - p.z) : cur.z }
+        : { x: cur.x, y: cur.y, z: cur.z };
+      this.prev.set(i, next);
+      out[i] = next;
+    }
+    return out;
   }
 }
 

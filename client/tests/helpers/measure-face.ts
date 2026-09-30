@@ -1,5 +1,6 @@
 // 측정용 가짜 얼굴 — 눈·홍채·눈썹·얼굴 윤곽을 치수로 배치한다 (face-measure·brow-standard 테스트가 같이 쓴다)
 import { LM } from "@core/landmarks";
+import { ALA } from "@core/personal-guide";
 import type { Pt } from "@core/types";
 import { LMS } from "./synth-face";
 
@@ -85,8 +86,8 @@ export function face(spec: FaceSpec = {}): Pt[] {
   lm[267] = { x: 315, y: 421 - peak };               // 큐피드 활 봉우리 (이미지 오른쪽)
   lm[61] = { x: 300 - lip.width / 2, y: 421 };       // 입꼬리
   lm[291] = { x: 300 + lip.width / 2, y: 421 };
-  lm[LM.alaA] = { x: 270, y: 370 };   // 콧방울 바깥 — 눈썹 꼬리 끝을 정하는 선의 출발점
-  lm[LM.alaB] = { x: 330, y: 370 };
+  lm[ALA.R] = { x: 270, y: 370 };   // 콧방울 바깥 — 눈썹 꼬리 끝을 정하는 선의 출발점
+  lm[ALA.L] = { x: 330, y: 370 };
   return lm;
 }
 

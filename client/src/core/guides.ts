@@ -171,9 +171,10 @@ export function lookGuide(lookParts: Partial<Record<LookPartId, LookPart>> = {},
  *   아래 테두리 = 속눈썹 선(윗눈꺼풀 점), 위 테두리 = 거기서 화면 위쪽으로 thick × 눈 폭, 끝은 꼬리 끝에서 만난다.
  * 순서: 속눈썹 선(안쪽 → 바깥) → 꼬리 끝 → 위 테두리(바깥 → 안쪽). 닫힌 다각형으로 그리면 된다.
  * 두께 띠를 속눈썹 선에서 **위로** 잡는 뜻은 채점과 맞춰야 한다 (#153).
+ * @param wing 가이드가 준 꼬리 선(PartGeometry.liner.wing). 주면 그 끝을 쓴다 — 개인화 가이드의 꼬리 모양을 따른다. 없으면 기본 꼬리
  */
-export function linerOutline(f: GuideFrame, thick: number, linerStyle?: LinerStyle): Record<Side, Pt[]> {
-  return both(({ eye }) => {
+export function linerOutline(f: GuideFrame, thick: number, wing?: Record<Side, readonly [Pt, Pt]>): Record<Side, Pt[]> {
+  return both(({ key, eye }) => {
     const lid = eye.upper.map((i) => at(f.lm, i)).reverse();   // 안쪽 → 바깥
     const off = thick * f.unit.eye;
     const top = lid.map((p, i) => {
@@ -182,7 +183,7 @@ export function linerOutline(f: GuideFrame, thick: number, linerStyle?: LinerSty
       if (n.y > 0) n = mul(n, -1);                       // 화면 위쪽(y 가 작아지는 쪽)으로
       return add(p, mul(n, off));
     });
-    return [...lid, wingOf(f, eye, linerStyle)[1], ...top.reverse()];
+    return [...lid, wing?.[key][1] ?? wingOf(f, eye)[1], ...top.reverse()];
   });
 }
 

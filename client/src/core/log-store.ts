@@ -37,8 +37,13 @@ export interface LogStore {
   all: () => Promise<Event[]>;
   /** 한 줄에 하나씩 JSON — 사용자 실험 내보내기 형식 */
   exportJsonl: () => Promise<string>;
-  /** 끝내기 때. 버퍼와 저장분을 모두 지운다 */
+  /**
+   * 끝내기 때. 버퍼와 저장분을 모두 지우고 **닫는다** — 그 뒤에 찍히는 이벤트(끝 화면 진입 등)는 저장하지 않는다.
+   * 닫지 않으면 3초 뒤 시간 저장이 키를 다시 만들어 "끝내기 뒤 잔존 0"(1-12 #8)이 깨진다
+   */
   clear: () => Promise<void>;
+  /** 새 세션(다시 시작) — 다시 저장하기 시작한다 */
+  reopen: () => void;
   pending: () => number;
 }
 
@@ -54,6 +59,7 @@ export async function createLogStore(opts: LogStoreOptions): Promise<LogStore> {
 
   let buffer: Event[] = [];
   let timer: unknown = null;
+  let closed = false;
   let writing: Promise<void> = Promise.resolve();
 
   async function stored(): Promise<Event[]> {
@@ -83,6 +89,7 @@ export async function createLogStore(opts: LogStoreOptions): Promise<LogStore> {
   }
 
   function sink(_line: string, ev: Event): void {
+    if (closed) return;
     buffer.push(ev);
     if (buffer.length >= flushEvery) {
       void flush();
@@ -110,10 +117,14 @@ export async function createLogStore(opts: LogStoreOptions): Promise<LogStore> {
       return list.map((e) => JSON.stringify(e)).join("\n");
     },
     async clear() {
+      closed = true;
       cancelTimer();
       buffer = [];
       writing = writing.then(() => backend.delete(EVENTS_KEY));
       await writing;
+    },
+    reopen() {
+      closed = false;
     },
     pending() {
       return buffer.length;

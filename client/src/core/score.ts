@@ -9,9 +9,11 @@
  *  - 세션 반영은 flow.ts applyResult 가 한다. 여기서는 toOutcome() 으로 그 입력을 만든다
  */
 
+import scoreRules from "../../../rules/score.json";
 import type { Lab } from "./color";
 import { deltaE } from "./color";
 import type { ScoreOutcome } from "./flow";
+import { RIGID_IDS } from "./landmarks";
 import type { CheckReason, PartId, PartResult, Pt } from "./types";
 
 export const PART_NAME: Record<PartId, string> = {
@@ -53,6 +55,15 @@ export interface ScoreParams {
   toneDiv: number;
   /** 이마 L* 가 기준에서 이만큼 넘게 달라지면 조명이 바뀐 것 */
   lightTol: number;
+  /** 기준 얼굴과 정렬 잔차(안정 점 평균, 눈 폭 비율)가 이만큼 넘으면 확인만(align) — 가정값, 실사진 잔차 분포로 정한다 (#43) */
+  alignMax: number;
+  /** 부위가 머리카락에 이만큼 넘게 가리면 확인만(가림) — 가정값 (docs/research/hair-skin-2026-09-29) */
+  hairMax: number;
+  /**
+   * 조명 보정 방식 (S-4 #40). "L" = 이마 L* 비율만(지금). "sclera" = 거기에 눈 흰자 a*b* 가 돈 만큼 조명 색을 되돌림 —
+   * 합성 얼굴: 노란·파란 불빛의 맨얼굴이 "L" 이면 눈썹·라이너·입술 66~70점, "sclera" 면 화장 없음 (color-corr.test)
+   */
+  colorCorr: "L" | "sclera";
   /** 목표 지수 밴드. 룩 템플릿 값이 우선이고, 없으면 확인만 */
   band: Partial<Record<IntensityPartId, Band>>;
   tol: {
@@ -69,42 +80,40 @@ export interface ScoreParams {
   };
 }
 
-export const PARAMS: ScoreParams = {
-  dEThresh: { liner: 14, brow: 10, lip: 10 },
-  tPresent: { shadow: 3.5, cheek: 4, contour: 4 },
-  dEMaxSession: 25,
-  toneDiv: 4,
-  lightTol: 12,
-  band: { cheek: [25, 60], shadow: [20, 65] },
-  tol: { band: 0.011, out: 0.022, wingDev: 0.022, wingShort: 0.055, thickOver: 0.015, thickUnder: 0.022, lrDiff: 0.045, lipIn: 0.006, lipOut: 0.012, wingMin: 0.015 },
-};
+/** 채점 가정값 — rules/score.json 한 곳 (#44). 코드에 숫자를 박지 않는다 (dev-stack-v6.md §6) */
+// JSON 의 [a, b] 는 "숫자 목록" 으로 읽혀 Band(두 개) 로 바로 안 바뀐다 — 값이 파일과 같은지는 score-rules.test R1 이 본다
+export const PARAMS: ScoreParams = scoreRules.params as unknown as ScoreParams;
+/** 채점 규칙 버전 — 로그(Event.ver)·결과 카드 도장에 붙는다. 임계를 바꾸면 rules/score.json 에서 올린다 */
+export const SCORE_VERSION: string = scoreRules.version;
 
 /** 진단 코드 → 한 줄 문장. 코드표는 여기 한 곳에만 둔다 (review.ts 도 가져다 쓴다). 숫자를 쓰지 않는다 */
 export const DIAG_TEXT = {
-  LINER_WING_HIGH_R: "오른쪽 꼬리가 조금 위로 갔어요. 왼쪽에 맞춰 살짝 내려 그리세요",
-  LINER_WING_HIGH_L: "왼쪽 꼬리가 조금 위로 갔어요. 오른쪽에 맞춰 살짝 내려 그리세요",
-  LINER_WING_LOW_R: "오른쪽 꼬리가 조금 아래로 갔어요. 살짝 올려 그리세요",
-  LINER_WING_LOW_L: "왼쪽 꼬리가 조금 아래로 갔어요. 살짝 올려 그리세요",
-  LINER_WING_SHORT_R: "오른쪽 꼬리가 짧아요. 조금 더 빼 주세요",
-  LINER_WING_SHORT_L: "왼쪽 꼬리가 짧아요. 조금 더 빼 주세요",
+  // 화장 초보가 읽는다 (2026-09-23 정리): "산·연장선·점막" 같은 용어 대신 "끝·사이·테두리". 기준은 늘 화면에 보이는 테두리.
+  // 눈꼬리 = 눈 바깥 끝(라이너), 눈썹 꼬리 = 눈썹 바깥 끝. "왼쪽에 맞춰" 처럼 반대쪽이 맞다고 단정하지 않는다
+  LINER_WING_HIGH_R: "오른쪽 눈꼬리 선이 위로 올라갔어요. 테두리에 맞춰 살짝 내리세요",
+  LINER_WING_HIGH_L: "왼쪽 눈꼬리 선이 위로 올라갔어요. 테두리에 맞춰 살짝 내리세요",
+  LINER_WING_LOW_R: "오른쪽 눈꼬리 선이 아래로 처졌어요. 테두리에 맞춰 살짝 올리세요",
+  LINER_WING_LOW_L: "왼쪽 눈꼬리 선이 아래로 처졌어요. 테두리에 맞춰 살짝 올리세요",
+  LINER_WING_SHORT_R: "오른쪽 눈꼬리 선이 짧아요. 테두리 끝까지 조금 더 그리세요",
+  LINER_WING_SHORT_L: "왼쪽 눈꼬리 선이 짧아요. 테두리 끝까지 조금 더 그리세요",
   LINER_THICK: "선이 조금 두꺼워요. 다음엔 얇게 시작해 보세요",
   LINER_THIN: "선이 옅어요. 한 번 더 겹쳐 그리세요",
-  LINER_GAP_R: "오른쪽 속눈썹 사이가 비었어요",
-  LINER_GAP_L: "왼쪽 속눈썹 사이가 비었어요",
-  LINER_OUT_R: "오른쪽 선이 라인 밖으로 번졌어요",
-  LINER_OUT_L: "왼쪽 선이 라인 밖으로 번졌어요",
-  LINER_LR_DIFF: "좌우 꼬리 높이가 달라요",
-  BROW_TAIL_SHORT_R: "오른쪽 눈썹 꼬리가 짧아요. 눈꼬리 연장선까지 채우세요",
-  BROW_TAIL_SHORT_L: "왼쪽 눈썹 꼬리가 짧아요. 눈꼬리 연장선까지 채우세요",
+  LINER_GAP_R: "오른쪽 선 중간이 끊겼어요. 이어서 그리세요",
+  LINER_GAP_L: "왼쪽 선 중간이 끊겼어요. 이어서 그리세요",
+  LINER_OUT_R: "오른쪽 선이 테두리 밖으로 번졌어요",
+  LINER_OUT_L: "왼쪽 선이 테두리 밖으로 번졌어요",
+  LINER_LR_DIFF: "양쪽 눈꼬리 선 높이가 달라요",
+  BROW_TAIL_SHORT_R: "오른쪽 눈썹 꼬리가 덜 그려졌어요. 테두리 끝까지 이어 그리세요",
+  BROW_TAIL_SHORT_L: "왼쪽 눈썹 꼬리가 덜 그려졌어요. 테두리 끝까지 이어 그리세요",
   BROW_OUT_R: "오른쪽 눈썹이 테두리 밖으로 나갔어요",
   BROW_OUT_L: "왼쪽 눈썹이 테두리 밖으로 나갔어요",
-  BROW_SPARSE: "눈썹 안쪽이 덜 채워졌어요",
-  BROW_LR_DIFF: "좌우 눈썹 높이가 달라요",
-  LIP_OUT_LOWER: "아래 경계가 살짝 밖으로 나갔어요",
-  LIP_OUT_UPPER: "위 경계가 살짝 밖으로 나갔어요",
-  LIP_UNDER: "입술 안쪽이 덜 채워졌어요. 가운데를 한 번 더",
-  LIP_LR_DIFF: "좌우 입꼬리가 달라요",
-  SHADOW_DIR: "눈꼬리 쪽으로 더 진하게 가야 해요",
+  BROW_SPARSE: "눈썹 사이사이가 비어 보여요. 빈 곳을 살짝 메우세요",
+  BROW_LR_DIFF: "양쪽 눈썹 높이가 달라요",
+  LIP_OUT_LOWER: "아랫입술 선이 살짝 밖으로 나갔어요",
+  LIP_OUT_UPPER: "윗입술 선이 살짝 밖으로 나갔어요",
+  LIP_UNDER: "입술 안쪽이 덜 채워졌어요. 가운데를 한 번 더 바르세요",
+  LIP_LR_DIFF: "양쪽 입꼬리가 달라요",
+  SHADOW_DIR: "눈 바깥쪽으로 갈수록 진하게 발라 보세요",
   SHADOW_LR_DIFF_R: "오른쪽 섀도우가 조금 진해요",
   SHADOW_LR_DIFF_L: "왼쪽 섀도우가 조금 진해요",
   CHEEK_LR_DIFF_R: "오른쪽이 조금 진해요",
@@ -124,16 +133,34 @@ export function diagText(code: string): string | undefined {
   return (DIAG_TEXT as Record<string, string>)[code];
 }
 
-/** "확인만" 이유 → 한 줄 문장. 숫자를 쓰지 않는다 */
-export const CHECK_REASON_TEXT: Record<CheckReason, string> = {
-  faint: "색이 옅어서 재지 못했어요. 직접 보고 넘어가세요",
-  lighting: "조명이 달라져서 재지 못했어요. 직접 보고 넘어가세요",
-  align: "얼굴을 찾지 못해 재지 못했어요. 직접 보고 넘어가세요",
-  hand: "손에 가려서 재지 못했어요. 직접 보고 넘어가세요",
-  no_baseline: "맨얼굴 기준이 없어서 재지 못했어요. 직접 보고 넘어가세요",
-  no_band: "이 룩은 진하기 기준이 없어요. 직접 보고 넘어가세요",
+/**
+ * "확인만" 이유 → 짧은 이유 한 문장. 숫자를 쓰지 않는다. 리뷰(다 끝난 뒤)는 이것만 쓴다.
+ * 폰 시험(2026-09-30): "조명이 달라져서 재지 못했어요" 는 사용자를 탓하는 것 같고 기계 말투라 → 무엇이 다른지만 짧게
+ */
+export const CHECK_REASON_SHORT: Record<CheckReason, string> = {
+  faint: "아직 색이 잘 안 보여요.",
+  lighting: "처음 찍을 때와 밝기가 달라요.",
+  align: "얼굴이 처음과 달라 비교하기 어려워요.",
+  occluded: "앞머리나 손이 가리고 있어요.",
+  no_baseline: "맨얼굴 사진이 없어 비교할 수 없어요.",
+  no_band: "이 화장은 아직 진하기 기준이 없어요.",
   contour: "확인하고 넘어가세요.",
 };
+
+/** 화면 5 에서 이유 뒤에 붙이는 할 일 하나. 다시 하면 되는 이유는 다시 확인받기를 권한다 */
+export const CHECK_ACTION: Record<Exclude<CheckReason, "contour">, string> = {
+  faint: "조금 더 바르거나, 거울로 보고 넘어가세요",
+  lighting: "같은 자리에서 다시 확인받아 주세요",
+  align: "정면을 보고 다시 확인받아 주세요",
+  occluded: "치우고 다시 확인받아 주세요",
+  no_baseline: "거울로 보고 넘어가세요",
+  no_band: "거울로 보고 넘어가세요",
+};
+
+/** 화면 5 "확인만" 한 줄 = 이유 + 할 일. 쉐딩은 이유만 */
+export const CHECK_REASON_TEXT: Record<CheckReason, string> = Object.fromEntries(
+  (Object.keys(CHECK_REASON_SHORT) as CheckReason[]).map((k) => [k, k === "contour" ? CHECK_REASON_SHORT[k] : `${CHECK_REASON_SHORT[k]} ${CHECK_ACTION[k]}`]),
+) as Record<CheckReason, string>;
 
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
 const median = (arr: readonly number[]): number => {
@@ -149,6 +176,19 @@ export const noCorr: LightCorr = (lab) => lab;
 export function lightCorr(baseForeheadL: number, curForeheadL: number): LightCorr {
   const r = baseForeheadL / Math.max(1, curForeheadL);
   return (lab) => ({ L: lab.L * r, a: lab.a, b: lab.b });
+}
+
+/**
+ * 밝기(이마 L* 비율) + 조명 색(흰자 a*b* 차이를 되돌림). 흰자는 원래 흰색이라 흰자가 돈 만큼 조명이 돈 것 (S-4 #40).
+ * 색이 도는 양은 밝을수록 크다(곱으로 도는 불빛) — 흰자에서 잰 차이를 **그 픽셀 밝기 ÷ 흰자 밝기** 만큼만 되돌린다.
+ * 똑같이 빼면 어두운 속눈썹 옆(라이너 띠)이 과하게 보정돼 "그렸다" 가 됐다 (color-corr K2)
+ */
+export function colorShiftCorr(light: LightCorr, baseSclera: { a: number; b: number }, curSclera: { a: number; b: number; L: number }): LightCorr {
+  const da = curSclera.a - baseSclera.a, db = curSclera.b - baseSclera.b, Ls = Math.max(1, curSclera.L);
+  return (lab) => {
+    const l = light(lab), k = Math.min(1, lab.L / Ls);
+    return { L: l.L, a: l.a - da * k, b: l.b - db * k };
+  };
 }
 
 /** 부위 채점 결과 (상태를 정하기 전). decide()·toOutcome() 의 입력 */
@@ -196,6 +236,10 @@ export interface LinerStrip {
     wingLen: number;
     /** 가이드 선 두께 (눈 폭 비율). ② 가 이 룩에서 그린 값 — 밴드 안/밖과 두꺼움/옅음의 기준 */
     thick: number;
+    /** 이 프레임에서 눈을 뜨고 있나. 뜨고 있으면 속눈썹 선 아래는 눈알이라 그 칸을 안 본다 */
+    eyeOpen: boolean;
+    /** 평균 창 때문에 선이 양쪽으로 번져 보이는 폭 (눈 폭 비율, 없으면 0). 두께에서 뺀다 */
+    blur?: number;
   };
 }
 
@@ -217,9 +261,15 @@ export interface LinerEyeMetrics {
 
 export function compareLinerEye(base: LinerStrip, cur: LinerStrip, corr: LightCorr, p: ScoreParams = PARAMS): LinerEyeMetrics {
   const { offs, isWing, tFromCorner, wingLen, thick: guideThick } = cur.meta;
-  const half = guideThick / 2;
+  // 띠 = 속눈썹 선(o = 0)에서 위로 guideThick — ② 가이드(guides.ts linerOutline)와 같은 뜻 (#153).
+  // 전엔 속눈썹 선을 가운데 두고 ±thick/2 라, 두꺼운 화장을 가이드대로 칠해도 윗부분이 '번짐' 이었다
   const N = Math.min(base.lab.length, cur.lab.length), M = offs.length;
   const step = M > 1 ? offs[1]! - offs[0]! : 0.0092;
+  // 속눈썹 선 아래(−)는 눈을 뜨고 있으면 눈알이다. 시선·홍채가 조금만 움직여도 색이 크게 변해 "선 아래 잉크"로 오인된다.
+  // 두 프레임 다 눈을 감았을 때만 아래쪽(아래 눈꺼풀 피부)을 본다. 꼬리 행은 눈 밖이라 항상 본다
+  const useBelow = !base.meta.eyeOpen && !cur.meta.eyeOpen;
+  // 평균 창으로 번진 폭은 칸 단위로 뺀다 — 두께가 칸(step) 단위로 재지므로 (합성: 3×3 에서 정확히 2칸 늘었다)
+  const blurW = Math.round((cur.meta.blur ?? 0) / step) * step;
   let rowsN = 0, rowsCovered = 0, outN = 0, outHit = 0, wingDrawn = 0, lidRows = 0, lidHitRows = 0;
   const widths: number[] = [], devs: number[] = [];
   for (let i = 0; i < N; i++) {
@@ -228,10 +278,11 @@ export function compareLinerEye(base: LinerStrip, cur: LinerStrip, corr: LightCo
     const hitOffs: number[] = [];
     for (let j = 0; j < M; j++) {
       const o = offs[j]!;
+      if (!wing && !useBelow && o < -p.tol.band) continue;   // 눈알 칸 — 어느 계산에도 안 넣는다
       const hit = deltaE(base.lab[i]![j]!, corr(cur.lab[i]![j]!)) >= p.dEThresh.liner;
-      if (Math.abs(o) <= half + p.tol.band) {
+      if (o >= -p.tol.band && o <= guideThick + p.tol.band) {
         if (hit) bandHit = true;   // 가이드 밴드(두께 + 허용) 안에 감지가 있으면 그 행은 덮임
-      } else if (Math.abs(o) > half + p.tol.out) {
+      } else if (o > guideThick + p.tol.out + blurW || o < -(p.tol.out + blurW)) {   // 번진 폭만큼 바깥 판정을 민다
         outN++;                    // 밴드 밖 번짐
         if (hit) outHit++;
       }
@@ -240,7 +291,7 @@ export function compareLinerEye(base: LinerStrip, cur: LinerStrip, corr: LightCo
     rowsN++;
     if (bandHit) rowsCovered++;
     if (drawnW > 0) {
-      widths.push(drawnW);
+      widths.push(Math.max(step, drawnW - blurW));
       if (wing && t > wingLen * 0.5) devs.push(median(hitOffs));   // 꼬리 바깥쪽 절반의 중심 오프셋
     }
     if (!wing) { lidRows++; if (drawnW > 0) lidHitRows++; }
@@ -255,7 +306,8 @@ export function compareLinerEye(base: LinerStrip, cur: LinerStrip, corr: LightCo
     wingDrawn,
     wingDev: devs.length ? median(devs) : 0,
     gapRatio: lidRows ? 1 - lidHitRows / lidRows : 1,
-    present: widths.length >= 3,
+    // 잡음 몇 칸이 아니라 선이어야 한다 — 3행 이상이면서 행의 10% 이상 (#174 리뷰: 잡음 σ10 에서 흩어진 몇 행으로 25점)
+    present: widths.length >= Math.max(3, 0.1 * rowsN),
   };
 }
 
@@ -292,10 +344,13 @@ export function linerResult(perEye: Record<Side, LinerEyeMetrics>, baseAsym = 0,
 /** 영역 격자 (눈썹): 점 K개. inside = 테두리 안, tail = 꼬리 구간 */
 export interface RegionGrid {
   lab: Lab[];
-  meta: { inside: readonly boolean[]; tail: readonly boolean[]; side: readonly Side[] };
+  /** hidden: 머리카락에 가린 칸 (마스크가 있을 때만) — 두 사진 중 한쪽이라도 가렸으면 비교에서 뺀다 */
+  meta: { inside: readonly boolean[]; tail: readonly boolean[]; side: readonly Side[]; lift?: readonly number[]; hidden?: readonly boolean[] };
 }
 
 export interface RegionSideMetrics {
+  /** 그린(감지된) 점들의 평균 높이 — 아래 선에서 위로, 눈 폭 비율. 격자에 높이가 없거나 감지가 없으면 null */
+  hitLift: number | null;
   coverage: number;
   overflow: number;
   tailCoverage: number;
@@ -304,12 +359,15 @@ export interface RegionSideMetrics {
 
 export function compareRegion(base: RegionGrid, cur: RegionGrid, corr: LightCorr, thresh: number): Record<Side, RegionSideMetrics> {
   const K = Math.min(base.lab.length, cur.lab.length);
-  const zero = () => ({ inN: 0, inHit: 0, outN: 0, outHit: 0, tailN: 0, tailHit: 0 });
+  const zero = () => ({ inN: 0, inHit: 0, outN: 0, outHit: 0, tailN: 0, tailHit: 0, liftSum: 0, liftN: 0 });
   const acc = { R: zero(), L: zero() };
   for (let i = 0; i < K; i++) {
+    if (base.meta.hidden?.[i] || cur.meta.hidden?.[i]) continue;
     const a = acc[cur.meta.side[i]!], b = base.lab[i]!;
     const th = b.L < 40 ? thresh * 0.5 : thresh;   // 맨얼굴에서 이미 어두운 점(눈썹 털)은 펜슬 변화가 작으므로 임계를 절반으로
     const hit = deltaE(b, corr(cur.lab[i]!)) >= th;
+    const h = cur.meta.lift?.[i];
+    if (hit && h !== undefined) { a.liftSum += h; a.liftN++; }
     if (cur.meta.inside[i]) {
       a.inN++;
       if (hit) a.inHit++;
@@ -324,6 +382,7 @@ export function compareRegion(base: RegionGrid, cur: RegionGrid, corr: LightCorr
     overflow: a.outN ? a.outHit / a.outN : 0,
     tailCoverage: a.tailN ? a.tailHit / a.tailN : 0,
     present: a.inHit >= 6,
+    hitLift: a.liftN ? a.liftSum / a.liftN : null,
   });
   return { R: f(acc.R), L: f(acc.L) };
 }
@@ -339,7 +398,9 @@ export function browResult(per: Record<Side, RegionSideMetrics>): PartScore {
   const coverage = (per.R.coverage + per.L.coverage) / 2;
   if (coverage < 0.45) codes.push("BROW_SPARSE");
   const score = scoreForm({ coverage, overflow: (per.R.overflow + per.L.overflow) / 2 });
-  return { present, score, codes, lrIndex: null, metrics: { per } };
+  // 좌우 높이 차 (+ = 오른쪽이 높다). 합산의 대칭 보정이 쓴다 (#35). 한쪽이라도 안 그렸으면 안 넘긴다
+  const lr = per.R.present && per.L.present && per.R.hitLift !== null && per.L.hitLift !== null ? { lrDiff: per.R.hitLift - per.L.hitLift } : {};
+  return { present, score, codes, lrIndex: null, metrics: { per, ...lr } };
 }
 
 /** 입술 경계 스트립: 바깥 윤곽을 따라 N행, 안쪽(−) … 바깥쪽(+) M칸 */
@@ -468,6 +529,10 @@ export interface DecideContext {
   noFace?: boolean;
   /** 이마 L* 변화량 (현재 − 기준) */
   lightShift?: number;
+  /** 기준 얼굴에 맞춘 정렬 잔차 (안정 점 평균 거리 ÷ 눈 폭). 고개·표정이 달라 틀이 안 맞으면 커진다 */
+  alignResidual?: number;
+  /** 부위가 머리카락에 가린 비율 (0~1, 두 사진·좌우 중 큰 쪽). 머리카락 마스크가 있을 때만 */
+  hairFrac?: number;
 }
 
 export interface Decision {
@@ -480,7 +545,10 @@ export interface Decision {
 export function decide(partId: PartId, res: Pick<PartScore, "present" | "score">, ctx: DecideContext = {}, p: ScoreParams = PARAMS): Decision {
   const checkOnly = (reason: CheckReason): Decision => ({ status: "check_only", reason, score: null });
   if (ctx.noFace) return checkOnly("align");
+  if (ctx.alignResidual !== undefined && ctx.alignResidual > p.alignMax) return checkOnly("align");
   if (partId === "contour") return checkOnly("contour");
+  // 가림 (#155 — 손·머리카락 무엇이든)
+  if (typeof ctx.hairFrac === "number" && ctx.hairFrac > p.hairMax) return checkOnly("occluded");
   if (typeof ctx.lightShift === "number" && Math.abs(ctx.lightShift) > p.lightTol) return checkOnly("lighting");
   if (!res.present) return checkOnly("faint");
   if (res.score == null) return checkOnly("no_band");
@@ -518,9 +586,10 @@ export function toOutcome(partId: PartId, res: PartScore, ctx: DecideContext = {
 
 /**
  * 화장·입·턱에 영향받지 않는 안정 점: 눈 안팎 끝, 콧대·코끝, 이마, 광대.
- * 얼굴 옆(234·454·127·356)과 턱(152)은 입을 벌리면 메시가 같이 벌어져 유사변환을 흔든다 — 실기기에서 확인, 제외
+ * 얼굴 옆(234·454·127·356)과 턱(152)은 입을 벌리면 메시가 같이 벌어져 유사변환을 흔든다 — 실기기에서 확인, 제외.
+ * 목록은 landmarks.RIGID_IDS 하나 — 화면 4 게이트도 같은 점을 쓴다 (#28)
  */
-export const STABLE_IDS = [33, 133, 362, 263, 168, 6, 197, 195, 5, 4, 10, 50, 280] as const;
+export const STABLE_IDS = RIGID_IDS;
 
 export interface SimilarityFit {
   /** 배율 */

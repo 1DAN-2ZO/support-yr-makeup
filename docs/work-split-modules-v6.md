@@ -1,6 +1,8 @@
-# 당화응 분업안 — 모듈 6개 + 성능 평가
+# nudy 분업안 — 모듈 6개 + 성능 평가
 
-당화응 · 2026-09-18 작성 · 담당자 2026-09-22 확정 (§0-0)
+nudy · 2026-09-18 작성 · 담당자 2026-09-22 확정 (§0-0)
+
+> **2026-09-29 변경** — Stable-Makeup(서버 생성 그림)을 뺐다. 화장을 누르면 **VLM 이 이 얼굴에 맞춰 개인화 계획을 정하고 규칙 관문이 거른다**("개인화 중입니다"). 그 계획으로 2-b **AR**, 화면 3 완성본(2-b AR 장면 줌), 가이드 테두리, 채점이 모두 같은 것을 쓴다. 서버 처리 화면 없음, **VLM 이 없으면 이용 불가**. 서버(학원 PC)는 VLM 개인화에만 쓰고 사진을 저장하지 않는다. 서비스 이름 nudy, 화면 문구는 "화장". 자세히는 `service-definition-v6.md` 맨 위.
 근거: `feature-spec-v6.md` §12 모듈·담당(구판), `tech-review-full-flow-v6.md`, `tech-review-screen5-v6.md`, `tech-review-screen6-v6.md`, 데이터 계획 4차(`data-plan-v6.md`), `poc/full` @ 50607ac · AI 파이프라인(호출 그래프·평가 하네스·버전·서빙 지표)은 `ai-pipeline-v6.md`
 
 > **한눈에**
@@ -32,8 +34,8 @@
 |---|---|---|---|
 | ① 촬영·기준 | `capture` | **jeakeun** | 맨얼굴 4장, 비교 기준, 세션 저장·복원 |
 | ② 가이드·실시간 | `guide` | **ywryyh** | 그릴 자리 계산, 실시간 테두리, 품질 게이트 |
-| ③ 채점·합산 | `score` | **soyun-126** | 인식·채점·합산, 화면 5·5-b |
-| ④ 서버·생성 | `server` | **firefox1234123** | 룩 얹어보기(GPU), 큐, 화장 레이어 |
+| ③ 채점·합산 | `score` | **e9on** (2026-09-28부터, 전 담당 soyun-126) | 인식·채점·합산, 화면 5·5-b |
+| ④ 서버·생성 | `server` | **firefox1234123** | VLM 중간 서버(학원 PC, #180) · AR 추적(#173) — 2026-09-29 Stable-Makeup 뺌 |
 | ⑤ 모델·데이터·평가 | `model` | **JW020799** | 얼굴형 모델, 데이터 수집, 평가 하네스 |
 | ⑥ 앱·통합 | `app` | **e9on** | 껍데기·계약·로그, 화면 2·2-b·6, 통합, **리뷰·병합** |
 
@@ -164,7 +166,7 @@ FORCE_OK=1 git push --force-with-lease
 | 화면 | 담당 | 비고 |
 |---|---|---|
 | 1 동의·촬영 | ① `capture` | |
-| 2 룩 선택 · 2-b 전체 완성 예상 | ⑥ `app` | 룩 값·제품 목록도 ⑥ |
+| 2 화장 선택 · 개인화 · 2-b AR 완성 예상 | ⑥ `app` | 화장 값·제품 목록·VLM 흐름(`vlm-flow.ts`)도 ⑥ |
 | 3 완성본 · 4 실시간 테두리 | ② `guide` | |
 | **5·5-b 부위 결과** | **③ `score`** | 채점한 사람이 결과 표현까지. core 는 순수 함수로 두고 화면은 그 위에 얇게 |
 | 6 전체 리뷰 | ⑥ `app` | 결과 저장·끝내기 포함 |
@@ -215,10 +217,10 @@ FORCE_OK=1 git push --force-with-lease
 
 | 항목 | 내용 |
 | --- | --- |
-| 맡는 기능 | F-03 화장 전이·실시간 트래킹 · F-04 전체 완성 예상 렌더 · 서버(API·큐·삭제) |
+| 맡는 기능 | **(2026-09-29 변경)** VLM 중간 서버(FastAPI — `GET /health`, `POST /plan`, 사진 저장 안 함, 바쁨·다운 503, 시간 초과 504) · llama-server 운영 · AR 실시간 추적 · (옛) F-03 화장 전이 |
 | 받는 것 | 정면 사진 1장(①), 룩 참조 이미지 10장(⑥ 콘텐츠) |
 | 주는 것 | 룩별 결과 이미지(작업 ID·폴링), 전체 완성 예상 1장, **화장 레이어**(부위 마스크별 ΔLab + 알파, 메시 좌표계) |
-| 지금 있는 것 | `server-bench`(Stable-Makeup fp16 8 step 2.55초, VRAM 5.3GB), `app_demo.py`(Gradio), `tryon.js`(3점 아핀 워핑) |
+| 지금 있는 것 | `server-bench`(Stable-Makeup fp16 8 step 2.55초, VRAM 5.3GB — 2026-09-29 쓰지 않음), `app_demo.py`(Gradio), `tryon.js`(3점 아핀 워핑) |
 | 해야 할 것 | FastAPI + Redis 큐, 고른 룩 우선, 256 저해상 먼저, SPIGA 랜드마크 캐싱(같은 얼굴 룩 10개면 1회) · 화장 레이어 추출(부위 마스크 안에서만 ΔLab, 약한 변화 알파 0) · 메시 워핑: 부위별 아핀 → `FACE_LANDMARKS_TESSELATION` 삼각형 텍스처(WebGL) · 정체성 검증(ArcFace) 임계 미달 시 폴백 · 삭제 정책(tmpfs 업로드, `finally` 삭제, 로그에 파일명 없음, 세션 TTL) · 헬스체크·재시작 · **서버 호출 그래프대로 타임아웃·폴백**(큐 대기 20초 안내, 룩 단위 error, 닮음 미달 fallback, layer=null 폴백) · **서버 지표**(p50/p95·큐 대기·실패율·닮음 분포·재시작·삭제 확인) 집계, `LookJob.ver` · (선택) LCM-LoRA 스텝 축소, 룩 전용 LoRA |
 | 안 되는 것 | 서버 법선(MVP 제외) · 동시 사용자 여러 명은 GPU 1장에서 밀림 → 큐·우선순위로 체감 완화 |
 | 검증 | 룩 10개 30초, 정체성·색 반영도(§3-③), 30fps 워핑 폰 실측, 삭제 검증(디스크·로그 잔존 0) |
@@ -266,7 +268,7 @@ FORCE_OK=1 git push --force-with-lease
 | `Session` | ⑥ ↔ ①③ | 화면·부위 상태·`shots`·draft(JSON) + 사진 3장(IndexedDB) | `flow.js`, `stripImages` |
 | `LookJob` | ④ → ⑥② | `jobId, status, resultUrl`, `layer{mesh, deltaLab, alpha}`(신규), `identity{cos}` | `tryon.js` (Gradio 직접 호출) |
 | `FaceShape` | ⑤ → ② | `label`(5종), `confidence`, `method`('rule'\|'model') | `estimateFaceShape` |
-| `Event` (로그) | 전 모듈 → ⑥ | 자동: `sid, t, screen, part, ver` · 이벤트: `screen_enter/leave`, `button{name}`, `consent{ok}`, `capture{shot, ok, retry, reason}`, `gate_fail{first_fail}`, `landmark_lost{ms}`, `part_status{part, from, to, score}`, `score{part, status, check_reason, ms}`, `look_job{look_id, ms, identity_cos, error}`, `restore{ok, had_images}`, `session_end{reason: finish\|abandon\|error, last_screen}`, `error{where, msg}` | 신규 |
+| `Event` (로그) | 전 모듈 → ⑥ | 자동: `sid, t, screen, part, ver` · 이벤트: `screen_enter/leave`, `button{name}`, `consent{ok}`, `capture{shot, ok, retry, reason}`, `gate_fail{first_fail}`, `landmark_lost{ms}`, `part_status{part, from, to, score}`, `score{part, status, check_reason, ms}`, `look_job{look_id, ms, identity_cos, error}`(Stable-Makeup 과 함께 안 씀, 2026-09-29), `vlm_plan{look_id, ms, tries, first_rejected, left_rejected, model, fail}`(개인화 한 번 — fail: null · retry_failed · restored_rule · busy · unavailable · timeout · bad_response, 2026-09-29), `restore{ok, had_images}`, `session_end{reason: finish\|abandon\|error, last_screen}`, `error{where, msg}` | 신규 |
 
 규칙: 계약 필드를 바꾸려면 주는 쪽·받는 쪽이 같은 PR에서 바꾸고 테스트를 같이 고친다. 숫자는 전부 비율 단위(눈 폭·입술 폭·얼굴 폭 기준), mm는 표시용 환산에만.
 
@@ -292,7 +294,7 @@ FORCE_OK=1 git push --force-with-lease
 
 | # | 자리 | 후보 | 비교 지표 | 선정용 데이터 | 결정 규칙 | 담당 모듈 | 언제 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| S-1 | **화장 전이** | Stable-Makeup(확산, Apache-2.0) 샘플러 변형 3종(DDIM 8·10, LCM-LoRA 4~8) · 경량 GAN 2~3종(EleGANt·SSAT·BeautyREC, 라이선스 각 확인) | 1장 시간(3060 fp16) · ArcFace 코사인 · 부위별 ΔE(결과 vs 참조) · VRAM · 라이선스 · 512 해상도 여부 | 실촬영 맨얼굴 5명 × 룩 3 = 15장 (참조 사진 확보 전엔 번들 참조로 시간·VRAM만) | 상업 가능 + 3초 이내 중 코사인·ΔE 최고. 동점이면 해상도 높은 쪽 | ④ | 1~2주차 |
+| S-1 | **화장 전이** (2026-09-29 뺌) | Stable-Makeup(확산, Apache-2.0) 샘플러 변형 3종(DDIM 8·10, LCM-LoRA 4~8) · 경량 GAN 2~3종(EleGANt·SSAT·BeautyREC, 라이선스 각 확인) | 1장 시간(3060 fp16) · ArcFace 코사인 · 부위별 ΔE(결과 vs 참조) · VRAM · 라이선스 · 512 해상도 여부 | 실촬영 맨얼굴 5명 × 룩 3 = 15장 (참조 사진 확보 전엔 번들 참조로 시간·VRAM만) | 상업 가능 + 3초 이내 중 코사인·ΔE 최고. 동점이면 해상도 높은 쪽 | ④ | 1~2주차 |
 | S-2 | **얼굴형 분류** | A 규칙(현행 4임계) · B 랜드마크 비율 특징 + 소형 분류기(로지스틱·그래디언트 부스팅) · C 소형 CNN 파인튜닝(MobileNetV3, Kaggle 1차 → 자체 라벨) · D 얼굴 임베딩(ArcFace) + 선형 | 정확도·혼동 행렬(사람 단위 분리) · 모델 크기 · 폰 추론 시간 · 필요한 라벨 수 · 라벨러 일치율 대비 | 자체 라벨 50~100명 (E-2와 같은 답지), Kaggle 5,000은 C의 1차 학습에만 | 라벨러 일치율 90% 이상 넘는 후보 중 가장 작은 것. B가 C와 3%p 이내면 B(온디바이스·설명 가능) | ⑤ | 기준선 1주차, 비교 2~3주차 |
 | S-3 | **부위 영역** | A 랜드마크 다각형(현행) · B 얼굴 파싱(BiSeNet, 가중치 비상업) ∩ ΔE · C EasyPortrait 학습 SegFormer-B0 ∩ ΔE · D ΔE 후처리(모폴로지 + 가이드 밴드 연결 성분) | 부위 IoU(EasyPortrait·Periorbital) · 채점 일치율 변화(E-1 부분집합) · 서버 왕복 필요 여부 · 라이선스 | 공개 셀피 200장 + 실촬영 30장 | **E-1 일치율이 목표 미달일 때만 연다.** A로 충분하면 선정 없음. 열면 D → B → C 순으로 싼 것부터 | ③ + ⑤ | E-1 직후 (2~3주차) |
 | S-4 | **색 보정 방식** (모델 아님, 채점 정확도를 가장 크게 흔드는 선택) | A 이마 L*만(현행) · B 눈 흰자 a*·b* 보정 · C 인접 비화장 피부 대비 정의 · D a*·b* 이동 초과 시 "확인만" (B·C와 병행 가능) | 조명 변화 세트에서 비화장 영역 오탐률 · 채점 일치율(E-1 부분집합) · "확인만" 비율 · 임계 재보정 필요 여부 | 실촬영 조명 3종 세트(3명 × 3조명 × 맨얼굴/화장) | 오탐률 최저이면서 "확인만" 30% 이하. C를 고르면 임계 전부 재보정(비용 반영) | ③ | E-5 색 변동 결과 직후 (2주차) |
@@ -305,7 +307,7 @@ FORCE_OK=1 git push --force-with-lease
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | E-1 | **채점 엔진** (규칙, 모델 아님) | 부위별 판정(맞음·조금·많이)과 사람 판정 일치율(정확도, 부위별 혼동 행렬) · 같은 세션 5회 반복 편차 · "확인만" 비율 | 실촬영 200장 + 부위별 사람 판정 3단계 | 없음(첫 측정). 가상 화장 스윕 26/26은 참고만 | 일치율은 첫 측정 후. 반복 편차 ±5점. "확인만"이 30%를 넘으면 임계 재조정 | ③ | 촬영 세션 직후 (2주차) |
 | E-2 | **얼굴형 분류기** (자체 학습) | 정확도, 혼동 행렬(5×5), 라벨러 간 일치율(κ) | 자체 라벨 50~100명(2인 독립), 검증은 사람 단위 분리 | **현행 규칙 정확도(같은 라벨로 먼저)** | 규칙보다 높고, 라벨러 일치율의 90% 이상 | ⑤ | 기준선 1주차, 모델 3주차 |
-| E-3 | **화장 전이** (Stable-Makeup) | 정체성 유지(ArcFace 코사인, 원본 vs 결과) · 룩 색 반영(부위별 ΔE, 결과 vs 참조, ③의 샘플러 재활용) · 1장 시간 · 실패 사례 분류(안경·진한 화장·저조도·측면) | 실촬영 맨얼굴 20명 × 룩 10 = 200장 | fp32 30 step 결과(품질 상한), 현재 fp16 8 step | 코사인 ≥ 0.6, 3초 이내, 실패율 공개. LoRA 하면 전/후 비교 | ④ | 룩 참조 사진 확보 직후 |
+| E-3 | **화장 전이** (Stable-Makeup, 2026-09-29 뺌) | 정체성 유지(ArcFace 코사인, 원본 vs 결과) · 룩 색 반영(부위별 ΔE, 결과 vs 참조, ③의 샘플러 재활용) · 1장 시간 · 실패 사례 분류(안경·진한 화장·저조도·측면) | 실촬영 맨얼굴 20명 × 룩 10 = 200장 | fp32 30 step 결과(품질 상한), 현재 fp16 8 step | 코사인 ≥ 0.6, 3초 이내, 실패율 공개. LoRA 하면 전/후 비교 | ④ | 룩 참조 사진 확보 직후 |
 | E-4 | **랜드마크 영역** (MediaPipe, 우리 폴리곤) | 눈썹·눈·입술 영역과 사람 라벨의 IoU · 홍채 크기 오차(이미 12% 확인) | EasyPortrait 200장, Periorbital | 없음 | IoU 첫 측정 후 공개. 낮은 부위는 폴리곤 규칙 수정 | ⑤ | 1주차 (데이터 이미 있음) |
 | E-5 | **촬영·게이트** | 45° 판정 허용치 분포 · 손 걸림 검출률(걸린 프레임 중 플래그된 비율) · 4장 연속 촬영 시 L*·**a*·b*** 변동 폭 · 미충족 상태 채점 건수 | 실기기 3명 × 조명 3종, 손 걸림 세트 | 없음 | 미충족 채점 0건. 색 변동 폭은 ③의 "확인만" 임계 근거 | ① (② 손 검출 협조) | 1주차 실기기 |
 | E-6 | **실시간 테두리** | 떨림(정지 시 테두리 점 표준편차 px) · 30fps 유지율 · ±30° 정렬 오차 | 웹캠·폰 영상 30초 × 3명 | 현재 EMA만 | 적용 전후 표준편차 절반 이하, 30fps 90% 이상 | ② | 2주차 |

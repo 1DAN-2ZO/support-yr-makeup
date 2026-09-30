@@ -63,6 +63,54 @@ def test_delta_encoding_neutral_is_128():
     assert (layer[..., :3] == 128).all()
 
 
+# --- 부위별 임계값(PART_DE_OVERRIDE, 2026-09-25) ---
+# ΔE≈5.58 짜리 옅은 변화 — 전역 임계값(6) 밑이라 override 없는 부위에선 안 잡혀야 하고,
+# 눈썹·눈섀도우(override 임계값 3)에서는 잡혀야 한다.
+WEAK_COLOR = (185, 155, 135)
+
+
+def test_weak_change_below_global_threshold_is_dropped_for_unlisted_part():
+    result = solid(BASE)
+    result[20:26, 12:20] = WEAK_COLOR
+    layer = extract_layer_from_arrays(solid(BASE), result, {"lips": LIP}, FOREHEAD)
+    assert layer[20:26, 12:20, 3].max() == 0
+
+
+def test_weak_change_is_kept_for_brow_and_eye_via_override():
+    result = solid(BASE)
+    result[20:26, 12:20] = WEAK_COLOR
+    for part in ("browR", "browL", "eyeR", "eyeL"):
+        layer = extract_layer_from_arrays(solid(BASE), result, {part: LIP}, FOREHEAD)
+        assert (layer[20:26, 12:20, 3] > 0).all(), part
+
+
+def test_override_full_alpha_de_is_lower_so_alpha_ramps_faster():
+    """같은 ΔE라도 override 부위는 풀알파 기준(20)이 낮아서 lips(40 그대로)보다 알파가 더 크다."""
+    result = solid(BASE)
+    result[20:26, 12:20] = WEAK_COLOR
+    lips_layer = extract_layer_from_arrays(solid(BASE), result, {"lips": LIP}, FOREHEAD, threshold=1)
+    brow_layer = extract_layer_from_arrays(solid(BASE), result, {"browR": LIP}, FOREHEAD)
+    assert brow_layer[23, 15, 3] > lips_layer[23, 15, 3]
+
+
+def test_explicit_threshold_arg_does_not_affect_overridden_parts():
+    """threshold 인자를 크게 줘도(가려질 정도로) override 부위는 영향 안 받는다 — 실수로 전체를
+    흐리게 만드는 걸 방지."""
+    result = solid(BASE)
+    result[20:26, 12:20] = WEAK_COLOR
+    layer = extract_layer_from_arrays(solid(BASE), result, {"browR": LIP}, FOREHEAD, threshold=100)
+    assert (layer[20:26, 12:20, 3] > 0).all()
+
+
+def test_overlapping_parts_keep_the_stronger_alpha():
+    """같은 픽셀이 override 부위·일반 부위 마스크에 동시에 들어가면 더 큰 알파(=override 쪽)가 남는다."""
+    result = solid(BASE)
+    result[20:26, 12:20] = WEAK_COLOR
+    masks = {"lips": LIP, "browR": LIP}  # 일부러 같은 영역을 두 부위에 다 줌
+    layer = extract_layer_from_arrays(solid(BASE), result, masks, FOREHEAD)
+    assert (layer[20:26, 12:20, 3] > 0).all()
+
+
 @pytest.fixture()
 def landmarker_unset():
     """frozen dataclass라 monkeypatch.setattr 불가 — 값을 직접 바꾸고 끝나면 복원한다."""
@@ -126,9 +174,10 @@ def test_indices_match_regions_js():
     assert float(re.search(r"EYESHADOW_REACH = ([\d.]+)", js).group(1)) == regions.EYESHADOW_REACH
 
 
-def test_forehead_matches_app_webgl():
-    js = (CLIENT / "app-webgl.js").read_text(encoding="utf8")
-    m = re.search(r"const FOREHEAD = \[([\d,\s]+)\]", js)
+def test_forehead_matches_regions_js():
+    # app-webgl.js(C4)는 2026-09-24 삭제됨 — FOREHEAD의 단일 진실 원천은 지금 lib/regions.js.
+    js = (CLIENT / "lib" / "regions.js").read_text(encoding="utf8")
+    m = re.search(r"export const FOREHEAD = \[([\d,\s]+)\]", js)
     assert [int(x) for x in re.findall(r"\d+", m.group(1))] == regions.FOREHEAD
 
 

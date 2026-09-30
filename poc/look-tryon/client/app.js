@@ -7,9 +7,9 @@
 
 import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
 import { Client } from "https://esm.sh/@gradio/client@2.6.0";
-import { solveAffine } from "./lib/affine.js";
 import { LandmarkSmoother } from "./lib/smoothing.js";
-import { REGION_KEYS, TRACKED_IDX, buildRegions, centroid } from "./lib/regions.js";
+import { REGION_KEYS, TRACKED_IDX, buildRegions } from "./lib/regions.js";
+import { warpPolygon } from "./lib/warp.js";
 
 const GRADIO_URL = "http://127.0.0.1:7860";
 
@@ -117,29 +117,6 @@ async function generateLook() {
   }
 }
 
-// ---------- 아핀 변형 ----------
-// 폴리곤(가운데점 팬 삼각분할) 단위로 src 영역을 dst 영역에 워핑해서 그린다.
-function warpPolygon(ctx, srcPts, dstPts, srcImg, alpha) {
-  const srcC = centroid(srcPts), dstC = centroid(dstPts);
-  const n = srcPts.length;
-  for (let i = 0; i < n; i++) {
-    const j = (i + 1) % n;
-    const m = solveAffine([srcC, srcPts[i], srcPts[j]], [dstC, dstPts[i], dstPts[j]]);
-    if (!m) continue;
-    ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(dstC[0], dstC[1]);
-    ctx.lineTo(dstPts[i][0], dstPts[i][1]);
-    ctx.lineTo(dstPts[j][0], dstPts[j][1]);
-    ctx.closePath();
-    ctx.clip();
-    ctx.globalAlpha = alpha;
-    ctx.setTransform(m[0], m[1], m[2], m[3], m[4], m[5]);
-    ctx.drawImage(srcImg, 0, 0);
-    ctx.restore();
-  }
-}
-
 // ---------- 스무딩 (One Euro Filter, lib/smoothing.js) ----------
 const smoother = new LandmarkSmoother(TRACKED_IDX);
 function updateSmoothingParams() {
@@ -203,7 +180,7 @@ $("btnGenerate").onclick = generateLook;
 $("btnLive").onclick = goLive;
 $("btnReset").onclick = reset;
 
-window.__poc = { buildRegions, solveAffine, warpPolygon, state, smoother }; // 브라우저 콘솔/자동화 테스트용
+window.__poc = { buildRegions, warpPolygon, state, smoother }; // 브라우저 콘솔/자동화 테스트용
 
 (async () => {
   try {

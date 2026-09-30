@@ -28,9 +28,17 @@ export interface ReviewDeps {
   /** 세션에서 부위 결과를 뽑는다 (①의 toReviewParts) */
   getParts: () => readonly PartResult[];
   getLookName: () => string;
-  /** 맨얼굴 기준과 지금 조명. 둘 다 있어야 조명 차를 본다 */
-  lightingNote: () => string | null;
-  store: Pick<SessionStore, "clearAll" | "loadImage">;
+  /**
+   * 조명 차 안내 한 줄. nowL = 방금 찍은 "지금" 사진의 이마 L* (안 찍었으면 undefined·null).
+   * 맨얼굴 기준과 비교해 다르면 문구, 아니면 null (core/review.ts lightingDiffers)
+   */
+  lightingNote: (nowL?: number | null) => string | null;
+  store: Pick<SessionStore, "clearAll" | "loadImage"> & Partial<Pick<SessionStore, "saveImage">>;
+  /**
+   * 들어오면 "지금" 얼굴 정면 1장 (#79). host 에 카메라를 띄우고, 찍으면 done(사진·이마 L*), 건너뛰면 done(null).
+   * 돌려주는 함수로 카메라를 끈다. 안 주거나 이미 "지금" 사진이 있으면(되살린 세션) 건너뛴다
+   */
+  shoot?: (host: HTMLElement, done: (r: { blob: Blob; foreheadL: number | null } | null) => void) => () => void;
   /** 합산 설정. 전 룩 공통이라 룩과 무관하다 (core/looks.ts SUMMARY_TEMPLATE) */
   template?: SummaryTemplate;
   /** 공유·내려받기 환경. 안 주면 브라우저 것을 쓴다 */
@@ -62,7 +70,7 @@ export function reviewScreen<S>(deps: ReviewDeps): Screen<S> {
     mount(ctx: ScreenContext<S>) {
       const parts = deps.getParts();
       const summary = deps.template ? computeSummary(parts, deps.template) : computeSummary(parts);
-      const note = deps.lightingNote();
+      let note = deps.lightingNote();
 
       // 카드는 **지금** 만든다. 버튼을 누른 뒤에 만들면 iOS 에서 제스처가 끊겨 공유가 안 열린다
       let card: Blob | null = null;
@@ -73,11 +81,18 @@ export function reviewScreen<S>(deps: ReviewDeps): Screen<S> {
       wrap.className = "review";
       ctx.root.append(wrap);
 
-      wrap.append(scoreBlock(summary));
-      if (note) wrap.append(line("muted lighting-note", note));
+      // POC 순서: 제목 → 점수 카드 → 부위 막대 → 사진 비교 → 버튼(세로)
+      const title = document.createElement("h1");
+      title.textContent = "전체 리뷰";
+      wrap.append(title, scoreBlock(summary));
+      const noteEl = line("muted lighting-note", note ?? "");
+      noteEl.hidden = !note;
+      wrap.append(noteEl);
+      const shotBox = document.createElement("section");
+      shotBox.className = "review-shot";
+      wrap.append(partList(parts, ctx));
       const photos = photoRow();
       wrap.append(photos);
-      wrap.append(partList(parts, ctx));
 
       const msg = line("muted save-msg", "");
       const saveBtn = document.createElement("button");
@@ -88,17 +103,21 @@ export function reviewScreen<S>(deps: ReviewDeps): Screen<S> {
 
       const endBtn = document.createElement("button");
       endBtn.type = "button";
+      endBtn.className = "ghost";
       endBtn.textContent = "끝내기";
 
       const row = document.createElement("div");
-      row.className = "row";
-      row.append(endBtn, saveBtn);
+      row.className = "btns";
+      row.append(saveBtn, endBtn);
       wrap.append(row, msg);
+      // 공유 창을 쓰는 기기(특히 iPhone)는 사용자가 거기서 "이미지 저장"을 눌러야 사진에 들어간다 — 누르기 전에 알려 준다 (#79)
+      const env = deps.shareEnv ?? browserShareEnv();
+      if (env.share && env.canShare) row.after(line("muted share-hint", "공유 창이 뜨면 '이미지 저장'을 눌러 주세요"));
 
       saveBtn.addEventListener("click", () => {
         ctx.log.log({ name: "button", button: "save_result" });
         // await 하지 않는다 — 제스처 안에서 share 가 바로 열려야 한다
-        void saveCard(card, "danghwaeung.jpg", deps.shareEnv ?? browserShareEnv()).then((out) => {
+        void saveCard(card, "nudy.jpg", env).then((out) => {
           if (alive) msg.textContent = SAVE_TEXT[out];
         });
       });
@@ -114,14 +133,58 @@ export function reviewScreen<S>(deps: ReviewDeps): Screen<S> {
         });
       });
 
+      let stopCamera: (() => void) | null = null;
+
+      /** "지금" 얼굴 한 장 — 찍으면 사진·이마 L*, 건너뛰면 null */
+      const takeNow = (): Promise<{ blob: Blob; foreheadL: number | null } | null> =>
+        new Promise((resolve) => {
+          const shoot = deps.shoot!;
+          const head = line("shot-title", "마지막으로 지금 얼굴을 한 장 찍을게요");
+          const host = document.createElement("div");
+          host.className = "shot-host";
+          const skip = document.createElement("button");
+          skip.type = "button";
+          skip.className = "ghost";
+          skip.textContent = "사진 없이 보기";
+          shotBox.append(head, host, skip);
+          photos.before(shotBox);
+          let settled = false;
+          const finish = (r: { blob: Blob; foreheadL: number | null } | null): void => {
+            if (settled) return;
+            settled = true;
+            stopCamera?.();
+            stopCamera = null;
+            shotBox.remove();
+            resolve(r);
+          };
+          skip.addEventListener("click", () => {
+            ctx.log.log({ name: "button", button: "review_shot_skip" });
+            finish(null);
+          });
+          stopCamera = shoot(host, finish);
+        });
+
       // 사진과 카드는 비동기다. 화면은 먼저 뜬다
       void (async () => {
-        const [bare, after] = await Promise.all([
+        const [bare, stored] = await Promise.all([
           loadImage(deps.store, "bare"),
           loadImage(deps.store, "lastframe"),
         ]);
         if (!alive) return;
         fillPhoto(photos, "bare", bare);
+        let after = stored;
+        if (!after && deps.shoot) {
+          const r = await takeNow();
+          if (!alive) return;
+          if (r) {
+            await deps.store.saveImage?.("lastframe", r.blob).catch(() => {});
+            if (!alive) return;
+            after = imageOf(r.blob, "after");
+            note = deps.lightingNote(r.foreheadL);
+            noteEl.textContent = note ?? "";
+            noteEl.hidden = !note;
+          }
+        }
         fillPhoto(photos, "after", after);
 
         card = await make({
@@ -140,6 +203,8 @@ export function reviewScreen<S>(deps: ReviewDeps): Screen<S> {
 
       return () => {
         alive = false;
+        stopCamera?.();
+        stopCamera = null;
       };
     },
   };
@@ -160,6 +225,12 @@ function scoreBlock(s: SessionSummary): HTMLElement {
   n.className = "total-num";
   n.textContent = s.total == null ? "—" : String(s.total);
   box.append(n);
+  if (s.total != null) {
+    const u = document.createElement("small");
+    u.className = "total-unit";
+    u.textContent = "/ 100";
+    box.append(u);
+  }
   if (s.total == null) {
     box.append(line("muted", "잰 부위가 없어요. 부위를 눌러 다시 해 볼 수 있어요"));
   }
@@ -241,11 +312,13 @@ async function loadImage(
 ): Promise<HTMLImageElement | null> {
   const data = await store.loadImage(key);
   if (!data) return null;
-  const blob = data instanceof Blob ? data : new Blob([data]);
-  const url = URL.createObjectURL(blob);
+  return imageOf(data instanceof Blob ? data : new Blob([data]), key === "bare" ? "bare" : "after");
+}
+
+function imageOf(blob: Blob, which: "bare" | "after"): HTMLImageElement {
   const img = new Image();
-  img.src = url;
-  img.alt = key === "bare" ? "맨얼굴" : "지금";
+  img.src = URL.createObjectURL(blob);
+  img.alt = which === "bare" ? "맨얼굴" : "지금";
   // 디코딩을 기다리지 않는다 — 화면이 먼저 뜨는 게 낫다. 카드는 그려질 때 다시 읽는다
   return img;
 }
