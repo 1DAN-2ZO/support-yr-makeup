@@ -1,7 +1,7 @@
 """화장 레이어 추출 — 원본(맨얼굴)과 생성 결과의 차이 중 부위 마스크 안쪽만 남긴 RGBA PNG.
 
-`LookJob.layer`(schemas.Layer, mesh="mediapipe-468")로 나가고 클라이언트가 라이브 얼굴에 드레이프한다.
-실패는 예외가 아니라 None — 호출자(worker)는 layer=None으로 두고 클라이언트가 3점 아핀으로 폴백한다.
+Stable-Makeup 잡 큐(제거됨, #179·#180)에서 LookJob.layer로 나가던 함수. 지금은 호출자가 없고
+#121(룩 참조 사진에서 템플릿 값 측정)에서 재사용할 예정 — 실패는 예외가 아니라 None을 돌려준다.
 
 알고리즘(POC 선행 구현 client/lib/extractLayer.js와 같은 순서):
  1. 이마(비화장 기준)에서 (결과 Lab - 원본 Lab)의 채널별 중앙값 = diffusion 재구성 전역 편향 추정
