@@ -2,7 +2,7 @@
 // "결과에서 머리카락 칸을 꺼낸다 · 모델은 한 번만 불러온다 · 실패하면 마스크 없이 계속" 을 본다.
 import { describe, expect, it, vi } from "vitest";
 import type { RgbaImage } from "@core/color";
-import { createHairMasker, maskFromConfidence, type HairSegmenter } from "@screens/hair-segmenter";
+import { createHairMasker, createHairTicker, maskFromConfidence, type HairSegmenter } from "@screens/hair-segmenter";
 
 const im: RgbaImage = { data: new Uint8ClampedArray(4 * 4 * 4), w: 4, h: 4 };
 const fakeMask = (v: number, w = 2, h = 2) => ({ width: w, height: h, getAsFloat32Array: () => new Float32Array(w * h).fill(v) });
@@ -43,5 +43,19 @@ describe("머리카락 분할기", () => {
     const masker = createHairMasker(async () => seg, onError);
     expect(await masker(im)).toBeNull();
     expect(onError).toHaveBeenCalledTimes(1);
+  });
+
+  it("S5 영상(2-b AR)은 간격마다 한 번 — 앞 분할이 안 끝났으면 기다린다 (AR 이 느려지지 않게)", () => {
+    const t = createHairTicker(500);
+    expect(t.due(0)).toBe(true);   // 처음엔 바로
+    t.start(0);
+    expect(t.due(100)).toBe(false);   // 돌고 있음
+    t.done();
+    expect(t.due(300)).toBe(false);   // 간격 전
+    expect(t.due(500)).toBe(true);
+    t.start(500);
+    expect(t.due(2000)).toBe(false);   // 간격이 지나도 앞 것이 안 끝났으면 안 돌린다
+    t.done();
+    expect(t.due(2000)).toBe(true);
   });
 });

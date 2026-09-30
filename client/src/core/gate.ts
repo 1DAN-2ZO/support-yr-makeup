@@ -2,8 +2,12 @@
  * 화면 4 품질 게이트 — "지금 확인받아도 되나" (정의서 3-3·3-7, 2-1 셋째 조각 #21). 순수 함수, DOM·카메라를 모른다.
  * poc/full/lib/gate.js 의 evaluateGate 를 계약 타입(GateResult)에 맞춰 옮기고, 화면 1(flow.ts shotGate)과 값·문구를 맞췄다.
  *
- *   얼굴 → 정면 → 기준 각도 차 → 표정 차 → 부위 보임 → 가림 → 선명 → 밝기 → 색 → 안정
+ *   얼굴 → 정면 → 기준 각도 차 → 표정 차 → 부위 보임 → 가림 → 선명 → 밝기 → 안정
  *   안 맞는 것 하나만 한 줄, 숫자 없음. 통과 전에는 "확인받기" 버튼이 꺼져 있다.
+ *
+ * 원칙 (#209 ⑥ 결정 2026-09-30): **첫 촬영(화면 1)은 빡빡하게, 화면 4 는 채점에 필요한 최소한만 막는다.**
+ *   밝기 차이는 채점 한계(PARAMS.lightTol)까지 통과 — 채점이 보정하고 넘으면 확인만(조명).
+ *   조명 색 차이는 막지 않고 준비 문구에 안내만 덧붙인다. 절대 밝기(너무 어둡거나 밝음)는 사진 자체가 안 돼서 막는다.
  *
  * 측정은 화면 1 과 같은 코드를 쓴다: 각도 capture-measure · 선명·이마 색 frame-measure · 가림 occlusion.foreheadStep.
  * 표정 차(expr_diff, #27): 맨얼굴 때 표정과의 차(core/expression.exprDiff). 맨얼굴 값이 없으면 건너뛴다 (① #177 전).
@@ -12,6 +16,7 @@
 import { yawFromLandmarks } from "./capture-measure";
 import { ROLL_MAX } from "./crop";
 import { CAPTURE_LIMITS, SHOT_TEXT } from "./flow";
+import { PARAMS } from "./score";
 import { LM, at } from "./landmarks";
 import type { GateFail, GateResult, PartId, Pt } from "./types";
 
@@ -39,9 +44,12 @@ export const LIVE_LIMITS: LiveLimits = {
   rollMax: ROLL_MAX,
   yaw: 15, pitch: 10, dYaw: 8, dPitch: 6, exprTol: 0.35,
   sharpMin: CAPTURE_LIMITS.sharpMin,
-  brightTol: CAPTURE_LIMITS.brightTol,
+  // 밝기 차이는 채점과 같은 한계 — 채점이 이마 밝기 비율로 보정(lightCorr)하고, 넘으면 확인만(조명)으로 처리한다.
+  // 화면 4 가 더 빡빡하면 채점까지 가지도 못한다 (#209 ⑥ 결정: 첫 촬영은 빡빡하게, 그 뒤는 막지 않게). 절대 밝기(min·max)는 그대로
+  brightTol: PARAMS.lightTol,
   brightMin: CAPTURE_LIMITS.brightMin,
   brightMax: CAPTURE_LIMITS.brightMax,
+  // 조명 색 차이는 막지 않고 안내만 (#209) — 이 값을 넘으면 준비 문구에 한 마디 덧붙인다
   colorTol: CAPTURE_LIMITS.colorTol,
   stableFrames: CAPTURE_LIMITS.stableFrames,
 };
@@ -67,6 +75,8 @@ export const GATE_TEXT = {
   color: SHOT_TEXT.color,
   stable: SHOT_TEXT.stable,
   ready: "확인받을 준비 됨",
+  // 조명 색이 첫 촬영과 달라도 확인받기는 된다 — 색 판단은 채점이 한다 (#209)
+  readyColor: "확인받을 준비 됨 · 조명 색이 처음과 달라요",
 } as const;
 
 /** 양쪽 눈을 한 화면에 담는 부위 — "양쪽 눈이 보이게" */
@@ -135,6 +145,18 @@ export function rigidPoseDiff(baseLm: readonly Pt[], curLm: readonly Pt[], k: { 
   return { yaw: ((c.x - b.x) / k.kYaw) * deg + 0, pitch: ((c.y - b.y) / k.kPitch) * deg + 0 };
 }
 
+/**
+ * 화면 4 의 정면 각도 (#193) — **지금 얼굴의 턱·얼굴 옆을 안 쓴다.**
+ * poseOf 는 턱 끝(152)·얼굴 옆(234·454)을 써서 입을 크게 벌리면 숙인 것으로 잡혀(합성 얼굴 약 -9°) "조금만 정면으로" 로 막혔다.
+ * 맨얼굴 사진의 각도(촬영 관문을 통과한 입 다문 정면이라 poseOf 가 믿을 만함) + 맨얼굴 대비 변화(rigidPoseDiff, 강체 점)로 잰다.
+ * 부호는 poseOf 와 같게: 강체 yaw 는 이미지 오른쪽이 + 라 거울 기준 poseOf 와 반대 → 뺀다.
+ * 화면 1(촬영)은 그대로 poseOf — 맨얼굴을 찍을 땐 입을 다물고 있고, 기준이 되는 사진이라 따로 잴 것이 없다
+ */
+export function livePose(baseLm: readonly Pt[], curLm: readonly Pt[]): { yaw: number; pitch: number } {
+  const b = poseOf(baseLm), d = rigidPoseDiff(baseLm, curLm);
+  return { yaw: b.yaw - d.yaw, pitch: b.pitch + d.pitch };
+}
+
 /** 원점을 지나는 기울기 (최소제곱). 환산 계수 보정용 — 점이 없으면 null */
 export function slopeFit(pairs: readonly (readonly [number, number])[]): number | null {
   let xy = 0, xx = 0;
@@ -172,12 +194,13 @@ export function evaluateGate(partId: PartId, m: LiveMeasure, limits: LiveLimits 
       if (d > limits.brightTol) return fail("bright", GATE_TEXT.bright_high);
     }
   }
+  let colorOff = false;
   if (m.foreheadAb && m.baselineAb) {
     const dab = Math.hypot(m.foreheadAb.a - m.baselineAb.a, m.foreheadAb.b - m.baselineAb.b);
-    if (dab > limits.colorTol) return fail("color", GATE_TEXT.color);
+    if (dab > limits.colorTol) colorOff = true;
   }
   if (stableCount < limits.stableFrames) return fail("stable", GATE_TEXT.stable);
-  return { ok: true, firstFail: null, text: GATE_TEXT.ready, stableCount };
+  return { ok: true, firstFail: null, text: colorOff ? GATE_TEXT.readyColor : GATE_TEXT.ready, stableCount };
 }
 
 /**

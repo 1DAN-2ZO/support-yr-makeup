@@ -123,4 +123,24 @@ describe("화면 3", () => {
     expect(seen[0]).toEqual({ x: 20, y: 40 });   // 쌩얼로 그리기까지 갔다
     expect(events.some((e) => e.name === "error" && (e as { where?: string }).where === "guide")).toBe(true);
   });
+
+  it("GS12 머리카락 마스크 함수를 주면 쌩얼 사진으로 마스크를 만들어 그리기에 넘긴다 — 앞머리 위엔 화장·보정을 안 한다", async () => {
+    const mask = { w: 2, h: 2, data: new Float32Array(4) };
+    const getHairMask = vi.fn(async () => mask);
+    const paint = vi.fn(() => document.createElement("canvas"));
+    const { ctx, deps } = setup({ getBaseline: () => baseline, getPlan: () => plan, getBareSource: original, paint, getHairMask });
+    guideScreen<null>(deps).mount(ctx);
+    await flush();
+    expect(getHairMask).toHaveBeenCalledTimes(1);
+    expect((paint.mock.calls[0] as unknown[])[4]).toBe(mask);
+  });
+
+  it("GS13 마스크를 못 만들면(실패·null) 마스크 없이 그대로 그린다", async () => {
+    const paint = vi.fn(() => document.createElement("canvas"));
+    const { ctx, deps } = setup({ getBaseline: () => baseline, getPlan: () => plan, getBareSource: original, paint, getHairMask: async () => { throw new Error("no model"); } });
+    guideScreen<null>(deps).mount(ctx);
+    await flush();
+    expect(paint).toHaveBeenCalledTimes(1);
+    expect((paint.mock.calls[0] as unknown[])[4] ?? null).toBeNull();
+  });
 });

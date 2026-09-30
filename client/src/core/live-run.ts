@@ -15,7 +15,7 @@ import { faceRoll } from "./crop";
 import type { Rect } from "./crop";
 import { createBundleCollector, type BundleState } from "./capture-bundle";
 import { exprDiff } from "./expression";
-import { gateStep, poseOf, rigidPoseDiff, type LiveLimits, LIVE_LIMITS } from "./gate";
+import { gateStep, rigidPoseDiff, type LiveLimits, LIVE_LIMITS, livePose, type LiveMeasure } from "./gate";
 import { linerOutline, GUIDE_PARAMS } from "./guides";
 import { partInRect } from "./landmarks";
 import { foreheadStep, startForeheadTrack, type ForeheadTrack } from "./occlusion";
@@ -68,6 +68,8 @@ export interface LiveStep<I> {
   outline: Outline | null;
   /** 확인받기를 누른 뒤에만. 끝나면(done·failed) 다음 프레임부터 다시 null */
   bundle: BundleState<I> | null;
+  /** 게이트가 본 측정값(안정 수 포함) — 화면 4 개발용 ?gate 표시. 얼굴이 없으면 null */
+  measure: LiveMeasure | null;
 }
 
 /** 합성 없이 모양만 부를 때 넘기는 빈 이미지 — guides.ts 는 랜드마크와 기준 길이만 본다 */
@@ -98,6 +100,7 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
   return {
     step(f) {
       let gate: GateResult;
+      let measure: LiveMeasure | null = null;
       let outline: Outline | null = null;
       let occluded: boolean | null = null;
       if (!f.lm) {
@@ -106,14 +109,16 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
         stable = r.stable;
         gate = r.gate;
       } else {
-        const pose = poseOf(f.lm);
+        // 정면 각도도 턱 없이 — 맨얼굴 각도 + 강체 점 변화 (#193). 입을 벌려도 "조금만 정면으로" 가 안 뜬다
+        const pose = livePose(opt.baseline.lm, f.lm);
+        // 가림(급변)은 머리카락을 빼지 않은 이마 전체 평균으로 — 손·브러시가 빠지지 않게 (#212)
         const occRef = f.rawLab ?? f.lab;
         if (occRef) {
           const o = foreheadStep(fj, f.t, occRef, pose);
           fj = o.track;
           occluded = o.occluded;
         }
-        const r = gateStep(stable, opt.partId, {
+        const m: LiveMeasure = {
           // 정면 여부(절대 각도)는 화면 1 과 같은 식, 기준 사진과의 차는 강체 점으로 (입을 벌려도 안 흔들림, #28)
           faceDetected: true, roll: faceRoll(f.lm), ...(f.screen ? { screen: f.screen } : {}), ...pose, poseDiff: rigidPoseDiff(opt.baseline.lm, f.lm),
           ...optExpr(exprDiff(opt.partId, opt.baseExpr, f.expr)),
@@ -123,9 +128,11 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
           ...(f.lab ? { foreheadL: f.lab.L, foreheadAb: { a: f.lab.a, b: f.lab.b } } : {}),
           baselineL: opt.baseline.foreheadL,
           ...(opt.baseAb ? { baselineAb: opt.baseAb } : {}),
-        }, limits);
+        };
+        const r = gateStep(stable, opt.partId, m, limits);
         stable = r.stable;
         gate = r.gate;
+        measure = { ...m, stableCount: r.stable };
         outline = outlineOf(opt.partId, smoother?.smooth(f.lm, f.t) ?? f.lm, opt.guide);
       }
       lastOk = gate.ok;
@@ -140,7 +147,7 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
           lastOk = false;
         }
       }
-      return { gate, outline, bundle };
+      return { gate, outline, bundle, measure };
     },
     press() {
       if (!lastOk || collector) return false;

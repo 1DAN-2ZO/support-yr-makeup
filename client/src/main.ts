@@ -42,7 +42,7 @@ import { captureScreen, type CaptureDeps, type ShotData } from "./screens/captur
 import { consentScreen, deniedScreen, type ConsentDeps } from "./screens/consent";
 import { doneScreen, type DoneDeps } from "./screens/done";
 import { landmarksFromImage } from "./screens/landmarker";
-import { createHairMasker } from "./screens/hair-segmenter";
+import { createHairMasker, maskOfImage } from "./screens/hair-segmenter";
 import { guideScreen, type GuideDeps } from "./screens/guide";
 import { liveScreen, type LiveDeps } from "./screens/live";
 import { fullRenderScreen, type FullRenderDeps } from "./screens/fullrender";
@@ -288,6 +288,8 @@ async function boot(): Promise<void> {
       isPersonalized: (lookId) => session.plans[lookId] !== undefined || plans.get(lookId) !== undefined,
       minBusyMs: 1500,
       getPlan: (lookId) => planFor(lookId),
+      // 2-b AR 도 앞머리 위엔 보정·화장 안 함 — 화면 3·5 와 같은 분할기 (#173)
+      hairMask,
     },
     {
       getParts: () => toReviewParts(session),
@@ -330,6 +332,10 @@ async function boot(): Promise<void> {
       nextPart: (after) => nextPart(session, after),
       // 앞머리·옆머리 칸을 채점에서 뺀다 (#201). 모델은 화면 5 에 처음 들어갈 때 한 번 — 못 불러오면 전처럼 채점
       hairMask,
+      // 개발용: 주소에 ?tune 이면 판정 근거 숫자 (밝기 차 등)
+      tune: new URLSearchParams(location.search).has("tune"),
+      // ?tune "채점 사진 저장" 에 같이 — PC 에서 같은 가이드로 재현하려고
+      tuneInfo: () => ({ lookId: session.lookId, plan: planFor(session.lookId), ver: getVersions() }),
     },
     // 서버 처리 화면은 흐름에서 빠졌다 (등록만 남김 — 되살린 세션은 위에서 화장 선택으로 보낸다)
     { jobs: emptyJobSource() },
@@ -342,6 +348,8 @@ async function boot(): Promise<void> {
       // 화면 3 완성본(#192) = 쌩얼 정면 + 같은 개인화 계획 화장. 원본은 메모리에만 있어 앱을 다시 켜면 저장한 쌩얼
       getPlan: () => planFor(session.lookId),
       getBareSource: () => (session.shots.front_open as ShotData | undefined)?.cv ?? null,
+      // 앞머리 위엔 화장·보정을 안 한다 — 화면 5 채점과 같은 분할기 (#173 셰이더, ⑥)
+      getHairMask: (d) => maskOfImage(hairMask, d.img, d.w, d.h),
       getGuide: guideFor,
     },
     {
