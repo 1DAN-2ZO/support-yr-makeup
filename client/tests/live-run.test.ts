@@ -2,6 +2,7 @@
 // 프레임마다: 게이트 한 줄 · 가이드 테두리 · (확인받기 뒤) 묶음 모으기
 import { describe, expect, it } from "vitest";
 import { createLiveRun, type LiveFrame } from "@core/live-run";
+import { LIVE_LIMITS, RIGID_POSE, poseOf } from "@core/gate";
 import { linerOutline, lookGuide } from "@core/guides";
 import type { GuideSource } from "@core/score-part";
 import { unitScale } from "@core/baseline";
@@ -193,11 +194,23 @@ describe("live run", () => {
     expect(plain.step(frame({ expr: { ...calm, mouthPucker: 0.7 } })).gate.firstFail).not.toBe("expr_diff");
   });
 
-  it("L19 입술 단계에서 입을 크게 벌려도 '같은 각도로 봐 주세요'(pose_diff)가 안 뜬다 (#28)", () => {
-    const open = FACE.map((p, i) => (i === LM.chin || (LM.lipsOuter.slice(11, 20) as readonly number[]).includes(i) ? { x: p.x, y: p.y + 80 } : p));
-    const lr = run("lip");
-    let r = lr.step(frame({ lm: open }));
-    for (let i = 0; i < 5; i++) r = lr.step(frame({ lm: open }));
-    expect(r.gate.firstFail).not.toBe("pose_diff");
+  // 입을 크게 벌림: 턱 끝(152)과 아랫입술이 80px 내려감 (합성 얼굴에선 옛 식으로 약 -9°)
+  const mouthOpen = (lm: readonly Pt[]) => lm.map((p, i) => (i === LM.chin || (LM.lipsOuter.slice(11, 20) as readonly number[]).includes(i) ? { x: p.x, y: p.y + 80 } : p));
+  const settle = (lr: ReturnType<typeof run>, lm: Pt[]) => { let r = lr.step(frame({ lm })); for (let i = 0; i < 5; i++) r = lr.step(frame({ lm })); return r; };
+
+  it("L19 입술 단계에서 입을 크게 벌려도 막히지 않는다 — 각도 차(pose_diff)도, 정면(angle)도 (#28 · #193)", () => {
+    const r = settle(run("lip"), mouthOpen(FACE));
+    expect(r.gate.ok).toBe(true);
+  });
+
+  it("L22 조금 숙인 채(-3°) 입을 크게 벌려도 '조금만 정면으로' 가 안 뜬다 — 옛 식은 턱 때문에 -12° 로 잡았다 (#193)", () => {
+    // 코끝(1·4)을 3° 숙인 만큼 올린다: 강체 식 기준 Δ = 3° × kPitch × 눈꼬리 거리
+    const D = Math.hypot(FACE[LM.eyeB.outer]!.x - FACE[LM.eyeA.outer]!.x, FACE[LM.eyeB.outer]!.y - FACE[LM.eyeA.outer]!.y);
+    const dy = -(3 / (180 / Math.PI)) * RIGID_POSE.kPitch * D;
+    const tilted = mouthOpen(FACE).map((p, i) => (i === 1 || i === 4 ? { x: p.x, y: p.y + dy } : p));
+    expect(Math.abs(poseOf(tilted).pitch)).toBeGreaterThan(LIVE_LIMITS.pitch);   // 옛 식이면 막혔다
+    const r = settle(run("lip"), tilted);
+    expect(r.gate.firstFail).not.toBe("angle");
+    expect(r.gate.ok).toBe(true);
   });
 });

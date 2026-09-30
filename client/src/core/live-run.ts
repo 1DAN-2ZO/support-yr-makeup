@@ -14,7 +14,7 @@ import { unitScale } from "./baseline";
 import type { Rect } from "./crop";
 import { createBundleCollector, type BundleState } from "./capture-bundle";
 import { exprDiff } from "./expression";
-import { gateStep, poseOf, rigidPoseDiff, type LiveLimits, LIVE_LIMITS } from "./gate";
+import { gateStep, rigidPoseDiff, type LiveLimits, LIVE_LIMITS, livePose } from "./gate";
 import { linerOutline, GUIDE_PARAMS } from "./guides";
 import { partInRect } from "./landmarks";
 import { foreheadStep, startForeheadTrack, type ForeheadTrack } from "./occlusion";
@@ -101,7 +101,8 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
         stable = r.stable;
         gate = r.gate;
       } else {
-        const pose = poseOf(f.lm);
+        // 정면 각도도 턱 없이 — 맨얼굴 각도 + 강체 점 변화 (#193). 입을 벌려도 "조금만 정면으로" 가 안 뜬다
+        const pose = livePose(opt.baseline.lm, f.lm);
         if (f.lab) {
           const o = foreheadStep(fj, f.t, f.lab, pose);
           fj = o.track;
