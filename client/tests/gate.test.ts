@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { GATE_TEXT, LIVE_LIMITS, evaluateGate, gateStep, poseOf, type LiveMeasure } from "@core/gate";
 import { yawFromLandmarks } from "@core/capture-measure";
 import { CAPTURE_LIMITS } from "@core/flow";
+import { PARAMS } from "@core/score";
 import { LM, partVisible } from "@core/landmarks";
 import { LMS, W, H } from "./helpers/synth-face";
 
@@ -88,11 +89,14 @@ describe("evaluateGate", () => {
     expect(evaluateGate("liner", good({ sharpness: LIVE_LIMITS.sharpMin })).ok).toBe(true);
   });
 
-  it("V10 밝기: 기준 이마 L* ±12 밖이면 어둡다/밝다", () => {
-    expect(evaluateGate("liner", good({ foreheadL: 49 })).text).toBe("조금 더 밝은 곳으로");
-    expect(evaluateGate("liner", good({ foreheadL: 75 })).text).toBe("너무 밝아요. 조금 어두운 곳으로");
-    expect(evaluateGate("liner", good({ foreheadL: 73 })).ok).toBe(true);
-    expect(evaluateGate("liner", good({ foreheadL: 49 })).firstFail).toBe("bright");
+  it("V10 밝기 차이는 채점 조명 한계(PARAMS.lightTol)까지 통과 — 채점이 밝기를 보정하니 화면 4 가 먼저 막지 않는다 (#209)", () => {
+    const tol = PARAMS.lightTol;
+    expect(LIVE_LIMITS.brightTol).toBe(tol);
+    expect(evaluateGate("liner", good({ foreheadL: 62 - (tol - 1) })).ok).toBe(true);
+    expect(evaluateGate("liner", good({ foreheadL: 62 - (tol + 1) })).text).toBe(GATE_TEXT.bright_low);
+    expect(evaluateGate("liner", good({ foreheadL: 62 + (tol - 1) })).ok).toBe(true);
+    expect(evaluateGate("liner", good({ foreheadL: 62 + (tol + 1) })).text).toBe(GATE_TEXT.bright_high);
+    expect(evaluateGate("liner", good({ foreheadL: 62 - (tol + 1) })).firstFail).toBe("bright");
   });
 
   it("V11 밝기: 기준이 없어도 절대 범위(L* 40~85) 밖이면 막는다", () => {
@@ -100,8 +104,14 @@ describe("evaluateGate", () => {
     expect(evaluateGate("liner", good({ baselineL: undefined, foreheadL: 62 })).ok).toBe(true);
   });
 
-  it("V12 조명 색이 기준에서 돌면 color", () => {
-    expect(evaluateGate("liner", good({ foreheadAb: { a: 12, b: 16 + LIVE_LIMITS.colorTol + 1 } })).firstFail).toBe("color");
+  it("V12 조명 색이 달라도 막지 않는다 — 준비 문구에 안내만 덧붙인다 (#209, 색 보정은 S-4 #40)", () => {
+    const off = evaluateGate("liner", good({ foreheadAb: { a: 12, b: 16 + LIVE_LIMITS.colorTol + 1 } }));
+    expect(off.ok).toBe(true);
+    expect(off.firstFail).toBeNull();
+    expect(off.text).toBe(GATE_TEXT.readyColor);
+    expect(evaluateGate("liner", good({ foreheadAb: { a: 12, b: 16 + LIVE_LIMITS.colorTol - 1 } })).text).toBe(GATE_TEXT.ready);
+    // 다른 조건에 걸려 있으면 그 문구가 먼저
+    expect(evaluateGate("liner", good({ foreheadAb: { a: 12, b: 30 }, stableCount: 2 })).firstFail).toBe("stable");
   });
 
   it("V13 안정 5프레임 전에는 '잠시만 그대로'", () => {
