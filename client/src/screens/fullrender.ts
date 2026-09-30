@@ -19,6 +19,8 @@ import { lookDetail } from "../core/look-view";
 import { resolvePlan, type PersonalPlan } from "../core/personalize";
 import { LandmarkSmoother } from "../core/smoothing";
 import type { Pt } from "../core/types";
+import type { HairMask } from "../core/sampling";
+import { createHairTicker, type HairMasker } from "./hair-segmenter";
 import { createLandmarker } from "./landmarker";
 import { MakeupGl } from "./makeup-gl";
 import { paintLookOf, paintMakeup } from "./makeup-paint";
@@ -28,7 +30,15 @@ export interface FullRenderDeps {
   getLookId: () => string | null;
   /** 룩 화면에서 만든 이 룩의 개인화 계획 (core/plan-queue.ts). 없으면 카메라 얼굴로 규칙 계획을 만든다 */
   getPlan?: (lookId: string) => PersonalPlan | null;
+  /** 머리카락 분할 (screens/hair-segmenter) — 주면 앞머리 위엔 보정·화장을 안 한다. 없으면 전과 같다 (#173) */
+  hairMask?: HairMasker;
 }
+
+/**
+ * 2-b AR 머리카락 분할 — intervalMs 마다 한 번, 영상을 width px 로 줄여서. 그 사이엔 마지막 마스크 (#173).
+ * 가정값 — 폰에서 ?tune 의 "머리카락 분할 ms" 를 보고 정한다. ?nohair 면 끄고 비교
+ */
+export const HAIR_AR = { intervalMs: 500, width: 320 };
 
 export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
   return {
@@ -138,6 +148,29 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
           const q = new URLSearchParams(location.search);
           const smoother = q.has("nosmooth") ? null : new LandmarkSmoother(Array.from({ length: 478 }, (_, i) => i), { minCutoff: SMOOTH.minCutoff, beta: SMOOTH.beta, dCutoff: SMOOTH.dCutoff });
           if (smoother && q.has("tune")) wrap.insertBefore(tuner(smoother), stage.nextSibling);
+          // 머리카락: 간격마다 줄인 영상으로 분할 → 셰이더가 그 위엔 보정·화장을 안 한다 (#173)
+          const hairOn = !!deps.hairMask && !q.has("nohair");
+          const ticker = createHairTicker(HAIR_AR.intervalMs);
+          const small = document.createElement("canvas");
+          let hair: HairMask | null = null;
+          const hairInfo = q.has("tune") && hairOn ? document.createElement("p") : null;
+          if (hairInfo) { hairInfo.className = "ar-tune"; hairInfo.textContent = "머리카락 분할 준비 중"; wrap.insertBefore(hairInfo, stage.nextSibling); }
+          const segment = (now: number, w: number, hh: number): void => {
+            const g = small.getContext("2d", { willReadFrequently: true });
+            if (!g || !deps.hairMask) return;
+            ticker.start(now);
+            small.width = HAIR_AR.width;
+            small.height = Math.round((hh * HAIR_AR.width) / w);
+            g.drawImage(video, 0, 0, small.width, small.height);
+            const px = g.getImageData(0, 0, small.width, small.height), t0 = performance.now();
+            deps.hairMask({ data: px.data, w: small.width, h: small.height })
+              .then((m) => {
+                if (m) hair = m;
+                if (hairInfo) hairInfo.textContent = `머리카락 분할 ${Math.round(performance.now() - t0)}ms · 간격 ${HAIR_AR.intervalMs}ms`;
+              })
+              .catch(() => {})
+              .finally(() => ticker.done());
+          };
 
           const tick = (): void => {
             if (!alive) return;
@@ -167,7 +200,8 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
                 const p = plan ?? resolvePlan(measureFace(ref));
                 paintMakeup({ mul: atlas.mul.getContext("2d")!, col: atlas.col.getContext("2d")!, light: atlas.light.getContext("2d")! }, off, ref, paintLook, p, p.liner.plan.style);
               }
-              gl.render(video, w, hh, atlas.mul, atlas.col, atlas.light, lm && ref ? { lm, ref, beauty: 0.3, radius: w * 0.004 } : null);
+              if (hairOn && lm && ref && ticker.due(now)) segment(now, w, hh);
+              gl.render(video, w, hh, atlas.mul, atlas.col, atlas.light, lm && ref ? { lm, ref, beauty: 0.3, radius: w * 0.004, hair } : null);
               if (!live) {
                 live = true;
                 stage.replaceChildren(canvas);

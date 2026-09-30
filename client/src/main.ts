@@ -288,6 +288,8 @@ async function boot(): Promise<void> {
       isPersonalized: (lookId) => session.plans[lookId] !== undefined || plans.get(lookId) !== undefined,
       minBusyMs: 1500,
       getPlan: (lookId) => planFor(lookId),
+      // 2-b AR 도 앞머리 위엔 보정·화장 안 함 — 화면 3·5 와 같은 분할기 (#173)
+      hairMask,
     },
     {
       getParts: () => toReviewParts(session),
