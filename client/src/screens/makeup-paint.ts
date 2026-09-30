@@ -17,13 +17,15 @@ import { browOnFace, linerOutline, lipOutline } from "../core/personal-guide";
 import { PLAN_RULES, type LinerStyle, type PersonalPlan } from "../core/personalize";
 import type { Pt } from "../core/types";
 
-export type PaintPart = "brow" | "shadow" | "liner" | "cheek" | "lip" | "contour" | "highlight";
+export type PaintPart = "brow" | "shadow" | "liner" | "cheek" | "lip" | "contour" | "highlight" | "aegyo";
 
 /** 그리는 순서와 번짐(얼굴 폭 비율) */
 const PARTS: { id: PaintPart; blur: number }[] = [
   { id: "contour", blur: 0.04 },
   { id: "highlight", blur: 0.04 },
   { id: "cheek", blur: 0.048 },
+  // 애교살: 아랫속눈썹 → 볼 사이 띠, 밝히기 층 (④ 실험 화면 0.02 × 부드럽게 1.6 — 다른 부위와 같은 환산)
+  { id: "aegyo", blur: 0.032 },
   { id: "brow", blur: 0.0064 },
   { id: "shadow", blur: 0.019 },
   { id: "liner", blur: 0.0024 },
@@ -40,6 +42,8 @@ export interface PaintLook {
   shadowTail: boolean;
   /** 입술 가장자리 색 — 가운데(color) → 가장자리 그러데이션. 없으면 한 색 */
   lipEdge?: string;
+  /** 글리터 마감 — 단색 대신 점을 흩뿌린다 (섀도우는 띠 위에 더해서, 애교살은 점만) */
+  glitter: { shadow: boolean; aegyo: boolean };
 }
 
 /** 섀도우 눈꼬리 연장 길이 (눈 폭 비율) — ④ 실험 화면(makeup-probe.ts)과 같은 값. 블러보다 확실히 크게 잡은 눈대중값 */
@@ -63,12 +67,14 @@ export function paintLookOf(look: Look): PaintLook {
     alpha[k] = p.alpha ?? p.alphaR ?? 0.5;
   }
   color.brow ??= BROW_DEFAULT_COLOR;
-  const sh = look.parts.shadow, lip = look.parts.lip;
+  const sh = look.parts.shadow, lip = look.parts.lip, ae = look.extras?.aegyo;
+  if (ae) { color.aegyo = hex(ae.color); alpha.aegyo = ae.alpha; }
   return {
     color, alpha, linerThick: look.parts.liner?.thick ?? GUIDE_PARAMS.liner.thick,
     ...(sh?.stops?.length ? { shadowStops: sh.stops.map((s) => ({ at: s.at, color: hex(s.color) })) } : {}),
     shadowTail: !!sh?.tailExtend,
     ...(lip?.edge ? { lipEdge: hex(lip.edge) } : {}),
+    glitter: { shadow: sh?.finish === "glitter", aegyo: ae?.finish === "glitter" },
   };
 }
 
@@ -85,6 +91,42 @@ function path(ctx: CanvasRenderingContext2D, pts: readonly Pt[]): void {
   ctx.moveTo(pts[0]!.x, pts[0]!.y);
   for (const p of pts.slice(1)) ctx.lineTo(p.x, p.y);
   ctx.closePath();
+}
+
+/** 고정 시드 난수 — 글리터 점 자리가 매번 같게 (AR 에서 반짝이며 흔들리지 않게) */
+function mulberry32(seed: number): () => number {
+  return () => {
+    seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * 지금 경로 안(clip)에 글리터 점을 흩뿌린다 — ④ 실험 화면(makeup-probe.ts fillGlitter)과 같은 방법.
+ * darken: 곱하기 층용(섀도우) — 점 가운데를 어둡게. 아니면 밝히기 층용(애교살) — 가운데를 희게
+ */
+function glitterIn(ctx: CanvasRenderingContext2D, pts: readonly Pt[], color: string, darken: boolean): void {
+  const xs = pts.map((q) => q.x), ys = pts.map((q) => q.y);
+  const x0 = Math.min(...xs), y0 = Math.min(...ys), w = Math.max(...xs) - x0, h = Math.max(...ys) - y0;
+  ctx.save();
+  ctx.filter = "none";   // 번지면 점이 아니라 흐린 얼룩이 된다
+  ctx.clip();
+  const rnd = mulberry32(0x9e3779b9);
+  const n = Math.max(40, Math.round(w * h * 0.02));
+  for (let i = 0; i < n; i++) {
+    const x = x0 + rnd() * w, y = y0 + rnd() * h, r = 0.45 + rnd() * 0.85;
+    ctx.beginPath();
+    ctx.fillStyle = rgba(color, (darken ? 0.7 : 0.55) + rnd() * 0.4);
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.fillStyle = darken ? `rgba(0,0,0,${0.35 + rnd() * 0.35})` : rgba("#ffffff", 0.6 + rnd() * 0.4);
+    ctx.arc(x, y, r * 0.45, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
 }
 
 const rgba = (h: string, a: number): string => {
@@ -104,7 +146,7 @@ export function paintMakeup(layers: Layers, off: HTMLCanvasElement, lm: readonly
   for (const p of PARTS) {
     const color = look.color[p.id];
     if (!color) continue;
-    const scale = p.id === "contour" || p.id === "highlight" ? 1 : (plan?.intensity[p.id] ?? 1);
+    const scale = p.id === "contour" || p.id === "highlight" || p.id === "aegyo" ? 1 : (plan?.intensity[p.id] ?? 1);
     const alpha = Math.min(1, (look.alpha[p.id] ?? 0.5) * scale);
     o.filter = "none";
     o.clearRect(0, 0, off.width, off.height);
@@ -146,6 +188,8 @@ export function paintMakeup(layers: Layers, off: HTMLCanvasElement, lm: readonly
         o.beginPath();
         path(o, band);
         o.fill();
+        // 글리터 화장(아이돌·러블리·키치): 그라데이션 위, 같은 띠 안에만 점
+        if (look.glitter.shadow) glitterIn(o, band, color, true);
       }
     } else if (p.id === "liner") {
       const outline = linerOutline({ lm, unit }, look.linerThick * (plan?.linerThick.scale ?? 1), style);
@@ -174,6 +218,15 @@ export function paintMakeup(layers: Layers, off: HTMLCanvasElement, lm: readonly
         o.fill();
         o.restore();
       }
+    } else if (p.id === "aegyo") {
+      // 애교살: 아랫속눈썹 선 → 볼 점 사이 10~35% 띠 (④ 실험 화면과 같은 눈대중 시작값)
+      const bands = SIDES.map(({ eye, cheek }) => {
+        const lash = eye.lower.map(P), c = P(cheek);
+        return [...lash.map((q) => mix(q, c, 0.1)), ...lash.map((q) => mix(q, c, 0.35)).reverse()];
+      });
+      for (const b of bands) path(o, b);
+      if (look.glitter.aegyo) glitterIn(o, bands.flat(), color, false);   // 글리터면 단색 대신 점만
+      else o.fill();
     } else if (p.id === "lip") {
       const inner = LIP_INNER.map(P);
       if (look.lipEdge) {
@@ -193,7 +246,7 @@ export function paintMakeup(layers: Layers, off: HTMLCanvasElement, lm: readonly
       o.fill();
     }
     // 층에는 색과 세기만 담는다 — 섞는 건 셰이더가 한다
-    if (p.id === "highlight") {
+    if (p.id === "highlight" || p.id === "aegyo") {
       layers.light.globalAlpha = alpha;
       layers.light.drawImage(off, 0, 0);
       continue;
