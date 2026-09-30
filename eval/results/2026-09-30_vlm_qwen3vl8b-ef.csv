@@ -1,0 +1,2 @@
+model,s2_Ec_p95_ms,s2_Ec_schema,s2_Ec_gate,s2_E.blankc_p95_ms,s2_E.blankc_schema,s2_E.blankc_gate,s2_Fc_p95_ms,s2_Fc_schema,s2_Fc_gate,s2_best,s2_Ec_mode_max,s2_E.blankc_mode_max,s2_Fc_mode_max,s2_E_blank_same,s3_worst_field,s3_restart_same,s3_perturb_same,s4_follow
+qwen3vl8b-ef,7967,0.983,0.55,7884,1.0,0.75,7927,1.0,0.95,F,0.767,0.767,0.883,0.05,1.0,1.0,0.15517241379310345,1.0

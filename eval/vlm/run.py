@@ -51,12 +51,37 @@ def load_faces(limit: int | None) -> list[dict]:
     return faces[:limit] if limit else faces
 
 
-def face_image(face: dict, res: int, perturb: str | None = None) -> str:
+def swap_pool() -> list[dict]:
+    """다른 사람 사진 대조군의 후보 — 동양인 후보 240장 (landmarks.py 를 DHE_DATA_DIR=<pool> 로 돌려 둔 것)"""
+    work = Path(os.environ.get("DHE_SWAP_POOL", data_dir() / "pool" / "vlm-eval")) / "work"
+    return [json.loads(p.read_text(encoding="utf-8")) for p in sorted(work.glob("*.json"))]
+
+
+def ffhq_id(photo: str) -> str:
+    """ffhq_012345.jpg · c012_012345.jpg → 012345 (같은 사람을 대조군에서 빼려고)"""
+    return Path(photo).stem.split("_")[-1]
+
+
+def pick_swap(face: dict, pool: list[dict], look: str, rep: int) -> dict:
+    """같은 사람이 아닌 사진 하나 — 요청마다 정해진 seed 라 다시 돌려도 같다"""
+    import random
+
+    others = [p for p in pool if ffhq_id(p["photo"]) != ffhq_id(face["photo"])]
+    return random.Random(f"{face['id']}|{look}|{rep}").choice(others)
+
+
+def face_image(face: dict, res: int, perturb: str | None = None, photos: Path | None = None) -> str:
     """얼굴 가운데 정사각형으로 자르고 res×res 로.
     해상도를 고정해야 이미지 토큰 수·시간이 일정하다 (보고서)"""
     from PIL import Image, ImageEnhance
 
-    photos = data_dir() / "vlm-eval" / "photos"
+    if perturb == "blank":
+        # 대조군 — 사진 없이 같은 글만. 답이 그대로면 모델이 사진을 안 본다 (Zhou 2026 · VLind-Bench)
+        im = Image.new("RGB", (res, res), (128, 128, 128))
+        buf = io.BytesIO()
+        im.save(buf, format="JPEG", quality=90)
+        return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+    photos = photos or data_dir() / "vlm-eval" / "photos"
     im = Image.open(photos / face["photo"]).convert("RGB")
     xs = [p["x"] for p in face["lm"]]
     ys = [p["y"] for p in face["lm"]]
@@ -168,6 +193,8 @@ class Server:
             return {
                 "ms": ms,
                 "content": ch["message"].get("content") or "",
+                # 생각 모드가 켜진 모델은 답을 여기에 다 쓰고 본문이 빈다 (Gemma 4 · MiniCPM-V 4.5, 1차 선별)
+                "reasoning_chars": len(ch["message"].get("reasoning_content") or ""),
                 "finish": ch.get("finish_reason"),
                 "usage": j.get("usage"),
                 "timings": j.get("timings"),
@@ -192,11 +219,18 @@ def vram_mb() -> int | None:
 # ---------- 단계 ----------
 
 
+def parse_cond(c: str) -> tuple[str, bool, str | None]:
+    """2단계 조건 — 형식 글자 + 선택 꼬리. 'A' 제약 켬, 'Au' 제약 끔, 'E.blank' 빈 사진"""
+    c, _, pert = c.partition(".")
+    return c[0], not c.endswith("u"), pert or None
+
+
 def plan_jobs(stage: int, faces: list[dict], looks: list[str], args) -> list[dict]:
     """요청 목록 (실행 전에 개수·시간을 보여 주려고 먼저 만든다)"""
     jobs: list[dict] = []
+    variants = [v for v in args.variant.split(",") if v]
     base = {
-        "variant": "A",
+        "variant": variants[0],
         "constrained": True,
         "res": args.res,
         "max_tokens": args.max_tokens,
@@ -226,38 +260,67 @@ def plan_jobs(stage: int, faces: list[dict], looks: list[str], args) -> list[dic
                                 }
                             )
     elif stage == 2:
-        conds = [(v, True) for v in "ABCD"] + [("A", False)]
+        conds = [parse_cond(c) for c in args.conds.split(",") if c]
         for f in faces:
             for look in looks:
-                for v, con in conds:
+                for v, con, pert in conds:
                     for rep in range(args.reps):
                         jobs.append(
-                            {**base, "face": f, "look": look, "variant": v, "constrained": con, "rep": rep}
+                            {
+                                **base,
+                                "face": f,
+                                "look": look,
+                                "variant": v,
+                                "constrained": con,
+                                "perturb": pert,
+                                "rep": rep,
+                            }
                         )
     elif stage == 3:
         # 사진마다 반복의 앞 절반은 지금 서버, 뒤 절반은 다시 켠 서버 — 같은 사진이 재시작 전후로 같은가
+        # 형식이 여럿이면 형식마다 (재시작은 한 번 — 앞 절반을 전부 돈 뒤)
         half = args.reps_det // 2
         for phase, reps in (("before", range(half)), ("after", range(half, args.reps_det))):
+            for v in variants:
+                for f in faces:
+                    for look in looks[:1]:
+                        for rep in reps:
+                            jobs.append(
+                                {**base, "variant": v, "face": f, "look": look, "rep": rep, "phase": phase}
+                            )
+        for v in variants:
             for f in faces:
                 for look in looks[:1]:
-                    for rep in reps:
-                        jobs.append({**base, "face": f, "look": look, "rep": rep, "phase": phase})
-        for f in faces:
-            for look in looks[:1]:
-                for p in ("bright", "crop"):
-                    for rep in range(3):
-                        jobs.append(
-                            {**base, "face": f, "look": look, "perturb": p, "rep": rep, "phase": "after"}
-                        )
+                    for p in ("bright", "crop"):
+                        for rep in range(args.perturb_reps):
+                            jobs.append(
+                                {
+                                    **base,
+                                    "variant": v,
+                                    "face": f,
+                                    "look": look,
+                                    "perturb": p,
+                                    "rep": rep,
+                                    "phase": "after",
+                                }
+                            )
     elif stage == 4:
         flips = core([{"op": "flips", "m": f["m"]} for f in faces])
-        for f, fl in zip(faces, flips, strict=True):
-            for look in looks[:1]:
-                jobs.append({**base, "face": f, "look": look, "rep": 0})  # 뒤집기 전 (같은 조건)
-                for x in fl:
-                    jobs.append(
-                        {**base, "face": {**f, "m": x["m"]}, "look": look, "flip": x["name"], "rep": 0}
-                    )
+        for v in variants:
+            for f, fl in zip(faces, flips, strict=True):
+                for look in looks[:1]:
+                    jobs.append({**base, "variant": v, "face": f, "look": look, "rep": 0})  # 뒤집기 전
+                    for x in fl:
+                        jobs.append(
+                            {
+                                **base,
+                                "variant": v,
+                                "face": {**f, "m": x["m"]},
+                                "look": look,
+                                "flip": x["name"],
+                                "rep": 0,
+                            }
+                        )
     return jobs
 
 
@@ -269,24 +332,33 @@ def run_stage(
     print(f"단계 {stage}: 요청 {len(jobs)}개 (한 건 {args.sec_per_req}초 가정 시 약 {est:.0f}분)")
     if args.dry_run:
         return
-    schema = core([{"op": "schema"}])[0]
+    schemas = core([{"op": "schema", "variant": j["variant"], "m": j["face"]["m"]} for j in jobs])
     prompts = core(
         [{"op": "prompt", "m": j["face"]["m"], "look": j["look"], "variant": j["variant"]} for j in jobs]
     )
     extra = cfg.get("request_extra", {})
+    pool = swap_pool() if any(j.get("perturb") == "swap" for j in jobs) else []
+    if any(j.get("perturb") == "swap" for j in jobs) and not pool:
+        sys.exit("다른 사람 사진 대조군의 후보가 없습니다 — DHE_SWAP_POOL/work 를 확인해 주세요")
+    pool_photos = Path(os.environ.get("DHE_SWAP_POOL", data_dir() / "pool" / "vlm-eval")) / "photos"
     images: dict[tuple, str] = {}
     peak = vram_mb() or 0
     restarted = False
     with open(out / f"stage{stage}.jsonl", "a", encoding="utf-8") as fh:
-        for i, (j, text) in enumerate(zip(jobs, prompts, strict=True)):
+        for i, (j, text, schema) in enumerate(zip(jobs, prompts, schemas, strict=True)):
             if j.get("phase") == "after" and not restarted:
                 server.stop()
                 server.start()
                 restarted = True
             f = j["face"]
-            key = (f["id"], j["res"], j["perturb"])
+            swap = pick_swap(f, pool, j["look"], j["rep"]) if j.get("perturb") == "swap" else None
+            key = (swap["id"] if swap else f["id"], j["res"], j["perturb"])
             if key not in images:
-                images[key] = face_image(f, j["res"], j["perturb"])
+                images[key] = (
+                    face_image(swap, j["res"], None, pool_photos)
+                    if swap
+                    else face_image(f, j["res"], j["perturb"])
+                )
             r = server.ask(
                 images[key],
                 text,
@@ -297,6 +369,8 @@ def run_stage(
             )
             row = {k: v for k, v in j.items() if k != "face"}
             row.update({"stage": stage, "model": args.model, "photo_id": f["id"], **r})
+            if swap:
+                row["swap_id"] = swap["id"]
             fh.write(json.dumps(row, ensure_ascii=False) + "\n")
             if i % 10 == 0:
                 peak = max(peak, vram_mb() or 0)
@@ -317,10 +391,21 @@ def main() -> None:
     ap.add_argument("--photos", type=int, default=None, help="앞에서 몇 장만 (시험 삼아)")
     ap.add_argument("--res", type=int, default=512, help="2·3·4단계 이미지 한 변 (1단계 결과로 정한다)")
     ap.add_argument("--max-tokens", type=int, default=300)
+    ap.add_argument(
+        "--variant", default="A", help="0·1단계는 첫 형식, 3·4단계는 형식마다 (예: E,F). A = 앱 그대로"
+    )
+    ap.add_argument(
+        "--conds",
+        default="A,B,C,D,Au",
+        help="2단계 조건 — 형식 글자, u = 제약 끔, .blank = 빈 사진, .swap = 다른 사람 사진 (예: E,F,E.swap)",
+    )
     ap.add_argument("--smoke", type=int, default=100, help="0단계 연속 요청 수")
     ap.add_argument("--speed-photos", type=int, default=5)
     ap.add_argument("--reps", type=int, default=5, help="2단계 반복 (보고서 10 — 시간 보고 늘린다)")
     ap.add_argument("--reps-det", type=int, default=10, help="3단계 반복")
+    ap.add_argument(
+        "--perturb-reps", type=int, default=3, help="3단계 밝기·자르기 반복 (온도 0 이면 1 로 충분)"
+    )
     ap.add_argument("--port", type=int, default=8090)
     ap.add_argument("--sec-per-req", type=float, default=4.0, help="예상 시간 계산용")
     ap.add_argument("--dry-run", action="store_true")

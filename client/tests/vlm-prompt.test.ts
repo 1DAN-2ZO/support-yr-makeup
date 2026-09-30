@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import type { EyeMeasure, FaceMeasure } from "@core/face-measure";
 import { lookById } from "@core/looks";
-import { PLAN_LIMITS } from "@core/personalize";
+import { DROOP_MARGIN_DEG, PLAN_LIMITS } from "@core/personalize";
 import { buildVlmPrompt } from "@core/vlm-prompt";
 
 function measure(ab: number): FaceMeasure {
@@ -41,6 +41,27 @@ describe("VLM 프롬프트", () => {
 
   it("JSON 하나만 답하라고 한다", () => {
     expect(buildVlmPrompt(measure(-4), look)).toMatch(/JSON 하나만/);
+  });
+
+  it("답 모양에 구체 값을 넣지 않는다 — 작은 모델이 예시 값을 그대로 베낀다 (eval/vlm 2단계, 2026-09-29)", () => {
+    const answer = buildVlmPrompt(measure(-4), look).split("## 답")[1];
+    expect(answer).toContain(`"range":<${PLAN_LIMITS.shadowRange[0]}~${PLAN_LIMITS.shadowRange[1]}>`);
+    expect(answer).not.toMatch(/"(range|overline|scale|size)":\d/);
+    expect(answer).not.toMatch(/"position":"standard"|"tZone":true/);
+    expect(answer).not.toContain('"brow"');   // 눈썹은 바꾸지 않는다 — 근거 예시에 두지 않는다
+  });
+
+  it("처진 눈 기준은 관문 상수와 같다 — 어긋나면 drop 이 늘 거절된다", () => {
+    const p = buildVlmPrompt(measure(1), look);   // 0 < α − β ≤ 기준
+    expect(p).toMatch(/처진 눈 아님/);
+    expect(p).toContain(`${DROOP_MARGIN_DEG}° 를 넘으면 처진 눈`);
+    expect(buildVlmPrompt(measure(DROOP_MARGIN_DEG + 1), look)).toMatch(/→ 처진 눈 \(/);
+  });
+
+  it("근거 문장에 값 이름·숫자를 쓰지 말라고 한다 — 숫자가 있으면 관문이 거절한다", () => {
+    const p = buildVlmPrompt(measure(-4), look);
+    expect(p).toMatch(/숫자와 값 이름.*쓰지 않습니다/);
+    expect(p).toMatch(/규칙 출발점: 라이너 winged/);
   });
 });
 

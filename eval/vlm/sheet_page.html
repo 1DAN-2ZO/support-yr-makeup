@@ -1,38 +1,138 @@
-<!doctype html><meta charset=utf-8><title>nudy 개인화 평가</title>
-<!-- VLM 선정 실험 5·6단계 평가지 틀 — report.py --sheet 가 {{CARDS}}·{{MODEL}} 을 채운다. 사진이 들어가므로 결과 파일은 DHE_DATA_DIR 에만 -->
+<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width, initial-scale=1"><title>화장 비교 평가</title>
+<!-- VLM 선정 실험 6단계 평가지 — report.py --sheet 가 문항·데이터·렌더러를 채운다. 화장은 평가자 브라우저에서
+     앱 렌더러(paintMakeup · MakeupGl)로 그린다. 사진이 들어가므로 만든 파일은 DHE_DATA_DIR 에만 둔다 -->
 <style>
-body { font-family: sans-serif; max-width: 860px; margin: auto; padding: 16px; }
-section { border-top: 1px solid #ccc; padding: 12px 0; }
-img { width: 240px; border-radius: 8px; }
-.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.why { margin: 4px 0; color: #666; }
+:root { --bg:#f6f7f5; --paper:#fff; --fg:#1c2320; --muted:#5b6661; --line:#d9dfdb; --accent:#2f6b5a; --soft:#e3efe9; --warn:#8a6410; --warn-bg:#f7edd4; }
+@media (prefers-color-scheme: dark) { :root { --bg:#141816; --paper:#1b201e; --fg:#e4e9e6; --muted:#9aa6a0; --line:#2e3633; --accent:#7cc1aa; --soft:#1f3029; --warn:#e2c173; --warn-bg:#362d18; color-scheme: dark; } }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.6 "Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif; }
+.wrap { max-width:980px; margin:0 auto; padding:0 16px 80px; }
+h1 { font-size:24px; margin:24px 0 8px; }
+.guide { background:var(--paper); border:1px solid var(--line); border-radius:10px; padding:12px 18px; margin:12px 0 16px; }
+.guide ol { margin:4px 0; padding-left:1.3em; }
+.bar { position:sticky; top:0; z-index:5; background:var(--bg); border-bottom:1px solid var(--line); padding:10px 0; display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; }
+.bar .prog { flex:1 1 200px; height:8px; background:var(--line); border-radius:99px; overflow:hidden; }
+.bar .prog i { display:block; height:100%; width:0; background:var(--accent); }
+.bar input { font:inherit; padding:4px 8px; border:1px solid var(--line); border-radius:6px; background:var(--paper); color:var(--fg); }
+#status { font-size:13px; color:var(--muted); }
+button { font:inherit; padding:8px 14px; border-radius:8px; border:1px solid var(--accent); background:var(--accent); color:var(--paper); cursor:pointer; }
+button.ghost { background:transparent; color:var(--accent); }
+section { background:var(--paper); border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin:14px 0; }
+section.done { border-color:var(--accent); }
+section h2 { font-size:16px; margin:0 0 8px; display:flex; flex-wrap:wrap; gap:6px 12px; align-items:center; }
+.look { font-size:13px; color:var(--muted); font-weight:400; }
+.sw { display:inline-block; width:13px; height:13px; border-radius:3px; border:1px solid var(--line); vertical-align:middle; margin-left:2px; }
+.row { display:grid; grid-template-columns:110px 1fr 1fr; gap:10px; align-items:start; }
+.row figure { margin:0; display:grid; gap:4px; justify-items:center; }
+.row figcaption { font-weight:600; font-size:15px; }
+.row .bare figcaption { font-weight:400; font-size:12px; color:var(--muted); }
+.row img, .row canvas { width:100%; height:auto; border-radius:8px; background:var(--line); aspect-ratio:1; display:block; }
+.pick { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:10px; }
+.pick label { border:1px solid var(--line); border-radius:8px; padding:8px 18px; cursor:pointer; user-select:none; }
+.pick input { margin-right:6px; }
+.pick label:has(input:checked) { border-color:var(--accent); background:var(--soft); font-weight:600; }
+.missing { background:var(--warn-bg); color:var(--warn); border-radius:8px; padding:10px 14px; margin:12px 0; }
+@media (max-width:620px) { .row { grid-template-columns:1fr 1fr; } .row .bare { grid-column:1/-1; max-width:120px; justify-self:center; } }
 </style>
-<h1>개인화 계획 비교 평가</h1>
-<p>A·B 중 어느 쪽이 VLM 인지는 모릅니다. 사진과 두 계획을 보고 골라 주세요. 다 하면 맨 아래 "결과 받기".</p>
-<p>평가자 이름 <input id=who></p>
+<div class=wrap>
+<h1>화장 비교 평가</h1>
+<div class=guide>
+  <p>문항마다 같은 얼굴에 같은 화장을 두 가지 방식으로 입힌 모습(A, B)이 있습니다. 왼쪽 작은 사진은 맨얼굴입니다. 모두 {{COUNT}}문항, 10~15분 걸립니다.</p>
+  <ol>
+    <li>맨 위에 이름을 적습니다.</li>
+    <li>A와 B 중 <b>이 얼굴에 더 잘 어울리는 화장</b>을 고릅니다. 차이를 모르겠으면 <b>비슷함</b>.</li>
+    <li>다 하면 맨 아래 <b>결과 파일 받기</b>를 눌러 받은 파일을 보내 주세요.</li>
+  </ol>
+  <p>입력은 이 브라우저에 자동 저장됩니다. 닫았다가 같은 파일을 다시 열면 이어집니다. 크롬이나 엣지로 열어 주세요.</p>
+</div>
+<div class=bar>
+  <label>평가자 이름 <input id=who autocomplete=off></label>
+  <span id=count>0 / {{COUNT}}</span>
+  <span class=prog><i id=progbar></i></span>
+  <span id=status>화장 그리는 중…</span>
+</div>
 {{CARDS}}
-<button onclick="save()">결과 받기</button>
+<div id=missing class=missing hidden></div>
+<p><button id=save>결과 파일 받기</button> <button id=saveAnyway class=ghost hidden>빠진 문항이 있어도 받기</button></p>
+</div>
+<script type=application/json id=data>{{DATA}}</script>
+<script>{{BUNDLE}}</script>
 <script>
 const MODEL = {{MODEL}};
-function val(s, name) {
-  const picked = s.querySelector('[name=' + name + ']:checked');
-  if (picked) return picked.type === 'checkbox' ? true : picked.value;
-  const num = s.querySelector('input[type=number][name=' + name + ']');
-  return num ? num.value : null;
+const KEY = 'vlm-pref:' + MODEL;
+const DATA = JSON.parse(document.getElementById('data').textContent);
+const sections = [...document.querySelectorAll('section[data-n]')];
+document.querySelectorAll('img[data-photo]').forEach((im) => { im.src = DATA.photos[im.dataset.photo]; });
+
+function collect() {
+  return {
+    kind: 'pref', who: document.getElementById('who').value.trim(), model: MODEL,
+    items: sections.map((s) => {
+      const p = s.querySelector('input[type=radio]:checked');
+      return { n: +s.dataset.n, pick: p ? p.value : null };
+    }),
+  };
 }
-function save() {
-  const r = { who: document.getElementById('who').value, model: MODEL, items: [] };
-  document.querySelectorAll('section').forEach((s) => {
-    const n = s.dataset.n;
-    r.items.push({
-      n: +n, pick: val(s, 'p' + n),
-      fa: val(s, 'fa' + n), fb: val(s, 'fb' + n), na: val(s, 'na' + n), nb: val(s, 'nb' + n),
-      xa: !!s.querySelector('[name=xa' + n + ']').checked, xb: !!s.querySelector('[name=xb' + n + ']').checked,
-    });
+const missingOf = (r) => r.items.filter((it) => !it.pick).map((it) => it.n);
+function refresh() {
+  const r = collect();
+  const miss = new Set(missingOf(r));
+  sections.forEach((s) => s.classList.toggle('done', !miss.has(+s.dataset.n)));
+  const done = sections.length - miss.size;
+  document.getElementById('count').textContent = done + ' / ' + sections.length;
+  document.getElementById('progbar').style.width = (100 * done / sections.length) + '%';
+  try { localStorage.setItem(KEY, JSON.stringify(r)); } catch (e) {}
+}
+function restore() {
+  let r = null;
+  try { r = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) {}
+  if (!r) return;
+  document.getElementById('who').value = r.who || '';
+  r.items.forEach((it) => {
+    if (!it.pick) return;
+    const x = document.querySelector('input[name="p' + it.n + '"][value="' + it.pick + '"]');
+    if (x) x.checked = true;
   });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([JSON.stringify(r)], { type: 'application/json' }));
-  a.download = 'rating-' + (r.who || 'noname') + '.json';
-  a.click();
 }
+function download(r) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(r, null, 1)], { type: 'application/json' }));
+  a.download = 'rating-' + (r.who || 'noname') + '.json';
+  document.body.appendChild(a); a.click(); a.remove();
+}
+function trySave(force) {
+  const r = collect();
+  const box = document.getElementById('missing');
+  const miss = missingOf(r);
+  const msgs = [];
+  if (!r.who) msgs.push('맨 위에 평가자 이름을 적어 주세요.');
+  if (miss.length) msgs.push('아직 안 고른 문항: ' + miss.join(', '));
+  if (msgs.length && !force) {
+    box.innerHTML = msgs.map((m) => '<div>' + m + '</div>').join('');
+    box.hidden = false;
+    document.getElementById('saveAnyway').hidden = !r.who;
+    if (miss.length) document.querySelector('section[data-n="' + miss[0] + '"]').scrollIntoView({ behavior: 'smooth' });
+    return;
+  }
+  box.hidden = true;
+  download(r);
+}
+restore();
+refresh();
+document.addEventListener('change', refresh);
+document.addEventListener('input', refresh);
+document.getElementById('save').addEventListener('click', () => trySave(false));
+document.getElementById('saveAnyway').addEventListener('click', () => trySave(true));
+
+const status = document.getElementById('status');
+const items = DATA.items.map((it) => ({ ...it, img: DATA.photos[it.photo] }));
+let drawn = 0;
+window.renderSheet(items, (n, side, c) => {
+  const slot = document.querySelector('[data-slot="' + n + side + '"]');
+  if (slot) slot.replaceWith(c);
+  drawn += 1;
+  status.textContent = drawn < items.length * 2 ? '화장 그리는 중… ' + drawn + ' / ' + items.length * 2 : '';
+}).catch((e) => {
+  status.textContent = '화장을 그리지 못했습니다 (' + e.message + '). 크롬이나 엣지 최신판으로 열어 주세요.';
+});
 </script>

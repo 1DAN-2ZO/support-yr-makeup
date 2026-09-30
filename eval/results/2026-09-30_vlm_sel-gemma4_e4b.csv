@@ -1,0 +1,2 @@
+model,s0_n,s0_broken,vram_peak_mb,s2_Ec_p95_ms,s2_Ec_schema,s2_Ec_gate,s2_E.brightc_p95_ms,s2_E.brightc_schema,s2_E.brightc_gate,s2_E.swapc_p95_ms,s2_E.swapc_schema,s2_E.swapc_gate,s2_best,s2_Ec_mode_max,s2_Ec_mismatch,s2_E.brightc_mode_max,s2_E.brightc_mismatch,s2_E.swapc_mode_max,s2_E.swapc_mismatch,g_E_swap_img,g_E_swap_meas,g_E_swap_n,g_E_bright_img,g_E_bright_meas,g_E_bright_n,s4_E_follow,g_E_perturb_img,g_E_gap
+sel-gemma4_e4b,10,0,8195,5940,1.0,1.0,5915,1.0,1.0,6052,1.0,1.0,E,1.0,0.0,1.0,0.0,1.0,0.0,0.253,0.067,15,0.147,0.0,15,1.0,0.147,0.106

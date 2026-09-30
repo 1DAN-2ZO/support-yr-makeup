@@ -1,0 +1,2 @@
+model,s2_Ac_p95_ms,s2_Ac_schema,s2_Ac_gate,s2_Au_p95_ms,s2_Au_schema,s2_Au_gate,s2_Bc_p95_ms,s2_Bc_schema,s2_Bc_gate,s2_Cc_p95_ms,s2_Cc_schema,s2_Cc_gate,s2_Dc_p95_ms,s2_Dc_schema,s2_Dc_gate,s2_best,s2_Ac_mode_max,s2_Au_mode_max,s2_Bc_mode_max,s2_Cc_mode_max,s2_Dc_mode_max,s3_worst_field,s3_restart_same,s3_perturb_same,s4_follow
+qwen3vl8b-p2,4905,1.0,0.45,5540,1.0,0.067,4455,1.0,0.683,4441,1.0,0.75,4593,1.0,0.4,C,1.0,1.0,1.0,1.0,1.0,1.0,1.0,0.5166666666666667,0.552
