@@ -1,0 +1,2 @@
+model,s2_Ec_gate_dec,s2_Ec_gate_rat,s2_Ec_p95_ms,s2_Ec_schema,s2_Ec_gate,s2_E.swapc_gate_dec,s2_E.swapc_gate_rat,s2_E.swapc_p95_ms,s2_E.swapc_schema,s2_E.swapc_gate,s2_best,s2_Ec_mode_max,s2_Ec_mismatch,s2_E.swapc_mode_max,s2_E.swapc_mismatch,g_E_swap_img,g_E_swap_meas,g_E_swap_n,s4_E_follow,g_E_gap
+chk-gemma4_e4b,1.0,1.0,5490,1.0,1.0,1.0,1.0,5519,1.0,1.0,E,1.0,0.0,1.0,0.0,0.258,0.033,60,0.989,
