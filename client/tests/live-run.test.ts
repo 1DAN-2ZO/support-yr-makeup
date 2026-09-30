@@ -231,4 +231,14 @@ describe("live run", () => {
     expect(r.measure?.stableCount).toBe(r.gate.stableCount);
     expect(lr.step(frame({ lm: null })).measure).toBeNull();
   });
+
+  it("L24 폰을 가로로 들면 카메라가 옆이라 얼굴이 돌아간 것으로 찍힌다 — 기준 각도 차를 '오른쪽/왼쪽으로 돌려' 로 알려 준다 (폰 시험 2026-09-30)", () => {
+    // 코끝이 이미지 오른쪽으로 눈꼬리 거리의 10% — 강체 yaw 약 12° (한계 8°)
+    const D = Math.hypot(FACE[LM.eyeB.outer]!.x - FACE[LM.eyeA.outer]!.x, FACE[LM.eyeB.outer]!.y - FACE[LM.eyeA.outer]!.y);
+    const turned = FACE.map((p, i) => (i === 1 || i === 4 ? { x: p.x + D * 0.1, y: p.y } : p));
+    const r = run("liner").step(frame({ lm: turned }));
+    expect(r.gate.firstFail).toBe("pose_diff");
+    expect(r.gate.text).toBe(GATE_TEXT.turnRight);   // poseOf 로도 이 얼굴은 음수(= 화면 1 기준 "왼쪽으로 돌린" 얼굴) → 오른쪽으로
+    expect(poseOf(turned).yaw).toBeLessThan(poseOf(FACE).yaw);
+  });
 });
