@@ -57,7 +57,7 @@ describe("화면 3", () => {
 
   // #192 완성본 = 쌩얼 정면(촬영 원본 우선) + 개인화 계획 화장 (2-b AR 과 같은 그리기 코드). 그림 합성(WebGL)은 브라우저에서만 — 여기서는 순서만
   const baseline = { lm: Array.from({ length: 478 }, () => ({ x: 10, y: 20 })), unit: { eye: 1, lip: 1, face: 1 }, foreheadL: 60, scleraLab: null,
-    faceShape: { label: "oval" as const, confidence: 0, method: "rule" as const, version: "t" }, bareImage: new Blob(["bare"]), w: 1000, h: 800 };
+    faceShape: { label: "oval" as const, confidence: 0, method: "rule" as const, version: "t" }, bareImage: new Blob(["bare"]), w: 1000, h: 800, expression: null };
   const plan = { tag: "plan" } as unknown as NonNullable<ReturnType<NonNullable<GuideDeps["getPlan"]>>>;
   const flush = () => new Promise((r) => setTimeout(r, 0));
   const original = () => { const c = document.createElement("canvas"); c.width = 2000; c.height = 1600; return c; };

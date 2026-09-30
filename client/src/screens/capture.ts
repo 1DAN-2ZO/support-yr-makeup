@@ -35,6 +35,8 @@ export interface ShotData {
   h: number;
   /** 찍을 때 이마 L*a*b* — 정면 눈 뜸 값이 나머지 장의 밝기·색 조건 기준 */
   forehead: Lab | null;
+  /** 찍을 때 표정 점수 (블렌드셰이프) — 정면 눈 뜸 값이 Baseline.expression (#177) */
+  expr: Record<string, number> | null;
 }
 
 export interface CaptureDeps {
@@ -47,7 +49,7 @@ export interface CaptureDeps {
   /** 얼굴형 판단용 정면 프레임 (F-02). 메모리에만 */
   setFaceShapeFrames: (frames: HTMLCanvasElement[]) => void;
   events: CaptureEvents;
-  /** 4장 뒤 "룩 고르러 가기" 가 가는 곳 */
+  /** 4장 뒤 "화장 고르러 가기" 가 가는 곳 */
   next: ScreenId;
 }
 
@@ -60,7 +62,7 @@ export const CAPTURE_TEXT = {
   doneTitle: "4장 다 찍었어요",
   doneSub: "이상한 장이 있으면 그 장만 다시 찍을 수 있어요",
   retake: "다시 찍기",
-  go: "룩 고르러 가기",
+  go: "화장 고르러 가기",
 } as const;
 
 function isShotData(v: unknown): v is ShotData {
@@ -256,11 +258,13 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
           const m: ShotMeasure = { faceDetected: !!raw, yaw: 0, pitch: 0, closedA: false, closedB: false };
           let lm: Pt[] = [];
           let lab: Lab | undefined;
+          let expr: Record<string, number> | null = null;
           if (raw) {
             if (lostSince !== null) { deps.events.faceLost(now - lostSince); lostSince = null; }
             lm = raw.map((p) => ({ x: p.x * sw, y: p.y * sh }));
             const ang = yawFromLandmarks(lm);
             const bs = new Map((res.faceBlendshapes[0]?.categories ?? []).map((c) => [c.categoryName, c.score]));
+            if (bs.size) expr = Object.fromEntries(bs);
             const yaw = -ang.yaw;   // 화면(거울) 기준
             const fr = foreheadLabOf(video, lm, sw, sh);
             lab = fr?.skin;
@@ -305,16 +309,16 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
           oval.classList.toggle("ready", !!r.gate?.ok);
           hint.hidden = r.hint === null;
           hint.textContent = r.hint ?? "";
-          if (r.take) take(shot, video, lm, sw, sh, lab ?? null);
+          if (r.take) take(shot, video, lm, sw, sh, lab ?? null, expr);
         }
 
-        function take(id: ShotId, video: HTMLVideoElement, lm: Pt[], w: number, h: number, forehead: Lab | null): void {
+        function take(id: ShotId, video: HTMLVideoElement, lm: Pt[], w: number, h: number, forehead: Lab | null, expr: Record<string, number> | null): void {
           busy = true;
           const cv = grabFrame(video);
           flash.hidden = false;
           setTimeout(() => (flash.hidden = true), 250);
           shutterCue(id === "front_closed");
-          const data: ShotData = { cv, lm, w, h, forehead };
+          const data: ShotData = { cv, lm, w, h, forehead, expr };
           if (id === "front_open") setFront(data);
           deps.setShot(id, data);
           deps.events.shot(id, true, null);
@@ -352,7 +356,7 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
       function setFront(d: ShotData): void {
         const g = d.cv.getContext("2d");
         const image = g ? g.getImageData(0, 0, d.cv.width, d.cv.height) : undefined;
-        const input = { lm: d.lm, w: d.w, h: d.h, faceShape: PENDING_FACE_SHAPE, ...(image ? { image: { data: image.data, w: image.width, h: image.height } } : {}) };
+        const input = { lm: d.lm, w: d.w, h: d.h, faceShape: PENDING_FACE_SHAPE, expression: d.expr, ...(image ? { image: { data: image.data, w: image.width, h: image.height } } : {}) };
         const prev = deps.getBaseline();
         if (prev && prev.lm.length) {
           const others: Record<string, Pt[]> = {};

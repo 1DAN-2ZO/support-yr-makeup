@@ -292,6 +292,7 @@ describe("P 세션", () => {
       scleraLab: null,
       faceShape: { label: "oval", confidence: 0.5, method: "rule", version: "faceshape-rule-v1" },
       bareImage: null,
+      expression: { mouthPucker: 0.8 },
       w: 1080,
       h: 1920,
     };
@@ -304,6 +305,7 @@ describe("P 세션", () => {
     expect(d.baseline?.unit.eye).toBe(130);
     expect(d.baseline).not.toHaveProperty("lm");
     expect(d.baseline).not.toHaveProperty("bareImage");
+    expect(d.baseline).not.toHaveProperty("expression");   // 표정은 얼굴 데이터 — draft 에 안 남긴다 (#177)
     expect(d.parts[0]!.captured).toBe(true);
   });
 

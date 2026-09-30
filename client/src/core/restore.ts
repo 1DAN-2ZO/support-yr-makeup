@@ -44,6 +44,8 @@ export function planRestore(draft: SessionDraft | null, now: () => number = Date
     // 확인받기 사진(captured)은 메모리에만 있었다 — 결과·점수는 남는다
     parts: draft.parts.map((p) => ({ ...p, captured: null })),
     startedAt: draft.startedAt,
+    // 화장별 개인화 계획은 draft 에 있다 — 복원 뒤에도 AR·테두리·채점이 같은 계획을 쓴다 (#181). 예전 draft 면 비어 있음
+    plans: draft.plans ?? {},
   };
   return { kind: "resume", session, baseline: draft.baseline! };
 }
@@ -57,13 +59,14 @@ export function toCapture(s: Session, now: () => number = Date.now): Session {
  * draft 의 기준 값(척도·이마·흰자·얼굴형)은 그대로 두고, 쌩얼 사진에서 다시 찾은 랜드마크만 붙인다.
  * 척도를 다시 계산하지 않는 이유: 촬영 때 값으로 이미 채점한 부위가 있으면 복원 뒤에도 같은 기준이어야 한다.
  * 쌩얼 사진은 긴 변 1024 로 줄여 저장했으므로(image-encode) 랜드마크를 촬영 프레임 크기(saved.w·h)로 되돌린다.
+ * 표정(expression)도 draft 에 없으므로 같은 사진에서 다시 잰 값을 쓴다 (#177). 못 쟀으면 null → 화면 4 표정 조건 생략.
  */
 export function rebuildBaseline(
   saved: NonNullable<SessionDraft["baseline"]>,
-  found: { lm: Pt[]; w: number; h: number },
+  found: { lm: Pt[]; w: number; h: number; expression?: Baseline["expression"] },
   bareImage: Baseline["bareImage"],
 ): Baseline {
   const kx = saved.w / found.w, ky = saved.h / found.h;
   const lm = found.lm.map((p) => ({ x: p.x * kx, y: p.y * ky }));
-  return { lm, unit: saved.unit, foreheadL: saved.foreheadL, scleraLab: saved.scleraLab, faceShape: saved.faceShape, bareImage, w: saved.w, h: saved.h };
+  return { lm, unit: saved.unit, foreheadL: saved.foreheadL, scleraLab: saved.scleraLab, faceShape: saved.faceShape, bareImage, w: saved.w, h: saved.h, expression: found.expression ?? null };
 }

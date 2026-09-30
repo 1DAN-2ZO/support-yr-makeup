@@ -32,6 +32,11 @@ export interface Baseline {
   bareImage: Blob | ImageBitmap | null;
   w: number;
   h: number;
+  /**
+   * 맨얼굴 정면 눈 뜸 장의 표정 점수 (MediaPipe 블렌드셰이프 이름 → 0~1). 못 쟀으면 null.
+   * draft 에는 안 남기고 복원 때 쌩얼 사진에서 다시 잰다. 화면 4 표정 게이트(#27)가 쓴다 (#177)
+   */
+  expression: Record<string, number> | null;
 }
 
 /** ⑤ 모델 → ② 가이드 */

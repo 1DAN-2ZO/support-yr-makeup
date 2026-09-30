@@ -68,6 +68,13 @@ describe("similarity / retakeFront (1-11)", () => {
     const p = applyTransform(T, from[61]!);
     expect(p.x).toBeCloseTo(to[61]!.x, 4); expect(p.y).toBeCloseTo(to[61]!.y, 4);
   });
+  it("표정(#177): 정면 장의 블렌드셰이프를 Baseline.expression 에 두고, 정면을 다시 찍으면 새 값으로 바뀐다 · 없으면 null", () => {
+    const first = buildBaseline({ lm: face(), w: 200, h: 240, faceShape: shape, expression: { mouthSmileLeft: 0.1, jawOpen: 0.05 } });
+    expect(first.expression).toEqual({ mouthSmileLeft: 0.1, jawOpen: 0.05 });
+    const r = retakeFront(first, { lm: face(), w: 200, h: 240, faceShape: shape, expression: { mouthPucker: 0.02 } }, {});
+    expect(r.baseline.expression).toEqual({ mouthPucker: 0.02 });
+    expect(buildBaseline({ lm: face(), w: 200, h: 240, faceShape: shape }).expression).toBeNull();
+  });
   it("정면을 다시 찍으면 새 기준 + 나머지 장이 새 좌표계로 옮겨진다", () => {
     const prev = buildBaseline({ lm: face(), w: 200, h: 240, faceShape: shape });
     const others = { left_45: face(1, 0, 0, 0.1), front_closed: face() };

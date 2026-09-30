@@ -20,7 +20,7 @@ const bareIm = image();
 const baseline = (): Baseline => ({
   lm: LMS, unit: { eye: 90, lip: 120, face: 400 }, foreheadL: 70, scleraLab: null,
   faceShape: { label: "oval", confidence: 1, method: "rule", version: "t" },
-  bareImage: new FakeBitmap(bareIm) as unknown as ImageBitmap, w: 600, h: 600,
+  bareImage: new FakeBitmap(bareIm) as unknown as ImageBitmap, w: 600, h: 600, expression: null,
 });
 const bundle = (im: RgbaImage): CaptureBundle => ({
   frames: [new FakeBitmap(im) as unknown as ImageBitmap], pts: [LMS], handOverlap: [null], foreheadL: [70],
