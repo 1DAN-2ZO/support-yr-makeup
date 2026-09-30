@@ -234,17 +234,19 @@ function frame(): void {
     const faceW = Math.abs(pt(lm, FACE_R).x - pt(lm, FACE_L).x);
     const crop = { x: Math.max(0, pt(lm, FACE_L).x - faceW * 0.2), y: Math.max(0, pt(lm, 10).y - faceW * 0.2), w: Math.min(sw, faceW * 1.4), h: Math.min(sh, faceW * 1.8) };
     const yaw = -ang.yaw;
-    const flab = foreheadLabOf(video, lm, sw, sh);
+    const fr = foreheadLabOf(video, lm, sw, sh);
+    const flab = fr?.skin;   // 밝기·색 조건 (앞머리 뺀 피부)
     const foreheadL = flab?.L;
     let fj = { jump: 0, occluded: false };
-    if (flab) {
-      const r = foreheadStep(state.fj, t0, flab, { yaw, pitch: ang.pitch });
+    if (fr?.raw) {   // 가림(급변)은 전체 평균 — 앱과 같은 규칙 (#212 리뷰)
+      const r = foreheadStep(state.fj, t0, fr.raw, { yaw, pitch: ang.pitch });
       state.fj = r.track; fj = r;
       state.fjAll.push(r.jump);
       if (r.occluded) state.fjOccluded += 1;
       state.fjRecent = [...state.fjRecent.filter((x) => t0 - x.t <= 2000), { t: t0, v: r.jump }];
       m.foreheadOccluded = r.occluded;
     }
+    if (!flab) m.foreheadHidden = true;   // 앱과 같은 규칙 — 이마 대부분이 머리카락
     const inset = faceInsetOf(lm, sw, sh);
     Object.assign(m, {
       yaw, pitch: ang.pitch,

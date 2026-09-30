@@ -114,6 +114,7 @@ export const SHOT_TEXT = {
   none: "",
   cut: "얼굴이 잘려요. 얼굴 전체가 보이게 해 주세요",
   occluded: "얼굴을 가리지 말아 주세요",
+  bangs: "앞머리를 넘겨서 이마가 보이게 해 주세요",
   front: "조금만 정면으로",
   left: "고개를 왼쪽으로 조금 더",
   right: "고개를 오른쪽으로 조금 더",
@@ -147,6 +148,8 @@ export interface ShotMeasure {
   faceInset?: number;
   /** 이마가 갑자기 크게 변해 가림으로 본다 (occlusion.ts foreheadStep, 2026-09-23 #144). 없으면 조건 생략 */
   foreheadOccluded?: boolean;
+  /** 얼굴은 잡혔는데 이마 대부분이 머리카락이라 이마 피부를 못 잰다 (color.foreheadLab null, 2026-09-30). 조명 기준을 몰라서 안 찍는다 */
+  foreheadHidden?: boolean;
   /** 눈 폭 px — 두 눈 중 큰 쪽 (45° 장은 먼 눈이 짧아진다). 없으면 조건 생략 */
   eyeWidthPx?: number;
   /** 라플라시안 분산 */
@@ -190,6 +193,7 @@ export function shotGate(shotId: ShotId, m: ShotMeasure, limits: CaptureLimits =
   if (typeof m.faceInset === "number" && m.faceInset < FACE_INSET_MIN) return fail("visible", "cut");
   // 가림 (2026-09-23 #144): 이마 급변. 손 검출 모델 없이 손·머리카락·브러시·마스크를 한 조건으로. 무엇인지는 모른다 → "visible"
   if (m.foreheadOccluded) return fail("visible", "occluded");
+  if (m.foreheadHidden) return fail("visible", "bangs");
   if (m.yaw < shot.yaw[0] || m.yaw > shot.yaw[1]) {
     if (shot.id.startsWith("front")) return fail("angle", "front");
     // 반대로 돌렸을 때 "조금 더" 라고 하면 그쪽으로 더 돌린다 (2026-09-23 iPad: 왼쪽 45° 차례에 yaw +84 까지, 20초)

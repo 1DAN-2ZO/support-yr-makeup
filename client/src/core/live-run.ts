@@ -37,8 +37,10 @@ export interface LiveFrame<I> {
   /** 화면에 실제로 보이는 영역(영상 px, crop.coverView). 없으면 영상 전체 */
   view?: Rect;
   sharpness?: number;
-  /** 이마 L*a*b*. 못 쟀으면 없음 */
+  /** 이마 L*a*b* — 피부만(앞머리 뺌). 밝기·색 조건. 못 쟀으면 없음 */
   lab?: Lab;
+  /** 이마 전체 평균 — 가림(급변) 판정용. 손·브러시가 빠지지 않게 (#212 리뷰). 없으면 lab */
+  rawLab?: Lab;
   /** 지금 표정 (블렌드셰이프 이름 → 0~1). 없으면 표정 조건 생략 */
   expr?: Readonly<Record<string, number>>;
   /** 지금 프레임 사진. 묶음을 모을 때만 부른다 — 프레임마다 복사하면 무겁다 */
@@ -105,8 +107,9 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
         gate = r.gate;
       } else {
         const pose = poseOf(f.lm);
-        if (f.lab) {
-          const o = foreheadStep(fj, f.t, f.lab, pose);
+        const occRef = f.rawLab ?? f.lab;
+        if (occRef) {
+          const o = foreheadStep(fj, f.t, occRef, pose);
           fj = o.track;
           occluded = o.occluded;
         }

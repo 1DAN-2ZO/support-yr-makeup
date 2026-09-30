@@ -271,8 +271,9 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
           const bs = res.faceBlendshapes[0]?.categories;
           if (bs?.length) f.expr = Object.fromEntries(bs.map((c) => [c.categoryName, c.score]));
           f.sharpness = sharpnessOf(video, faceCropOf(lm, sw, sh));
-          const lab = foreheadLabOf(video, lm, sw, sh);
-          if (lab) f.lab = lab;
+          const fr = foreheadLabOf(video, lm, sw, sh);
+          if (fr?.skin) f.lab = fr.skin;
+          if (fr?.raw) f.rawLab = fr.raw;
         }
         const r = run.step(f);
         lastShape = r.outline ? [...r.outline.polys.flat(), ...r.outline.lines.flat()] : lastShape;
