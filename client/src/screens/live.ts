@@ -22,7 +22,7 @@
 
 import type { FaceLandmarker } from "@mediapipe/tasks-vision";
 import type { BundleOf } from "@core/capture-bundle";
-import { cropSpec, type Rect } from "@core/crop";
+import { ROLL_MAX, cropSpec, faceRoll, type Rect } from "@core/crop";
 import { clampRect, createCropFollow, jitterMeter } from "@core/crop-follow";
 import { lookGuide } from "@core/guides";
 import { createLiveEvents } from "@core/live-events";
@@ -32,7 +32,7 @@ import type { LookPart, LookPartId } from "@core/looks";
 import type { GuideSource } from "@core/score-part";
 import type { Outline } from "@core/overlay";
 import type { ScreenId } from "@core/screens";
-import type { Baseline, CaptureBundle, PartId } from "@core/types";
+import type { Baseline, CaptureBundle, PartId, Pt } from "@core/types";
 import { faceCropOf } from "@core/capture-measure";
 import { applyCameraLocks, applyUltraWideZoom, bindVisibility, requestWakeLock, type WakeLockSentinelLike } from "./camera-locks";
 import { foreheadLabOf, grabFrame, sharpnessOf } from "./frame-measure";
@@ -198,6 +198,8 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
       let followAspect = 0;
       let crop: Rect | null = null;
       let lostSince: number | null = null;
+      /** 지난 프레임 테두리 점 — 창을 새로 잡을 때 표준 눈썹 꼬리처럼 얼굴 점 밖으로 나간 선까지 담게 */
+      let lastShape: Pt[] = [];
 
       let alive = true;
       // 정리 함수가 세운다. alive 는 묶음을 넘길 때도 false 가 되므로 "화면을 떠났나" 는 이것으로 본다
@@ -249,9 +251,13 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         // 확대 창: 칸 비율이 바뀌면(방향 전환) 새로 잡는다. 얼굴을 3초 넘게 잃으면 옛 자리에서 미끄러져 오지 않게 새로 (3-9 자리 비움)
         const aspect = view.clientWidth && view.clientHeight ? view.clientWidth / view.clientHeight : 3 / 4;
         if (!follow || Math.abs(aspect - followAspect) > 0.01) { follow = createCropFollow(part!, aspect); followAspect = aspect; }
-        if (lm) {
+        if (lm && faceRoll(lm) > ROLL_MAX) {
+          // 자동 회전이 꺼진 채 폰을 돌려 얼굴이 누웠다 — 확대하지 않고 전체를 보여 준다. 게이트가 "자동 회전" 안내 (#204)
+          crop = null;
+          follow.reset();
+        } else if (lm) {
           lostSince = null;
-          crop = clampRect(stab ? follow.step(lm, now) : cropSpec(part!, lm, aspect), sw, sh);
+          crop = clampRect(stab ? follow.step(lm, now, lastShape) : cropSpec(part!, lm, aspect, lastShape), sw, sh);
         } else {
           lostSince ??= now;
           if (now - lostSince > 3000) follow.reset();
@@ -267,6 +273,7 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
           if (lab) f.lab = lab;
         }
         const r = run.step(f);
+        lastShape = r.outline ? [...r.outline.polys.flat(), ...r.outline.lines.flat()] : lastShape;
         if (poseCal && lm) {
           readout.style.whiteSpace = "pre";
           readout.textContent = poseCal.step(lm, res.facialTransformationMatrixes?.[0]?.data ?? null, f.expr?.["jawOpen"] ?? 0);

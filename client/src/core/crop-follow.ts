@@ -50,14 +50,15 @@ interface Hold {
   t: number;
 }
 
-export function createCropFollow(partId: PartId, aspect: number, opt = CROP_FOLLOW): { step(lm: readonly Pt[], tMs: number): Rect; reset(): void } {
+export function createCropFollow(partId: PartId, aspect: number, opt = CROP_FOLLOW): { step(lm: readonly Pt[], tMs: number, mustShow?: readonly Pt[]): Rect; reset(): void } {
   let h: Hold | null = null;
   return {
-    step(lm, tMs) {
+    /** mustShow: 처음 창을 잡을 때 꼭 담을 점 (표준 눈썹 꼬리 등, cropSpec) — 그 뒤 크기는 눈 사이 거리를 따라간다 */
+    step(lm, tMs, mustShow = []) {
       const an = anchorOf(partId, lm);
       const eyeD = dist(at(lm, LM.eyeA.outer), at(lm, LM.eyeB.outer));
       if (!h) {
-        const raw = cropSpec(partId, lm, aspect);
+        const raw = cropSpec(partId, lm, aspect, mustShow);
         h = { w0: raw.w, eyeD0: eyeD, targetEyeD: eyeD, curEyeD: eyeD, off: { x: raw.x + raw.w / 2 - an.x, y: raw.y + raw.h / 2 - an.y }, target: an, cur: an, t: tMs };
         return raw;
       }
