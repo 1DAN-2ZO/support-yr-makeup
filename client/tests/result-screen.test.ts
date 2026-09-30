@@ -187,6 +187,12 @@ describe("화면 5 — 머리카락 마스크", () => {
     expect(root.querySelector(".result-say")?.textContent).toContain("머리카락");
   });
 
+  it("RH3 마스크가 시간 안에 안 오면(모델 내려받기가 멈춤) 기다리지 않고 마스크 없이 채점한다", async () => {
+    const { root } = setup("liner", image(linerPaint()), { hairMask: () => new Promise(() => {}), hairTimeoutMs: 30 });
+    await scored(root);
+    expect(Number(root.querySelector(".result-num")?.textContent)).toBeGreaterThan(0);
+  });
+
   it("RH2 마스크를 못 만들면(null) 마스크 없이 전처럼 채점한다", async () => {
     const { root } = setup("liner", image(linerPaint()), { hairMask: async () => null });
     await scored(root);

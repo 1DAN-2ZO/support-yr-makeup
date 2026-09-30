@@ -40,7 +40,11 @@ export interface ResultDeps {
    * 앞머리·옆머리 칸을 채점에서 뺀다. 안 주거나 null 이면 전과 같이 (docs/research/hair-skin-2026-09-29)
    */
   hairMask?: (im: RgbaImage) => Promise<HairMask | null>;
+  /** 마스크를 이만큼만 기다린다 (ms). 처음엔 모델을 내려받는데, 폰 네트워크가 멈추면 "채점 중…" 에 영영 서 있게 된다 */
+  hairTimeoutMs?: number;
 }
+
+const HAIR_TIMEOUT_MS = 3000;
 
 const GUIDE_COLOR = "#3FD1C4";
 const INTENSITY: readonly PartId[] = ["shadow", "cheek"];
@@ -86,8 +90,10 @@ export function resultScreen<S>(deps: ResultDeps): Screen<S> {
           if (!alive) return;
           const guide = deps.guide();
           // 머리카락 마스크 — 실패한 장은 null(그 장은 머리카락을 안 뺌). 맨얼굴 것도 같이: 한쪽이라도 가린 칸은 뺀다
+          // 늦으면 기다리지 않는다 — 마스크 없이 채점 (전과 같은 결과)
           const hairOf = deps.hairMask ?? (async () => null);
-          const [bareHair, ...hairs] = await Promise.all([bareIm, ...ims].map((im) => hairOf(im).catch(() => null)));
+          const late = new Promise<null>((r) => setTimeout(() => r(null), deps.hairTimeoutMs ?? HAIR_TIMEOUT_MS));
+          const [bareHair, ...hairs] = await Promise.all([bareIm, ...ims].map((im) => Promise.race([hairOf(im).catch(() => null), late])));
           if (!alive) return;
           const base = frameOf(bareIm, baseline.lm, bareHair ?? undefined);
           const b = scoreBundle(part, base, ims.map((im, i) => ({ im, pts: bundle.pts[i]!, occluded: bundle.handOverlap[i] ?? null, ...(hairs[i] ? { hair: hairs[i] } : {}) })), guide);
