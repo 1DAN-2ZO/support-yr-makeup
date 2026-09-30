@@ -89,10 +89,8 @@ function showUnavailable(): void {
 
 /** 개발 중 서버 주소(VITE_DHE_API)가 없을 때 — 규칙만으로 돈다고 알린다 */
 function showDevRuleOnly(): void {
-  const box = document.createElement("div");
-  box.className = "warn";
-  box.textContent = "개발 모드: VLM 서버 주소(VITE_DHE_API)가 없어 규칙만으로 개인화해요";
-  el("app").prepend(box);
+  // UI 작업 중 화면을 가리지 않게 개발 경고는 콘솔에만 남긴다.
+  console.info("개발 모드: VLM 서버 주소(VITE_DHE_API)가 없어 규칙만으로 개인화해요");
 }
 
 function el(id: string): HTMLElement {
@@ -108,9 +106,11 @@ function showSplash(ms = 3000): Promise<void> {
   const splash = document.createElement("div");
   splash.className = "splash";
   splash.innerHTML = `
-    <div class="splash-logo" aria-label="nudy">
-      <span>nudy</span>
-      <i aria-hidden="true"></i>
+    <div class="splash-frame">
+      <div class="nudy-logo splash-logo" aria-label="nudy">
+        <span>nudy</span>
+        <i aria-hidden="true"></i>
+      </div>
     </div>
   `;
   root.append(splash);
