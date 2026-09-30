@@ -11,7 +11,7 @@
 import scoreRules from "../../../rules/score.json";
 import { unitScale } from "./baseline";
 import type { Lab, RgbaImage } from "./color";
-import { foreheadLab, labAt, meanLabPoly, pointInPoly, rgbToLab } from "./color";
+import { FOREHEAD_POLY, labAt, meanLabPoly, pointInPoly, rgbToLab } from "./color";
 import { LM, at, dist } from "./landmarks";
 import type { LinerStrip, LipStrip, RegionGrid, Side } from "./score";
 import type { Baseline, Pt } from "./types";
@@ -207,7 +207,31 @@ export function sampleRegion(f: SampleFrame, poly: readonly Pt[], side: Side, ha
   return out;
 }
 
-/** 이마 참조 (조명). ① 의 Baseline.foreheadL 과 같은 다각형을 쓴다 */
+/**
+ * 이마 참조 (조명). ① 의 Baseline.foreheadL 과 같은 다각형을 쓰되 **평균 대신 채널별 중앙값** —
+ * 다각형이 머리선 바로 아래라 앞머리가 일부 내려오면 평균이 머리카락 쪽으로 끌려 "조명이 바뀌었다"(확인만)가 됐다.
+ * 이마의 40% 를 가려도 L* 23 차이 → 중앙값은 2 이내 (hair-forehead.test F1, docs/research/hair-skin-2026-09-29 보고서 2번).
+ * 절반 넘게 가리면 중앙값도 머리카락이다 — 그건 머리카락 마스크로 (보고서 3번)
+ */
 export function sampleForehead(f: SampleFrame): Lab | null {
-  return foreheadLab(f.im, f.lm);
+  return medianLabPoly(f.im, FOREHEAD_POLY.map((i) => at(f.lm, i)), 2);
+}
+
+function medianLabPoly(im: RgbaImage, poly: readonly Pt[], step: number): Lab | null {
+  const xs = poly.map((p) => p.x), ys = poly.map((p) => p.y);
+  const L: number[] = [], A: number[] = [], B: number[] = [];
+  for (let y = Math.max(0, Math.floor(Math.min(...ys))); y <= Math.min(im.h - 1, Math.max(...ys)); y += step) {
+    for (let x = Math.max(0, Math.floor(Math.min(...xs))); x <= Math.min(im.w - 1, Math.max(...xs)); x += step) {
+      if (!pointInPoly(x, y, poly)) continue;
+      const lab = labAt(im, x, y);
+      L.push(lab.L); A.push(lab.a); B.push(lab.b);
+    }
+  }
+  if (!L.length) return null;
+  const med = (v: number[]): number => {
+    v.sort((p, q) => p - q);
+    const m = v.length >> 1;
+    return v.length % 2 ? v[m]! : (v[m - 1]! + v[m]!) / 2;
+  };
+  return { L: med(L), a: med(A), b: med(B) };
 }
