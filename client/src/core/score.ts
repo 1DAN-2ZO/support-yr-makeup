@@ -578,7 +578,13 @@ export function toOutcome(partId: PartId, res: PartScore, ctx: DecideContext = {
     diagnosis: oneLiner(partId, d, res.codes),
     checkReason: d.reason,
     lrIndex: res.lrIndex,
-    metrics: res.metrics,
+    // 판정 근거도 같이 — 화면 5 ?tune·로그에서 "왜 확인만인지" 를 숫자로 본다 (2026-09-30 폰 시험: 밝기 차 원인 가리기)
+    metrics: {
+      ...res.metrics,
+      ...(ctx.lightShift !== undefined ? { lightShift: ctx.lightShift } : {}),
+      ...(ctx.hairFrac !== undefined ? { hairFrac: ctx.hairFrac } : {}),
+      ...(ctx.alignResidual !== undefined ? { alignResidual: ctx.alignResidual } : {}),
+    },
   };
 }
 
