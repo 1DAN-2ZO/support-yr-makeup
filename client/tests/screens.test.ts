@@ -47,8 +47,8 @@ describe("화면 방향", () => {
   it("맞으면 안내가 없고, 틀리면 한 줄 나온다", () => {
     expect(orientationHint("liner", "landscape")).toBeNull();
     expect(orientationHint("lip", "portrait")).toBeNull();
-    expect(orientationHint("liner", "portrait")).toBe("가로로 돌리면 더 크게 보여요");
-    expect(orientationHint("lip", "landscape")).toBe("세로로 돌리면 더 잘 보여요");
+    expect(orientationHint("liner", "portrait")).toBe("폰을 가로로 돌리세요");
+    expect(orientationHint("lip", "landscape")).toBe("폰을 세로로 돌리세요");
     expect(orientationHint(null, "landscape")).toBeNull();
   });
 });
