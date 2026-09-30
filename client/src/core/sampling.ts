@@ -112,7 +112,7 @@ export function eyeClosed(lm: readonly Pt[], side: Side): boolean {
  *   1×1 — σ6 부터 맨얼굴 15/15 오채점 · 2×2 — σ10 에서 15/15 · **3×3 — 전부 0, 그린 라이너 ≥91 · 눈썹 ≥94 · 입술 ≥93**
  *   4×4~6×6 — 오채점 0 이지만 가는 라이너가 흐려져 88 → 82
  */
-export const SAMPLE = { boxRatio: scoreRules.sample.boxRatio, hairCut: scoreRules.sample.hairCut };   // 값은 rules/score.json (#44)
+export const SAMPLE = { boxRatio: scoreRules.sample.boxRatio, hairCut: scoreRules.sample.hairCut, foreheadMinSkin: scoreRules.sample.foreheadMinSkin };   // 값은 rules/score.json (#44)
 
 const boxOf = (eyePx: number): number => Math.max(1, Math.round(eyePx * SAMPLE.boxRatio));
 
@@ -240,23 +240,28 @@ export function sampleRegion(f: SampleFrame, poly: readonly Pt[], side: Side, ha
  * 이마 참조 (조명). ① 의 Baseline.foreheadL 과 같은 다각형을 쓰되 **평균 대신 채널별 중앙값** —
  * 다각형이 머리선 바로 아래라 앞머리가 일부 내려오면 평균이 머리카락 쪽으로 끌려 "조명이 바뀌었다"(확인만)가 됐다.
  * 이마의 40% 를 가려도 L* 23 차이 → 중앙값은 2 이내 (hair-forehead.test F1, docs/research/hair-skin-2026-09-29 보고서 2번).
- * 절반 넘게 가리면 중앙값도 머리카락이다 — 그건 머리카락 마스크로 (보고서 3번)
+ * 절반 넘게 가리면 중앙값도 머리카락이다 (폰 시험 2026-09-30) — 머리카락 마스크가 있으면 그 픽셀을 빼고 잰다 (F5).
+ * 남은 이마가 foreheadMinSkin 보다 적으면 null — 조명을 모르는 것이지 바뀐 게 아니다. 채점은 조명 판정을 건너뛴다 (F6)
  */
 export function sampleForehead(f: SampleFrame): Lab | null {
-  return medianLabPoly(f.im, FOREHEAD_POLY.map((i) => at(f.lm, i)), 2);
+  const skip = f.hair ? (x: number, y: number) => isHair(f, x, y) : undefined;
+  return medianLabPoly(f.im, FOREHEAD_POLY.map((i) => at(f.lm, i)), 2, skip, SAMPLE.foreheadMinSkin);
 }
 
-function medianLabPoly(im: RgbaImage, poly: readonly Pt[], step: number): Lab | null {
+function medianLabPoly(im: RgbaImage, poly: readonly Pt[], step: number, skip?: (x: number, y: number) => boolean, minKeep = 0): Lab | null {
   const xs = poly.map((p) => p.x), ys = poly.map((p) => p.y);
   const L: number[] = [], A: number[] = [], B: number[] = [];
+  let total = 0;
   for (let y = Math.max(0, Math.floor(Math.min(...ys))); y <= Math.min(im.h - 1, Math.max(...ys)); y += step) {
     for (let x = Math.max(0, Math.floor(Math.min(...xs))); x <= Math.min(im.w - 1, Math.max(...xs)); x += step) {
       if (!pointInPoly(x, y, poly)) continue;
+      total++;
+      if (skip?.(x, y)) continue;
       const lab = labAt(im, x, y);
       L.push(lab.L); A.push(lab.a); B.push(lab.b);
     }
   }
-  if (!L.length) return null;
+  if (!L.length || L.length < total * minKeep) return null;
   const med = (v: number[]): number => {
     v.sort((p, q) => p - q);
     const m = v.length >> 1;

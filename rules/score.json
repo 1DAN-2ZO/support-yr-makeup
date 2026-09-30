@@ -45,9 +45,10 @@
     "range": 0.022,
     "minGain": 0.1
   },
-  "_sample": "채점 샘플을 눈 폭 × boxRatio 창 평균으로 읽는다 — 카메라 잡음 (#174). hairCut: 머리카락 마스크 확률이 이만큼 넘는 칸·픽셀은 뺀다 (hairMax 넘게 가리면 확인만) — 가정값",
+  "_sample": "채점 샘플을 눈 폭 × boxRatio 창 평균으로 읽는다 — 카메라 잡음 (#174). hairCut: 머리카락 마스크 확률이 이만큼 넘는 칸·픽셀은 뺀다 (hairMax 넘게 가리면 확인만) — 가정값. foreheadMinSkin: 조명 참조 이마에서 머리카락을 빼고 이만큼도 안 남으면 조명 판정을 건너뛴다 — 가정값",
   "sample": {
     "boxRatio": 0.03333333333333333,
-    "hairCut": 0.5
+    "hairCut": 0.5,
+    "foreheadMinSkin": 0.2
   }
 }
