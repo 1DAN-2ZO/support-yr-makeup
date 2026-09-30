@@ -12,6 +12,10 @@ services:
     volumes:
       - ./server:/app/server
 
+    environment:
+      # 배포 프론트(https)에서 이 API를 부를 수 있게 허용 (CORS). 개발용 localhost 도 유지
+      - DHE_CORS_ORIGINS=https://nudy.shelldocs.cloud,http://localhost:5173,http://127.0.0.1:5173,https://localhost:5173,https://127.0.0.1:5173
+
     restart: unless-stopped
 
   front:
