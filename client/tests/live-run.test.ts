@@ -223,4 +223,12 @@ describe("live run", () => {
     expect(run("liner").step(frame({ screen: "portrait" })).gate.text).toBe(GATE_TEXT.toLandscape);
     expect(run("lip").step(frame({ screen: "portrait" })).gate.firstFail).not.toBe("angle");
   });
+
+  it("L23 게이트가 본 측정값을 같이 돌려준다 — 화면 4 ?gate 표시용 (안정 수 포함)", () => {
+    const lr = run();
+    const r = lr.step(frame({ sharpness: 123 }));
+    expect(r.measure?.sharpness).toBe(123);
+    expect(r.measure?.stableCount).toBe(r.gate.stableCount);
+    expect(lr.step(frame({ lm: null })).measure).toBeNull();
+  });
 });

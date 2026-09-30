@@ -13,6 +13,7 @@
  *  - 테두리 선은 live-run 의 One-Euro(④ smoothing.ts). 채점 묶음에는 원래 점
  *  - 개발용: 주소에 `?jitter` 를 붙이면 화면 구석에 화면 흔들림·선 떨림(프레임당 px)이 뜬다(탭하면 0부터).
  *    `?jitter&stab=0` 이면 데드존·One-Euro 를 끈 채로 잰다 → 적용 전후 비교
+ *  - 개발용 `?gate`: 게이트가 본 값을 숫자로 — 선명 값/기준 · 최근 3초 최소·중앙 · 막힌 조건 · 안정 수 · 밝기·각도·표정 (core/gate-readout)
  *  - 개발용 `?pose` (#28): 입을 벌릴 때 기준 각도 차가 흔들리는 원인 가르기 — screens/pose-probe.ts
  *
  * 이벤트(#24): gate_fail · landmark_lost 는 core/live-events (화면 1 과 같은 규칙). screen_enter/leave 는 껍데기가 찍는다.
@@ -26,6 +27,8 @@ import { ROLL_MAX, cropSpec, faceRoll, type Rect } from "@core/crop";
 import { clampRect, createCropFollow, jitterMeter } from "@core/crop-follow";
 import { lookGuide } from "@core/guides";
 import { createLiveEvents } from "@core/live-events";
+import { LIVE_LIMITS } from "@core/gate";
+import { gateReadout, recentStats } from "@core/gate-readout";
 import { createLiveRun, type LiveFrame } from "@core/live-run";
 import type { Logger } from "@core/log";
 import type { LookPart, LookPartId } from "@core/looks";
@@ -169,7 +172,9 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
       const readout = el("p", "live-jitter");
       // #28 보정: [옛 각도 차, k=1 강체 각도 차] 짝 (입 다물었을 때) · 입 벌렸을 때 최대
       const poseCal = q.has("pose") ? createPoseProbe() : null;
-      if (meter || poseCal) {
+      // 개발용 ?gate: 게이트가 본 값(선명 · 막힌 조건 · 안정 수 · 각도 · 표정 …) — 폰 시험에서 왜 안 넘어가는지 숫자로 (2026-09-30)
+      const gateDbg = q.has("gate") ? recentStats(90) : null;
+      if (meter || poseCal || gateDbg) {
         stage.append(readout);
         readout.addEventListener("click", () => {
           meter?.view.reset(); meter?.line.reset();
@@ -277,6 +282,11 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         }
         const r = run.step(f);
         lastShape = r.outline ? [...r.outline.polys.flat(), ...r.outline.lines.flat()] : lastShape;
+        if (gateDbg && r.measure) {
+          if (typeof r.measure.sharpness === "number") gateDbg.push(r.measure.sharpness);
+          readout.style.whiteSpace = "pre";
+          readout.textContent = gateReadout(r.measure, r.gate, LIVE_LIMITS, gateDbg.stats());
+        }
         if (poseCal && lm) {
           readout.style.whiteSpace = "pre";
           readout.textContent = poseCal.step(lm, res.facialTransformationMatrixes?.[0]?.data ?? null, f.expr?.["jawOpen"] ?? 0);

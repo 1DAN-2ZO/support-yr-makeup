@@ -187,6 +187,42 @@ describe("화면 5 — 머리카락 마스크", () => {
     expect(root.querySelector(".result-say")?.textContent).toBe(CHECK_REASON_TEXT.occluded);
   });
 
+  it("RT1 tune 이면 판정 근거 숫자(밝기 차·한계·쓴 장 수)를 한 줄로 보여 준다 — 폰에서 '밝기가 달라요' 원인 가리기", async () => {
+    const { root } = setup("liner", image(linerPaint()), { tune: true });
+    await scored(root);
+    const t = root.querySelector(".result-tune")?.textContent ?? "";
+    expect(t).toContain("밝기 차");
+    expect(t).toContain("한계");
+    expect(t).toContain("장");
+  });
+
+  it("RT3 tune 이면 '채점 사진 저장' — 맨얼굴·확인받기 사진·얼굴 점·결과를 한 파일로 (폰 오채점 재현용)", async () => {
+    const saved: { name: string; text: string }[] = [];
+    const { root } = setup("liner", image(linerPaint()), {
+      tune: true,
+      tuneInfo: () => ({ lookId: "daily" }),
+      toPng: () => "data:image/png;base64,AAA",
+      download: (name, text) => saved.push({ name, text }),
+    });
+    await scored(root);
+    btn(root, "채점 사진 저장 (개발용)").click();
+    expect(saved).toHaveLength(1);
+    expect(saved[0]!.name).toMatch(/^nudy-score-liner-.*\.json$/);
+    const j = JSON.parse(saved[0]!.text);
+    expect(j).toMatchObject({ part: "liner", info: { lookId: "daily" }, bare: { png: "data:image/png;base64,AAA", w: 600, h: 600 } });
+    expect(j.bare.lm).toHaveLength(LMS.length);
+    expect(j.frames).toHaveLength(1);
+    expect(j.frames[0].pts).toHaveLength(LMS.length);
+    expect(j.outcome.decision).toBeDefined();
+  });
+
+  it("RT2 tune 이 아니면 숫자를 안 보여 준다", async () => {
+    const { root } = setup("liner", image(linerPaint()));
+    await scored(root);
+    expect(root.querySelector(".result-tune")).toBeNull();
+    expect([...root.querySelectorAll("button")].some((b) => b.textContent === "채점 사진 저장 (개발용)")).toBe(false);
+  });
+
   it("RH3 마스크가 시간 안에 안 오면(모델 내려받기가 멈춤) 기다리지 않고 마스크 없이 채점한다", async () => {
     const { root } = setup("liner", image(linerPaint()), { hairMask: () => new Promise(() => {}), hairTimeoutMs: 30 });
     await scored(root);
