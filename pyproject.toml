@@ -20,7 +20,7 @@ eval = [
     "pillow>=10.3",
     "opencv-python-headless>=4.10",
 ]
-# 서버 GPU 워커 (Stable-Makeup 환경은 poc/screen2 server-bench README의 conda 절차를 따른다. 여기엔 큐·API만)
+# 서버 (VLM 중간 서버 #180). Stable-Makeup 워커·잡 큐는 2026-09-29 뺐다(#221) — redis·rq 는 지금 안 쓴다(정리는 ④). 옛 실험은 poc/look-tryon/server-bench
 server = [
     "redis>=5.0",
     "rq>=1.16",
