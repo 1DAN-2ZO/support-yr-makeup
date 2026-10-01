@@ -10,6 +10,8 @@ import { LM } from "@core/landmarks";
 import type { Lab } from "@core/color";
 import type { Pt } from "@core/types";
 import { LMS, W, H } from "./helpers/synth-face";
+import { LandmarkSmoother } from "@core/smoothing";
+import { SMOOTH } from "@core/smooth-params";
 
 // 합성 얼굴은 턱(152)이 가운데라 고개를 숙인 것으로 잰다 → 턱을 내려 정면으로
 const FACE: Pt[] = LMS.map((p, i) => (i === LM.chin ? { x: 300, y: 464 } : p));
@@ -26,6 +28,12 @@ const frame = (over: Partial<LiveFrame<string>> = {}): LiveFrame<string> => {
   return { t, lm: FACE, w: W, h: H, sharpness: 400, lab: SKIN, image: () => `img${t}`, ...over };
 };
 
+/** 코끝이 이미지 오른쪽으로 눈꼬리 거리의 f 배 — 0.11 이면 강체 yaw 약 13.6° (차 한계 12°, 정면 한계 15° 안), 0.13 이면 약 16° (정면 한계도 넘음) */
+const turnedFace = (f: number): Pt[] => {
+  const D = Math.hypot(FACE[LM.eyeB.outer]!.x - FACE[LM.eyeA.outer]!.x, FACE[LM.eyeB.outer]!.y - FACE[LM.eyeA.outer]!.y);
+  return FACE.map((p, i) => (i === 1 || i === 4 ? { x: p.x + D * f, y: p.y } : p));
+};
+
 describe("live run", () => {
   it("L1 얼굴이 없으면 테두리도 문구도 없다 (정의서 3-9)", () => {
     const r = run().step(frame({ lm: null }));
@@ -34,7 +42,7 @@ describe("live run", () => {
     expect(r.gate.text).toBe("");
   });
 
-  it("L2 다 맞는 프레임 5개째에 '확인받을 준비 됨', 테두리는 첫 프레임부터", () => {
+  it("L2 다 맞는 프레임 2개째에 '확인받을 준비 됨' (#235, 5 에서 완화), 테두리는 첫 프레임부터", () => {
     const lr = run();
     const oks: boolean[] = [];
     for (let i = 0; i < 5; i++) {
@@ -42,7 +50,7 @@ describe("live run", () => {
       expect(r.outline).not.toBeNull();
       oks.push(r.gate.ok);
     }
-    expect(oks).toEqual([false, false, false, false, true]);
+    expect(oks).toEqual([false, true, true, true, true]);
   });
 
   it("L3 라이너 테두리 = 두께 윤곽(linerOutline) 좌우 두 다각형", () => {
@@ -125,14 +133,14 @@ describe("live run", () => {
     lr.step(frame({ image: () => `g${++grabs}` }));
     expect(grabs).toBe(1);
   });
-  it("L12 묶음을 낸 직후에는 다시 5프레임 통과해야 누를 수 있다 (연달아 두 번 찍히지 않게)", () => {
+  it("L12 묶음을 낸 직후에는 다시 안정 프레임 수만큼 통과해야 누를 수 있다 (연달아 두 번 찍히지 않게)", () => {
     const lr = run();
     for (let i = 0; i < 5; i++) lr.step(frame());
     lr.press();
     for (let i = 0; i < 5; i++) lr.step(frame());
     lr.step(frame());
     expect(lr.press()).toBe(false);
-    for (let i = 0; i < 4; i++) lr.step(frame());
+    lr.step(frame());
     expect(lr.press()).toBe(true);
   });
 
@@ -172,6 +180,25 @@ describe("live run", () => {
     };
     expect(spread(false)).toBeCloseTo(6, 6);
     expect(spread(true)).toBeLessThan(6 * 0.5);
+  });
+
+  it("L30 테두리 떨림 필터는 2-b AR 과 같은 값(SMOOTH 4 · 0.3) — 옛 기본값(2.5 · 0.08)은 움직일 때 늦게 따라왔다 (#235 · #244)", () => {
+    const lr = createLiveRun<string>({ partId: "lip", baseline: { lm: FACE, foreheadL: SKIN.L }, guide: lookGuide({}) });
+    const ref = new LandmarkSmoother(Array.from({ length: 478 }, (_, i) => i), SMOOTH);
+    const old = new LandmarkSmoother(Array.from({ length: 478 }, (_, i) => i));
+    const i0 = LM.lipsOuter[0]!;
+    let got = 0, want = 0, slow = 0;
+    // 가만히 있다가 30px 움직인다
+    for (let k = 0; k < 12; k++) {
+      const lm = k < 8 ? FACE : FACE.map((p) => ({ x: p.x + 30, y: p.y }));
+      const f = frame({ lm });
+      got = lr.step(f).outline!.polys[0]![0]!.x;
+      want = ref.smooth(lm, f.t)![i0]!.x;
+      slow = old.smooth(lm, f.t)![i0]!.x;
+    }
+    expect(got).toBeCloseTo(want, 6);
+    expect(got).toBeGreaterThan(slow);
+    expect(lr.smoother).not.toBeNull();
   });
 
   it("L17 채점으로 넘기는 묶음에는 필터 안 건 원래 점 (필터가 채점을 흔들지 않게)", () => {
@@ -232,10 +259,74 @@ describe("live run", () => {
     expect(lr.step(frame({ lm: null })).measure).toBeNull();
   });
 
+  /** over 를 ms 동안 넣는다 — 프레임마다 결과 */
+  const hold = (lr: ReturnType<typeof run>, ms: number, over: Partial<LiveFrame<string>>) => {
+    const end = clock + ms;
+    const out = [];
+    while (clock < end) out.push(lr.step(frame(over)));
+    return out;
+  };
+
+  it("L25 각도 차로 3초 넘게 막히면 확인받기가 켜진다 — 문구는 안내 그대로, 판단은 채점에 맡긴다 (#235)", () => {
+    expect(LIVE_LIMITS.softMs).toBe(3000);
+    const lr = run("liner");
+    const turned = { lm: turnedFace(0.11) };
+    const early = hold(lr, 2900, turned);
+    expect(early.every((r) => !r.pressable && r.gate.firstFail === "pose_diff")).toBe(true);
+    expect(lr.press()).toBe(false);
+    const late = hold(lr, 200, turned).at(-1)!;
+    expect(late.pressable).toBe(true);
+    expect(late.gate.ok).toBe(false);
+    expect(late.gate.text).toBe(GATE_TEXT.turnRight);
+    expect(lr.press()).toBe(true);
+    // 누르면 각도 차가 있어도 묶음을 모은다 — 채점이 정렬하거나 확인만으로
+    const states = hold(lr, 33 * 5, turned).map((r) => r.bundle?.status);
+    expect(states.at(-1)).toBe("done");
+  });
+
+  it("L26 찍어도 채점 못 하는 사진(얼굴 없음·가로 돌리기·부위 밖·가림·밝기)은 3초가 지나도 안 켜진다", () => {
+    const cases: Partial<LiveFrame<string>>[] = [
+      { lm: null },
+      { screen: "portrait" },
+      { view: { x: 0, y: 0, w: 10, h: 10 } },
+      { lab: HAND },
+      { lab: { L: 95, a: 12, b: 16 } },
+    ];
+    for (const over of cases) {
+      const lr = run("liner");
+      lr.step(frame());
+      const rs = hold(lr, 4000, over);
+      expect(rs.some((r) => r.pressable), JSON.stringify(over)).toBe(false);
+      expect(lr.press()).toBe(false);
+    }
+  });
+
+  it("L27 그 사이 못 찍는 조건이 끼면 3초를 처음부터 센다", () => {
+    const lr = run("liner");
+    const turned = { lm: turnedFace(0.11) };
+    hold(lr, 2000, turned);
+    lr.step(frame({ lm: null }));
+    expect(hold(lr, 2000, turned).some((r) => r.pressable)).toBe(false);
+    expect(hold(lr, 1100, turned).at(-1)!.pressable).toBe(true);
+  });
+
+  it("L28 기다려도 되는 조건끼리 바뀌면(각도 차 → 정면 각도) 이어서 센다", () => {
+    const lr = run("liner");
+    hold(lr, 2000, { lm: turnedFace(0.11) });
+    const rs = hold(lr, 1100, { lm: turnedFace(0.13) });
+    expect(rs[0]!.gate.firstFail).toBe("angle");
+    expect(rs.at(-1)!.pressable).toBe(true);
+  });
+
+  it("L29 통과하면 바로 누를 수 있다 (pressable = 통과 또는 3초 기다림)", () => {
+    const lr = run("liner");
+    const rs = [lr.step(frame()), lr.step(frame())];
+    expect(rs.map((r) => r.pressable)).toEqual([false, true]);
+    expect(rs.map((r) => r.gate.ok)).toEqual([false, true]);
+  });
+
   it("L24 폰을 가로로 들면 카메라가 옆이라 얼굴이 돌아간 것으로 찍힌다 — 기준 각도 차를 '오른쪽/왼쪽으로 돌려' 로 알려 준다 (폰 시험 2026-09-30)", () => {
-    // 코끝이 이미지 오른쪽으로 눈꼬리 거리의 10% — 강체 yaw 약 12° (한계 8°)
-    const D = Math.hypot(FACE[LM.eyeB.outer]!.x - FACE[LM.eyeA.outer]!.x, FACE[LM.eyeB.outer]!.y - FACE[LM.eyeA.outer]!.y);
-    const turned = FACE.map((p, i) => (i === 1 || i === 4 ? { x: p.x + D * 0.1, y: p.y } : p));
+    const turned = turnedFace(0.11);
     const r = run("liner").step(frame({ lm: turned }));
     expect(r.gate.firstFail).toBe("pose_diff");
     expect(r.gate.text).toBe(GATE_TEXT.turnRight);   // poseOf 로도 이 얼굴은 음수(= 화면 1 기준 "왼쪽으로 돌린" 얼굴) → 오른쪽으로

@@ -15,12 +15,13 @@ import { faceRoll } from "./crop";
 import type { Rect } from "./crop";
 import { createBundleCollector, type BundleState } from "./capture-bundle";
 import { exprDiff } from "./expression";
-import { gateStep, rigidPoseDiff, type LiveLimits, LIVE_LIMITS, livePose, type LiveMeasure } from "./gate";
+import { gateStep, rigidPoseDiff, softFail, type LiveLimits, LIVE_LIMITS, livePose, type LiveMeasure } from "./gate";
 import { linerOutline, GUIDE_PARAMS } from "./guides";
 import { partInRect } from "./landmarks";
 import { foreheadStep, startForeheadTrack, type ForeheadTrack } from "./occlusion";
 import { guideOutline, type Outline } from "./overlay";
 import type { GuideSource } from "./score-part";
+import { SMOOTH } from "./smooth-params";
 import { LandmarkSmoother } from "./smoothing";
 import type { GateResult, PartId, Pt } from "./types";
 
@@ -57,7 +58,7 @@ export interface LiveRunOptions {
   baseExpr?: Readonly<Record<string, number>> | null;
   /** 테두리 모양. 채점과 같은 것 */
   guide: GuideSource;
-  /** 테두리를 그릴 점에 One-Euro(④ smoothing.ts)를 건다. 기본 켬 — 떨림 비교(#23)용으로 끌 수 있다 */
+  /** 테두리를 그릴 점에 One-Euro(④ smoothing.ts, 값은 2-b 와 같은 SMOOTH)를 건다. 기본 켬 — 떨림 비교(#23)용으로 끌 수 있다 */
   smooth?: boolean;
   limits?: LiveLimits;
 }
@@ -70,6 +71,11 @@ export interface LiveStep<I> {
   bundle: BundleState<I> | null;
   /** 게이트가 본 측정값(안정 수 포함) — 화면 4 개발용 ?gate 표시. 얼굴이 없으면 null */
   measure: LiveMeasure | null;
+  /**
+   * 확인받기를 누를 수 있나 = 게이트 통과, 또는 기다리면 되는 조건(softFail: 정면 각도·기준 각도 차·안정)에 softMs(3초) 넘게 막힘 (#235).
+   * 뒤의 경우 문구는 게이트 안내 그대로 두고 판단은 채점에 맡긴다
+   */
+  pressable: boolean;
 }
 
 /** 합성 없이 모양만 부를 때 넘기는 빈 이미지 — guides.ts 는 랜드마크와 기준 길이만 본다 */
@@ -88,16 +94,21 @@ export function outlineOf(partId: PartId, lm: readonly Pt[], guide: GuideSource)
 
 const optExpr = (d: number | undefined): { exprDiff?: number } => (d === undefined ? {} : { exprDiff: d });
 
-export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): LiveStep<I>; press(): boolean } {
+export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): LiveStep<I>; press(): boolean; readonly smoother: LandmarkSmoother | null } {
   const limits = opt.limits ?? LIVE_LIMITS;
   let stable = 0;
   let fj: ForeheadTrack = startForeheadTrack();
-  let lastOk = false;
+  let lastPressable = false;
+  /** 기다리면 되는 조건에 막히기 시작한 시각. 통과하거나 못 찍는 조건이 끼면 null */
+  let softSince: number | null = null;
   let collector: ReturnType<typeof createBundleCollector<I>> | null = null;
-  // 그리기 전용. 게이트·묶음(채점)에는 원래 점을 쓴다 — 필터 지연이 채점 위치를 끌고 가지 않게
-  const smoother = opt.smooth === false ? null : new LandmarkSmoother(Array.from({ length: 478 }, (_, i) => i));
+  // 그리기 전용. 게이트·묶음(채점)에는 원래 점을 쓴다 — 필터 지연이 채점 위치를 끌고 가지 않게.
+  // 값은 2-b AR 과 같게 (#235: ④ 기본값 2.5·0.08 은 라이너 테두리가 늦게 따라와 눈알 위에 박혔다)
+  const smoother = opt.smooth === false ? null : new LandmarkSmoother(Array.from({ length: 478 }, (_, i) => i), SMOOTH);
 
   return {
+    /** 화면 4 개발용 ?tune 슬라이더가 값을 바꾼다 */
+    smoother,
     step(f) {
       let gate: GateResult;
       let measure: LiveMeasure | null = null;
@@ -135,22 +146,26 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
         measure = { ...m, stableCount: r.stable };
         outline = outlineOf(opt.partId, smoother?.smooth(f.lm, f.t) ?? f.lm, opt.guide);
       }
-      lastOk = gate.ok;
+      if (gate.ok || !softFail(gate)) softSince = null;
+      else softSince ??= f.t;
+      let pressable = gate.ok || (softSince !== null && f.t - softSince >= limits.softMs);
 
       let bundle: BundleState<I> | null = null;
       if (collector) {
         bundle = collector.push({ image: f.image(), lm: f.lm, handOverlap: occluded, foreheadL: f.lab?.L ?? null, t: f.t });
         if (bundle.status !== "collecting") {
           collector = null;
-          // 한 묶음이 끝나면 처음부터 다시 통과해야 한다 (실패 뒤 곧바로 또 눌리지 않게)
+          // 한 묶음이 끝나면 처음부터 다시 통과해야 한다 (실패 뒤 곧바로 또 눌리지 않게) — 3초 기다림도 처음부터
           stable = 0;
-          lastOk = false;
+          softSince = null;
+          pressable = false;
         }
       }
-      return { gate, outline, bundle, measure };
+      lastPressable = pressable;
+      return { gate, outline, bundle, measure, pressable };
     },
     press() {
-      if (!lastOk || collector) return false;
+      if (!lastPressable || collector) return false;
       collector = createBundleCollector<I>();
       return true;
     },
