@@ -36,17 +36,17 @@ describe("라이너 개인화 — 규칙", () => {
     expect(planLiner(measure(-3))).toEqual({ style: "extend", reason: "down_correct" });
   });
 
-  it("처진 눈 = 눈꼬리 기울기가 기준(4°)보다 작은 눈 — 사람 표시로 맞춘 값 (평균보다 덜 올라간 눈)", () => {
-    expect(DROOP_TILT_DEG).toBe(4);
-    expect(planLiner(measure(4.5)).style).toBe("winged");
-    expect(planLiner(measure(4)).style).toBe("winged");
-    expect(planLiner(measure(3.5)).style).toBe("extend");
+  it("처진 눈 = 눈꼬리 기울기가 기준(5°)보다 작은 눈 — Lee 2020 class I(0~5°) 경계 (평균보다 덜 올라간 눈)", () => {
+    expect(DROOP_TILT_DEG).toBe(5);
+    expect(planLiner(measure(5.5)).style).toBe("winged");
+    expect(planLiner(measure(5)).style).toBe("winged");
+    expect(planLiner(measure(4.5)).style).toBe("extend");
     expect(planLiner(measure(2.3)).style).toBe("extend");   // ea_021189 — 사람이 처진 눈으로 표시
   });
 
   it("두 눈을 평균해 한 스타일을 정한다 — 좌우가 다르게 그려지지 않게", () => {
-    expect(planLiner(measure(10, -1)).style).toBe("winged");   // 평균 4.5°
-    expect(planLiner(measure(6, 0)).style).toBe("extend");     // 평균 3°
+    expect(planLiner(measure(12, -1)).style).toBe("winged");   // 평균 5.5°
+    expect(planLiner(measure(8, 0)).style).toBe("extend");     // 평균 4°
   });
 });
 
