@@ -698,6 +698,9 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   z-index: 100;
   display: grid;
   place-items: center;
+  /* 다른 화면과 같은 폰 폭 안에 가둔다 (#app 과 동일 식) */
+  width: min(100vw, calc(100dvh * 941 / 1672), 430px);
+  margin: 0 auto;
   background: #f7f7f7;
   color: #eba0aa;
   animation: splash-in 520ms ease-out both;
@@ -749,7 +752,7 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   left: 0;
   transform: rotate(45deg);
 }
-.splash-logo { font-size: clamp(60px, 17vw, 96px); }
+.splash-logo { font-size: 72px; }
 
 /* 화면 안의 작은 로고 — .nudy-logo 기본값(큰 로고) 뒤에 와야 먹는다 */
 .looks-logo,
