@@ -97,4 +97,19 @@ describe("결과 모양 — 라이너 띠 (어두운 띠의 두께 · 꼬리)", 
     expect(b.wingCoverage).toBeLessThan(0.15);
     expect(b.lidCoverage).toBeGreaterThan(0.5);   // 속눈썹 선은 '있는 것' 으로 잡힌다 (결과 모양은 타고난 것을 포함)
   });
+
+  it("B4 눈꼬리 바깥이 눈꺼풀보다 어두워도(얼굴 굴곡 그늘) 꼬리로 읽지 않는다 — 줄마다 그 줄의 바깥 칸과 비교", () => {
+    // FFHQ 맨얼굴 20명 중 19명이 꼬리 100% 로 나왔다 (2026-10-01): 기준 피부를 띠 전체에서 하나로 잡아서
+    const outerX = Math.min(...LM.eyeA.upper.map((i) => P(i).x));
+    const shade: Paint = (x) => (x < outerX - 2 ? [170, 125, 100] : null);   // 눈꼬리 밖 전체가 고르게 어두움 (선이 아니다)
+    const b = band(frame(shade));
+    expect(b.wingCoverage).toBeLessThan(0.15);
+  });
+
+  it("B5 그늘 위에 그린 꼬리는 잡는다", () => {
+    const outerX = Math.min(...LM.eyeA.upper.map((i) => P(i).x));
+    const liner = linerPaint();
+    const shaded: Paint = (x, y) => liner(x, y) ?? (x < outerX - 2 ? [170, 125, 100] : null);
+    expect(band(frame(shaded)).wingCoverage).toBeGreaterThan(0.7);
+  });
 });

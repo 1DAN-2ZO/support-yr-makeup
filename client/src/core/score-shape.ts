@@ -150,17 +150,25 @@ export interface LinerBand {
   wingCoverage: number;
 }
 
-/** 라이너 띠 샘플(sampleLiner) 한 장에서 두께·꼬리를 잰다. 기준 피부는 띠의 맨 위 칸들(눈꺼풀 피부) */
+/**
+ * 라이너 띠 샘플(sampleLiner) 한 장에서 두께·꼬리를 잰다.
+ * 기준 피부는 **줄마다 그 줄의 바깥쪽 칸**(선에서 먼 칸) — 띠 전체에서 하나로 잡으면 눈꼬리 바깥의 그늘(얼굴 굴곡)을
+ * 꼬리로 읽는다 (FFHQ 맨얼굴 20명 중 19명이 꼬리 100%). 눈꺼풀 줄은 위쪽 칸만(아래는 눈알), 꼬리 줄은 위아래 양쪽.
+ */
 export function linerBand(strip: LinerStrip, darkL = SHAPE_FILL.darkL): LinerBand {
   const { offs, isWing, thick } = strip.meta, step = offs.length > 1 ? offs[1]! - offs[0]! : 0;
-  const top = strip.lab.flatMap((row) => row.filter((_, j) => (offs[j] ?? 0) >= offs[offs.length - 1]! - 2 * step));
-  if (!top.length) return { thickness: 0, lidCoverage: 0, wingCoverage: 0 };
-  const skinL = medianOf(top.map((c) => c.L));
-  const dark = (c: Lab): boolean => skinL - c.L >= darkL;
+  const far = offs[offs.length - 1]! - 3 * step;   // 선에서 먼 칸 (맨 끝 세 칸)
   const widths: number[] = [];
   let lidRows = 0, lidHit = 0, wingRows = 0, wingHit = 0;
   strip.lab.forEach((row, i) => {
-    if (isWing[i]) {
+    const wing = !!isWing[i];
+    const up = row.filter((_, j) => (offs[j] ?? 0) >= far).map((c) => c.L);
+    const down = wing ? row.filter((_, j) => (offs[j] ?? 0) <= -far).map((c) => c.L) : [];
+    if (!up.length) return;
+    // 선은 양쪽 모두보다 어두워야 한다 — 꼬리 줄은 위·아래 중 더 어두운 쪽이 기준 (그늘 경계에 걸친 줄을 선으로 읽지 않게)
+    const skinL = down.length ? Math.min(medianOf(up), medianOf(down)) : medianOf(up);
+    const dark = (c: Lab): boolean => skinL - c.L >= darkL;
+    if (wing) {
       // 꼬리의 앞 20% 는 뺀다 — 눈꼬리에 붙은 속눈썹 끝이 걸린다
       if ((strip.meta.tFromCorner[i] ?? 0) < strip.meta.wingLen * 0.2) return;
       wingRows++;
