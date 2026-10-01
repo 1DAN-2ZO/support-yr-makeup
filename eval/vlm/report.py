@@ -422,24 +422,37 @@ HAIR_INDEX = 1
 
 
 def hair_masks(faces: list[dict]) -> dict[str, dict]:
-    """사진마다 머리카락 확률 마스크 → {id: {w, h, b64}} (0~255 한 바이트 — 앱 hairBytes 와 같은 양자화)"""
+    """사진마다 머리카락 확률 마스크 → {id: {w, h, b64}} (0~255 한 바이트 — 앱 hairBytes 와 같은 양자화)
+
+    mediapipe 가 없거나(vlm 묶음을 안 깐 곳 — CI 는 dev·eval 만 깐다) 모델을 못 받으면 빈 사전을 돌려준다.
+    평가지는 머리카락 가림 없이 그려진다 (sheet_page 가 마스크 없는 사진을 그대로 그린다).
+    2026-10-01: 이 가드가 없어 #258 뒤로 main CI 가 빨갰다 (로컬은 vlm 묶음이 깔려 있어 통과)
+    """
     import base64  # noqa: PLC0415
     import urllib.request  # noqa: PLC0415
 
-    import mediapipe as mp  # noqa: PLC0415
-    import numpy as np  # noqa: PLC0415
-    from mediapipe.tasks.python import BaseOptions  # noqa: PLC0415
-    from mediapipe.tasks.python.vision import (  # noqa: PLC0415
-        ImageSegmenter,
-        ImageSegmenterOptions,
-        RunningMode,
-    )
+    try:
+        import mediapipe as mp  # noqa: PLC0415
+        import numpy as np  # noqa: PLC0415
+        from mediapipe.tasks.python import BaseOptions  # noqa: PLC0415
+        from mediapipe.tasks.python.vision import (  # noqa: PLC0415
+            ImageSegmenter,
+            ImageSegmenterOptions,
+            RunningMode,
+        )
+    except ImportError:
+        print("mediapipe 가 없어 머리카락 가림 없이 그립니다 (uv run --extra vlm)", file=sys.stderr)
+        return {}
     from PIL import Image  # noqa: PLC0415
 
     model = data_dir() / "models" / "hair_segmenter.tflite"
     if not model.exists():
         model.parent.mkdir(parents=True, exist_ok=True)
-        urllib.request.urlretrieve(HAIR_MODEL_URL, model)
+        try:
+            urllib.request.urlretrieve(HAIR_MODEL_URL, model)
+        except OSError as e:
+            print(f"머리카락 모델을 못 받아 가림 없이 그립니다: {e}", file=sys.stderr)
+            return {}
     opts = ImageSegmenterOptions(
         base_options=BaseOptions(model_asset_path=str(model)),
         running_mode=RunningMode.IMAGE,

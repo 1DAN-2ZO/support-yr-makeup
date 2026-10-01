@@ -125,7 +125,7 @@ def test_ef_schema_offers_only_values_the_gate_accepts():
     m = core([{"op": "measure", "lm": LM}])[0]
     m["lip"]["upperLowerRatio"] = 0.9  # 목표(0.8) 이상 → 오버라인은 0 만
     for e in ("R", "L"):
-        m["eye"][e]["alphaDeg"], m["eye"][e]["betaDeg"] = 30, 30  # 처진 눈 아님 → drop 없음
+        m["eye"][e]["tiltDeg"] = 8  # 눈꼬리가 올라간 눈 = 처진 눈 아님 → drop 없음 (판정은 기울기, α·β 아님)
     s, p = core(
         [{"op": "schema", "variant": "E", "m": m}, {"op": "prompt", "m": m, "look": "daily", "variant": "E"}]
     )
