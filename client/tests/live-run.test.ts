@@ -249,8 +249,9 @@ describe("live run", () => {
     expect(run("liner").step(frame({ lm: lying, screen: "portrait" })).gate.text).toBe(GATE_TEXT.autoRotate);
   });
 
-  it("L21 눈 부위를 세로 화면에서 하면 '가로로 돌려' 로 막는다 — 화면이 넘긴 방향으로 (팀 협의)", () => {
+  it("L21 눈 부위를 세로 화면에서 하면 '가로로 돌려', 입술을 가로에서 하면 '세로로 돌려' 로 막는다 — 화면이 넘긴 방향으로 (팀 협의)", () => {
     expect(run("liner").step(frame({ screen: "portrait" })).gate.text).toBe(GATE_TEXT.toLandscape);
+    expect(run("lip").step(frame({ screen: "landscape" })).gate.text).toBe(GATE_TEXT.toPortrait);
     expect(run("lip").step(frame({ screen: "portrait" })).gate.firstFail).not.toBe("angle");
   });
 

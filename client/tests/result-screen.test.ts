@@ -9,7 +9,7 @@ import { createLogger, memorySink } from "@core/log";
 import { CHECK_REASON_TEXT, hasDigit } from "@core/score";
 import type { Baseline, CaptureBundle, PartId, Versions } from "@core/types";
 import { resultScreen, type ResultDeps } from "@screens/result";
-import { ROTATE_TEXT } from "@core/orientation-lock";
+import { rotateText } from "@core/orientation-lock";
 import type { ScreenContext } from "@screens/shell";
 import { LMS, SHADE, guide, image, linerPaint, naturalPaint, over, regionPaint } from "./helpers/synth-face";
 
@@ -264,21 +264,30 @@ describe("화면 5 — 머리카락 마스크", () => {
 });
 
 // 눈 부위는 화면 5 도 가로에서만 (팀 협의 2026-09-30) — 세로면 채점도 안 돌리고 안내만
-describe("화면 5 가로 잠금", () => {
+describe("화면 5 방향 잠금", () => {
   it("RL1 라이너를 세로로 보면 '가로로 돌려 주세요' 만, 채점(사진 읽기)은 안 한다", async () => {
     const toRgba = vi.fn(async (src: ImageBitmap | Blob) => (src as unknown as FakeBitmap).im);
     const { root } = setup("liner", image(linerPaint()), { orientation: () => "portrait", toRgba });
     await new Promise((r) => setTimeout(r, 0));
-    expect(root.textContent).toContain(ROTATE_TEXT);
+    expect(root.textContent).toContain(rotateText("liner"));
     expect(toRgba).not.toHaveBeenCalled();
     expect(root.querySelectorAll("button")).toHaveLength(0);
   });
 
-  it("RL2 입술은 세로로 봐도 채점한다", async () => {
+  it("RL2 입술은 세로로 보면 채점한다", async () => {
     const toRgba = vi.fn(async (src: ImageBitmap | Blob) => (src as unknown as FakeBitmap).im);
     const { root } = setup("lip", image(), { orientation: () => "portrait", toRgba });
     await new Promise((r) => setTimeout(r, 0));
-    expect(root.textContent).not.toContain(ROTATE_TEXT);
+    expect(root.textContent).not.toContain(rotateText("lip"));
     expect(toRgba).toHaveBeenCalled();
+  });
+
+  it("RL3 입술을 가로로 보면 '세로로 돌려 주세요' 만, 채점은 안 한다 (2026-10-01)", async () => {
+    const toRgba = vi.fn(async (src: ImageBitmap | Blob) => (src as unknown as FakeBitmap).im);
+    const { root } = setup("lip", image(), { orientation: () => "landscape", toRgba });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(root.textContent).toContain(rotateText("lip"));
+    expect(toRgba).not.toHaveBeenCalled();
+    expect(root.querySelectorAll("button")).toHaveLength(0);
   });
 });
