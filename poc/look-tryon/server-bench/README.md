@@ -32,7 +32,7 @@
 
 ### 정체성 유지 / 화장 반영 정도 (육안 평가)
 
-샘플 이미지: [`results/`](results/) (`*_source.jpg`, `*_reference.jpg`, `*_sample.jpg`).
+샘플 이미지(`*_source.jpg`, `*_reference.jpg`, `*_sample.jpg`)는 **저장소에서 뺐다** (2026-10-01, #118). 두 저장소에 딸려 온 실존 인물 얼굴 사진과 그 결과물이고, SHMT 는 비상업 라이선스라 공개물에 실을 수 없다. 숫자는 위 표와 CSV 에, 눈으로 본 결과는 아래 글에 남아 있다. `bench.py` 를 돌리면 `results/` 에 다시 생기지만 커밋되지 않는다 (`.gitignore`). 옛 커밋에는 남아 있으니 저장소를 공개할 때 따로 정한다.
 
 - **Stable-Makeup**: 저장소 번들 샘플(인물 사진 + 조커 페이스페인팅 참조)로 테스트. fp32와 fp16+8step 결과가 육안상 거의 구분 안 될 만큼 동일 — 헤어스타일·얼굴형·표정 등 정체성이 원본과 그대로 유지되고, 극단적인 페이스페인팅 스타일도 색상·형태가 정확히 전이됨. step을 8까지 줄여도 눈에 띄는 품질 저하는 없었다(다만 매우 heavy한 이 예시 하나만으로 일반화하기는 이름).
 - **SHMT**: 저장소 번들 샘플(여성 인물 + 블루 아이섀도우·레드 립 참조)로 테스트. h0/h4 모두 정체성이 잘 유지되고, 아이섀도우 색상·립 컬러가 자연스럽게 전이됨. h4(recommended)가 h0보다 경계 블렌딩이 약간 더 매끄러움. 256×256 해상도라 Stable-Makeup(512×512)보다 디테일은 떨어짐 — 실제 서비스에 쓰려면 업스케일 단계가 별도로 필요.
@@ -167,7 +167,7 @@ conda run -n makeup-bench-shmt python bench.py --candidate shmt --variant h4 --s
 server-bench/
   stable_makeup/   # git clone (gitignored, 로컬에만 존재)
   shmt/             # git clone (gitignored, 로컬에만 존재)
-  results/          # 샘플 이미지 + results.csv (커밋됨)
+  results/          # results.csv (커밋됨). 샘플 이미지는 돌리면 여기 생기지만 커밋하지 않는다 (gitignored, #118)
   bench.py          # 측정 하네스
   identity.py       # 얼굴 임베딩 코사인(facenet-pytorch)
   README.md         # 이 파일
