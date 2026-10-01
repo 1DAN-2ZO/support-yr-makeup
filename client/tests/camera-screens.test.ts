@@ -3,17 +3,28 @@
 // 카메라·모델·rVFC·rAF 는 전부 가짜. 얼굴은 안 찾아지는 장면만 (분석 횟수만 본다)
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CAPTURE_GUIDE } from "@core/flow";
+import { GATE_TEXT } from "@core/gate";
+import { LIVE_SMOOTH } from "@core/smooth-params";
+import { LM } from "@core/landmarks";
 import { createLogger, memorySink } from "@core/log";
-import type { Baseline, Versions } from "@core/types";
+import type { Baseline, Pt, Versions } from "@core/types";
 import { captureScreen, type CaptureDeps } from "@screens/capture";
 import { fullRenderScreen } from "@screens/fullrender";
-import { liveScreen, type LiveDeps } from "@screens/live";
+import { LIVE_TEXT, liveScreen, type LiveDeps } from "@screens/live";
 import { startReviewShot } from "@screens/review-shot";
 import type { ScreenContext } from "@screens/shell";
 import { LMS } from "./helpers/synth-face";
 
-const detect = vi.fn(() => ({ faceLandmarks: [], faceBlendshapes: [], facialTransformationMatrixes: [] }));
+type Res = { faceLandmarks: Pt[][]; faceBlendshapes: never[]; facialTransformationMatrixes: never[] };
+const NO_FACE: Res = { faceLandmarks: [], faceBlendshapes: [], facialTransformationMatrixes: [] };
+const detect = vi.fn((): Res => NO_FACE);
 vi.mock("@screens/landmarker", () => ({ createLandmarker: async () => ({ detectForVideo: detect, close: () => {} }) }));
+// 픽셀 측정은 jsdom 에 캔버스가 없어 가짜로 — 선명·이마 밝기는 늘 괜찮은 값
+vi.mock("@screens/frame-measure", () => ({
+  sharpnessOf: () => 400,
+  foreheadLabOf: () => ({ skin: { L: 62, a: 12, b: 16 }, raw: { L: 62, a: 12, b: 16 } }),
+  grabFrame: () => document.createElement("canvas"),
+}));
 // 2-b AR 은 WebGL 로 그린다 — jsdom 에 없으니 그리기만 가짜로 (분석 횟수·카메라 잠금만 본다)
 vi.mock("@screens/makeup-gl", () => ({ MakeupGl: class { render(): void {} dispose(): void {} } }));
 
@@ -32,6 +43,7 @@ let camLog: string[] = [];
 beforeEach(() => {
   vi.useFakeTimers();
   detect.mockClear();
+  detect.mockImplementation(() => NO_FACE);
   cam = queue(); draw = queue(); camLog = [];
   // 노출·색·초점 모두 수동 잠금이 되는 카메라 (지금 값도 알려 줌)
   const modes = ["manual", "continuous"];
@@ -156,5 +168,68 @@ describe.each([
     cam.fire(33);
     expect(detect).toHaveBeenCalledTimes(1);
     off();
+  });
+});
+
+// 화면 4 확인받기 (#235) — 각도·안정에 3초 넘게 막히면 버튼을 켠다. 얼굴은 합성 얼굴(600×600)
+describe("화면 4 확인받기", () => {
+  // 합성 얼굴은 턱(152)이 가운데라 숙인 것으로 잰다 → 턱을 내려 정면으로 (live-run.test 와 같게)
+  const FACE: Pt[] = LMS.map((p, i) => (i === LM.chin ? { x: 300, y: 464 } : p));
+  /** 코끝을 눈꼬리 거리의 11% 옆으로 — 기준 각도 차 약 13.6° (한계 12°) */
+  const D = Math.hypot(FACE[LM.eyeB.outer]!.x - FACE[LM.eyeA.outer]!.x, FACE[LM.eyeB.outer]!.y - FACE[LM.eyeA.outer]!.y);
+  const TURNED = FACE.map((p, i) => (i === 1 || i === 4 ? { x: p.x + D * 0.11, y: p.y } : p));
+  const seen = (lm: Pt[]): Res => ({ ...NO_FACE, faceLandmarks: [lm.map((p) => ({ x: p.x / 600, y: p.y / 600 }))] });
+
+  async function open(): Promise<{ root: HTMLElement; off: () => void }> {
+    vi.spyOn(HTMLVideoElement.prototype, "videoWidth", "get").mockReturnValue(600);
+    vi.spyOn(HTMLVideoElement.prototype, "videoHeight", "get").mockReturnValue(600);
+    const ctx = ctxOf("live");
+    const baseline = { lm: FACE, unit: { eye: 60, lip: 100, face: 300 }, foreheadL: 62, w: 600, h: 600, expression: null } as unknown as Baseline;
+    const deps: LiveDeps = { getPart: () => "liner", getBaseline: () => baseline, getBaseAb: () => null, getLookParts: () => ({}), setCapture: vi.fn(), next: "result" };
+    const off = liveScreen<null>(deps).mount(ctx) as () => void;
+    await vi.advanceTimersByTimeAsync(100);
+    return { root: ctx.root, off };
+  }
+
+  it("LP1 각도 차로 3초 넘게 막히면 버튼이 켜진다 — 문구는 안내 그대로, 누르면 모은다", async () => {
+    const { root, off } = await open();
+    detect.mockImplementation(() => seen(TURNED));
+    const btn = root.querySelector<HTMLButtonElement>("button.live-btn")!;
+    const line = root.querySelector(".cam-gate")!;
+    let t = 1000;
+    for (; t < 1000 + 2900; t += 33) cam.fire(t);
+    expect(btn.disabled).toBe(true);
+    expect(line.textContent).toBe(GATE_TEXT.turnRight);
+    for (; t < 1000 + 3200; t += 33) cam.fire(t);
+    expect(btn.disabled).toBe(false);
+    expect(line.textContent).toBe(GATE_TEXT.turnRight);
+    expect(line.classList.contains("ready")).toBe(false);
+    btn.click();
+    expect(line.textContent).toBe(LIVE_TEXT.capturing);
+    off();
+  });
+
+  it("LP2 정면이면 바로(안정 2프레임) 켜진다", async () => {
+    const { root, off } = await open();
+    detect.mockImplementation(() => seen(FACE));
+    const btn = root.querySelector<HTMLButtonElement>("button.live-btn")!;
+    cam.fire(1000);
+    expect(btn.disabled).toBe(true);
+    cam.fire(1033);
+    expect(btn.disabled).toBe(false);
+    expect(root.querySelector(".cam-gate")!.classList.contains("ready")).toBe(true);
+    off();
+  });
+
+  it("LP3 주소에 ?tune 이면 떨림 필터 슬라이더 세 개 (2-b 와 같은 것) — 화면 4 값에서 시작", async () => {
+    window.history.pushState({}, "", "/?tune");
+    try {
+      const { root, off } = await open();
+      const rs = Array.from(root.querySelectorAll<HTMLInputElement>(".ar-tune input[type=range]"));
+      expect(rs.map((r) => Number(r.value))).toEqual([LIVE_SMOOTH.minCutoff, LIVE_SMOOTH.beta, LIVE_SMOOTH.dCutoff]);
+      off();
+    } finally {
+      window.history.pushState({}, "", "/");
+    }
   });
 });
