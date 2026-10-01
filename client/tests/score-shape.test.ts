@@ -3,11 +3,13 @@
 import { describe, expect, it } from "vitest";
 import { LM } from "@core/landmarks";
 import { frameOf } from "@core/sampling";
-import { browShape, linerBand, routeOf, shapeFill, tintFill, tintProgress } from "@core/score-shape";
+import { browShape, linerBand, routeOf, scoreHybrid, shapeFill, tintFill, tintProgress } from "@core/score-shape";
+import { decide } from "@core/score";
+import type { GuideSource } from "@core/score-part";
 import { rgbToLab } from "@core/color";
 import { sampleLiner } from "@core/sampling";
 import type { Pt } from "@core/types";
-import { BROWN, LMS, NATURAL, P, RED, SKIN, browPaint, geomOf, image, linerPaint, lipPaint, regionPaint, type Paint } from "./helpers/synth-face";
+import { BROWN, LMS, NATURAL, P, RED, SKIN, browPaint, geomOf, guide, image, linerPaint, lipPaint, regionPaint, type Paint } from "./helpers/synth-face";
 
 const outline: Pt[] = [...LM.browA.upper.map(P), ...LM.browA.lower.map(P).reverse()];
 const frame = (p: Paint) => frameOf(image(p), LMS);
@@ -186,5 +188,59 @@ describe("갈림 규칙 — 쌩얼을 보고 결과 모양 / 원본 대조 / 확
 
   it("G3 템플릿 색이 주변 피부와 같으면 잴 방향이 없다 — 확인만", () => {
     expect(routeOf(frame(() => null), lips, skinRgb)).toBe("check_only");
+  });
+});
+
+describe("조합 — 부위마다 결과 모양과 원본 대조를 섞는다 (팀 방향: 채움은 원래 것 + 그린 것, 번짐은 그린 것만)", () => {
+  const R: Pt[] = [...LM.browA.upper.map(P), ...LM.browA.lower.map(P).reverse()];
+  const L: Pt[] = [...LM.browB.upper.map(P), ...LM.browB.lower.map(P).reverse()];
+  // 눈썹 가이드가 테두리(regions)를 주는 가이드 — 앱의 개인화 가이드(planGuide)와 같은 모양
+  const withBrow: GuideSource = (partId, f) => (partId === "brow" ? { regions: { R, L } } : guide(partId, f));
+  const grow = (poly: Pt[], k: number): Pt[] => { const c = { x: poly.reduce((a, q) => a + q.x, 0) / poly.length, y: poly.reduce((a, q) => a + q.y, 0) / poly.length }; return poly.map((q) => ({ x: c.x + (q.x - c.x) * k, y: c.y + (q.y - c.y) * k })); };
+  const inPolys = (polys: Pt[][]): Paint => (x, y) => (polys.some((poly) => { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const a = poly[i]!, b = poly[j]!; if (a.y > y !== b.y > y && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) c = !c; } return c; }) ? BROWN : null);
+  const verdict = (part: "brow" | "lip" | "liner", base: ReturnType<typeof frame>, cur: ReturnType<typeof frame>, color: readonly [number, number, number]) => {
+    const h = scoreHybrid(part, base, cur, withBrow, { templateColor: color });
+    return { ...decide(part, h.result, h.ctx), route: h.route, codes: h.result.codes };
+  };
+
+  it("C1 원래 눈썹이 이미 가이드 모양이면 안 그려도 점수가 난다 — 지금 채점은 '안 보임'", () => {
+    const natural = frame(browPaint);
+    const v = verdict("brow", natural, natural, BROWN);
+    expect(v.status).toBe("scored");
+    expect(v.score).toBeGreaterThanOrEqual(90);
+    expect(v.route).toBe("mixed");
+  });
+
+  it("C2 원래 눈썹이 가이드보다 커도 넘침으로 감점하지 않는다 (못 고치는 것)", () => {
+    const big = frame(inPolys([grow(R, 1.6), grow(L, 1.6)]));
+    const v = verdict("brow", big, big, BROWN);
+    expect(v.codes).not.toContain("BROW_OUT_R");
+    expect(v.codes).not.toContain("BROW_OUT_L");
+  });
+
+  it("C3 새로 그린 것이 가이드 밖으로 나가면 감점하고 알린다", () => {
+    const v = verdict("brow", frame(browPaint), frame(inPolys([grow(R, 1.6), grow(L, 1.6)])), BROWN);
+    expect(v.codes.some((c) => c.startsWith("BROW_OUT"))).toBe(true);
+  });
+
+  it("C4 입술: 쌩얼 입술이 템플릿 색과 다르면 결과 모양으로 — 칠하면 점수, 안 칠하면 안 보임", () => {
+    const bare = frame(() => null);
+    const done = verdict("lip", bare, frame(lipPaint), RED);
+    expect(done.route).toBe("shape");
+    expect(done.status).toBe("scored");
+    expect(done.score).toBeGreaterThanOrEqual(80);
+    expect(verdict("lip", bare, bare, RED)).toMatchObject({ status: "check_only", reason: "faint" });
+  });
+
+  it("C5 입술: 타고난 입술색이 이미 템플릿 색이면 원본과 대조한다 (지금 채점 그대로)", () => {
+    const natural = frame(lipPaint);
+    const v = verdict("lip", natural, natural, RED);
+    expect(v.route).toBe("compare");
+    expect(v.status).toBe("check_only");
+  });
+
+  it("C6 라이너는 항상 원본 대조 — 결과 모양은 눈꼬리 주름을 꼬리로 읽는다", () => {
+    const bare = frame(() => null);
+    expect(scoreHybrid("liner", bare, frame(linerPaint()), withBrow, { templateColor: [30, 25, 28] }).route).toBe("compare");
   });
 });

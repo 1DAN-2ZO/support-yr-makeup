@@ -10,9 +10,10 @@
 
 import { pointInPoly, rgbToLab, type Lab } from "./color";
 import { boxOf, isHair, labBox, type SampleFrame } from "./sampling";
-import { at } from "./landmarks";
-import { browResult, type LinerStrip, type PartScore, type RegionSideMetrics, type Side } from "./score";
-import type { Pt } from "./types";
+import { LM, at } from "./landmarks";
+import { PARAMS, browResult, scoreForm, type DecideContext, type LinerStrip, type PartScore, type RegionSideMetrics, type ScoreParams, type Side } from "./score";
+import { scorePart, type GuideSource, type ScorePartOptions } from "./score-part";
+import type { PartId, Pt } from "./types";
 
 export interface ShapeFillOptions {
   /**
@@ -288,3 +289,77 @@ export function routeOf(bare: SampleFrame, poly: readonly Pt[], color: readonly 
   if (contrast < r.minContrast) return "check_only";
   return t.coverage >= r.already ? "compare" : "shape";
 }
+
+// ---------- 조합 ----------
+
+/** 결과 모양에서 "발랐다" 로 보는 최소 채움 (가정값) */
+const SHAPE_PRESENT = 0.15;
+
+/** 입 안쪽 윤곽 — 입술 채움에서 뺀다 (makeup-paint 와 같은 점) */
+const LIP_INNER = [78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95];
+
+export interface HybridOptions extends ScorePartOptions {
+  /** 화장 템플릿의 이 부위 진하기 (0~1). 주면 섀도우·볼의 '물든 칸' 기준을 그 절반으로 — 연한 화장도 잡게 */
+  templateAlpha?: number;
+}
+
+export interface HybridScore {
+  result: PartScore;
+  ctx: DecideContext;
+  /** shape = 결과 모양 · compare = 원본 대조(지금 채점 그대로) · mixed = 눈썹(채움은 결과 모양, 넘침은 원본 대조) · check_only = 확인만 */
+  route: ShapeRoute | "mixed";
+}
+
+/**
+ * 조합 채점 (실험) — 부위마다 결과 모양과 원본 대조를 섞는다. 팀 방향(2026-10-01): 채움은 원래 있던 것 + 그린 것, 번짐은 그린 것만.
+ * 실험 근거 (eval/samples/shape/README.md):
+ *   눈썹   채움 = 결과 모양 (원래 눈썹의 70% 가 테두리를 70% 넘게 채운다) · 넘침 = 원본 대조 (원래 눈썹의 92% 가 테두리 밖에 걸린다)
+ *   라이너 원본 대조 (결과 모양은 눈꼬리 주름·접힌 선을 꼬리로 읽는다)
+ *   입술·섀도우·볼  쌩얼을 보고 가른다 (routeOf) — 타고난 모습이 템플릿 색 쪽이면 원본 대조, 아니면 결과 모양
+ * 결과 모양 쪽 점수는 지금 채점과 같은 식(scoreForm: 채움·넘침)이라 같은 자로 비교할 수 있다. 앱에는 아직 연결하지 않았다.
+ */
+export function scoreHybrid(partId: PartId, base: SampleFrame, cur: SampleFrame, guide: GuideSource, opts: HybridOptions = {}, p: ScoreParams = PARAMS): HybridScore {
+  const a = scorePart(partId, base, cur, guide, opts, p);
+  if (partId === "liner" || partId === "contour") return { ...a, route: "compare" };
+
+  if (partId === "brow") {
+    const regions = guide("brow", cur).regions;
+    const per = (a.result.metrics as { per?: Record<Side, RegionSideMetrics> }).per;
+    if (!regions || !per) return { ...a, route: "compare" };   // 가이드가 눈썹 테두리를 안 주면(개인화 없음) 지금 채점 그대로
+    const center = at(cur.lm, 168);
+    const side = (s: Side): RegionSideMetrics => {
+      const b = shapeFill(cur, regions[s], SHAPE_FILL, center);
+      return { coverage: b.coverage, tailCoverage: b.tailCoverage ?? b.coverage, overflow: per[s].overflow, present: b.hits >= 6 || per[s].present, hitLift: per[s].hitLift };
+    };
+    // 채움을 결과 모양으로 보므로 "화장 색이 원래 눈썹과 가깝다"(subtle)는 더 막을 이유가 없다
+    const ctx: DecideContext = { ...a.ctx };
+    delete ctx.templateDeltaE;
+    return { result: browResult({ R: side("R"), L: side("L") }), ctx, route: "mixed" };
+  }
+
+  const color = opts.templateColor;
+  if (!color) return { ...a, route: "compare" };
+  const polysOf = (f: SampleFrame): { poly: readonly Pt[]; hole?: readonly Pt[] }[] => {
+    if (partId === "lip") return [{ poly: LM.lipsOuter.map((i) => at(f.lm, i)), hole: LIP_INNER.map((i) => at(f.lm, i)) }];
+    const r = guide(partId, f).regions;
+    return r ? [{ poly: r.R }, { poly: r.L }] : [];
+  };
+  const tintOpt = opts.templateAlpha ? { minProgress: opts.templateAlpha * 0.5 } : {};
+  const routes = polysOf(base).map((g) => routeOf(base, g.poly, color, { ...tintOpt, ...(g.hole ? { hole: g.hole } : {}) }));
+  if (!routes.length || routes.includes("check_only")) return { ...a, route: routes.length ? "check_only" : "compare" };
+  if (routes.includes("compare")) return { ...a, route: "compare" };
+
+  const fills = polysOf(cur).map((g) => tintFill(cur, g.poly, color, { ...tintOpt, ...(g.hole ? { hole: g.hole } : {}) }));
+  const mean = (k: "coverage" | "spill"): number => fills.reduce((s, t) => s + t[k], 0) / fills.length;
+  const coverage = mean("coverage"), overflow = mean("spill");
+  const present = coverage >= SHAPE_PRESENT;
+  const codes: PartScore["codes"] = [];
+  if (present && partId === "lip") {
+    if (coverage < 0.5) codes.push("LIP_UNDER");
+    if (overflow > 0.3) codes.push("LIP_OUT_UPPER", "LIP_OUT_LOWER");   // 결과 모양은 위·아래를 아직 안 가른다
+  }
+  // 결과 모양은 같은 사진의 주변 피부가 기준이라 두 사진의 조명 차이·정렬을 안 탄다 — 그 사유(lighting·align)는 넘기지 않는다
+  const ctx: DecideContext = a.ctx.hairFrac !== undefined ? { hairFrac: a.ctx.hairFrac } : {};
+  return { result: { present, score: present ? scoreForm({ coverage, overflow }) : null, codes, lrIndex: null, metrics: { shape: { coverage, overflow } } }, ctx, route: "shape" };
+}
+

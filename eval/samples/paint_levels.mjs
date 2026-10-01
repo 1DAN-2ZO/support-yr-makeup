@@ -70,11 +70,12 @@ export function shapes(core, part, level, lm, lookPartsOf, guideGeom, unit) {
   const sides = [{ eye: LM.eyeA, brow: LM.browA }, { eye: LM.eyeB, brow: LM.browB }];
   const eyeW = unit.eye;
   if (part === "brow") {
-    return sides.map(({ brow }) => {
-      const poly = [...brow.upper.map(P), ...[...brow.lower].reverse().map(P)];
+    return sides.map(({ brow }, i) => {
+      // 가이드가 눈썹 테두리를 주면(개인화 가이드) 화면에 보이는 그 테두리대로 칠한다. 없으면 얼굴 점의 눈썹 자리
+      const poly = guideGeom?.regions?.[i === 0 ? "R" : "L"] ?? [...brow.upper.map(P), ...[...brow.lower].reverse().map(P)];
       // 꼬리 = 얼굴 가운데(미간 168)에서 먼 끝. 덜 채움은 꼬리 쪽 35% 를 비운다
-      const ends = [P(brow.upper[0]), P(brow.upper[brow.upper.length - 1])].sort((a, b) => dist(a, P(168)) - dist(b, P(168)));
-      const [head, tail] = ends, len2 = (tail.x - head.x) ** 2 + (tail.y - head.y) ** 2 || 1;
+      const far = poly.slice().sort((a, b) => dist(a, P(168)) - dist(b, P(168)));
+      const head = far[0], tail = far[far.length - 1], len2 = (tail.x - head.x) ** 2 + (tail.y - head.y) ** 2 || 1;
       const along = (x, y) => ((x - head.x) * (tail.x - head.x) + (y - head.y) * (tail.y - head.y)) / len2;
       const grow = level === "slight" ? 0.04 * eyeW : level === "heavy" ? 0.12 * eyeW : 0;
       const inside = near(poly, grow);
