@@ -5,7 +5,7 @@
  *  - 속눈썹은 3D 가 아니라 눈꺼풀 선에 붙인 그림 한 장이다 (45° 에서 얼굴 밖으로 안 튀어나옴, 매 프레임 같은 배치).
  *  - 눈 뜬 정도에 따라 위(up)·중간(mid)·아래(down) 그림을 **뚝 끊어** 바꿔 낀다 (섞지 않음).
  *
- * 그림 규격(u/v)은 client/public/lashes/lashes.json, 그림은 scripts/gen_lash_textures.py 가 만든다.
+ * 그림 규격(u/v)은 client/public/lashes/{natural,deep}/lashes.json, 그림은 scripts/gen_photo_lash.py 가 만든다.
  * 이 파일은 DOM 없이 숫자만 다룬다 — 그리기는 screens/makeup-probe.ts.
  */
 

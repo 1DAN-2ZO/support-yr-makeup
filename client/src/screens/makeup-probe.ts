@@ -148,9 +148,8 @@ interface Tpl {
   finish?: Partial<Record<Part, "matte" | "glitter">>;
   /**
    * 마스카라 세기 — natural(연한) | deep(진한), 생략하면 미적용(속눈썹 체크박스가 꺼진 채 비활성화).
-   * 지금은 켜짐/꺼짐만 가른다 — natural·deep 별도 그림(reference/eyelash)은 아직 없어서 둘 다
-   * 같은 텍스처(anime-spike)를 쓴다. 그림이 생기면 lashMode="texture" 쪽에서 이 값으로 텍스처
-   * 세트를 고른다(마스카라 각도 재연구, 2026-09-30).
+   * 각각 참고 사진 기반 텍스처 세트(client/public/lashes/{natural,deep}/, scripts/gen_photo_lash.py)를
+   * 쓴다 — front 각도·눈뜸 3단계만 있고, 세로(v) 값은 1차 추정치라 실기기로 다시 맞춰야 한다(2026-10-01).
    */
   lashIntensity?: "natural" | "deep";
 }
@@ -710,13 +709,14 @@ function drawMakeup(lm: readonly Pt[], style: LinerStyle): void {
 
 // ── 마스카라 PNG 텍스처 (Ulike·SODA 방식, 2026-09-30) ─────────────
 // 눈꺼풀 선을 따라 띠를 만들고 PNG 를 삼각형 단위로 휘어 붙인다. 눈 뜬 정도로 위·중간·아래 그림을 뚝 끊어 바꾼다(섞지 않음).
-// 그림·규격: client/public/lashes/ (scripts/gen_lash_textures.py). 계산: core/lash.ts
+// 그림·규격: client/public/lashes/{natural,deep}/ (scripts/gen_photo_lash.py, 참고 사진 기반). 계산: core/lash.ts
 const lashModeSel = $<HTMLSelectElement>("lashMode");
 const lashMode = (): "texture" | "code" => (lashModeSel.value === "code" ? "code" : "texture");
 const lashcv = $<HTMLCanvasElement>("lashcv");
 const lg = lashcv.getContext("2d")!;
-const lashes = new LashTextures("/lashes/");
-void lashes.load().catch((e) => { console.warn("속눈썹 텍스처를 못 불러왔어요", e); });
+const lashesNatural = new LashTextures("/lashes/natural/");
+const lashesDeep = new LashTextures("/lashes/deep/");
+for (const lt of [lashesNatural, lashesDeep]) void lt.load().catch((e) => { console.warn("속눈썹 텍스처를 못 불러왔어요", e); });
 const lashPrev: [LashState | null, LashState | null] = [null, null];
 
 /** 지금 얼굴(lm)로 속눈썹 층을 그린다. 끄거나 텍스처가 없으면 비운다. 반환: 상태 글 (예 "R up · L mid") */
@@ -727,9 +727,10 @@ function drawLashLayer(lm: readonly Pt[] | null, w: number, h: number): string {
   lashcv.style.width = `${(glcv.hidden ? cv : glcv).clientWidth}px`;
   lashcv.style.transform = "scaleX(-1)";
   lashcv.style.mixBlendMode = natural() ? "multiply" : "normal";
-  const s = sliders.get("lash")!, color = currentTpl().color.lash;
-  if (!lm || bare || lashMode() !== "texture" || !lashes.ready || !color || !s.on.checked) { lashPrev[0] = lashPrev[1] = null; return ""; }
-  const states = drawLashes(lg, lashes, lm, color, Math.min(1, Number(s.input.value)), lashPrev);
+  const s = sliders.get("lash")!, t = currentTpl(), color = t.color.lash;
+  const tex = t.lashIntensity === "deep" ? lashesDeep : lashesNatural;
+  if (!lm || bare || lashMode() !== "texture" || !tex.ready || !color || !s.on.checked) { lashPrev[0] = lashPrev[1] = null; return ""; }
+  const states = drawLashes(lg, tex, lm, color, Math.min(1, Number(s.input.value)), lashPrev);
   lashPrev[0] = states[0]; lashPrev[1] = states[1];
   return `R ${states[0]} · L ${states[1]}`;
 }
