@@ -68,6 +68,8 @@ export interface ScoreParams {
    * 템플릿 색이 피부와 얼마나 다른지 볼 때, 실제로 발리는 비율 (가정값). 차이 × 이 값이 부위 검출 기준보다 작으면 확인만(subtle)
    */
   subtleCover: number;
+  /** 맨얼굴 그 부위 칸 중 이 비율 이상에서 화장이 보일 것 같아야 채점한다 (가정값). 못 미치면 확인만(subtle) */
+  subtleMinFrac: number;
   /** 목표 지수 밴드. 룩 템플릿 값이 우선이고, 없으면 확인만 */
   band: Partial<Record<IntensityPartId, Band>>;
   tol: {
@@ -539,7 +541,7 @@ export interface DecideContext {
   alignResidual?: number;
   /** 부위가 머리카락에 가린 비율 (0~1, 두 사진·좌우 중 큰 쪽). 머리카락 마스크가 있을 때만 */
   hairFrac?: number;
-  /** 템플릿 색을 이 사람 맨얼굴(이마)에 발랐을 때 예상 색 차이 (templateContrast). 템플릿 색을 줬을 때만 */
+  /** 템플릿 색을 이 사람 맨얼굴 그 부위에 발랐을 때 예상 색 차이 (templateContrast). 템플릿 색을 줬을 때만 */
   templateDeltaE?: number;
 }
 

@@ -93,7 +93,7 @@ export interface ScorePartOptions {
   baseAsym?: number;
   /** alignedFrame() 의 fit.residual. metrics.alignResidual 로 남긴다 */
   alignResidual?: number;
-  /** 고른 화장의 이 부위 색 (rules/looks.json). 주면 맨얼굴 이마와 비교해 너무 가까우면 확인만(subtle) */
+  /** 고른 화장의 이 부위 색 (rules/looks.json). 주면 맨얼굴 그 부위 색과 비교해 너무 가까우면 확인만(subtle) */
   templateColor?: readonly [number, number, number] | null;
 }
 
@@ -107,14 +107,17 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
   const ctx: DecideContext = lit ? { lightShift: lit.shift } : {};
   // 정렬 잔차는 눈 폭으로 나눠 해상도와 상관없게 (#43)
   if (opts.alignResidual !== undefined && cur.unit.eye > 0) ctx.alignResidual = opts.alignResidual / cur.unit.eye;
-  // 화장 색이 이 사람 피부와 가까운지 — 맨얼굴 이마를 피부로 본다 (이마를 못 재면 판단 안 함)
-  if (opts.templateColor && foreBase) ctx.templateDeltaE = templateContrast(foreBase, opts.templateColor, p);
+  // 화장 색과 비교할 맨얼굴 색 — **그 부위 자리**에서 모은다 (아래 가지마다). 이마로 보면 앞머리가 덮었을 때
+  // 머리카락 색과 비교해 검은 라이너도 '피부와 가깝다' 가 됐다 (FFHQ 30명: 눈썹 52 · 라이너 68 / 300, 2026-10-01)
+  const bareRef: Lab[] = [];
 
   let result: PartScore;
   if (partId === "liner") {
     const gb = linerOf(guide, base);
     const eye = (s: Side) => {
       const sb = sampleLiner(base, s, gb.wing[s], gb.thick);
+      // 가이드 선보다 위쪽 칸 = 눈꺼풀 피부 (선 자리는 원래 속눈썹이 있어 어둡다)
+      for (const row of sb.lab) row.forEach((c, j) => { if ((sb.meta.offs[j] ?? 0) > sb.meta.thick) bareRef.push(c); });
       const strip = (f: SampleFrame) => { const g = linerOf(guide, f); return sampleLiner(f, s, g.wing[s], g.thick); };
       // 눈을 뜨고 있으면 선 아래는 눈알(시선에 따라 바뀜) — 정렬 비용에서도 뺀다 (compareLinerEye 와 같은 칸)
       const cost = (f: SampleFrame) => stripCost(sb, strip(f), corr, p.tol.band);
@@ -123,6 +126,7 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
     result = linerResult({ R: eye("R"), L: eye("L") }, opts.baseAsym ?? 0, p);
   } else if (partId === "brow") {
     const gb = sampleBrow(base);
+    gb.lab.forEach((c, i) => { if (gb.meta.inside[i]) bareRef.push(c); });   // 맨얼굴 눈썹 자리 (털 + 피부)
     const cost = (f: SampleFrame) => meanLighter(gb.lab, sampleBrow(f).lab, corr);
     const gc = sampleBrow(register(cur, cost));
     result = browResult(compareRegion(gb, gc, corr, p.dEThresh.brow));
@@ -130,7 +134,10 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
     if (hf !== null) ctx.hairFrac = hf;
   } else if (partId === "lip") {
     const lc = sampleLip(cur, lipOf(guide, cur).offset);
-    result = compareLip(sampleLip(base, lipOf(guide, base).offset), lc, corr, p);
+    const lb = sampleLip(base, lipOf(guide, base).offset);
+    result = compareLip(lb, lc, corr, p);
+    // 맨얼굴 입술 안쪽 (경계는 피부가 섞인다)
+    for (const row of lb.lab) row.forEach((c, j) => { if ((lb.meta.offs[j] ?? 0) < -p.tol.lipOut) bareRef.push(c); });
     // 입술 색 (조화 보정, #35): 경계에서 안쪽으로 떨어진 칸만 — 경계는 피부가 섞인다
     const inner = lc.lab.flatMap((row) => row.filter((_, j) => (lc.meta.offs[j] ?? 0) < -p.tol.lipOut));
     const ab = meanAb(inner);
@@ -141,6 +148,7 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
     const halves = partId === "shadow";
     const side = (s: Side) => {
       const b = sampleRegion(base, regionOf(guide, partId, base, s), s, halves), c = sampleRegion(cur, regionOf(guide, partId, cur, s), s, halves);
+      if (b) bareRef.push(b.part);   // 맨얼굴 그 영역 피부
       if (!b || !c) return { delta: 0, index: 0, dir: 0, color: null as Lab | null };   // 영역이 사진 밖 → 화장 없음으로 (확인만)
       if (b.hidden !== undefined || c.hidden !== undefined) ctx.hairFrac = Math.max(ctx.hairFrac ?? 0, b.hidden ?? 0, c.hidden ?? 0);
       const dir = b.outer && b.inner && c.outer && c.inner ? deltaE(b.outer, corr(c.outer)) - deltaE(b.inner, corr(c.inner)) : 0;
@@ -161,6 +169,15 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
     }
   }
   if (opts.alignResidual !== undefined) result.metrics.alignResidual = opts.alignResidual;
+  // 화장 색이 맨얼굴 그 부위 색과 가까운지 (subtle). 칸마다 예상 색 차이를 내고, **칸의 subtleMinFrac 만큼은 보여야** 채점한다
+  // = 위에서부터 그 비율 자리의 값을 남긴다. 눈썹처럼 털·피부가 섞인 자리는 피부 칸에서 보이면 채점된다 (중앙값으로 보면
+  // 털 색 눈썹이 전부 빠졌다). 부위에서 못 모았으면 이마, 그것도 없으면 판단 안 함
+  const color = opts.templateColor;
+  if (color) {
+    const cells = bareRef.length ? bareRef : foreBase ? [foreBase] : [];
+    const d = cells.map((c) => templateContrast(c, color, p)).sort((x, y) => y - x);
+    if (d.length) ctx.templateDeltaE = d[Math.min(d.length - 1, Math.floor(d.length * p.subtleMinFrac))]!;
+  }
   return { result, ctx };
 }
 

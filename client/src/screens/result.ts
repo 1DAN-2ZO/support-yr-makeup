@@ -146,7 +146,8 @@ export function resultScreen<S>(deps: ResultDeps): Screen<S> {
           const late = new Promise<null>((r) => setTimeout(() => r(null), deps.hairTimeoutMs ?? HAIR_TIMEOUT_MS));
           const [bareHair, ...hairs] = await Promise.all([bareIm, ...ims].map((im) => Promise.race([hairOf(im).catch(() => null), late])));
           if (!alive) return;
-          // 쌩얼은 긴 변 1024 로 줄여 저장하고 점은 촬영 크기다 — 사진 크기로 맞춘다 (폰 시험 2026-09-30: 안 맞춰서 엉뚱한 자리를 읽어
+          // 점은 촬영 크기 좌표다 — 쌩얼 사진 크기로 맞춘다. 쌩얼은 이제 원본 크기로 저장해 보통 배율 1 이지만(#240), 예전 세션은
+          // 긴 변 1024 로 줄인 사진이다 (폰 시험 2026-09-30: 안 맞춰서 엉뚱한 자리를 읽어
           // 쌩얼끼리인데 눈썹 70점 · 가짜 "밝기가 달라요". 화면 3 guide.ts 와 같은 scaleLm)
           const baseLm = scaleLm(baseline.lm, { w: baseline.w, h: baseline.h }, { w: bareIm.w, h: bareIm.h });
           const base = frameOf(bareIm, baseLm, bareHair ?? undefined);
