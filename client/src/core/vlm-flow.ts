@@ -15,8 +15,9 @@ import type { FaceShape } from "./types";
 import { CHOICE_STEPS, RATIONALE_PARTS, allowedChoices, buildVlmPrompt } from "./vlm-prompt";
 
 /** 프롬프트·스키마 버전 — 결과 로그와 계획 저장 키에 붙인다. 프롬프트나 스키마를 바꾸면 올린다
- *  v2 (2026-10-01) = 형식 E — VLM 선정 실험(eval/vlm)에서 확정. 예시 없음 · 관찰→근거→결정 · 숫자는 선택지 */
-export const PROMPT_VER = "vlm-prompt-v2";
+ *  v2 (2026-10-01) = 형식 E — VLM 선정 실험(eval/vlm)에서 확정. 예시 없음 · 관찰→근거→결정 · 숫자는 선택지
+ *  v3 (2026-10-01, 시험) = 처진 눈을 눈꼬리 기울기로 판정 (personalize.isDroopy) — 프롬프트의 판정 줄이 바뀐다 */
+export const PROMPT_VER = "vlm-prompt-v3";
 
 /**
  * 제약 디코딩용 JSON 스키마 — 이 얼굴에서 관문이 받아 주는 값만 enum 으로 (vlm-prompt.allowedChoices).
