@@ -114,9 +114,9 @@ export function eyeClosed(lm: readonly Pt[], side: Side): boolean {
  */
 export const SAMPLE = { boxRatio: scoreRules.sample.boxRatio, hairCut: scoreRules.sample.hairCut, foreheadMinSkin: scoreRules.sample.foreheadMinSkin };   // 값은 rules/score.json (#44)
 
-const boxOf = (eyePx: number): number => Math.max(1, Math.round(eyePx * SAMPLE.boxRatio));
+export const boxOf = (eyePx: number): number => Math.max(1, Math.round(eyePx * SAMPLE.boxRatio));
 
-function labBox(im: RgbaImage, x: number, y: number, box: number): Lab {
+export function labBox(im: RgbaImage, x: number, y: number, box: number): Lab {
   if (box <= 1) return labAt(im, x, y);
   const x0 = Math.round(x - (box - 1) / 2), y0 = Math.round(y - (box - 1) / 2);
   let r = 0, g = 0, b = 0, n = 0;
