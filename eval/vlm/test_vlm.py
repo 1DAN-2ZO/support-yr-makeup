@@ -270,8 +270,15 @@ def test_end_to_end_with_fake_server(tmp_path):
 
     # 평가자 두 명이 돌려준 결과(화장 비교) + 한 명(근거 문장) → 집계
     files = []
-    for who, pick_vlm in (("가", True), ("나", False)):
-        items = [{"n": k["n"], "pick": ("A" if (k["A"] == "vlm") == pick_vlm else "B")} for k in key]
+    # 가 = VLM 쪽, 나 = 규칙 쪽, 라 = 개인화 없음이 가장 낫다 (어느 쪽 승도 아니다)
+    for who, pick_vlm in (("가", True), ("나", False), ("라", None)):
+        items = [
+            {
+                "n": k["n"],
+                "pick": "none" if pick_vlm is None else ("A" if (k["A"] == "vlm") == pick_vlm else "B"),
+            }
+            for k in key
+        ]
         f = tmp_path / f"rating-{who}.json"
         f.write_text(
             json.dumps({"kind": "pref", "who": who, "model": "fake", "items": items}, ensure_ascii=False),
@@ -296,7 +303,10 @@ def test_end_to_end_with_fake_server(tmp_path):
     )
     assert rt.returncode == 0, rt.stdout + rt.stderr
     summary = (data / "vlm-eval" / "out" / "ratings-fake.md").read_text(encoding="utf-8")
-    assert f"VLM 승률 (비슷함 제외) {len(key)}/{2 * len(key)}" in summary and "| 가 |" in summary
+    assert (
+        f"VLM 승률 (비슷함 · 개인화 없음 제외) {len(key)}/{2 * len(key)}" in summary and "| 가 |" in summary
+    )
+    assert f"개인화 없음이 가장 낫다 {len(key)}/{3 * len(key)}" in summary
     assert "자연스러움 평균 4.00" in summary
 
     # 선정 흐름 — E·F 형식, 빈 사진·다른 사람 사진 대조군, 모델 비교표

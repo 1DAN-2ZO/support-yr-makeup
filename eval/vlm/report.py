@@ -598,7 +598,8 @@ def ratings(files: list[str]) -> None:
                 {
                     "who": who,
                     "n": it["n"],
-                    "win": None if pick in (None, "same") else pick == vlm,
+                    # none = 개인화 없음(기준 그림)이 가장 낫다 — VLM·규칙 어느 쪽 승도 아니다
+                    "win": None if pick in (None, "same", "none") else pick == vlm,
                     "pick": pick,
                 }
             )
@@ -612,31 +613,38 @@ def ratings(files: list[str]) -> None:
             ci = wilson(k, n)
             whos = sorted({x["who"] for x in xs})
             same = sum(1 for x in answered if x["pick"] == "same")
-            # 평가자끼리 얼마나 같은 쪽을 골랐나 — 문항마다 (VLM · 규칙 · 비슷함) 고른 수
+            none = sum(1 for x in answered if x["pick"] == "none")
+            # 평가자끼리 얼마나 같은 쪽을 골랐나 — 문항마다 (VLM · 규칙 · 비슷함 · 개인화 없음) 고른 수
             per_item: dict[int, Counter] = defaultdict(Counter)
             for x in answered:
-                per_item[x["n"]][{True: "vlm", False: "rule", None: "same"}[x["win"]]] += 1
+                cat = x["pick"] if x["win"] is None else ("vlm" if x["win"] else "rule")
+                per_item[x["n"]][cat] += 1
             full = [c for c in per_item.values() if sum(c.values()) == len(whos)]
-            kappa = fleiss_kappa([[c["vlm"], c["rule"], c["same"]] for c in full]) if len(whos) > 1 else None
+            cats = ("vlm", "rule", "same", "none")
+            kappa = fleiss_kappa([[c[k_] for k_ in cats] for c in full]) if len(whos) > 1 else None
             lines += [
                 "## 6단계 화장 비교 (VLM 계획 대 규칙 계획, 앱 렌더러로 그려 가려서)",
                 f"평가자 {len(whos)}명 ({', '.join(whos)}) · 답 {len(answered)}",
                 "",
-                f"- VLM 이 낫다 {k} · 규칙이 낫다 {n - k} · 비슷하다 {same}",
-                f"- VLM 승률 (비슷함 제외) {k}/{n} = {pct(k / n if n else None)} "
+                f"- VLM 이 낫다 {k} · 규칙이 낫다 {n - k} · 비슷하다 {same} · 개인화 없음이 가장 낫다 {none}",
+                f"- VLM 승률 (비슷함 · 개인화 없음 제외) {k}/{n} = {pct(k / n if n else None)} "
                 f"(95% {'—' if ci is None else f'{ci[0]:.2f}~{ci[1]:.2f}'}) "
                 f"→ {mark(None if not n else k / n > PASS['win'])} (기준 > 50%)",
+                f"- 개인화 없음이 가장 낫다 {none}/{len(answered)} = "
+                f"{pct(none / len(answered) if answered else None)} "
+                "— 높으면 개인화(규칙·VLM 모두)가 화장을 낫게 하지 못한다",
                 f"- 평가자 일치 Fleiss κ {'—' if kappa is None else f'{kappa:.2f}'} "
                 f"(모두 답한 {len(full)}문항)",
                 "",
-                "| 평가자 | VLM 이 낫다 | 규칙이 낫다 | 비슷하다 | 안 고름 |",
-                "|---|---|---|---|---|",
+                "| 평가자 | VLM 이 낫다 | 규칙이 낫다 | 비슷하다 | 개인화 없음 | 안 고름 |",
+                "|---|---|---|---|---|---|",
             ]
             for w in whos:
                 ws = [x for x in xs if x["who"] == w]
                 lines.append(
                     f"| {w} | {sum(x['win'] is True for x in ws)} | {sum(x['win'] is False for x in ws)} "
-                    f"| {sum(x['pick'] == 'same' for x in ws)} | {sum(not x['pick'] for x in ws)} |"
+                    f"| {sum(x['pick'] == 'same' for x in ws)} | {sum(x['pick'] == 'none' for x in ws)} "
+                    f"| {sum(not x['pick'] for x in ws)} |"
                 )
             lines.append("")
         ys = why.get(model, [])
