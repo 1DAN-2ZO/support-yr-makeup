@@ -32,7 +32,7 @@ STAGE_TO_STATE = {1: "up", 2: "mid", 3: "down"}
 PAD = 6  # 크롭 뒤 안전 여백(px)
 V_TIP = {"natural": 0.34, "deep": 0.40}  # up 상태 기준 바깥쪽(눈썹 쪽) 끝 v — 눈대중 시작값
 # 뿌리(v=0) 행 = 끝(tip, y=0) 쪽 누적 알파 질량이 이 비율에 도달하는 행. up·mid 는 끝 쪽에 질량이
-# 몰려야(뿌리가 아래쪽) 하고 down 은 반대(뿌리가 위쪽) — client/tests/lash.test.ts 의 80%/20% 기준에 여유를 둔 값
+# 몰려야(뿌리가 아래쪽) 하고 down 은 반대(뿌리가 위쪽) — lash.test.ts 의 80%/20% 기준에 여유를 둔 값
 ROOT_MASS = {"up": 0.85, "mid": 0.85, "down": 0.15}
 
 
@@ -78,9 +78,13 @@ def main() -> None:
             fname = f"upper-{state}.png"
             crop.save(f"{OUT}/{style}/{fname}")
             textures[state] = {"file": fname, "vMin": round(vMin, 4), "vMax": round(vMax, 4)}
-            print(f"{style}/{state}: crop={cx1 - cx0}x{ch} root_row={root_row} vMin={vMin:.4f} vMax={vMax:.4f}")
+            print(
+                f"{style}/{state}: crop={cx1 - cx0}x{ch} root_row={root_row} vMin={vMin:.4f} vMax={vMax:.4f}"
+            )
 
-        textures["lower"] = lower  # 아랫속눈썹 — 참고 사진 없음, lower.png·메타는 이 스크립트가 안 건드린다(위 설명)
+        textures["lower"] = (
+            lower  # 아랫속눈썹 — 참고 사진 없음, lower.png·메타는 이 스크립트가 안 건드린다(위 설명)
+        )
 
         meta = {
             "version": 1,
