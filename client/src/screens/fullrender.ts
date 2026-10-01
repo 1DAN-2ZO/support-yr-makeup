@@ -20,6 +20,8 @@ import { resolvePlan, type PersonalPlan } from "../core/personalize";
 import { LandmarkSmoother } from "../core/smoothing";
 import type { Pt } from "../core/types";
 import type { HairMask } from "../core/sampling";
+import { releaseCameraLocks } from "./camera-locks";
+import { startFrameLoop } from "./camera-loop";
 import { createHairTicker, type HairMasker } from "./hair-segmenter";
 import { createLandmarker } from "./landmarker";
 import { MakeupGl } from "./makeup-gl";
@@ -118,8 +120,7 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
       drawFallback();
 
       // ── AR ───────────────────────────────────────────
-      let raf = 0;
-      /** 지금 AR 장면을 저장한다 — AR 이 화장을 입혀 보여 줄 때만 채워진다 */
+      let stopLoop = (): void => {};
       let stream: MediaStream | null = null;
       let closeLandmarker: (() => void) | null = null;
       let disposeGl: (() => void) | null = null;
@@ -128,6 +129,10 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
       async function startAr(): Promise<void> {
         try {
           stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+          if (!alive) return stopStream();
+          // 앞 세션·다른 화면이 남긴 카메라 잠금부터 푼다 (#267: PC 웹캠이 하얗게·파랗게 고정된 채 남음). 2-b 는 아무것도 잠그지 않는다
+          const track = stream.getVideoTracks()[0];
+          if (track) await releaseCameraLocks(track as unknown as Parameters<typeof releaseCameraLocks>[0]);
           if (!alive) return stopStream();
           const video = document.createElement("video");
           video.muted = true;
@@ -173,25 +178,12 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
               .finally(() => ticker.done());
           };
 
-          const tick = (): void => {
+          // now = 공용 루프가 주는 늘어나기만 하는 시각 — 얼굴 찾기 · 떨림 필터 · 머리카락 분할 간격이 같이 쓴다
+          const frame = (now: number): void => {
             if (!alive) return;
-            try {
-              frame();
-            } catch (e) {
-              // 루프 안 오류는 바깥 try 가 못 잡는다 — 기록하고 서버 그림으로 돌아간다 (#172 리뷰)
-              ctx.log.log({ name: "error", where: "ar", msg: e instanceof Error ? e.message : String(e) });
-              cleanup(false);
-              live = false;
-              drawFallback();
-              return;
-            }
-            raf = requestAnimationFrame(tick);
-          };
-          const frame = (): void => {
             const w = video.videoWidth, hh = video.videoHeight;
             if (w && hh) {
-              const face = lmk.detectForVideo(video, performance.now()).faceLandmarks[0];
-              const now = performance.now();
+              const face = lmk.detectForVideo(video, now).faceLandmarks[0];
               const raw = face && face.length >= 478 ? face.map((p) => ({ x: p.x * w, y: p.y * hh })) : null;
               const lm = smoother ? smoother.smooth(raw, now) : raw;
               if (lm && !ref && goodRef(raw!, w, hh)) {
@@ -210,7 +202,16 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
               }
             }
           };
-          raf = requestAnimationFrame(tick);
+          // 카메라 새 장면에만 얼굴을 찾는다 (#245 — 전에는 화면 그리기마다라 같은 장면을 두세 번, #173 느림의 원인 후보)
+          stopLoop = startFrameLoop(video, frame, {
+            onError: (e) => {
+              // 루프 안 오류는 바깥 try 가 못 잡는다 — 기록하고 서버 그림으로 돌아간다 (#172 리뷰)
+              ctx.log.log({ name: "error", where: "ar", msg: e instanceof Error ? e.message : String(e) });
+              cleanup(false);
+              live = false;
+              drawFallback();
+            },
+          });
         } catch (e) {
           // 카메라 거부·WebGL 없음 — 서버 그림으로 둔다
           ctx.log.log({ name: "error", where: "ar", msg: e instanceof Error ? e.message : String(e) });
@@ -219,12 +220,13 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
       }
 
       function stopStream(): void {
-        stream?.getTracks().forEach((t) => t.stop());
+        // 잠금을 풀고 끈다 — PC 웹캠은 잠금을 기기에 저장해서 다음에 열 때 남는다 (#267)
+        for (const t of stream?.getTracks() ?? []) void releaseCameraLocks(t as unknown as Parameters<typeof releaseCameraLocks>[0]).finally(() => t.stop());
         stream = null;
       }
 
       function cleanup(all = true): void {
-        cancelAnimationFrame(raf);
+        stopLoop();
         stopStream();
         closeLandmarker?.();
         closeLandmarker = null;
