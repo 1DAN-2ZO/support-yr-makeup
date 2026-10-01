@@ -8,10 +8,10 @@
  * 아직 앱에 연결하지 않았다. 합성 세트(eval/samples)로 지금 방식과 비교한 뒤 팀이 정한다.
  */
 
-import { pointInPoly, rgbToLab, type Lab } from "./color";
-import { boxOf, isHair, labBox, type SampleFrame } from "./sampling";
+import { deltaE, pointInPoly, rgbToLab, type Lab } from "./color";
+import { LINER_OFFS, boxOf, eyeClosed, isHair, labBox, sampleForehead, type SampleFrame } from "./sampling";
 import { LM, at } from "./landmarks";
-import { PARAMS, browResult, scoreForm, type DecideContext, type LinerStrip, type PartScore, type RegionSideMetrics, type ScoreParams, type Side } from "./score";
+import { PARAMS, browResult, lightCorr, noCorr, scoreForm, type DecideContext, type LightCorr, type LinerStrip, type PartScore, type RegionSideMetrics, type ScoreParams, type Side } from "./score";
 import { scorePart, type GuideSource, type ScorePartOptions } from "./score-part";
 import type { PartId, Pt } from "./types";
 
@@ -261,6 +261,233 @@ export function linerBand(strip: LinerStrip, darkL = 12): LinerBand {
   };
 }
 
+// ---------- 라이너 양 끝 (눈꼬리 · 앞트임) ----------
+
+/**
+ * 구간 나눔 (가정값). inner·outer = 눈꺼풀 길이 중 눈머리 쪽·눈꼬리 쪽 비율, extIn = 눈머리 너머로 더 보는 길이(눈 폭 비율),
+ * wingExt = 가이드 꼬리 길이의 몇 배까지 보나, innerShort·innerOver = 앞쪽 시작 자리 지적 기준(눈 폭 비율)
+ */
+export const LINER_ENDS = { inner: 0.25, outer: 0.3, extIn: 0.1, wingExt: 1.8, innerShort: 0.08, innerOver: 0.03 };
+
+export interface LinerEnds {
+  /** 꼬리를 그린 길이 (눈꼬리에서, 눈 폭 비율) — 가이드 끝 너머(wingExt 배)까지 본다 */
+  wingDrawn: number;
+  wingGuide: number;
+  /** 꼬리 바깥 절반에서 그린 칸의 중심이 가이드 꼬리(끝으로 가늘어지는 띠의 가운데)에서 벗어난 정도 (+ = 위) */
+  wingDev: number;
+  /** 눈꼬리 구간(눈꺼풀 바깥 쪽 + 가이드 꼬리)에서 가이드 띠 안에 그린 줄 비율 */
+  outerCoverage: number;
+  /** 앞트임 구간(눈꺼풀 눈머리 쪽)에서 그린 줄 비율 */
+  innerCoverage: number;
+  /** 선이 시작하는 자리 — 눈머리에서 눈꺼풀을 따라 (눈 폭 비율). 0 = 눈머리부터, 음수 = 눈머리 너머로 나감 */
+  innerStart: number;
+  /** 두 끝 구간에서 가이드 띠 밖에 그린 칸 비율 */
+  overflow: number;
+  /** 눈꼬리 쪽 눈꺼풀에서 잰 선 두께 (눈 폭 비율) — 그 줄에서 가장 진한 값의 절반 넘는 칸 수 */
+  thickness: number;
+  guideThick: number;
+  /** 가운데 구간에 그린 줄 비율 — 점수에는 안 넣는다 */
+  midCoverage: number;
+  present: boolean;
+}
+
+type EndZone = "ext" | "inner" | "mid" | "outer" | "wing";
+interface EndRow { lab: Lab[]; zone: EndZone; t: number }
+type LinerGuide = { wing: Record<Side, readonly [Pt, Pt]>; thick: number };
+
+/** 줄 놓는 간격 (눈 폭 비율) · 눈꺼풀 줄 수 — 두 사진의 줄이 같은 자리끼리 짝이 되게 **눈 폭 단위·고정 개수**로 놓는다 (px 로 놓으면 크기가 다른 두 사진의 줄 수가 달라진다) */
+const END_STEP = 0.0125, END_LID_ROWS = 80;
+
+/**
+ * 눈머리 너머 → 눈꺼풀 → 꼬리(가이드 끝 너머까지)를 따라 줄을 놓는다. t: ext = 눈머리 너머 거리, 눈꺼풀 = 눈머리에서, wing = 눈꼬리에서 (눈 폭 비율).
+ * wingRows = 꼬리 줄 수 (두 사진이 같은 수를 쓴다), offs = 줄마다 수직 방향 칸 자리, box = 칸 평균 창(px)
+ */
+function endRows(f: SampleFrame, side: Side, wing: readonly [Pt, Pt], wingRows: number, offs: readonly number[], box: number): EndRow[] {
+  const eye = side === "R" ? LM.eyeA : LM.eyeB, ue = f.unit.eye;
+  const lid = eye.upper.map((i) => at(f.lm, i)).reverse();   // 눈머리 → 눈꼬리
+  const unit = (a: Pt, b: Pt): Pt => { const d = Math.hypot(b.x - a.x, b.y - a.y) || 1; return { x: (b.x - a.x) / d, y: (b.y - a.y) / d }; };
+  const row = (q: Pt, tg: Pt, zone: EndZone, t: number): EndRow => {
+    let n = { x: -tg.y, y: tg.x };   // 접선에 수직, 화면 위쪽으로
+    if (n.y > 0) n = { x: -n.x, y: -n.y };
+    return { lab: offs.map((o) => labBox(f.im, q.x + n.x * o * ue, q.y + n.y * o * ue, box)), zone, t };
+  };
+  const rows: EndRow[] = [], tg0 = unit(lid[0]!, lid[1]!);
+  for (let k = Math.round(LINER_ENDS.extIn / END_STEP); k >= 1; k--) rows.push(row({ x: lid[0]!.x - tg0.x * k * END_STEP * ue, y: lid[0]!.y - tg0.y * k * END_STEP * ue }, tg0, "ext", k * END_STEP));
+  const cum = [0];
+  for (let i = 1; i < lid.length; i++) cum.push(cum[i - 1]! + Math.hypot(lid[i]!.x - lid[i - 1]!.x, lid[i]!.y - lid[i - 1]!.y));
+  const lidLen = cum[cum.length - 1]!;
+  for (let k = 0; k < END_LID_ROWS; k++) {
+    const u = k / (END_LID_ROWS - 1), s = u * lidLen;
+    let i = 1;
+    while (i < cum.length - 1 && cum[i]! < s) i++;
+    const a = lid[i - 1]!, b = lid[i]!, v = (s - cum[i - 1]!) / (cum[i]! - cum[i - 1]! || 1);
+    rows.push(row({ x: a.x + (b.x - a.x) * v, y: a.y + (b.y - a.y) * v }, unit(a, b), u < LINER_ENDS.inner ? "inner" : u > 1 - LINER_ENDS.outer ? "outer" : "mid", s / ue));
+  }
+  const tw = unit(wing[0], wing[1]);
+  for (let k = 1; k <= wingRows; k++) rows.push(row({ x: wing[0].x + tw.x * k * END_STEP * ue, y: wing[0].y + tw.y * k * END_STEP * ue }, tw, "wing", k * END_STEP));
+  return rows;
+}
+
+const wingLenOf = (f: SampleFrame, wing: readonly [Pt, Pt]): number => Math.hypot(wing[1].x - wing[0].x, wing[1].y - wing[0].y) / (f.unit.eye || 1);
+
+/**
+ * '그린 칸' 값(val, 줄 × 칸. 음수 = 안 보는 칸)에서 양 끝 지표를 낸다. th 이상이면 그린 칸. spread = 평균 창 때문에 선이 번져 보이는 폭 (눈 폭 비율)
+ */
+function measureEnds(rows: readonly EndRow[], val: readonly (readonly number[])[], offs: readonly number[], thick: number, wingLen: number, th: number, spread: number, p: ScoreParams): LinerEnds {
+  const step = offs[1]! - offs[0]!;
+  const cnt = { inner: [0, 0], mid: [0, 0], outer: [0, 0] };
+  let outN = 0, outHit = 0, wingDrawn = 0, innerStart: number | null = null, extOver = 0, drawnRows = 0, lidEnd = 0;
+  const widths: number[] = [], devs: number[] = [];
+  rows.forEach((r, i) => {
+    const v = val[i]!, lidRow = r.zone === "inner" || r.zone === "mid" || r.zone === "outer";
+    // 가이드 띠의 위 끝 — 눈꺼풀은 두께 그대로, 꼬리는 끝으로 가며 가늘어진다 (화면 윤곽과 같은 모양). 눈머리 너머엔 가이드가 없다
+    const top = lidRow ? thick : r.zone === "wing" ? thick * Math.max(0, 1 - r.t / wingLen) : 0;
+    const hitOffs = offs.filter((_, j) => v[j]! >= th);
+    const inBand = hitOffs.some((o) => o >= -p.tol.band && o <= Math.max(top, step) + p.tol.band);
+    const nearW = hitOffs.filter((o) => Math.abs(o) <= thick + p.tol.out + spread).length * step;
+    if (lidRow) {
+      const c = cnt[r.zone as "inner" | "mid" | "outer"];
+      c[0]!++;
+      if (inBand) c[1]!++;
+      if (inBand && innerStart === null) innerStart = r.t;
+      lidEnd = Math.max(lidEnd, r.t);
+    } else if (r.zone === "ext") {
+      if (nearW >= p.tol.wingMin) extOver = Math.max(extOver, r.t);
+    } else {
+      if (r.t <= wingLen) { cnt.outer[0]!++; if (inBand) cnt.outer[1]!++; }
+      if (nearW >= p.tol.wingMin) wingDrawn = Math.max(wingDrawn, r.t);
+      if (r.t > wingLen * 0.5 && r.t <= wingLen && hitOffs.length) devs.push(medianOf(hitOffs) - top / 2);
+    }
+    if (r.zone !== "mid" && r.zone !== "ext" && (r.zone !== "wing" || r.t <= wingLen)) {
+      if (inBand) drawnRows++;
+      v.forEach((d, j) => { const o = offs[j]!; if (d >= 0 && (o > top + p.tol.out + spread || o < -(p.tol.out + spread))) { outN++; if (d >= th) outHit++; } });
+    }
+    if (r.zone === "outer") {
+      const peak = Math.max(...v);
+      if (peak >= th) widths.push(v.filter((d) => d >= peak / 2).length * step);
+    }
+  });
+  const frac = (c: number[]): number => (c[0] ? c[1]! / c[0]! : 0);
+  return {
+    // 평균 창이 선 끝을 반 칸쯤 늘린다 — 길이에서 뺀다
+    wingDrawn: Math.max(0, wingDrawn - spread / 2), wingGuide: wingLen, wingDev: devs.length ? medianOf(devs) : 0,
+    outerCoverage: frac(cnt.outer), innerCoverage: frac(cnt.inner), midCoverage: frac(cnt.mid),
+    innerStart: extOver > spread / 2 ? -(extOver - spread / 2) : innerStart ?? lidEnd,
+    overflow: outN ? outHit / outN : 0,
+    thickness: widths.length ? medianOf(widths) : 0, guideThick: thick,
+    present: drawnRows >= 3,
+  };
+}
+
+/**
+ * 라이너를 **양 끝**에서 잰다 (원본 대조, 칸마다 색 차이) — 눈꼬리(눈꺼풀 바깥 쪽 + 꼬리)와 앞트임(눈머리 쪽).
+ * 가운데 속눈썹 선은 원래 어두워 그린 선이 잘 안 잡히고(liner_levels 진단: 가이드대로 그려도 두께 −3% · 끊김 54%), 사용자가 어려워하는 곳도 양 끝이다.
+ * 꼬리는 가이드 끝 너머까지, 앞쪽은 눈머리 너머까지 봐서 '길게 뺐다 / 넘겼다' 도 잰다. gb·gc = 그 사진 위의 가이드(꼬리 선 · 두께).
+ * 한계(liner_ends 실험): 화면 가이드 모양의 가는 꼬리는 평균 창에 묻혀 못 잡는다 → linerStroke
+ */
+export function linerEnds(base: SampleFrame, cur: SampleFrame, side: Side, gb: LinerGuide, gc: LinerGuide, corr: LightCorr = noCorr, p: ScoreParams = PARAMS): LinerEnds {
+  const wingLen = wingLenOf(cur, gc.wing[side]), wingRows = Math.round((wingLen * LINER_ENDS.wingExt) / END_STEP);
+  const offs = LINER_OFFS, step = offs[1]! - offs[0]!;
+  const B = endRows(base, side, gb.wing[side], wingRows, offs, boxOf(base.unit.eye)), C = endRows(cur, side, gc.wing[side], wingRows, offs, boxOf(cur.unit.eye));
+  const eyeOpen = !eyeClosed(base.lm, side) || !eyeClosed(cur.lm, side);
+  const lidRow = (r: EndRow): boolean => r.zone === "inner" || r.zone === "mid" || r.zone === "outer";
+  // 눈을 뜨고 있으면 속눈썹 선 아래는 눈알 — 뺀다
+  const val = C.map((r, i) => r.lab.map((c, j) => (lidRow(r) && eyeOpen && offs[j]! < -p.tol.band ? -1 : deltaE(B[i]!.lab[j]!, corr(c)))));
+  const spread = Math.round(((boxOf(cur.unit.eye) - 1) / cur.unit.eye) / step) * step;
+  return measureEnds(C, val, offs, gc.thick, wingLen, p.dEThresh.liner, spread, p);
+}
+
+// ---------- 라이너 획 추출 ----------
+
+/**
+ * 획 추출 (가정값). step·lo·hi = 줄마다 수직 방향 칸(눈 폭 비율), win = 이 폭보다 가는 어두운 것만 '선' 으로 본다(한쪽 폭),
+ * minL = 새 획으로 칠 밝기 차(L*), tolRow·tolOff = 맨얼굴의 선이 이만큼 어긋나 있어도 같은 선으로 본다(줄 수 · 눈 폭 비율),
+ * boxDiv = 칸 평균 창 = 눈 폭 / boxDiv (가는 선이 묻히지 않게 작게)
+ */
+export const LINER_STROKE = { step: 0.008, lo: -0.2, hi: 0.3, win: 0.16, minL: 7, tolRow: 2, tolOff: 0.016, boxDiv: 60 };
+const STROKE_OFFS: readonly number[] = Array.from({ length: Math.round((LINER_STROKE.hi - LINER_STROKE.lo) / LINER_STROKE.step) + 1 }, (_, i) => +(LINER_STROKE.lo + i * LINER_STROKE.step).toFixed(4));
+
+/** 한 줄의 '가늘고 어두운 정도' — 블랙 톱햇(닫기 − 원본). 창보다 넓게 어두운 곳(그늘·눈알)은 0 이 된다. from 앞 칸은 안 본다(−1) */
+function topHat(L: readonly number[], from: number, w: number): number[] {
+  const n = L.length, dil = new Array<number>(n).fill(0), out = new Array<number>(n).fill(-1);
+  for (let j = from; j < n; j++) { let m = -Infinity; for (let k = Math.max(from, j - w); k <= Math.min(n - 1, j + w); k++) m = Math.max(m, L[k]!); dil[j] = m; }
+  for (let j = from; j < n; j++) { let m = Infinity; for (let k = Math.max(from, j - w); k <= Math.min(n - 1, j + w); k++) m = Math.min(m, dil[k]!); out[j] = Math.max(0, m - L[j]!); }
+  return out;
+}
+
+/** 줄 × 칸 톱햇 지도. 선 방향(줄)으로는 이웃 세 줄 평균 — 잡음은 선을 따라 줄이고, 선을 가로지르는 쪽은 뭉개지 않는다 */
+function strokeMap(rows: readonly EndRow[], corr: LightCorr, eyeOpen: boolean, band: number): number[][] {
+  const w = Math.round(LINER_STROKE.win / LINER_STROKE.step), from0 = STROKE_OFFS.findIndex((o) => o >= -band);
+  const L = rows.map((r) => r.lab.map((c) => corr(c).L));
+  return rows.map((r, i) => {
+    const near = [i - 1, i, i + 1].filter((k) => k >= 0 && k < rows.length && rows[k]!.zone === r.zone);
+    const sm = L[i]!.map((_, j) => near.reduce((s, k) => s + L[k]![j]!, 0) / near.length);
+    const lidRow = r.zone === "inner" || r.zone === "mid" || r.zone === "outer";
+    return topHat(sm, lidRow && eyeOpen ? from0 : 0, w);   // 눈을 뜨고 있으면 속눈썹 선 아래는 눈알 — 뺀다
+  });
+}
+
+/**
+ * 라이너를 양 끝에서 잰다 — **획 추출**로. 칸마다 색 차이를 보는 대신, 두 사진에서 각각 '가늘고 어두운 선'(블랙 톱햇)을 뽑아
+ * 확인 사진에만 있는 선을 새로 그린 획으로 본다. 맨얼굴의 선은 둘레(tolRow · tolOff)에서 가장 센 값으로 빼서, 속눈썹 선이 조금 어긋나거나
+ * 흐려져도 새 획으로 읽지 않는다 (#261). 기준이 사진마다 자기 주변 피부라 넓은 그늘·조명 차이는 선으로 안 읽힌다.
+ */
+export function linerStroke(base: SampleFrame, cur: SampleFrame, side: Side, gb: LinerGuide, gc: LinerGuide, corr: LightCorr = noCorr, p: ScoreParams = PARAMS): LinerEnds {
+  const wingLen = wingLenOf(cur, gc.wing[side]), wingRows = Math.round((wingLen * LINER_ENDS.wingExt) / END_STEP);
+  const boxOfEye = (f: SampleFrame): number => Math.max(1, Math.round(f.unit.eye / LINER_STROKE.boxDiv));
+  const B = endRows(base, side, gb.wing[side], wingRows, STROKE_OFFS, boxOfEye(base)), C = endRows(cur, side, gc.wing[side], wingRows, STROKE_OFFS, boxOfEye(cur));
+  const eyeOpen = !eyeClosed(base.lm, side) || !eyeClosed(cur.lm, side);
+  const tb = strokeMap(B, noCorr, eyeOpen, p.tol.band), tc = strokeMap(C, corr, eyeOpen, p.tol.band);
+  const dj = Math.round(LINER_STROKE.tolOff / LINER_STROKE.step), di = LINER_STROKE.tolRow;
+  const val = tc.map((row, i) => row.map((v, j) => {
+    if (v < 0) return -1;
+    let was = 0;
+    for (let a = Math.max(0, i - di); a <= Math.min(tb.length - 1, i + di); a++) {
+      if (B[a]!.zone !== C[i]!.zone && (B[a]!.zone === "ext" || B[a]!.zone === "wing" || C[i]!.zone === "ext" || C[i]!.zone === "wing")) continue;   // 눈꺼풀 줄과 그 밖의 줄은 방향이 달라 이웃이 아니다
+      for (let b = Math.max(0, j - dj); b <= Math.min(row.length - 1, j + dj); b++) was = Math.max(was, tb[a]![b]!);
+    }
+    return Math.max(0, v - was);
+  }));
+  return measureEnds(C, val, STROKE_OFFS, gc.thick, wingLen, LINER_STROKE.minL, (boxOfEye(cur) - 1) / cur.unit.eye, p);
+}
+
+/** scoreForm 의 단위 눈금 (score.ts UNIT_STEP 과 같은 값) — 앞쪽 시작 자리 감점에 같은 자를 쓴다 */
+const ENDS_UNIT = 0.037;
+
+/**
+ * 양 끝으로 낸 라이너 점수. 식은 지금 채점(scoreForm: 채움 · 번짐 · 꼬리 길이 · 두께) 그대로에 **앞쪽 시작 자리**만 더했다 (같은 자, 최대 20점).
+ * 채움 = 눈꼬리 구간과 앞트임 구간의 평균. 가운데는 안 넣는다. 새 지적(꼬리가 길다 · 앞쪽이 비었다 · 눈머리를 넘겼다)은 metrics.endCodes 에.
+ */
+export function linerEndsResult(per: Record<Side, LinerEnds>, p: ScoreParams = PARAMS): PartScore {
+  const { R, L } = per, codes: PartScore["codes"] = [], endCodes: string[] = [];
+  const present = R.present || L.present;
+  if (!present) return { present, score: null, codes, lrIndex: null, metrics: { ends: per, endCodes } };
+  for (const k of ["R", "L"] as const) {
+    const e = per[k];
+    if (!e.present) { codes.push(`LINER_GAP_${k}`); continue; }
+    if (e.wingDev > p.tol.wingDev) codes.push(`LINER_WING_HIGH_${k}`);
+    else if (e.wingDev < -p.tol.wingDev) codes.push(`LINER_WING_LOW_${k}`);
+    if (e.wingDrawn < e.wingGuide - p.tol.wingShort) codes.push(`LINER_WING_SHORT_${k}`);
+    else if (e.wingDrawn > e.wingGuide + p.tol.wingShort) endCodes.push(`LINER_WING_LONG_${k}`);
+    if (e.innerStart > LINER_ENDS.innerShort) endCodes.push(`LINER_INNER_SHORT_${k}`);
+    else if (e.innerStart < -LINER_ENDS.innerOver) endCodes.push(`LINER_INNER_OVER_${k}`);
+    if (e.overflow > 0.35) codes.push(`LINER_OUT_${k}`);
+  }
+  const avg = (f: (e: LinerEnds) => number): number => (f(R) + f(L)) / 2;
+  const thickness = avg((e) => e.thickness), guideThick = avg((e) => e.guideThick);
+  if (thickness > guideThick + p.tol.thickOver) codes.push("LINER_THICK");
+  else if (thickness < guideThick - p.tol.thickUnder && thickness > 0) codes.push("LINER_THIN");
+  if (Math.abs(R.wingDev - L.wingDev) > p.tol.lrDiff) codes.push("LINER_LR_DIFF");
+  const form = scoreForm({
+    coverage: avg((e) => (e.present ? (e.outerCoverage + e.innerCoverage) / 2 : 0)),
+    overflow: avg((e) => e.overflow),
+    wingDelta: avg((e) => e.wingDrawn - e.wingGuide),
+    thickDelta: thickness - guideThick,
+  });
+  const innerPen = Math.min(20, (avg((e) => Math.abs(e.innerStart)) / ENDS_UNIT) * 8);
+  return { present, score: Math.round(Math.max(0, form - innerPen)), codes, lrIndex: null, metrics: { ends: per, endCodes, thickness } };
+}
+
 // ---------- 갈림 규칙 ----------
 
 export type ShapeRoute = "shape" | "compare" | "check_only";
@@ -306,21 +533,28 @@ export interface HybridOptions extends ScorePartOptions {
 export interface HybridScore {
   result: PartScore;
   ctx: DecideContext;
-  /** shape = 결과 모양 · compare = 원본 대조(지금 채점 그대로) · mixed = 눈썹(채움은 결과 모양, 넘침은 원본 대조) · check_only = 확인만 */
-  route: ShapeRoute | "mixed";
+  /** shape = 결과 모양 · compare = 원본 대조(지금 채점 그대로) · mixed = 눈썹(채움은 결과 모양, 넘침은 원본 대조) · ends = 라이너(원본 대조, 양 끝만 점수) · check_only = 확인만 */
+  route: ShapeRoute | "mixed" | "ends";
 }
 
 /**
  * 조합 채점 (실험) — 부위마다 결과 모양과 원본 대조를 섞는다. 팀 방향(2026-10-01): 채움은 원래 있던 것 + 그린 것, 번짐은 그린 것만.
  * 실험 근거 (eval/samples/shape/README.md):
  *   눈썹   채움 = 결과 모양 (원래 눈썹의 70% 가 테두리를 70% 넘게 채운다) · 넘침 = 원본 대조 (원래 눈썹의 92% 가 테두리 밖에 걸린다)
- *   라이너 원본 대조 (결과 모양은 눈꼬리 주름·접힌 선을 꼬리로 읽는다)
+ *   라이너 원본 대조 (결과 모양은 눈꼬리 주름·접힌 선을 꼬리로 읽는다) — 점수는 양 끝(눈꼬리 · 앞트임)에서, 획 추출로 (linerStroke)
  *   입술·섀도우·볼  쌩얼을 보고 가른다 (routeOf) — 타고난 모습이 템플릿 색 쪽이면 원본 대조, 아니면 결과 모양
  * 결과 모양 쪽 점수는 지금 채점과 같은 식(scoreForm: 채움·넘침)이라 같은 자로 비교할 수 있다. 앱에는 아직 연결하지 않았다.
  */
 export function scoreHybrid(partId: PartId, base: SampleFrame, cur: SampleFrame, guide: GuideSource, opts: HybridOptions = {}, p: ScoreParams = PARAMS): HybridScore {
   const a = scorePart(partId, base, cur, guide, opts, p);
-  if (partId === "liner" || partId === "contour") return { ...a, route: "compare" };
+  if (partId === "contour") return { ...a, route: "compare" };
+  if (partId === "liner") {
+    const gb = guide("liner", base).liner, gc = guide("liner", cur).liner;
+    if (!gb || !gc) return { ...a, route: "compare" };
+    // 조명은 지금 채점처럼 이마 밝기 비율로 맞춘다 (흰자 색 보정 · 미세 정렬은 실험에서 뺐다)
+    const fb = sampleForehead(base), fc = sampleForehead(cur), corr = fb && fc ? lightCorr(fb.L, fc.L) : noCorr;
+    return { result: linerEndsResult({ R: linerStroke(base, cur, "R", gb, gc, corr, p), L: linerStroke(base, cur, "L", gb, gc, corr, p) }, p), ctx: a.ctx, route: "ends" };
+  }
 
   if (partId === "brow") {
     const regions = guide("brow", cur).regions;

@@ -3,13 +3,13 @@
 import { describe, expect, it } from "vitest";
 import { LM } from "@core/landmarks";
 import { frameOf } from "@core/sampling";
-import { browShape, linerBand, routeOf, scoreHybrid, shapeFill, tintFill, tintProgress } from "@core/score-shape";
+import { browShape, linerBand, linerEnds, linerEndsResult, linerStroke, routeOf, scoreHybrid, shapeFill, tintFill, tintProgress } from "@core/score-shape";
 import { decide } from "@core/score";
 import type { GuideSource } from "@core/score-part";
 import { rgbToLab } from "@core/color";
 import { sampleLiner } from "@core/sampling";
 import type { Pt } from "@core/types";
-import { BROWN, LMS, NATURAL, P, RED, SKIN, browPaint, geomOf, guide, image, linerPaint, lipPaint, regionPaint, type Paint } from "./helpers/synth-face";
+import { BROWN, LMS, NATURAL, P, RED, SKIN, browPaint, geomOf, guide, image, linerPaint, lipPaint, naturalPaint, over, regionPaint, shifted, type Paint } from "./helpers/synth-face";
 
 const outline: Pt[] = [...LM.browA.upper.map(P), ...LM.browA.lower.map(P).reverse()];
 const frame = (p: Paint) => frameOf(image(p), LMS);
@@ -239,8 +239,120 @@ describe("조합 — 부위마다 결과 모양과 원본 대조를 섞는다 (�
     expect(v.status).toBe("check_only");
   });
 
-  it("C6 라이너는 항상 원본 대조 — 결과 모양은 눈꼬리 주름을 꼬리로 읽는다", () => {
+  it("C6 라이너는 원본 대조인데 양 끝(눈꼬리·앞트임)으로 점수를 낸다 — 결과 모양은 눈꼬리 주름을 꼬리로 읽는다", () => {
     const bare = frame(() => null);
-    expect(scoreHybrid("liner", bare, frame(linerPaint()), withBrow, { templateColor: [30, 25, 28] }).route).toBe("compare");
+    const h = scoreHybrid("liner", bare, frame(linerPaint()), withBrow, { templateColor: [30, 25, 28] });
+    expect(h.route).toBe("ends");
+    expect(h.result.score).toBeGreaterThan(70);
+    expect(scoreHybrid("liner", bare, bare, withBrow, { templateColor: [30, 25, 28] }).result.present).toBe(false);
+  });
+});
+
+describe("라이너 양 끝 — 눈꼬리와 앞트임 자리를 중심으로 (원본 대조)", () => {
+  // 진단(2026-10-01, liner_levels): 속눈썹 선 위는 원래 어두워 그린 선이 잘 안 잡힌다. 사용자가 어려워하는 곳도 양 끝이다
+  const g = geomOf("liner").liner!;
+  const INK: [number, number, number] = [30, 25, 28];
+  const lid = LM.eyeA.upper.map(P).reverse();   // 안쪽(눈머리) → 바깥(눈꼬리)
+  const [corner, tip] = g.wing.R;
+  const up = (q: Pt): Pt => ({ x: q.x, y: q.y - 2 });
+  const d2seg = (x: number, y: number, a: Pt, b: Pt): number => { const dx = b.x - a.x, dy = b.y - a.y, t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy || 1))); return Math.hypot(x - a.x - t * dx, y - a.y - t * dy); };
+  const stroke = (path: Pt[]): Paint => (x, y) => (path.some((_, i) => i > 0 && d2seg(x, y, path[i - 1]!, path[i]!) <= 2) ? INK : null);
+  const along = (a: Pt, b: Pt, k: number): Pt => ({ x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k });
+  const bare = frame(() => null);
+  const ends = (p: Paint) => linerEnds(bare, frame(p), "R", g, g);
+  const full = [...lid.map(up), up(tip)];
+
+  it("E1 맨얼굴끼리는 그린 게 없다", () => {
+    expect(ends(() => null).present).toBe(false);
+  });
+
+  it("E2 눈머리부터 꼬리 끝까지 그리면 — 꼬리 길이가 가이드와 같고 앞쪽이 눈머리에서 시작한다", () => {
+    const e = ends(stroke(full));
+    expect(e.present).toBe(true);
+    expect(Math.abs(e.wingDrawn - e.wingGuide)).toBeLessThan(0.03);
+    expect(Math.abs(e.innerStart)).toBeLessThan(0.05);
+    expect(e.outerCoverage).toBeGreaterThan(0.8);
+    expect(e.innerCoverage).toBeGreaterThan(0.8);
+  });
+
+  it("E3 꼬리를 가이드보다 길게 빼면 그만큼 길게 잰다 (지금 채점은 가이드 끝까지만 봐서 모른다)", () => {
+    const e = ends(stroke([...lid.map(up), up(along(corner, tip, 1.6))]));
+    expect(e.wingDrawn - e.wingGuide).toBeGreaterThan(0.05);
+  });
+
+  it("E4 꼬리를 안 그리면 꼬리 길이 0", () => {
+    expect(ends(stroke(lid.map(up))).wingDrawn).toBeLessThan(0.03);
+  });
+
+  it("E5 앞쪽을 비우고 중간부터 그리면 시작 자리가 눈머리에서 멀다", () => {
+    const e = ends(stroke([...lid.slice(3).map(up), up(tip)]));
+    expect(e.innerStart).toBeGreaterThan(0.15);
+    expect(e.innerCoverage).toBeLessThan(0.5);
+  });
+
+  it("E6 눈머리 너머로 빼면(앞트임을 넘김) 시작 자리가 음수", () => {
+    const over = along(lid[1]!, lid[0]!, 1 + 9 / Math.hypot(lid[1]!.x - lid[0]!.x, lid[1]!.y - lid[0]!.y));   // 눈머리에서 9px 더
+    expect(ends(stroke([up(over), ...full])).innerStart).toBeLessThan(-0.03);
+  });
+
+  it("E7 가운데가 끊겨도 양 끝이 맞으면 점수는 같다 — 가운데는 그렸는지만 본다", () => {
+    const gap: Paint = (x, y) => { const c = stroke(full)(x, y); return c && x > lid[5]!.x && x < lid[3]!.x ? null : c; };
+    const a = ends(stroke(full)), b = ends(gap);
+    expect(b.midCoverage).toBeLessThan(a.midCoverage);
+    expect(linerEndsResult({ R: b, L: b }).score).toBe(linerEndsResult({ R: a, L: a }).score);
+  });
+
+  it("E8 점수 — 가이드대로 > 꼬리 없음 · 꼬리 길게 · 앞쪽 비움", () => {
+    const sc = (p: Paint) => { const e = ends(p); return linerEndsResult({ R: e, L: e }).score!; };
+    const ok = sc(stroke(full));
+    expect(ok).toBeGreaterThanOrEqual(80);
+    expect(sc(stroke(lid.map(up)))).toBeLessThan(ok - 10);
+    expect(sc(stroke([...lid.map(up), up(along(corner, tip, 1.8))]))).toBeLessThan(ok - 10);
+    expect(sc(stroke([...lid.slice(3).map(up), up(tip)]))).toBeLessThan(ok - 10);
+  });
+});
+
+describe("라이너 획 추출 — 가늘고 어두운 선만 골라 비교한다 (linerStroke)", () => {
+  // liner_ends 실험(2026-10-01): 화면 가이드 모양(끝으로 가늘어지는 꼬리)은 칸 색 차이로는 꼬리 길이 0 으로 잰다. 실제 폰 사진 눈 폭 약 122px
+  const g = geomOf("liner").liner!, eyeW = NATURAL.unit.eye;
+  const INK: [number, number, number] = [30, 25, 28];
+  const lid = LM.eyeA.upper.map(P).reverse();   // 눈머리 → 눈꼬리
+  const [corner, tip] = g.wing.R;
+  const inPoly = (x: number, y: number, poly: Pt[]): boolean => { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const a = poly[i]!, b = poly[j]!; if (a.y > y !== b.y > y && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) c = !c; } return c; };
+  /** 화면 가이드 윤곽 모양: 눈꺼풀 선에서 위로 thick, 꼬리 끝에서 만난다 */
+  const outline = (thickPx: number, end: Pt = tip): Paint => { const poly = [...lid, end, ...lid.map((q) => ({ x: q.x, y: q.y - thickPx })).reverse()]; return (x, y) => (inPoly(x, y, poly) ? INK : null); };
+  const stroke = (cur: Paint, base: Paint = naturalPaint) => linerStroke(frame(base), frame(over(cur, naturalPaint)), "R", g, g);
+  const guideThick = g.thick * eyeW;
+
+  it("K1 맨얼굴끼리는 그린 게 없다 (속눈썹 선이 있어도)", () => {
+    expect(stroke(() => null).present).toBe(false);
+  });
+
+  it("K2 화면 가이드 모양으로 그리면 가는 꼬리까지 잡는다 — 칸 색 차이는 못 잡는다", () => {
+    const e = stroke(outline(guideThick));
+    expect(e.present).toBe(true);
+    expect(e.wingDrawn).toBeGreaterThan(e.wingGuide * 0.6);
+    expect(e.outerCoverage).toBeGreaterThan(0.7);
+  });
+
+  it("K3 눈꼬리 밖이 넓게 어두워진 것(그늘)은 선이 아니다", () => {
+    const shade: Paint = (x) => (x < corner.x - 2 ? [150, 108, 86] : null);
+    expect(stroke(shade).wingDrawn).toBeLessThan(0.03);
+  });
+
+  it("K4 맨얼굴이 1px 어긋나도 속눈썹 선을 새 획으로 읽지 않는다 (#261)", () => {
+    const e = linerStroke(NATURAL, frame(shifted(naturalPaint, 0, 1)), "R", g, g);
+    expect(e.present).toBe(false);
+  });
+
+  it("K5 두껍게 그리면 두껍다고 잰다", () => {
+    const a = stroke(outline(guideThick)), b = stroke(outline(guideThick * 2.5));
+    expect(b.thickness).toBeGreaterThan(a.thickness + 0.03);
+  });
+
+  it("K6 꼬리를 가이드보다 길게 빼면 길게 잰다", () => {
+    const far = { x: corner.x + (tip.x - corner.x) * 1.6, y: corner.y + (tip.y - corner.y) * 1.6 };
+    const e = stroke(outline(guideThick, far));
+    expect(e.wingDrawn - e.wingGuide).toBeGreaterThan(0.04);
   });
 });
