@@ -23,7 +23,7 @@ import type { Baseline, FaceShape, Pt } from "@core/types";
 import type { ScreenId } from "@core/screens";
 import { DEFAULT_LOCKS, applyCameraLocks, applyUltraWideZoom, bindVisibility, requestWakeLock, type WakeLockSentinelLike } from "./camera-locks";
 import { foreheadLabOf, grabFrame, sharpnessOf } from "./frame-measure";
-import { encodeForStore } from "./image-encode";
+import { BARE_MAX_SIDE, encodeForStore } from "./image-encode";
 import { createLandmarker } from "./landmarker";
 import type { Screen, ScreenContext } from "./shell";
 
@@ -376,7 +376,7 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
         } else {
           deps.setBaseline(buildBaseline(input));
         }
-        const blob = encodeForStore(d.cv).then((e) => e.blob);
+        const blob = encodeForStore(d.cv, BARE_MAX_SIDE).then((e) => e.blob);   // 원본 크기 (#240)
         deps.saveBare(blob)
           .then(async () => {
             const bare = await blob;
