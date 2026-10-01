@@ -15,7 +15,8 @@ function fakeCtx(calls: Call[]) {
     return g;
   };
   const rec = (op: string) => (...args: unknown[]) => { calls.push({ op, args }); };
-  return new Proxy({} as Record<string, unknown>, {
+  // filter 가 문자열 = 번짐 기능이 있는 브라우저 (없는 쪽은 makeup-paint-nofilter.test.ts)
+  return new Proxy({ filter: "none" } as Record<string, unknown>, {
     get(t, k: string) {
       if (k in t) return t[k];
       if (k === "createLinearGradient") return grad("linear");

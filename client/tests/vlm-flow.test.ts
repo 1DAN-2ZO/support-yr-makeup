@@ -57,7 +57,7 @@ describe("VLM 개인화 흐름", () => {
     expect(s.properties.shadow!.properties!.range!.enum).toEqual(allowedChoices(m).shadow);
     expect(s.properties.linerThick!.properties!.scale!.enum).toEqual([0.8, 0.9, 1, 1.1, 1.2]);
     expect(JSON.stringify(s)).not.toMatch(/"minimum"|"maximum"/);   // 소수 범위는 llama.cpp 가 강제하지 않는다
-    expect(PROMPT_VER).toBe("vlm-prompt-v3");
+    expect(PROMPT_VER).toBe("vlm-prompt-v5");
   });
   it("F6 다시 묻다가 실패하면(시간 초과·붐빔) 첫 답(관문을 거친 계획)을 쓴다 — 버리지 않는다 (#179 리뷰)", async () => {
     const ask = vi.fn().mockResolvedValueOnce(bad).mockRejectedValueOnce(new Error("시간 초과"));
