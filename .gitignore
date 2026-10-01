@@ -20,6 +20,8 @@ client/certs/
 # ML model weights / cloned benchmark repos (server-bench POC) — too large for git
 poc/look-tryon/server-bench/stable_makeup/
 poc/look-tryon/server-bench/shmt/
+# 벤치 샘플 이미지 — 남의 저장소에 딸려 온 얼굴 사진과 그 결과물 (#118). 숫자(results.csv)만 커밋한다
+poc/look-tryon/server-bench/results/*.jpg
 *.ckpt
 *.safetensors
 *.bin

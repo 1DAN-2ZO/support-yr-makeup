@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// 화면 1(촬영) · 화면 4 가 공용 카메라 루프(#245)를 쓰나 — 카메라 새 장면에만 얼굴을 찾고, 화면 그리기(rAF)로는 안 찾는다. 떠나면 멈춘다.
+// 화면 1(촬영) · 화면 4 · 2-b AR · 화면 6 정면 1장이 공용 카메라 루프(#245)를 쓰나 — 카메라 새 장면에만 얼굴을 찾고, 화면 그리기(rAF)로는 안 찾는다. 떠나면 멈춘다.
 // 카메라·모델·rVFC·rAF 는 전부 가짜. 얼굴은 안 찾아지는 장면만 (분석 횟수만 본다)
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CAPTURE_GUIDE } from "@core/flow";
@@ -9,7 +9,9 @@ import { LM } from "@core/landmarks";
 import { createLogger, memorySink } from "@core/log";
 import type { Baseline, Pt, Versions } from "@core/types";
 import { captureScreen, type CaptureDeps } from "@screens/capture";
+import { fullRenderScreen } from "@screens/fullrender";
 import { LIVE_TEXT, liveScreen, type LiveDeps } from "@screens/live";
+import { startReviewShot } from "@screens/review-shot";
 import type { ScreenContext } from "@screens/shell";
 import { LMS } from "./helpers/synth-face";
 
@@ -23,6 +25,8 @@ vi.mock("@screens/frame-measure", () => ({
   foreheadLabOf: () => ({ skin: { L: 62, a: 12, b: 16 }, raw: { L: 62, a: 12, b: 16 } }),
   grabFrame: () => document.createElement("canvas"),
 }));
+// 2-b AR 은 WebGL 로 그린다 — jsdom 에 없으니 그리기만 가짜로 (분석 횟수·카메라 잠금만 본다)
+vi.mock("@screens/makeup-gl", () => ({ MakeupGl: class { render(): void {} dispose(): void {} } }));
 
 const ver: Versions = { app: "test", score: "s", look: "l", faceshape: "f", transfer: "t" };
 
@@ -55,7 +59,9 @@ beforeEach(() => {
   Object.defineProperty(navigator, "mediaDevices", { value: { getUserMedia: async () => stream }, configurable: true });
   vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(async () => {});
   vi.spyOn(HTMLMediaElement.prototype, "readyState", "get").mockReturnValue(4);
-  Object.assign(HTMLVideoElement.prototype, { requestVideoFrameCallback: cam.add, cancelVideoFrameCallback: cam.remove });
+  // 2-b AR 은 영상 크기가 0 이면 그 장면을 건너뛴다
+  vi.spyOn(HTMLVideoElement.prototype, "videoWidth", "get").mockReturnValue(640);
+  vi.spyOn(HTMLVideoElement.prototype, "videoHeight", "get").mockReturnValue(480);  Object.assign(HTMLVideoElement.prototype, { requestVideoFrameCallback: cam.add, cancelVideoFrameCallback: cam.remove });
   vi.stubGlobal("requestAnimationFrame", draw.add);
   vi.stubGlobal("cancelAnimationFrame", draw.remove);
   vi.stubGlobal("matchMedia", () => ({ matches: true }));
@@ -68,7 +74,7 @@ afterEach(() => {
   delete (HTMLVideoElement.prototype as { cancelVideoFrameCallback?: unknown }).cancelVideoFrameCallback;
 });
 
-function ctxOf(screen: "capture" | "live"): ScreenContext<null> {
+function ctxOf(screen: "capture" | "live" | "fullrender" | "review"): ScreenContext<null> {
   document.body.innerHTML = `<div id="root"></div>`;
   const root = document.getElementById("root") as HTMLElement;
   return { root, session: null, go: vi.fn(), goPart: vi.fn(), log: createLogger({ sid: "s1", screen, part: null, ver }, memorySink().sink) };
@@ -98,9 +104,27 @@ async function mountLive(wait = 2000): Promise<() => void> {
   return off;
 }
 
+/** 2-b AR (⑥) — 2026-10-01 공용 루프로 옮김 (#245) */
+async function mountFullRender(wait = 2000): Promise<() => void> {
+  const ctx = ctxOf("fullrender");
+  const off = fullRenderScreen<null>({ getLookId: () => "edgy" }).mount(ctx) as () => void;
+  await vi.advanceTimersByTimeAsync(wait);
+  return off;
+}
+
+/** 화면 6 들어올 때 정면 1장 (⑥) */
+async function mountReviewShot(wait = 2000): Promise<() => void> {
+  const ctx = ctxOf("review");
+  const off = startReviewShot(ctx.root, vi.fn(), ctx.log);
+  await vi.advanceTimersByTimeAsync(wait);
+  return off;
+}
+
 describe.each([
   ["촬영(화면 1)", mountCapture],
   ["화면 4", mountLive],
+  ["2-b AR", mountFullRender],
+  ["리뷰 정면 1장(화면 6)", mountReviewShot],
 ])("%s 카메라 루프", (_name, mount) => {
   it("CS1 화면만 다시 그려질 때는 얼굴을 안 찾고, 카메라 새 장면마다 한 번 찾는다", async () => {
     const off = await mount();
