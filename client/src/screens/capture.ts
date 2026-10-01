@@ -22,6 +22,7 @@ import { foreheadStep, startForeheadTrack } from "@core/occlusion";
 import type { Baseline, FaceShape, Pt } from "@core/types";
 import type { ScreenId } from "@core/screens";
 import { DEFAULT_LOCKS, applyCameraLocks, applyUltraWideZoom, bindVisibility, requestWakeLock, type WakeLockSentinelLike } from "./camera-locks";
+import { startFrameLoop } from "./camera-loop";
 import { foreheadLabOf, grabFrame, sharpnessOf } from "./frame-measure";
 import { BARE_MAX_SIDE, encodeForStore } from "./image-encode";
 import { createLandmarker } from "./landmarker";
@@ -199,7 +200,7 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
         let lmk: FaceLandmarker | null = null;
         let stream: MediaStream | null = null;
         let wake: WakeLockSentinelLike | null = null;
-        let raf = 0;
+        let stopLoop = (): void => {};
         let run: RunState = startRun(shots(), performance.now());
         let fj = startForeheadTrack();
         let lostSince: number | null = null;
@@ -210,8 +211,7 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
         let burstWait = false;
 
         stopCamera = () => {
-          cancelAnimationFrame(raf);
-          raf = 0;
+          stopLoop();
           stream?.getTracks().forEach((t) => t.stop());
           stream = null;
           void wake?.release().catch(() => {});
@@ -243,18 +243,18 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
             await applyUltraWideZoom(track as unknown as Parameters<typeof applyUltraWideZoom>[0]);
           }
           wake = await requestWakeLock(navigator.wakeLock as unknown as Parameters<typeof requestWakeLock>[0]);
-          if (!live()) { void wake?.release().catch(() => {}); return; }
+          // 기다리는 사이 떠나거나 숨었으면(stopCamera) 루프를 켜지 않는다
+          if (!live() || !stream) { void wake?.release().catch(() => {}); return; }
           run = startRun(shots(), performance.now());
           setStep();
-          raf = requestAnimationFrame(frame);
+          // 카메라 새 장면에만 얼굴을 찾는다 (#245 — 전에는 화면 그리기마다라 같은 장면을 두세 번)
+          stopLoop = startFrameLoop(video, frame);
         }
 
-        function frame(): void {
+        function frame(now: number): void {
           if (!live() || !lmk || !stream) return;
-          raf = requestAnimationFrame(frame);
           const shot = run.shot;
           if (busy || video.readyState < 2 || (!shot && !burstWait)) return;
-          const now = performance.now();
           const sw = video.videoWidth, sh = video.videoHeight;
           const res: FaceLandmarkerResult = lmk.detectForVideo(video, now);
           const raw = res.faceLandmarks[0];
