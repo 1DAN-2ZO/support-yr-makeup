@@ -13,7 +13,7 @@ import { faceAxis } from "../core/face-measure";
 import { GUIDE_PARAMS } from "../core/guides";
 import { LM, at } from "../core/landmarks";
 import type { Look } from "../core/looks";
-import { browOnFace, linerOutline, lipOutline } from "../core/personal-guide";
+import { browOnFace, linerOutline, lipOutline, shadowRegions, shadowTail } from "../core/personal-guide";
 import { PLAN_RULES, type LinerStyle, type PersonalPlan } from "../core/personalize";
 import type { Pt } from "../core/types";
 import { drawLashes, type LashTextures } from "./lash-render";
@@ -48,9 +48,6 @@ export interface PaintLook {
   /** 마스카라 (extras.lash) — 없으면 안 그린다 (예: 출근/학생). 채점 안 함 */
   lash?: { color: string; alpha: number };
 }
-
-/** 섀도우 눈꼬리 연장 길이 (눈 폭 비율) — ④ 실험 화면(makeup-probe.ts)과 같은 값. 블러보다 확실히 크게 잡은 눈대중값 */
-const SHADOW_TAIL_RATIO = 0.35;
 
 /** 쉐딩·하이라이트는 룩에 없다(얼굴형 규칙 부위, F-04) — 기본 색·진하기 */
 const CONTOUR = { color: { contour: "#a07a66", highlight: "#fff3e6" }, alpha: { contour: 0.35, highlight: 0.45 } };
@@ -218,19 +215,15 @@ export function paintMakeup(layers: Layers, off: HTMLCanvasElement, lm: readonly
       o.fill();
     } else if (p.id === "shadow") {
       // 속눈썹 선에서 가장 진하고 위로 갈수록 옅어진다. 두 색 화장은 속눈썹 쪽 → 눈썹 쪽 두 색 (④ 실험 화면과 같은 방법)
-      // 눈꼬리 연장: 라이너 꼬리 "방향"으로 눈 폭 × SHADOW_TAIL_RATIO 만큼 쐐기를 더한다 (라이너 자체 길이는 번짐에 뭉개져서)
-      const linerOut = look.shadowTail ? linerOutline({ lm, unit }, look.linerThick * (plan?.linerThick.scale ?? 1), style) : null;
-      for (const [side, { eye, brow }] of SIDES.entries()) {
-        const lid = eye.upper.map(P), lo = brow.lower.map(P);
-        const top = lid.map((q, i) => mix(q, lo[Math.min(lo.length - 1, Math.round((i / (lid.length - 1)) * (lo.length - 1)))]!, GUIDE_PARAMS.shadow.rangeRatio * (plan?.shadow.range ?? 1)));
-        const tip = linerOut ? (side === 0 ? linerOut.R : linerOut.L)[eye.upper.length] : undefined;
-        const outer = lid[0]!;
-        const wingTip = tip ? (() => {
-          const dx = tip.x - outer.x, dy = tip.y - outer.y, len = Math.hypot(dx, dy) || 1;
-          return { x: outer.x + (dx / len) * SHADOW_TAIL_RATIO * unit.eye, y: outer.y + (dy / len) * SHADOW_TAIL_RATIO * unit.eye };
-        })() : null;
-        const band = wingTip ? [...lid, ...[...top].reverse(), mix(top[0]!, wingTip, 0.5), wingTip] : [...lid, ...[...top].reverse()];
-        const a = lid[Math.floor(lid.length / 2)]!, b = top[Math.floor(top.length / 2)]!;
+      // 띠 = 섀도 영역(눈꺼풀 → 위 테두리 거꾸로) + 눈꼬리 연장 쐐기 — 화면 3·4 테두리와 같은 계산 (personal-guide, #30)
+      const f = { lm, unit };
+      const regions = shadowRegions(f, GUIDE_PARAMS.shadow.rangeRatio * (plan?.shadow.range ?? 1));
+      const tails = look.shadowTail ? shadowTail(f, regions, look.linerThick * (plan?.linerThick.scale ?? 1), style) : null;
+      for (const side of ["R", "L"] as const) {
+        const r = regions[side], n = r.length / 2;
+        const band = tails ? [...r, ...tails[side]] : r;
+        // 그라데이션 방향: 눈꺼풀 가운데 → 그 위 테두리
+        const a = r[Math.floor(n / 2)]!, b = r[r.length - 1 - Math.floor(n / 2)]!;
         const grad = o.createLinearGradient(a.x, a.y, b.x, b.y);
         if (look.shadowStops) {
           for (const st of look.shadowStops) grad.addColorStop(Math.max(0, Math.min(1, st.at)), st.color);

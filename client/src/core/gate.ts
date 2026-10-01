@@ -66,6 +66,8 @@ export const GATE_TEXT = {
   angle: SHOT_TEXT.front,
   // 눈 부위는 가로 화면에서만 한다 (팀 협의, 정의서 3-2) — 세로면 막는다
   toLandscape: "폰을 가로로 돌려 주세요",
+  /** 입술·볼·쉐딩은 세로에서만 (2026-10-01) — 맨얼굴과 같은 자세. 가로면 카메라가 옆이라 얼굴이 돌아간 것으로 찍힌다(#239) */
+  toPortrait: "폰을 세로로 돌려 주세요",
   // 자동 회전이 꺼진 채 가로로 돌리면 화면은 세로 그대로이고 영상 속 얼굴만 눕는다 (#204)
   autoRotate: "화면이 안 돌아갔어요. 화면 자동 회전을 켜 주세요",
   // 세로 부위(입술·볼·쉐딩)에서 얼굴이 누웠으면 폰을 가로로 들고 있는 것
@@ -189,6 +191,8 @@ export function evaluateGate(partId: PartId, m: LiveMeasure, limits: LiveLimits 
   }
   // 눈썹·라이너·섀도우는 양쪽 눈을 한 화면에 크게 담아야 해서 가로에서만 (팀 협의 2026-09-30, 정의서 3-2)
   if (m.screen === "portrait" && EYE_PARTS.includes(partId)) return fail("angle", GATE_TEXT.toLandscape);
+  // 나머지(입술·볼·쉐딩)는 세로에서만 — 섀도우 다음 입술로 넘어갈 때 가로 그대로 하지 않게 (2026-10-01)
+  if (m.screen === "landscape" && !EYE_PARTS.includes(partId)) return fail("angle", GATE_TEXT.toPortrait);
   // NaN·Infinity 는 비교가 전부 false 라 모든 조건을 통과해 버린다 (정의서 3-5 "깨진 측정값")
   if (!measureFinite(m)) return fail("face", GATE_TEXT.face);
   if (Math.abs(m.yaw) > limits.yaw) return fail("angle", m.yaw > 0 ? GATE_TEXT.turnLeft : GATE_TEXT.turnRight);
@@ -224,8 +228,8 @@ export function evaluateGate(partId: PartId, m: LiveMeasure, limits: LiveLimits 
   return { ok: true, firstFail: null, text: colorOff ? GATE_TEXT.readyColor : GATE_TEXT.ready, stableCount };
 }
 
-/** 같은 angle 이라도 이건 기다려도 안 넘어간다 — 눈 부위 가로(팀 협의) · 자동 회전 */
-const HARD_ANGLE: readonly string[] = [GATE_TEXT.toLandscape, GATE_TEXT.autoRotate, GATE_TEXT.holdPortrait];
+/** 같은 angle 이라도 이건 기다려도 안 넘어간다 — 부위별 화면 방향(팀 협의) · 자동 회전 */
+const HARD_ANGLE: readonly string[] = [GATE_TEXT.toLandscape, GATE_TEXT.toPortrait, GATE_TEXT.autoRotate, GATE_TEXT.holdPortrait];
 
 /**
  * 기다리면 확인받기를 켜 주는 조건인가 (#235, #209 원칙 "첫 촬영은 빡빡하게, 화면 4 는 채점에 필요한 최소한만").

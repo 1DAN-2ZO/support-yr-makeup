@@ -248,9 +248,9 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         const aspect = view.clientWidth && view.clientHeight ? view.clientWidth / view.clientHeight : 3 / 4;
         if (!follow || Math.abs(aspect - followAspect) > 0.01) { follow = createCropFollow(part!, aspect); followAspect = aspect; }
         const screen = window.matchMedia("(orientation: landscape)").matches ? "landscape" : "portrait";
-        if (lm && (faceRoll(lm) > ROLL_MAX || (screen === "portrait" && wantedOrientation(part!) === "landscape"))) {
-          // 얼굴이 누웠거나(자동 회전 꺼짐, #204) 눈 부위를 세로로 들고 있다(가로에서만 — 팀 협의) — 확대하지 않고 전체를 보여 준다.
-          // 게이트가 "자동 회전을 켜" / "가로로 돌려" 로 막는다
+        if (lm && (faceRoll(lm) > ROLL_MAX || screen !== wantedOrientation(part!))) {
+          // 얼굴이 누웠거나(자동 회전 꺼짐, #204) 부위에 맞지 않는 방향으로 들고 있다(눈 부위 가로 · 나머지 세로 — 팀 협의) — 확대하지 않고 전체를 보여 준다.
+          // 게이트가 "자동 회전을 켜" / "가로로 돌려" / "세로로 돌려" 로 막는다
           crop = null;
           follow.reset();
         } else if (lm) {
