@@ -3,15 +3,15 @@
  *
  * 실험이 앱과 다른 것을 재면 안 된다: 측정(face-measure) · 프롬프트(vlm-prompt) · 관문(personalize.resolvePlan)
  * · 화장 템플릿(rules/looks.json) 은 전부 앱 파일을 그대로 쓴다. 여기서 새로 만드는 것은 실험 조건뿐이다
- *   - 입력 형식 B·C·D (A = 앱 프롬프트 그대로)
- *   - JSON 스키마 (관문이 받는 모양과 같은 허용값 — 제약 디코딩용)
+ *   - 입력 형식 B·C·D·F (A = E = 앱 프롬프트 그대로) — 스키마도 앱 것(vlm-flow.vlmSchema)
  *   - 측정값 뒤집기 (4단계)
  */
 
 import { measureFace, type FaceMeasure } from "../../client/src/core/face-measure";
 import { lookById, LOOKS } from "../../client/src/core/looks";
-import { BLUSH_POSITIONS, DROOP_MARGIN_DEG, FACE_SHAPES, LINER_STYLES, PLAN_LIMITS, PLAN_RULES, droopDeg, resolvePlan, type PersonalPlan } from "../../client/src/core/personalize";
+import { DROOP_MARGIN_DEG, PLAN_RULES, droopDeg, resolvePlan, type PersonalPlan } from "../../client/src/core/personalize";
 import type { FaceShape, Pt } from "../../client/src/core/types";
+import { vlmSchema } from "../../client/src/core/vlm-flow";
 import { buildVlmPrompt } from "../../client/src/core/vlm-prompt";
 
 /**
@@ -38,8 +38,8 @@ const f1 = (v: number): string => v.toFixed(1);
 /** 측정값 칸만 형식별로 바꾼다. A 는 앱 프롬프트 그대로 */
 export function prompt(m: FaceMeasure, lookId: string, variant: Variant, faceShape: FaceShape | null = null): string {
   const full = buildVlmPrompt(m, lookById(lookId), faceShape);
-  if (variant === "A") return full;
-  if (variant === "E" || variant === "F") return promptEF(full, m, variant);
+  if (variant === "A" || variant === "E") return full;
+  if (variant === "F") return promptF(full);
   const i = full.indexOf(MEASURE_HEAD), j = full.indexOf(DECIDE_HEAD);
   if (i < 0 || j < 0) throw new Error("앱 프롬프트 모양이 바뀌었다 — entry.ts 의 제목 두 개를 맞춰 주세요");
   const shape = faceShape ? `${faceShape.label}` : null;
@@ -72,105 +72,27 @@ export function prompt(m: FaceMeasure, lookId: string, variant: Variant, faceSha
 }
 
 // ---------- E·F ----------
+// E 는 2026-10-01 부터 앱 프롬프트 그대로다 (vlm-prompt-v2 — 이 실험에서 확정해 앱으로 옮겼다). 그래서 A = E.
+// 옛 A(예시 JSON 이 있던 앱 프롬프트)·소수 min/max 스키마로 잰 결과는 eval/results 의 2026-09-29~30 기록에만 있다.
 
-const STEP = { scale: [0.8, 0.9, 1, 1.1, 1.2], overline: [0, 0.1, 0.2, 0.3], intensity: [0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3] } as const;
-const RATIONALE_PARTS = ["liner", "shadow", "cheek", "lip"] as const;
-const KO: Record<string, string> = {
-  winged: "꼬리를 위로 올림", extend: "눈 축을 곧게 연장", drop: "윗눈꺼풀 선을 따라 내림",
-  oval: "계란형", round: "둥근형", square: "각진형", oblong: "긴형", heart: "하트형",
-  higher: "광대 기준 조금 위", standard: "광대 표준 자리", lower: "광대 기준 조금 아래",
-};
-
-/** 이 얼굴에서 관문이 받아 주는 값만 — 거절될 선택지는 처음부터 주지 않는다 */
-export function allowed(m: FaceMeasure): {
-  liner: string[]; shadow: number[]; overline: number[]; intensity: Record<string, number[]>;
-} {
-  const gap = (m.eye.R.lidGapRatio + m.eye.L.lidGapRatio) / 2, lr = m.lip.upperLowerRatio, R = PLAN_RULES;
-  const shadow = STEP.scale.filter((v) =>
-    !(v < 1 && gap > R.lidGapStd * (1 + R.lidGapTol)) && !(v > 1 && gap < R.lidGapStd * (1 - R.lidGapTol)));
-  const overline = lr != null && lr >= R.lipTarget ? [0] : [...STEP.overline];
-  const intensity = Object.fromEntries(["brow", "liner", "shadow", "cheek", "lip"].map((p) => {
-    const cap = R.intensityCap[p as keyof typeof R.intensityCap] ?? Infinity;
-    return [p, STEP.intensity.filter((v) => v <= cap)];
-  }));
-  return { liner: LINER_STYLES.filter((s) => s !== "drop" || droopDeg(m) > DROOP_MARGIN_DEG), shadow, overline, intensity };
-}
-
-function promptEF(full: string, m: FaceMeasure, variant: "E" | "F"): string {
+function promptF(full: string): string {
+  // 규칙이 정한 값만 뺀다 — 측정값·범주(처진 눈 여부)는 남긴다. 출발점이 앵커가 되는지 (Lou & Sun 2024 · Echterhoff 2024)
   const j = full.indexOf(DECIDE_HEAD);
   if (j < 0) throw new Error("앱 프롬프트 모양이 바뀌었다 — entry.ts 의 제목을 맞춰 주세요");
-  let head = full.slice(0, j).trimEnd();
-  if (variant === "F") {
-    // 규칙이 정한 값만 뺀다 — 측정값·범주(처진 눈 여부)는 남긴다
-    head = head.replace(/ → 규칙 [^\n]*/g, "").split("\n").filter((l) => !l.startsWith("- 규칙")).join("\n");
-  }
-  const a = allowed(m);
-  const opts = (xs: readonly (string | number)[]) => xs.map((x) => (typeof x === "string" && KO[x] ? `${x}(${KO[x]})` : String(x))).join(" / ");
-  const inten = Object.entries(a.intensity).map(([p, xs]) => `${p} ${xs[0]}~${xs[xs.length - 1]}`).join(", ");
-  return `${head}
-
-${DECIDE_HEAD}
-사진과 위 측정을 함께 보고 정합니다. 순서대로 씁니다 — 먼저 사진에서 본 것, 그 관찰에서 나온 부위별 근거, 마지막으로 값.
-- observation: 사진에서 본 눈꼬리 · 눈두덩 · 입술 · 광대의 모습을 한국어 한두 문장으로
-- rationale: ${RATIONALE_PARTS.join(" · ")} 각각 한 문장(${PLAN_LIMITS.rationaleMax}자 이내). 사용자 화면에 그대로 보이는 일상어로, 얼굴에서 본 점과 그래서 바꾼 모양을 "~해서 ~했어요" 로 씁니다
-- liner.style: ${opts(a.liner)}
-- linerThick.scale: ${opts(STEP.scale)} — 라이너 두께 배율. 1 이 템플릿. 눈이 크면 작게, 작으면 크게
-- faceShape.label: ${opts(FACE_SHAPES)} — 쉐딩·하이라이트 자리만 바뀝니다
-- shadow.range: ${opts(a.shadow)} — 섀도 높이 배율. 눈두덩이 좁으면 작게, 넓으면 크게
-- lip.overline: ${opts(a.overline)} — 윗입술 가운데를 윗입술 두께의 몇 배 올릴지. 윗입술이 얇을수록 크게
-- blush.position: ${opts(BLUSH_POSITIONS)}, blush.size: ${opts(STEP.scale)}
-- highlight.tZone: true(이마~콧대 하이라이트) / false(피부가 번들거릴 때)
-- intensity: 바꿀 부위만 — ${inten} (0.1 단위, 1 이 템플릿)
-
-## 답
-위 순서대로 JSON 하나만 답합니다. 코드 블록 없이.`;
+  const head = full
+    .slice(0, j)
+    .trimEnd()
+    .replace(/ → 규칙 [^\n]*/g, "")
+    .split("\n")
+    .filter((l) => !l.startsWith("- 규칙"))
+    .join("\n");
+  return `${head}\n\n${full.slice(j)}`;
 }
 
-/** 제약 디코딩용 JSON 스키마. 관문(resolvePlan)이 받는 모양·허용값과 같다. E·F 는 이 얼굴에서 받아 주는 값만 enum 으로 */
-export function schema(variant: Variant = "A", m?: FaceMeasure): object {
-  if ((variant === "E" || variant === "F") && m) return schemaEF(m);
-  return schemaA();
-}
-
-function schemaEF(m: FaceMeasure): object {
-  const a = allowed(m);
-  const obj = (props: Record<string, object>) => ({ type: "object", properties: props, required: Object.keys(props), additionalProperties: false });
-  const text = (n: number) => ({ type: "string", minLength: 4, maxLength: n });
-  return obj({
-    observation: text(80),
-    rationale: obj(Object.fromEntries(RATIONALE_PARTS.map((p) => [p, text(PLAN_LIMITS.rationaleMax)]))),
-    liner: obj({ style: { enum: a.liner } }),
-    linerThick: obj({ scale: { enum: [...STEP.scale] } }),
-    faceShape: obj({ label: { enum: [...FACE_SHAPES] } }),
-    shadow: obj({ range: { enum: a.shadow } }),
-    lip: obj({ overline: { enum: a.overline } }),
-    blush: obj({ position: { enum: [...BLUSH_POSITIONS] }, size: { enum: [...STEP.scale] } }),
-    highlight: obj({ tZone: { type: "boolean" } }),
-    intensity: { type: "object", properties: Object.fromEntries(Object.entries(a.intensity).map(([p, xs]) => [p, { enum: xs }])), additionalProperties: false },
-  });
-}
-
-function schemaA(): object {
-  const num = ([lo, hi]: readonly [number, number]) => ({ type: "number", minimum: lo, maximum: hi });
-  const parts = ["brow", "liner", "shadow", "lip", "cheek"];
-  const text = { type: "string", maxLength: PLAN_LIMITS.rationaleMax };
-  return {
-    type: "object",
-    // 결정 필드를 근거 문장보다 앞에 (조사 보고서: 설명하다 결정이 흔들리지 않게)
-    properties: {
-      liner: { type: "object", properties: { style: { enum: [...LINER_STYLES] } }, required: ["style"], additionalProperties: false },
-      linerThick: { type: "object", properties: { scale: num(PLAN_LIMITS.linerThick) }, required: ["scale"], additionalProperties: false },
-      faceShape: { type: "object", properties: { label: { enum: [...FACE_SHAPES] } }, required: ["label"], additionalProperties: false },
-      shadow: { type: "object", properties: { range: num(PLAN_LIMITS.shadowRange) }, required: ["range"], additionalProperties: false },
-      lip: { type: "object", properties: { overline: num(PLAN_LIMITS.lipOverline) }, required: ["overline"], additionalProperties: false },
-      blush: { type: "object", properties: { position: { enum: [...BLUSH_POSITIONS] }, size: num(PLAN_LIMITS.blushSize) }, required: ["position", "size"], additionalProperties: false },
-      highlight: { type: "object", properties: { tZone: { type: "boolean" } }, required: ["tZone"], additionalProperties: false },
-      intensity: { type: "object", properties: Object.fromEntries(parts.map((p) => [p, num(PLAN_LIMITS.intensity)])), additionalProperties: false },
-      rationale: { type: "object", properties: Object.fromEntries(parts.map((p) => [p, text])), additionalProperties: false },
-    },
-    required: ["liner", "linerThick", "faceShape", "shadow", "lip", "blush", "highlight", "intensity", "rationale"],
-    additionalProperties: false,
-  };
+/** 제약 디코딩용 JSON 스키마 — 앱(vlm-flow.vlmSchema)과 같다. 이 얼굴에서 관문이 받아 주는 값만 enum */
+export function schema(_variant: Variant = "A", m?: FaceMeasure): object {
+  if (!m) throw new Error("스키마는 얼굴 측정값이 있어야 만든다 (얼굴마다 선택지를 좁힌다)");
+  return vlmSchema(m);
 }
 
 /** 결정 필드만 평평하게 — 반복 일관성·뒤집기 비교에 쓴다 */

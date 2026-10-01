@@ -209,8 +209,10 @@ async function boot(): Promise<void> {
     const t0 = performance.now();
     let model: string | null = null;
     try {
-      const r = await planWithVlm(measureFace(b.lm), lookById(lookId), b.faceShape, async (prompt) => {
-        const res = await vlm.plan({ image, prompt, schema: vlmSchema(), promptVer: PROMPT_VER, lookId });
+      const m = measureFace(b.lm);
+      const schema = vlmSchema(m);   // 이 얼굴에서 관문이 받아 주는 값만 (형식 E)
+      const r = await planWithVlm(m, lookById(lookId), b.faceShape, async (prompt) => {
+        const res = await vlm.plan({ image, prompt, schema, promptVer: PROMPT_VER, lookId });
         model = res.model;
         return res.proposal;
       });
