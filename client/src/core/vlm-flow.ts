@@ -9,35 +9,39 @@
  */
 
 import type { FaceMeasure } from "./face-measure";
-import type { Look, LookPartId } from "./looks";
-import { BLUSH_POSITIONS, FACE_SHAPES, LINER_STYLES, PLAN_LIMITS, resolvePlan, type PersonalPlan } from "./personalize";
+import type { Look } from "./looks";
+import { BLUSH_POSITIONS, FACE_SHAPES, PLAN_LIMITS, resolvePlan, type PersonalPlan } from "./personalize";
 import type { FaceShape } from "./types";
-import { buildVlmPrompt } from "./vlm-prompt";
+import { CHOICE_STEPS, RATIONALE_PARTS, allowedChoices, buildVlmPrompt } from "./vlm-prompt";
 
-/** 프롬프트·스키마 버전 — 결과 로그와 계획 저장 키에 붙인다. 프롬프트나 스키마를 바꾸면 올린다 */
-export const PROMPT_VER = "vlm-prompt-v1";
+/** 프롬프트·스키마 버전 — 결과 로그와 계획 저장 키에 붙인다. 프롬프트나 스키마를 바꾸면 올린다
+ *  v2 (2026-10-01) = 형식 E — VLM 선정 실험(eval/vlm)에서 확정. 예시 없음 · 관찰→근거→결정 · 숫자는 선택지 */
+export const PROMPT_VER = "vlm-prompt-v2";
 
-/** 제약 디코딩용 JSON 스키마 — 관문이 받는 모양·허용값과 같다. 결정 필드를 근거 문장보다 앞에 (설명하다 결정이 흔들리지 않게) */
-export function vlmSchema(): object {
-  const num = ([lo, hi]: readonly [number, number]) => ({ type: "number", minimum: lo, maximum: hi });
-  const parts: LookPartId[] = ["brow", "liner", "shadow", "lip", "cheek"];
-  const obj = (properties: object, required: string[]) => ({ type: "object", properties, required, additionalProperties: false });
-  return {
-    type: "object",
-    properties: {
-      liner: obj({ style: { enum: [...LINER_STYLES] } }, ["style"]),
-      linerThick: obj({ scale: num(PLAN_LIMITS.linerThick) }, ["scale"]),
-      faceShape: obj({ label: { enum: [...FACE_SHAPES] } }, ["label"]),
-      shadow: obj({ range: num(PLAN_LIMITS.shadowRange) }, ["range"]),
-      lip: obj({ overline: num(PLAN_LIMITS.lipOverline) }, ["overline"]),
-      blush: obj({ position: { enum: [...BLUSH_POSITIONS] }, size: num(PLAN_LIMITS.blushSize) }, ["position", "size"]),
-      highlight: obj({ tZone: { type: "boolean" } }, ["tZone"]),
-      intensity: { type: "object", properties: Object.fromEntries(parts.map((p) => [p, num(PLAN_LIMITS.intensity)])), additionalProperties: false },
-      rationale: { type: "object", properties: Object.fromEntries(parts.map((p) => [p, { type: "string", maxLength: PLAN_LIMITS.rationaleMax }])), additionalProperties: false },
-    },
-    required: ["liner", "linerThick", "faceShape", "shadow", "lip", "blush", "highlight", "intensity", "rationale"],
-    additionalProperties: false,
-  };
+/**
+ * 제약 디코딩용 JSON 스키마 — 이 얼굴에서 관문이 받아 주는 값만 enum 으로 (vlm-prompt.allowedChoices).
+ *  - 숫자도 enum: llama.cpp 의 스키마→문법 변환은 소수 minimum/maximum 을 강제하지 않는다 (0.45 가 나왔다)
+ *  - 순서 관찰 → 근거 → 결정: llama.cpp 는 required 키를 properties 순서대로 고정한다. 모두 required 로 둔다
+ *  - 실험에서 검증한 그대로 (eval/vlm/entry.ts 의 E 와 같다). 근거 문장 길이 상한은 관문과 같은 40자 —
+ *    가끔 문장 가운데서 잘리지만, 빼면 넘친 문장이 관문에서 거절돼 재질문이 늘 수 있다 (검증 안 함)
+ */
+export function vlmSchema(m: FaceMeasure): object {
+  const a = allowedChoices(m);
+  const obj = (props: Record<string, object>) => ({ type: "object", properties: props, required: Object.keys(props), additionalProperties: false });
+  const text = (n: number) => ({ type: "string", minLength: 4, maxLength: n });
+  return obj({
+    observation: text(80),
+    rationale: obj(Object.fromEntries(RATIONALE_PARTS.map((p) => [p, text(PLAN_LIMITS.rationaleMax)]))),
+    liner: obj({ style: { enum: a.liner } }),
+    linerThick: obj({ scale: { enum: [...CHOICE_STEPS.scale] } }),
+    faceShape: obj({ label: { enum: [...FACE_SHAPES] } }),
+    shadow: obj({ range: { enum: a.shadow } }),
+    lip: obj({ overline: { enum: a.overline } }),
+    blush: obj({ position: { enum: [...BLUSH_POSITIONS] }, size: { enum: [...CHOICE_STEPS.scale] } }),
+    highlight: obj({ tZone: { type: "boolean" } }),
+    // 진하기 칸은 있어야 하고(required), 안의 부위는 바꿀 것만 (부위는 required 아님)
+    intensity: { type: "object", properties: Object.fromEntries(Object.entries(a.intensity).map(([p, xs]) => [p, { enum: xs }])), additionalProperties: false },
+  });
 }
 
 /** 다시 물을 때 붙이는 글 — 관문의 거절 이유는 이미 읽을 수 있는 문장이다 */

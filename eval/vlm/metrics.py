@@ -102,6 +102,59 @@ def follows_rule(
     return vlm_after == rule_after
 
 
+# 근거 문장이 말하는 방향 — 간단한 낱말 규칙이라 놓치는 문장이 있다 (불일치 비율은 하한으로 읽는다)
+_SAYS = {
+    "lip.overline": (r"올렸|올려|올림|키웠|도톰하게|채웠|살짝 그렸", r"그대로|유지|안 올|올리지"),
+    "shadow.range": (r"넓혔|넓게|넓힌|높였|높게|키웠", r"줄였|좁게|좁힌|낮췄|낮게"),
+}
+
+
+def rationale_mismatch(rationale: dict, decisions: dict) -> list[str]:
+    """근거 문장과 실제 값이 반대인 부위 — 5단계의 '지어냄' 을 자동으로 미리 센다.
+    입술: 올렸다는데 오버라인 0 / 그대로라는데 0 초과. 섀도: 넓혔다는데 1 이하 / 줄였다는데 1 이상"""
+    import re
+
+    out = []
+    lip = rationale.get("lip") or ""
+    ov = decisions.get("lip.overline")
+    up, keep = _SAYS["lip.overline"]
+    if isinstance(ov, (int, float)):
+        if re.search(up, lip) and not re.search(keep, lip) and ov == 0:
+            out.append("lip")
+        elif re.search(keep, lip) and not re.search(up, lip) and ov > 0:
+            out.append("lip")
+    sh = rationale.get("shadow") or ""
+    rg = decisions.get("shadow.range")
+    wide, narrow = _SAYS["shadow.range"]
+    if isinstance(rg, (int, float)):
+        if re.search(wide, sh) and not re.search(narrow, sh) and rg <= 1:
+            out.append("shadow")
+        elif re.search(narrow, sh) and not re.search(wide, sh) and rg >= 1:
+            out.append("shadow")
+    return out
+
+
+def change_rate(pairs: Iterable[tuple[dict, dict]], fields: Sequence[str]) -> float | None:
+    """두 결정 묶음 짝에서 fields 중 하나라도 달라진 비율. 진하기는 적지 않으면 1(템플릿 그대로)"""
+    ps = list(pairs)
+    if not ps:
+        return None
+
+    def get(d: dict, f: str) -> object:
+        return d.get(f, 1 if f.startswith("intensity.") else None)
+
+    return sum(any(get(a, f) != get(b, f) for f in fields) for a, b in ps) / len(ps)
+
+
+def field_change_mean(pairs: Iterable[tuple[dict, dict]], fields: Sequence[str]) -> float | None:
+    """필드마다 바뀐 비율을 낸 뒤 평균 — '하나라도 바뀜' 은 필드가 많으면 잡음에도 거의 1 이 되어
+    얼굴 차이와 잡음을 가르지 못한다 (1차 선별에서 확인)"""
+    ps = list(pairs)
+    if not ps or not fields:
+        return None
+    return sum(change_rate(ps, [f]) or 0 for f in fields) / len(fields)
+
+
 def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float] | None:
     """이항 비율의 95% 윌슨 신뢰구간 — 6단계 승률"""
     if n == 0:
