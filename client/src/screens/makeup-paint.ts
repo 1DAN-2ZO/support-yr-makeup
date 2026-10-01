@@ -107,15 +107,61 @@ function mulberry32(seed: number): () => number {
   };
 }
 
+/** 시험에서 바꿔 끼우는 것 — 번짐 대체용 임시 캔버스 만들기 */
+export const paintEnv = { makeCanvas: (): HTMLCanvasElement => document.createElement("canvas") };
+
+/** 번짐(px) → 절반으로 줄이는 단계 수. 한 단계마다 번짐이 두 배쯤 (1단계 ≈ 1px, 4단계 ≈ 8px). 화면에서 filter 번짐과 눈으로 맞춘 값 */
+export function softenLevels(blurPx: number): number {
+  return Math.max(1, Math.min(6, Math.round(Math.log2(Math.max(1, blurPx))) + 1));
+}
+
 /**
- * 지금 경로 안(clip)에 글리터 점을 흩뿌린다 — ④ 실험 화면(makeup-probe.ts fillGlitter)과 같은 방법.
- * darken: 곱하기 층용(섀도우) — 점 가운데를 어둡게. 아니면 밝히기 층용(애교살) — 가운데를 희게
+ * 캔버스 번짐(ctx.filter)이 없는 브라우저용 대체 — **절반씩 여러 번 줄였다가 두 배씩 다시 키운다**.
+ * 일부 WebKit(Safari)은 `getContext("2d").filter` 가 undefined 라 `filter = "blur(…)"` 가 조용히 무시된다 —
+ * 화장이 딱딱한 도형으로 나왔다 (④ #263 이 실험 화면에서 실기기로 확인).
+ * 한 번에 크게 줄이면(④ 방식) 중간 픽셀을 건너뛰어 볼·쉐딩처럼 번짐이 큰 부위가 계단 모양으로 나온다 (2026-10-01 캡처로 확인) —
+ * 절반씩 줄이면 단계마다 이웃 네 픽셀이 고르게 섞인다. 정확한 가우시안은 아니다.
+ * tmps: 단계마다 하나씩 쓰는 임시 캔버스 (부르는 쪽이 들고 다시 쓴다)
  */
-function glitterIn(ctx: CanvasRenderingContext2D, pts: readonly Pt[], color: string, darken: boolean): void {
+function softenByResize(o: CanvasRenderingContext2D, off: HTMLCanvasElement, tmps: HTMLCanvasElement[], blurPx: number): void {
+  const n = softenLevels(blurPx);
+  const ctxs: CanvasRenderingContext2D[] = [];
+  let src: HTMLCanvasElement = off;
+  for (let i = 0; i < n; i++) {
+    const c = (tmps[i] ??= paintEnv.makeCanvas());
+    c.width = Math.max(1, Math.round(off.width / 2 ** (i + 1)));
+    c.height = Math.max(1, Math.round(off.height / 2 ** (i + 1)));
+    const t = c.getContext("2d");
+    if (!t) return;   // 못 번지면 그린 그대로 둔다
+    t.imageSmoothingEnabled = true;
+    t.clearRect(0, 0, c.width, c.height);
+    t.drawImage(src, 0, 0, c.width, c.height);
+    ctxs.push(t);
+    src = c;
+  }
+  // 가장 작은 것부터 한 단계씩 키워 올라간다
+  for (let i = n - 1; i >= 1; i--) {
+    const up = tmps[i - 1]!, t = ctxs[i - 1]!;
+    t.clearRect(0, 0, up.width, up.height);
+    t.drawImage(tmps[i]!, 0, 0, up.width, up.height);
+  }
+  o.clearRect(0, 0, off.width, off.height);
+  o.imageSmoothingEnabled = true;
+  o.drawImage(tmps[0]!, 0, 0, off.width, off.height);
+}
+
+/**
+ * 다각형들 안에만 글리터 점을 흩뿌린다 — ④ 실험 화면(makeup-probe.ts fillGlitter)과 같은 방법.
+ * darken: 곱하기 층용(섀도우) — 점 가운데를 어둡게. 아니면 밝히기 층용(애교살) — 가운데를 희게.
+ * 부위의 번짐이 끝난 뒤에 부른다 — 번지면 점이 아니라 흐린 얼룩이 된다
+ */
+function glitterIn(ctx: CanvasRenderingContext2D, polys: readonly (readonly Pt[])[], color: string, darken: boolean): void {
+  const pts = polys.flat();
   const xs = pts.map((q) => q.x), ys = pts.map((q) => q.y);
   const x0 = Math.min(...xs), y0 = Math.min(...ys), w = Math.max(...xs) - x0, h = Math.max(...ys) - y0;
   ctx.save();
-  ctx.filter = "none";   // 번지면 점이 아니라 흐린 얼룩이 된다
+  ctx.beginPath();
+  for (const poly of polys) path(ctx, poly);
   ctx.clip();
   const rnd = mulberry32(0x9e3779b9);
   const n = Math.max(40, Math.round(w * h * 0.02));
@@ -148,14 +194,20 @@ export function paintMakeup(layers: Layers, off: HTMLCanvasElement, lm: readonly
   if (!o) return;
   const P = (i: number): Pt => at(lm, i);
   const unit = unitScale(lm), faceW = unit.face;
+  // 번짐 기능이 있는지 한 번 본다 (UA 가 아니라 기능으로). 없으면 그린 뒤 줄였다 키워 번지게 한다 (softenByResize)
+  const hasFilter = typeof o.filter === "string";
+  const tmps: HTMLCanvasElement[] = [];   // 번짐 대체용 — 이번 그리기에서 필요한 만큼 만들어 부위마다 다시 쓴다
   for (const p of PARTS) {
     const color = look.color[p.id];
     if (!color) continue;
     const scale = p.id === "contour" || p.id === "highlight" || p.id === "aegyo" ? 1 : (plan?.intensity[p.id] ?? 1);
     const alpha = Math.min(1, (look.alpha[p.id] ?? 0.5) * scale);
-    o.filter = "none";
+    const blurPx = Math.max(0.5, p.blur * faceW);
+    /** 번짐이 끝난 뒤에 그릴 것 (글리터 점) */
+    const crisp: (() => void)[] = [];
+    if (hasFilter) o.filter = "none";
     o.clearRect(0, 0, off.width, off.height);
-    o.filter = `blur(${Math.max(0.5, p.blur * faceW)}px)`;
+    if (hasFilter) o.filter = `blur(${blurPx}px)`;
     o.fillStyle = color;
     o.beginPath();
     if (p.id === "brow") {
@@ -193,8 +245,8 @@ export function paintMakeup(layers: Layers, off: HTMLCanvasElement, lm: readonly
         o.beginPath();
         path(o, band);
         o.fill();
-        // 글리터 화장(아이돌·러블리·키치): 그라데이션 위, 같은 띠 안에만 점
-        if (look.glitter.shadow) glitterIn(o, band, color, true);
+        // 글리터 화장(아이돌·러블리·키치): 그라데이션 위, 같은 띠 안에만 점 — 번짐 뒤에
+        if (look.glitter.shadow) crisp.push(() => glitterIn(o, [band], color, true));
       }
     } else if (p.id === "liner") {
       const outline = linerOutline({ lm, unit }, look.linerThick * (plan?.linerThick.scale ?? 1), style);
@@ -229,9 +281,11 @@ export function paintMakeup(layers: Layers, off: HTMLCanvasElement, lm: readonly
         const lash = eye.lower.map(P), c = P(cheek);
         return [...lash.map((q) => mix(q, c, 0.1)), ...lash.map((q) => mix(q, c, 0.35)).reverse()];
       });
-      for (const b of bands) path(o, b);
-      if (look.glitter.aegyo) glitterIn(o, bands.flat(), color, false);   // 글리터면 단색 대신 점만
-      else o.fill();
+      if (look.glitter.aegyo) crisp.push(() => glitterIn(o, bands, color, false));   // 글리터면 단색 대신 점만
+      else {
+        for (const b of bands) path(o, b);
+        o.fill();
+      }
     } else if (p.id === "lip") {
       const inner = LIP_INNER.map(P);
       if (look.lipEdge) {
@@ -250,6 +304,10 @@ export function paintMakeup(layers: Layers, off: HTMLCanvasElement, lm: readonly
       for (const b of p.id === "contour" ? bands.shading : bands.highlight) path(o, b);
       o.fill();
     }
+    // 번짐을 끝낸다 — 기능이 있으면 끄고, 없으면 지금까지 그린 것을 줄였다 키운다. 점(글리터)은 그 뒤에 또렷하게
+    if (hasFilter) o.filter = "none";
+    else softenByResize(o, off, tmps, blurPx);
+    for (const draw of crisp) draw();
     // 층에는 색과 세기만 담는다 — 섞는 건 셰이더가 한다
     if (p.id === "highlight" || p.id === "aegyo") {
       layers.light.globalAlpha = alpha;
@@ -266,7 +324,7 @@ export function paintMakeup(layers: Layers, off: HTMLCanvasElement, lm: readonly
   // 마스카라 — ④ 텍스처를 눈꺼풀 선에 휘어 붙인다 (screens/lash-render). 기준 얼굴의 눈 뜬 모양으로 한 번만 그리고,
   // AR 은 셰이더가 다른 화장처럼 휘어 붙인다 — 프레임마다 다시 그리지 않는다. 번짐 없이, 곱하기 층 맨 위에
   if (look.lash && lashes?.ready) {
-    o.filter = "none";
+    if (hasFilter) o.filter = "none";
     o.clearRect(0, 0, off.width, off.height);
     drawLashes(o, lashes, lm, look.lash.color, Math.min(1, look.lash.alpha));
     layers.mul.globalAlpha = 1;
