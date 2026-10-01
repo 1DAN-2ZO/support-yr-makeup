@@ -20,6 +20,7 @@ import { createCaptureEvents } from "@core/capture-events";
 import { foreheadStep, startForeheadTrack } from "@core/occlusion";
 import { settleStep, startSettle, type Settle } from "@core/capture-run";
 import { ALL_LOCKS, applyCameraLocks, applyUltraWideZoom, camSnapshot, lockReportRow, releaseCameraLocks, requestWakeLock } from "@screens/camera-locks";
+import { startFrameLoop } from "@screens/camera-loop";
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -234,12 +235,14 @@ async function start(): Promise<void> {
   $<HTMLButtonElement>("finish").disabled = false;
   renderThumbs();
   state.loop = true;
-  requestAnimationFrame(frame);
+  // 앱 촬영 화면과 같은 루프 — 카메라 새 장면에만 (#245). 처리 시간(ms)은 그대로 이 프레임 안에서 잰다
+  stopLoop = startFrameLoop(video, frame);
 }
+
+let stopLoop = (): void => {};
 
 function frame(): void {
   if (!state.loop || !state.lm) return;
-  requestAnimationFrame(frame);
   if (state.paused || video.readyState < 2) return;
   const t0 = performance.now();
   const sw = video.videoWidth, sh = video.videoHeight;
@@ -466,6 +469,7 @@ function renderThumbs(): void {
 
 async function finish(): Promise<void> {
   state.loop = false;
+  stopLoop();
   for (const t of state.stream?.getTracks() ?? []) await releaseCameraLocks(t as unknown as Parameters<typeof releaseCameraLocks>[0]).finally(() => t.stop());   // 잠금 풀고 끄기 (#267)
   const shots = state.order.map((id) => state.shots[id]?.rec).filter((r): r is ShotRecord => !!r);
   const result: ProbeResult = {
