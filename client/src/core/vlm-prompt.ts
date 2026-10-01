@@ -51,7 +51,7 @@ export function allowedChoices(m: FaceMeasure): AllowedChoices {
 
 const KO: Record<string, string> = {
   winged: "꼬리를 위로 올림", extend: "눈 축을 곧게 연장", drop: "윗눈꺼풀 선을 따라 내림",
-  oval: "계란형", round: "둥근형", square: "각진형", oblong: "긴형", heart: "하트형",
+  oval: "계란형", round: "둥근형", square: "각진형", oblong: "긴형", heart: "역삼각형",
   higher: "광대 기준 조금 위", standard: "광대 표준 자리", lower: "광대 기준 조금 아래",
 };
 const opts = (xs: readonly (string | number)[]): string => xs.map((x) => (typeof x === "string" && KO[x] ? `${x}(${KO[x]})` : String(x))).join(" / ");
