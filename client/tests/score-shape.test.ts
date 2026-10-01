@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { LM } from "@core/landmarks";
 import { frameOf } from "@core/sampling";
-import { browShape, linerBand, shapeFill, tintFill, tintProgress } from "@core/score-shape";
+import { browShape, linerBand, routeOf, shapeFill, tintFill, tintProgress } from "@core/score-shape";
 import { rgbToLab } from "@core/color";
 import { sampleLiner } from "@core/sampling";
 import type { Pt } from "@core/types";
@@ -167,5 +167,24 @@ describe("결과 모양 — 눈썹 점수 (채움 + 넘침, 원래 눈썹과 그
     const r = browShape(frame(() => null), regions);
     expect(r.present).toBe(false);
     expect(r.score).toBeNull();
+  });
+});
+
+describe("갈림 규칙 — 쌩얼을 보고 결과 모양 / 원본 대조 / 확인만", () => {
+  // 쌩얼 사진에 결과 모양 계산을 돌려 봤는데 이미 '발랐다' 로 나오면, 그 사람·그 화장·그 부위는 결과 모양으로 못 가른다 → 원본 대조.
+  // EasyPortrait 실제 셀피 300장: 브라운 섀도우는 43%, 브릭 로즈 립은 67% 가 맨얼굴에서 절반 넘게 '발랐다' 로 읽혔다 (핑크·누드는 0~6%)
+  const lips: Pt[] = LM.lipsOuter.map(P);
+  const skinRgb = SKIN as unknown as [number, number, number];
+
+  it("G1 쌩얼의 그 자리가 템플릿 색과 다르면 결과 모양으로 본다", () => {
+    expect(routeOf(frame(() => null), lips, RED)).toBe("shape");
+  });
+
+  it("G2 쌩얼의 그 자리가 이미 템플릿 색이면(타고난 입술색 = 립 색) 원본과 대조한다", () => {
+    expect(routeOf(frame(lipPaint), lips, RED)).toBe("compare");
+  });
+
+  it("G3 템플릿 색이 주변 피부와 같으면 잴 방향이 없다 — 확인만", () => {
+    expect(routeOf(frame(() => null), lips, skinRgb)).toBe("check_only");
   });
 });

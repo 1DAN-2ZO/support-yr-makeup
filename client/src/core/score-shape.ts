@@ -152,12 +152,14 @@ export interface TintFillOptions {
   /** 템플릿 방향에서 옆으로 벗어난 거리가 (피부→템플릿 거리 × 이 값)을 넘으면 다른 색으로 본다 (가정값) */
   maxOff: number;
   ring: readonly [number, number];
+  /** 밖 번짐을 재는 범위 — 가이드를 가운데 기준으로 이 배율까지 키운 안쪽 (기준 피부 띠와 따로) */
+  spillTo: number;
   /** 주변 피부 색을 밖에서 줄 때 (이마 등). 안 주면 가이드 둘레 띠의 중앙값 */
   skin?: Lab;
   /** 가이드 안에서 빼는 구멍 (입 안쪽) */
   hole?: readonly Pt[];
 }
-export const TINT_FILL = { minProgress: 0.35, maxOff: 0.6, ring: [1.3, 1.8] as const };
+export const TINT_FILL = { minProgress: 0.35, maxOff: 0.6, ring: [1.3, 1.8] as const, spillTo: 1.3 };
 
 export interface TintFill {
   /** 가이드 안 칸 중 물든 칸 비율 */
@@ -174,7 +176,7 @@ export interface TintFill {
 export function tintFill(f: SampleFrame, poly: readonly Pt[], color: readonly [number, number, number], o: Partial<TintFillOptions> = {}): TintFill {
   const opt = { ...TINT_FILL, ...o };
   const box = boxOf(f.unit.eye), target = rgbToLab(color[0], color[1], color[2]);
-  const near = scale(poly, opt.ring[0]), far = scale(poly, opt.ring[1]);
+  const near = scale(poly, opt.ring[0]), far = scale(poly, opt.ring[1]), spillPoly = scale(poly, opt.spillTo);
   const cells = (region: readonly Pt[], keep: (x: number, y: number) => boolean): Lab[] => {
     const xs = region.map((p) => p.x), ys = region.map((p) => p.y), out: Lab[] = [];
     for (let y = Math.max(0, Math.floor(Math.min(...ys))); y <= Math.min(f.im.h - 1, Math.ceil(Math.max(...ys))); y += box) {
@@ -194,7 +196,7 @@ export function tintFill(f: SampleFrame, poly: readonly Pt[], color: readonly [n
   // 템플릿 쪽으로 간 정도. 옆으로 많이 벗어난 색(빨강 템플릿에 파랑)은 0 으로 친다
   const prog = (c: Lab): number => (tintOff(c, s, target) > opt.maxOff ? 0 : tintProgress(c, s, target));
   const inside = cells(poly, (x, y) => !hole || !pointInPoly(x, y, hole)).map(prog);
-  const around = cells(near, (x, y) => !pointInPoly(x, y, poly)).map(prog);
+  const around = cells(spillPoly, (x, y) => !pointInPoly(x, y, poly)).map(prog);
   const hits = inside.filter((v) => v >= opt.minProgress);
   return {
     coverage: inside.length ? hits.length / inside.length : 0,
@@ -256,4 +258,33 @@ export function linerBand(strip: LinerStrip, darkL = 12): LinerBand {
     lidCoverage: lidRows ? lidHit / lidRows : 0,
     wingCoverage: wingRows ? wingHit / wingRows : 0,
   };
+}
+
+// ---------- 갈림 규칙 ----------
+
+export type ShapeRoute = "shape" | "compare" | "check_only";
+
+/** 가정값 — 합성 세트·골든 세트로 맞춘다 */
+export const ROUTE = {
+  /** 쌩얼의 그 자리가 이미 이만큼 '물든 칸' 이면 결과 모양으로 못 가른다 → 원본 대조 */
+  already: 0.2,
+  /** 템플릿 색 × 덮는 비율(0.7)이 주변 피부와 이만큼도 안 다르면 잴 방향이 없다 → 확인만 */
+  minContrast: 7,
+};
+
+/**
+ * 쌩얼 사진을 보고, 이 사람·이 화장·이 부위를 어떻게 잴지 정한다 (입술·섀도우·볼).
+ *   shape      = 결과 모양으로 (지금 사진 한 장, 주변 피부 기준)
+ *   compare    = 원본 대조 (쌩얼과 비교) — 타고난 모습이 이미 템플릿 색 쪽이라 결과 모양으로는 '발랐는지' 못 가른다
+ *   check_only = 확인만 — 템플릿 색이 이 사람 피부와 너무 가깝다 (subtle)
+ * 화장 종류로 미리 나누지 않고 사람마다 본다: 같은 브라운 섀도우라도 눈두덩이 밝은 사람은 가려지고 어두운 사람은 안 가려진다.
+ * EasyPortrait 실제 셀피 300장(대부분 맨얼굴): 브라운 섀도우 43% · 브릭 로즈 립 67% 가 맨얼굴에서 절반 넘게 '발랐다' 로 읽혔고, 핑크·누드·볼은 0~6%
+ */
+export function routeOf(bare: SampleFrame, poly: readonly Pt[], color: readonly [number, number, number], o: Partial<TintFillOptions> = {}, r = ROUTE): ShapeRoute {
+  const t = tintFill(bare, poly, color, o);
+  if (!t.skin) return "compare";   // 주변 피부를 못 쟀다 — 결과 모양의 기준이 없다
+  const target = rgbToLab(color[0], color[1], color[2]);
+  const contrast = 0.7 * Math.hypot(target.L - t.skin.L, target.a - t.skin.a, target.b - t.skin.b);
+  if (contrast < r.minContrast) return "check_only";
+  return t.coverage >= r.already ? "compare" : "shape";
 }
