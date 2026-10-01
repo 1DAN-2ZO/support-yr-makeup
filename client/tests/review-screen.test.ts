@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { SCORE_VERSION } from "@core/score";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createLogger, memorySink } from "@core/log";
 import { PART_NAME } from "@core/score";
@@ -162,7 +163,7 @@ describe("화면 6 — 결과 저장", () => {
     await settle();
     const arg = makeCard.mock.calls[0]?.[0];
     expect(arg.lookName).toBe("데일리");
-    expect(arg.stamp).toContain("score-v0.1");
+    expect(arg.stamp).toContain(SCORE_VERSION);   // rules/score.json (#44)
   });
 
   it("저장을 누르면 결과를 말해 주고 로그를 남긴다", async () => {
@@ -226,5 +227,109 @@ describe("화면 6 — 끝내기 (F-11)", () => {
     (stop as () => void)();
     await settle();
     expect(go).not.toHaveBeenCalled();
+  });
+});
+
+describe("화면 6 — 들어오면 지금 얼굴 정면 1장 (#79)", () => {
+  // jsdom 에는 없다 — 사진 칸이 Blob 을 보여 줄 때 쓴다
+  beforeEach(() => { (URL as unknown as { createObjectURL: () => string }).createObjectURL = () => "blob:test"; });
+  const shot = { blob: new Blob(["jpg"], { type: "image/jpeg" }), foreheadL: 70 };
+  /** 카메라 대신: 부르면 host 에 표시만 하고, done 은 시험에서 누른다 */
+  const fakeShoot = () => {
+    let finish: (r: typeof shot | null) => void = () => {};
+    const shoot = vi.fn((host: HTMLElement, done: (r: typeof shot | null) => void) => {
+      host.append(document.createTextNode("카메라"));
+      finish = done;
+      return vi.fn();
+    });
+    return { shoot, finish: (r: typeof shot | null) => finish(r) };
+  };
+  const btnOf = (root: HTMLElement, text: string) => [...root.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === text);
+
+  it("R1 '지금' 사진이 없으면 카메라 칸을 먼저 띄운다 — 찍기 전엔 저장을 못 누른다", async () => {
+    const { shoot } = fakeShoot();
+    const { root, ctx, deps } = setup({ shoot });
+    reviewScreen<null>(deps).mount(ctx);
+    await settle();
+    expect(shoot).toHaveBeenCalledTimes(1);
+    expect(root.querySelector(".review-shot")).not.toBeNull();
+    expect(btnOf(root, "결과 저장")?.disabled).toBe(true);
+  });
+
+  it("R2 찍으면 lastframe 으로 저장하고, 조명이 다르면 한 줄, 카드는 그 사진·문구로 만든다", async () => {
+    const { shoot, finish } = fakeShoot();
+    const saveImage = vi.fn().mockResolvedValue(undefined);
+    const lightingNote = vi.fn((L?: number | null) => (L === 70 ? "조명이 달라서 색은 참고만 해 주세요" : null));
+    const makeCard = vi.fn().mockResolvedValue(new Blob(["x"], { type: "image/jpeg" }));
+    const { root, ctx, deps } = setup({ shoot, lightingNote, makeCard, store: { clearAll: vi.fn(), loadImage: vi.fn().mockResolvedValue(null), saveImage } });
+    reviewScreen<null>(deps).mount(ctx);
+    await settle();
+    finish(shot);
+    await settle(); await settle();
+    expect(saveImage).toHaveBeenCalledWith("lastframe", shot.blob);
+    expect(root.querySelector(".review-shot")).toBeNull();
+    expect(root.querySelector('.photo[data-which="after"] img')).not.toBeNull();
+    expect(root.querySelector(".lighting-note")?.textContent).toBe("조명이 달라서 색은 참고만 해 주세요");
+    const input = makeCard.mock.calls.at(-1)![0] as { after: unknown; lightingNote: string | null };
+    expect(input.after).not.toBeNull();
+    expect(input.lightingNote).toBe("조명이 달라서 색은 참고만 해 주세요");
+    expect(btnOf(root, "결과 저장")?.disabled).toBe(false);
+  });
+
+  it("R3 건너뛰면 사진 없이 이어간다 — 저장하지 않고, 카드는 만든다", async () => {
+    const { shoot, finish } = fakeShoot();
+    const saveImage = vi.fn();
+    const { root, ctx, deps } = setup({ shoot, store: { clearAll: vi.fn(), loadImage: vi.fn().mockResolvedValue(null), saveImage } });
+    reviewScreen<null>(deps).mount(ctx);
+    await settle();
+    finish(null);
+    await settle(); await settle();
+    expect(saveImage).not.toHaveBeenCalled();
+    expect(root.querySelector(".review-shot")).toBeNull();
+    expect(btnOf(root, "결과 저장")?.disabled).toBe(false);
+  });
+
+  it("R4 이미 '지금' 사진이 있으면(되살린 세션) 카메라를 안 연다", async () => {
+    const { shoot } = fakeShoot();
+    const loadImage = vi.fn((k: string) => Promise.resolve(k === "lastframe" ? new Blob(["a"]) : null));
+    const { ctx, deps } = setup({ shoot, store: { clearAll: vi.fn(), loadImage, saveImage: vi.fn() } });
+    reviewScreen<null>(deps).mount(ctx);
+    await settle();
+    expect(shoot).not.toHaveBeenCalled();
+  });
+
+  it("R5 화면을 떠나면 카메라를 끈다", async () => {
+    const { shoot } = fakeShoot();
+    const { ctx, deps } = setup({ shoot });
+    const stop = reviewScreen<null>(deps).mount(ctx) as () => void;
+    await settle();
+    const cameraStop = shoot.mock.results[0]!.value as ReturnType<typeof vi.fn>;
+    stop();
+    expect(cameraStop).toHaveBeenCalled();
+  });
+
+  it("R6 저장 파일 이름은 nudy.jpg", async () => {
+    const download = vi.fn();
+    const { root, ctx, deps } = setup({ shareEnv: { download } });
+    reviewScreen<null>(deps).mount(ctx);
+    await settle();
+    btnOf(root, "결과 저장")!.click();
+    await settle();
+    expect(download.mock.calls[0]![1]).toBe("nudy.jpg");
+  });
+});
+
+
+describe("화면 6 — 공유 창 안내는 누르기 전에 (#79)", () => {
+  it("S1 공유 창을 쓸 수 있으면 저장 버튼 아래에 '이미지 저장을 눌러 주세요' 가 처음부터 있다", () => {
+    const { root, ctx, deps } = setup({ shareEnv: { download: vi.fn(), share: vi.fn(), canShare: () => true } });
+    reviewScreen<null>(deps).mount(ctx);
+    expect(root.querySelector(".share-hint")?.textContent).toContain("이미지 저장");
+  });
+
+  it("S2 내려받기만 되는 곳(데스크톱)에서는 안 띄운다", () => {
+    const { root, ctx, deps } = setup({ shareEnv: { download: vi.fn() } });
+    reviewScreen<null>(deps).mount(ctx);
+    expect(root.querySelector(".share-hint")).toBeNull();
   });
 });

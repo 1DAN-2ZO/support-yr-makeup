@@ -1,11 +1,11 @@
 /**
  * 촬영 게이트용 픽셀 측정 (비디오 프레임에서). 프로브(capture-probe)와 화면 1(capture)이 같이 쓴다.
  *  - sharpnessOf: 얼굴 크롭 96px 폭 라플라시안 분산
- *  - foreheadLabOf: 320px 폭으로 줄여 이마 L*a*b*
+ *  - foreheadLabOf: 320px 폭으로 줄여 이마 L*a*b* — skin(앞머리 뺀 피부, 밝기·색 조건) · raw(전체 평균, 가림 판정)
  *  - grabFrame: 지금 프레임을 캔버스로 (자동 촬영)
  */
 
-import { foreheadLab, type Lab } from "@core/color";
+import { foreheadLab, foreheadRawLab, type Lab } from "@core/color";
 import type { Pt } from "@core/types";
 
 type Src = HTMLVideoElement;
@@ -34,13 +34,18 @@ export function sharpnessOf(src: Src, crop: { x: number; y: number; w: number; h
 const small = document.createElement("canvas");
 const sctx = small.getContext("2d", { willReadFrequently: true });
 
-export function foreheadLabOf(src: Src, lm: readonly Pt[], sw: number, sh: number): Lab | undefined {
+/** 이마 두 값: skin = 밝기·색 조건(앞머리 뺌, 대부분 가려지면 없음) · raw = 가림(급변) 판정(손도 그대로 보이게) — #212 리뷰 */
+export interface ForeheadRefs { skin?: Lab; raw?: Lab }
+
+export function foreheadLabOf(src: Src, lm: readonly Pt[], sw: number, sh: number): ForeheadRefs | undefined {
   if (!sctx) return undefined;
   const w = 320, h = Math.round((sh * w) / sw), k = w / sw;
   small.width = w; small.height = h;
   sctx.drawImage(src, 0, 0, w, h);
   const im = sctx.getImageData(0, 0, w, h);
-  return foreheadLab({ data: im.data, w, h }, lm.map((p) => ({ x: p.x * k, y: p.y * k }))) ?? undefined;
+  const img = { data: im.data, w, h }, pts = lm.map((p) => ({ x: p.x * k, y: p.y * k }));
+  const skin = foreheadLab(img, pts), raw = foreheadRawLab(img, pts);
+  return { ...(skin ? { skin } : {}), ...(raw ? { raw } : {}) };
 }
 
 /** 지금 프레임을 캔버스로. maxSide 를 주면 긴 변을 그만큼으로 줄인다 (얼굴형 프레임 5장 — 메모리) */

@@ -54,6 +54,8 @@
 
 ### 3-1. `check_only` 이유 이름이 정의서와 다르다 — `hand` vs `occluded`
 
+> **해결 (2026-09-30, #155)**: 계약·코드·시험·문구를 `occluded` 로 바꿨다. 흐름 집계(`eval/funnel`)는 옛 로그의 `hand` 도 `occluded` 로 센다.
+
 정의서는 2026-09-23 정정으로 **"손 없음" 을 "가려지지 않음" 으로** 바꿨고(#144·#148), `check_only(reason='occluded')` 라고 적는다(F-07). 계약(`types.ts`)은 아직 `hand` 다.
 
 | | 정의서 (2026-09-23) | 계약 `types.ts` |

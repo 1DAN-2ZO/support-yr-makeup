@@ -17,7 +17,7 @@ import type { CaptureEvents } from "@core/capture-events";
 import { STEP_TEXT, runStep, startRun, type RunState } from "@core/capture-run";
 import { buildBaseline, retakeFront } from "@core/baseline";
 import { eyeWidthPxOf, eyesClosed, faceCropOf, faceInsetOf, faceRatioOf, yawFromLandmarks } from "@core/capture-measure";
-import { CAPTURE_GUIDE, SHOTS, burstShot, burstStep, nextShot, shotGate, startBurst, type BurstState, type ShotId, type ShotMeasure } from "@core/flow";
+import { SHOTS, burstShot, burstStep, nextShot, shotGate, startBurst, type BurstState, type ShotId, type ShotMeasure } from "@core/flow";
 import { foreheadStep, startForeheadTrack } from "@core/occlusion";
 import type { Baseline, FaceShape, Pt } from "@core/types";
 import type { ScreenId } from "@core/screens";
@@ -35,6 +35,8 @@ export interface ShotData {
   h: number;
   /** 찍을 때 이마 L*a*b* — 정면 눈 뜸 값이 나머지 장의 밝기·색 조건 기준 */
   forehead: Lab | null;
+  /** 찍을 때 표정 점수 (블렌드셰이프) — 정면 눈 뜸 값이 Baseline.expression (#177) */
+  expr: Record<string, number> | null;
 }
 
 export interface CaptureDeps {
@@ -47,7 +49,7 @@ export interface CaptureDeps {
   /** 얼굴형 판단용 정면 프레임 (F-02). 메모리에만 */
   setFaceShapeFrames: (frames: HTMLCanvasElement[]) => void;
   events: CaptureEvents;
-  /** 4장 뒤 "룩 고르러 가기" 가 가는 곳 */
+  /** 4장 뒤 "화장 고르러 가기" 가 가는 곳 */
   next: ScreenId;
 }
 
@@ -57,10 +59,12 @@ export const PENDING_FACE_SHAPE: FaceShape = { label: "oval", confidence: 0, met
 export const CAPTURE_TEXT = {
   loading: "카메라를 준비하고 있어요…",
   cameraFail: "카메라를 열 수 없어요. 브라우저 설정에서 카메라를 허용해 주세요",
-  doneTitle: "4장 다 찍었어요",
-  doneSub: "이상한 장이 있으면 그 장만 다시 찍을 수 있어요",
+  doneTitle: "사진 확인",
+  doneSub: "찍힌 사진을 확인해 주세요",
+  doneCoach: "이상한 사진이 있으면 그 사진만 다시 찍을 수 있어요",
   retake: "다시 찍기",
-  go: "룩 고르러 가기",
+  go: "화장 고르러 가기",
+  devSkip: "촬영 건너뛰기",
 } as const;
 
 function isShotData(v: unknown): v is ShotData {
@@ -121,7 +125,21 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
       function showDone(): void {
         stopCamera();
         wrap.textContent = "";
-        wrap.append(el("h1", "", CAPTURE_TEXT.doneTitle), el("p", "muted", CAPTURE_TEXT.doneSub));
+        wrap.classList.add("capture-done-screen");
+        const header = el("div", "capture-done-header");
+        header.innerHTML = `
+          <div class="nudy-logo capture-done-logo" aria-label="nudy">
+            <span>nudy</span>
+            <i aria-hidden="true"></i>
+          </div>
+          <h1>${CAPTURE_TEXT.doneTitle}</h1>
+          <p>${CAPTURE_TEXT.doneSub}</p>
+        `;
+        const coach = el("div", "capture-done-coach");
+        coach.innerHTML = `
+          <img src="/ui/nudy-coach-simple.svg" alt="" aria-hidden="true" />
+          <div><span>${CAPTURE_TEXT.doneCoach}</span><i aria-hidden="true"></i></div>
+        `;
         const grid = el("ul", "shot-grid");
         for (const s of SHOTS) {
           const v = shots()[s.id];
@@ -147,41 +165,32 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
           ctx.go(deps.next);
         });
         row.append(go);
-        wrap.append(grid, row);
-      }
-
-      // ---------- 촬영 안내 → 카메라 ----------
-      function showGuide(): void {
-        wrap.textContent = "";
-        const box = el("div", "capture-guide");
-        box.append(el("h1", "", CAPTURE_GUIDE.title));
-        const ul = el("ul");
-        for (const t of CAPTURE_GUIDE.lines) ul.append(el("li", "", t));
-        const row = el("div", "row");
-        const ok = el("button", "primary", CAPTURE_GUIDE.button);
-        ok.type = "button";
-        ok.addEventListener("click", () => {
-          ctx.log.log({ name: "button", button: "capture_guide_ok" });
-          try { audio ??= new AudioContext(); void audio.resume(); } catch { /* */ }   // iOS 는 탭할 때 소리를 열어 둬야 나중에 난다
-          showCamera();
-        });
-        row.append(ok);
-        box.append(ul, row);
-        wrap.append(box);
+        wrap.append(header, coach, grid, row);
       }
 
       function showCamera(): void {
         stopCamera();
+        wrap.classList.remove("capture-done-screen");
         const my = ++camId;
         const live = (): boolean => alive && my === camId;
         wrap.textContent = "";
+        const logo = el("div", "nudy-logo capture-camera-logo");
+        logo.setAttribute("aria-label", "nudy");
+        logo.innerHTML = `<span>nudy</span><i aria-hidden="true"></i>`;
+        const title = el("p", "capture-camera-title", "사진 촬영");
         const stage = el("div", "cam");
         const video = el("video", "cam-video");
         video.playsInline = true; video.muted = true; video.autoplay = true;
         const oval = el("div", "cam-oval");
         const flash = el("div", "cam-flash");
         flash.hidden = true;
-        stage.append(video, oval, flash);
+        const coach = el("div", "cam-coach");
+        coach.innerHTML = `
+          <img src="/ui/nudy-coach-simple.svg" alt="" aria-hidden="true" />
+          <div><span>${CAPTURE_TEXT.loading}</span><i aria-hidden="true"></i></div>
+        `;
+        const coachText = coach.querySelector<HTMLSpanElement>("span");
+        stage.append(video, oval, flash, coach);
         const step = el("p", "cam-step");
         const line = el("p", "cam-gate", CAPTURE_TEXT.loading);
         const hint = el("p", "cam-hint");
@@ -192,7 +201,17 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
           for (const s of SHOTS) progress.append(el("li", shots()[s.id] ? "on" : ""));
         };
         drawProgress();
-        wrap.append(step, stage, line, hint, progress);
+        wrap.append(logo, title, step, stage, line, hint, progress);
+        if (import.meta.env.DEV) {
+          const skip = el("button", "capture-dev-skip", CAPTURE_TEXT.devSkip);
+          skip.type = "button";
+          skip.addEventListener("click", () => {
+            ctx.log.log({ name: "button", button: "capture_dev_skip" });
+            stopCamera();
+            ctx.go(deps.next);
+          });
+          wrap.append(skip);
+        }
 
         let lmk: FaceLandmarker | null = null;
         let stream: MediaStream | null = null;
@@ -219,6 +238,10 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
 
         const setStep = (): void => {
           step.textContent = run.shot ? `${SHOTS.findIndex((s) => s.id === run.shot) + 1}/4 · ${STEP_TEXT[run.shot]}` : "";
+        };
+        const setCoach = (text: string): void => {
+          if (coachText) coachText.textContent = text || "얼굴을 맞춰 주세요";
+          line.textContent = text;
         };
 
         async function start(): Promise<void> {
@@ -256,19 +279,27 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
           const m: ShotMeasure = { faceDetected: !!raw, yaw: 0, pitch: 0, closedA: false, closedB: false };
           let lm: Pt[] = [];
           let lab: Lab | undefined;
+          let expr: Record<string, number> | null = null;
           if (raw) {
             if (lostSince !== null) { deps.events.faceLost(now - lostSince); lostSince = null; }
             lm = raw.map((p) => ({ x: p.x * sw, y: p.y * sh }));
             const ang = yawFromLandmarks(lm);
             const bs = new Map((res.faceBlendshapes[0]?.categories ?? []).map((c) => [c.categoryName, c.score]));
+            if (bs.size) expr = Object.fromEntries(bs);
             const yaw = -ang.yaw;   // 화면(거울) 기준
-            lab = foreheadLabOf(video, lm, sw, sh);
-            if (lab) {
-              const r = foreheadStep(fj, now, lab, { yaw, pitch: ang.pitch });
+            const fr = foreheadLabOf(video, lm, sw, sh);
+            lab = fr?.skin;
+            // 가림(급변)은 전체 평균으로 — 피부만 남기면 그림자 진 손도 빠져 가림을 못 잡는다 (#212 리뷰)
+            if (fr?.raw) {
+              const r = foreheadStep(fj, now, fr.raw, { yaw, pitch: ang.pitch });
               fj = r.track;
               m.foreheadOccluded = r.occluded;
+            }
+            if (lab) {
               m.foreheadL = lab.L;
               m.foreheadAb = { a: lab.a, b: lab.b };
+            } else {
+              m.foreheadHidden = true;   // 이마 대부분이 머리카락 — 조명 기준을 못 잰다 (color.foreheadLab)
             }
             Object.assign(m, {
               yaw, pitch: ang.pitch, ...eyesClosed(lm, bs),
@@ -294,21 +325,21 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
           const r = runStep(run, m, now);
           run = r.state;
           if (r.gate) deps.events.blocked(shot, r.gate.ok ? null : r.gate.firstFail, now);
-          line.textContent = r.gate?.text ?? "";
+          setCoach(r.gate?.text ?? "");
           line.classList.toggle("ready", !!r.gate?.ok);
           oval.classList.toggle("ready", !!r.gate?.ok);
           hint.hidden = r.hint === null;
           hint.textContent = r.hint ?? "";
-          if (r.take) take(shot, video, lm, sw, sh, lab ?? null);
+          if (r.take) take(shot, video, lm, sw, sh, lab ?? null, expr);
         }
 
-        function take(id: ShotId, video: HTMLVideoElement, lm: Pt[], w: number, h: number, forehead: Lab | null): void {
+        function take(id: ShotId, video: HTMLVideoElement, lm: Pt[], w: number, h: number, forehead: Lab | null, expr: Record<string, number> | null): void {
           busy = true;
           const cv = grabFrame(video);
           flash.hidden = false;
           setTimeout(() => (flash.hidden = true), 250);
           shutterCue(id === "front_closed");
-          const data: ShotData = { cv, lm, w, h, forehead };
+          const data: ShotData = { cv, lm, w, h, forehead, expr };
           if (id === "front_open") setFront(data);
           deps.setShot(id, data);
           deps.events.shot(id, true, null);
@@ -337,7 +368,7 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
         }
 
         start().catch((e: unknown) => {
-          line.textContent = CAPTURE_TEXT.cameraFail;
+          setCoach(CAPTURE_TEXT.cameraFail);
           ctx.log.log({ name: "error", where: "capture", msg: `camera:${String(e).slice(0, 120)}` });
         });
       }
@@ -346,7 +377,7 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
       function setFront(d: ShotData): void {
         const g = d.cv.getContext("2d");
         const image = g ? g.getImageData(0, 0, d.cv.width, d.cv.height) : undefined;
-        const input = { lm: d.lm, w: d.w, h: d.h, faceShape: PENDING_FACE_SHAPE, ...(image ? { image: { data: image.data, w: image.width, h: image.height } } : {}) };
+        const input = { lm: d.lm, w: d.w, h: d.h, faceShape: PENDING_FACE_SHAPE, expression: d.expr, ...(image ? { image: { data: image.data, w: image.width, h: image.height } } : {}) };
         const prev = deps.getBaseline();
         if (prev && prev.lm.length) {
           const others: Record<string, Pt[]> = {};
@@ -380,7 +411,6 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
       });
 
       if (!nextShot(shots())) showDone();
-      else if (Object.keys(shots()).length === 0) showGuide();
       else showCamera();
 
       return () => {

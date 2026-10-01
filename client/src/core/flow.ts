@@ -10,6 +10,7 @@
 
 import type { Baseline, FaceShape, GateFail, GateResult, PartId, PartResult, PartStatus } from "./types";
 import { LOOK_PART_IDS, PART_IDS } from "./types";
+import type { PersonalPlan } from "./personalize";
 
 // ---------- 화면 순서 ----------
 
@@ -33,7 +34,7 @@ export const SCREEN_NAME: Record<ScreenId, string> = {
   denied: "이용 불가",
   capture: "1 촬영",
   processing: "서버 처리",
-  looks: "2 룩",
+  looks: "2 화장",
   fullrender: "2-b 전체 완성 예상",
   guide: "3 완성본",
   live: "4 실시간 테두리",
@@ -70,13 +71,13 @@ export const SHOTS: readonly ShotSpec[] = [
  * 머리카락·안경이 가리면 그 값이 틀어지므로 찍기 전에 한 번 알려 준다 (안경은 처음부터 쓰고 있어 이마 급변으로 못 잡는다). 숫자 없이.
  */
 export const CAPTURE_GUIDE = {
-  title: "찍기 전에 확인해 주세요",
+  title: "카메라 준비",
   lines: [
     "앞머리를 넘겨서 이마가 다 보이게 해 주세요",
     "머리카락을 귀 뒤로 넘겨서 양쪽 귀가 다 보이게 해 주세요",
     "안경을 쓰셨다면 벗어 주세요",
   ],
-  button: "확인했어요",
+  button: "카메라 켜기",
 } as const;
 
 /** 서버(법선 정밀화)로 보내는 3장. 눈 감음 장은 폰에만 남는다 (F-01) */
@@ -114,6 +115,7 @@ export const SHOT_TEXT = {
   none: "",
   cut: "얼굴이 잘려요. 얼굴 전체가 보이게 해 주세요",
   occluded: "얼굴을 가리지 말아 주세요",
+  bangs: "앞머리를 넘겨서 이마가 보이게 해 주세요",
   front: "조금만 정면으로",
   left: "고개를 왼쪽으로 조금 더",
   right: "고개를 오른쪽으로 조금 더",
@@ -147,6 +149,8 @@ export interface ShotMeasure {
   faceInset?: number;
   /** 이마가 갑자기 크게 변해 가림으로 본다 (occlusion.ts foreheadStep, 2026-09-23 #144). 없으면 조건 생략 */
   foreheadOccluded?: boolean;
+  /** 얼굴은 잡혔는데 이마 대부분이 머리카락이라 이마 피부를 못 잰다 (color.foreheadLab null, 2026-09-30). 조명 기준을 몰라서 안 찍는다 */
+  foreheadHidden?: boolean;
   /** 눈 폭 px — 두 눈 중 큰 쪽 (45° 장은 먼 눈이 짧아진다). 없으면 조건 생략 */
   eyeWidthPx?: number;
   /** 라플라시안 분산 */
@@ -190,6 +194,7 @@ export function shotGate(shotId: ShotId, m: ShotMeasure, limits: CaptureLimits =
   if (typeof m.faceInset === "number" && m.faceInset < FACE_INSET_MIN) return fail("visible", "cut");
   // 가림 (2026-09-23 #144): 이마 급변. 손 검출 모델 없이 손·머리카락·브러시·마스크를 한 조건으로. 무엇인지는 모른다 → "visible"
   if (m.foreheadOccluded) return fail("visible", "occluded");
+  if (m.foreheadHidden) return fail("visible", "bangs");
   if (m.yaw < shot.yaw[0] || m.yaw > shot.yaw[1]) {
     if (shot.id.startsWith("front")) return fail("angle", "front");
     // 반대로 돌렸을 때 "조금 더" 라고 하면 그쪽으로 더 돌린다 (2026-09-23 iPad: 왼쪽 45° 차례에 yaw +84 까지, 20초)
@@ -301,6 +306,11 @@ export interface Session {
   currentPart: PartId | null;
   parts: SessionPart[];
   startedAt: number;
+  /**
+   * 화장(lookId)별 개인화 계획 (#181, 새 흐름 #179). VLM 이 매번 조금 달라서 다시 묻지 않고 저장본을 쓴다.
+   * 숫자·짧은 문장뿐이라 draft 에 그대로 남는다. 기준 얼굴이 바뀌면(정면 다시 찍기) 비운다 — withBaseline
+   */
+  plans: Record<string, PersonalPlan>;
 }
 
 const SETTLED: readonly PartStatus[] = ["passed", "check_only", "skipped"];
@@ -329,7 +339,22 @@ export function createSession(now: () => number = Date.now): Session {
       captured: null,
     })),
     startedAt: now(),
+    plans: {},
   };
+}
+
+/**
+ * 기준(Baseline) 바꾸기. **얼굴이 바뀌면**(정면을 다시 찍어 랜드마크가 달라지면) 앞 얼굴로 만든 개인화 계획을 비운다 (#181).
+ * 같은 얼굴에 쌩얼 사진만 붙는 갱신(encode 뒤 bareImage)은 계획을 그대로 둔다
+ */
+export function withBaseline(s: Session, b: Baseline | null): Session {
+  const sameFace = !!b && !!s.baseline && b.lm === s.baseline.lm;
+  return { ...s, baseline: b, faceShape: b?.faceShape ?? null, plans: sameFace ? s.plans : {} };
+}
+
+/** 화장 하나의 개인화 계획 저장 (#181) */
+export function setPlan(s: Session, lookId: string, plan: PersonalPlan): Session {
+  return { ...s, plans: { ...s.plans, [lookId]: plan } };
 }
 
 export function setScreen(s: Session, screen: ScreenId): Session {
@@ -429,6 +454,8 @@ export interface SessionDraft {
   currentPart: PartId | null;
   parts: (PartResult & { captured: boolean })[];
   startedAt: number;
+  /** 화장별 개인화 계획 — 얼굴 사진·점이 아니라 선택 값이라 draft 에 남긴다 (#181). 예전 draft 에는 없다 */
+  plans?: Record<string, PersonalPlan>;
 }
 
 /** 세션 draft 저장용. 사진·랜드마크는 뺀다 (얼굴 데이터는 draft 에 남기지 않는다) */
@@ -446,6 +473,7 @@ export function stripImages(s: Session): SessionDraft {
     currentPart: s.currentPart,
     parts: s.parts.map(({ captured, ...rest }) => ({ ...rest, captured: !!captured })),
     startedAt: s.startedAt,
+    plans: s.plans,
   };
 }
 

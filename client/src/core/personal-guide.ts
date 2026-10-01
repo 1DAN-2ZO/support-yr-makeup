@@ -176,6 +176,33 @@ export function browStandard(f: GuideFrame, adj?: BrowAdjust): Record<Side, Brow
 }
 
 /**
+ * 표준 눈썹을 **이 사람 실제 눈썹 높이**에 맞춘 것 — 모양(두께·앞머리·꼬리·굽기)은 표준, 세로 자리만 실제 눈썹 가운데.
+ * 표준은 한국 여성 평균 mm(JKSC 2023)라 사람마다 크게 다르다. 폰 시험(2026-09-30)에서 표준이 실제 눈썹보다 4~5 mm 아래라
+ * 테두리가 눈썹과 눈 사이에 섰다 — "원래 결을 따라 빈 곳만 채우세요" 인데 눈썹 아래 피부를 칠하게 된다.
+ * 계획의 높이 조정(heightMm)은 실제 눈썹 기준으로 살린다: 옮기는 양은 조정 없는 표준으로 재고, 조정한 표준을 그만큼 옮긴다.
+ */
+export function browOnFace(f: GuideFrame, adj?: BrowAdjust): Record<Side, BrowPlan> | null {
+  const plan = browStandard(f, adj), ref = adj?.heightMm ? browStandard(f, { ...adj, heightMm: 0 }) : plan;
+  if (!plan || !ref) return null;
+  const u = faceAxis(f.lm), up = { x: u.y, y: -u.x };
+  const h = (p: Pt): number => p.x * up.x + p.y * up.y;
+  const meanH = (pts: readonly Pt[]): number => pts.reduce((s, p) => s + h(p), 0) / pts.length;
+  return both(({ key, brow }) => {
+    const real = meanH([...brow.upper, ...brow.lower].map((i) => at(f.lm, i)));
+    const d = mul(up, real - meanH(ref[key].outline));
+    const mv = (p: Pt): Pt => add(p, d);
+    const b = plan[key];
+    return {
+      head: { top: mv(b.head.top), bottom: mv(b.head.bottom) },
+      peak: { top: mv(b.peak.top), bottom: mv(b.peak.bottom) },
+      outer: { top: mv(b.outer.top), bottom: mv(b.outer.bottom) },
+      tail: mv(b.tail),
+      outline: b.outline.map(mv),
+    };
+  });
+}
+
+/**
  * 개인화 가이드 — 계획이 없으면 ② 의 lookGuide 그대로(개인화 전 점수가 바뀌지 않는다).
  * 계획이 바꾸는 것: 라이너 꼬리·두께, 섀도 범위, 눈썹 정답 영역, 입술 오버라인, 볼 위치·크기, 쉐딩·하이라이트(얼굴형·T존).
  */
@@ -186,7 +213,7 @@ export function planGuide(lookParts: Partial<Record<LookPartId, LookPart>> = {},
     const P = (i: number): Pt => at(f.lm, i);
     if (partId === "shadow") return { regions: shadowRegions(f, GUIDE_PARAMS.shadow.rangeRatio * plan.shadow.range) };
     if (partId === "brow") {
-      const b = browStandard(f, plan.brow);
+      const b = browOnFace(f, plan.brow);
       return b ? { regions: { R: b.R.outline, L: b.L.outline } } : {};
     }
     if (partId === "liner") {

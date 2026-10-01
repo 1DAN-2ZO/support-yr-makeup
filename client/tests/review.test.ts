@@ -1,4 +1,5 @@
 // 전체 리뷰 합산 검증 — 화면 6 POC 검증 24개를 vitest 로 옮김 (이슈 #32, 3-1)
+import { CHECK_REASON_SHORT, PARAMS } from "@core/score";
 import { describe, expect, it } from "vitest";
 import {
   CONTOUR_ID,
@@ -151,8 +152,9 @@ describe("쉐딩·하이라이트, 진행 중, 한 줄 평", () => {
   it("V5 한 줄 평: 쉐딩은 '확인하고 넘어가세요' + 좌우 방향, 확인만은 이유, 숫자 없음", () => {
     expect(reviewLine(P(CONTOUR_ID, "check_only", null, { lrIndex: { left: 30, right: 55 } }))).toBe("확인하고 넘어가세요. 오른쪽이 조금 진해요");
     expect(reviewLine(P(CONTOUR_ID, "check_only", null, { lrIndex: { left: 40, right: 44 } }))).toBe("확인하고 넘어가세요.");
-    expect(reviewLine(P("shadow", "check_only", null))).toContain("재지 못했어요");
-    expect(reviewLine(P("shadow", "check_only", null, { checkReason: "lighting" }))).toContain("조명");
+    // 리뷰는 다 끝난 뒤라 할 일("다시 확인받아") 없이 이유만
+    expect(reviewLine(P("shadow", "check_only", null))).toBe(CHECK_REASON_SHORT.faint);
+    expect(reviewLine(P("shadow", "check_only", null, { checkReason: "lighting" }))).toBe(CHECK_REASON_SHORT.lighting);
     const t = reviewLine(P("liner", "passed", 82, { diagnosisCodes: ["LINER_WING_HIGH_R"] }));
     expect(t.length).toBeGreaterThan(0);
     expect(hasDigit(t)).toBe(false);
@@ -213,8 +215,11 @@ describe("기록 (로드맵용)", () => {
   });
 
   it("C6 조명 배지: 이마 L* 차가 임계 이상일 때만", () => {
-    expect(lightingDiffers({ foreheadL: 60 }, { foreheadL: 70 })).toBe(true);
-    expect(lightingDiffers({ foreheadL: 60 }, { foreheadL: 65 })).toBe(false);
+    // 채점 조명 한계(PARAMS.lightTol)와 같은 기준 — 채점은 됐는데 리뷰만 "조명이 달라서" 가 뜨지 않게 (2026-09-30)
+    expect(lightingDiffers({ foreheadL: 60 }, { foreheadL: 60 + PARAMS.lightTol })).toBe(true);
+    expect(lightingDiffers({ foreheadL: 60 }, { foreheadL: 60 - PARAMS.lightTol })).toBe(true);
+    expect(lightingDiffers({ foreheadL: 60 }, { foreheadL: 60 + PARAMS.lightTol - 1 })).toBe(false);
+    expect(lightingDiffers({ foreheadL: 60 }, { foreheadL: 70 })).toBe(false);
     expect(lightingDiffers(null, { foreheadL: 65 })).toBe(false);
   });
 

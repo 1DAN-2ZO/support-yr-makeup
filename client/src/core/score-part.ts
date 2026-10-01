@@ -8,13 +8,14 @@
  *   session = applyResult(session, partId, toOutcome(partId, result, ctx));
  */
 
+import scoreRules from "../../../rules/score.json";
 import type { Lab, RgbaImage } from "./color";
-import { deltaE } from "./color";
+import { deltaE, scleraLab } from "./color";
 import { LM, at } from "./landmarks";
-import type { SampleFrame } from "./sampling";
+import type { HairMask, SampleFrame } from "./sampling";
 import { frameOf, sampleBrow, sampleForehead, sampleLiner, sampleLip, sampleRegion } from "./sampling";
-import type { Band, DecideContext, LightCorr, LinerStrip, PartScore, ScoreParams, Side, SimilarityFit } from "./score";
-import { PARAMS, alignToBaseline, browResult, compareLinerEye, compareLip, compareRegion, intensityIndex, intensityResult, lightCorr, linerResult, makeupBiasPx, noCorr, oneLiner, toOutcome } from "./score";
+import type { Band, DecideContext, LightCorr, LinerStrip, PartScore, RegionGrid, ScoreParams, Side, SimilarityFit } from "./score";
+import { PARAMS, alignToBaseline, colorShiftCorr, browResult, compareLinerEye, compareLip, compareRegion, intensityIndex, intensityResult, lightCorr, linerResult, makeupBiasPx, noCorr, oneLiner, toOutcome } from "./score";
 import type { ScoreOutcome } from "./flow";
 import type { CheckReason, PartId, Pt } from "./types";
 
@@ -57,9 +58,9 @@ export type GuideSource = (partId: PartId, f: SampleFrame) => PartGeometry;
 const MAKEUP_IDS: readonly number[] = [...LM.lipsOuter, ...LM.eyeA.upper, ...LM.eyeB.upper];
 
 /** 확인받기 프레임을 기준 좌표계에 맞춘다: 재검출 랜드마크 대신 기준 랜드마크를 안정 점으로 옮겨 쓴다 */
-export function alignedFrame(base: SampleFrame, im: RgbaImage, detectedLm: readonly Pt[]): { frame: SampleFrame; fit: SimilarityFit; biasPx: number } {
+export function alignedFrame(base: SampleFrame, im: RgbaImage, detectedLm: readonly Pt[], hair?: HairMask): { frame: SampleFrame; fit: SimilarityFit; biasPx: number } {
   const { lm, fit } = alignToBaseline(base.lm, detectedLm);
-  return { frame: frameOf(im, lm), fit, biasPx: makeupBiasPx(lm, detectedLm, MAKEUP_IDS) };
+  return { frame: frameOf(im, lm, hair), fit, biasPx: makeupBiasPx(lm, detectedLm, MAKEUP_IDS) };
 }
 
 export interface ScorePartOptions {
@@ -75,8 +76,12 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
   // 조명: 이마(비화장)의 L* 비율로 맞춘다. 이마를 못 재면 보정 없이 간다 — 조명이 달라졌는지는 알 수 없다
   const foreBase = sampleForehead(base), foreCur = sampleForehead(cur);
   const lit = foreBase && foreCur ? { corr: lightCorr(foreBase.L, foreCur.L), shift: foreCur.L - foreBase.L } : null;
-  const corr = lit?.corr ?? noCorr;
+  // 조명 색 (S-4 #40): 흰자를 두 사진에서 다 재면 흰자 a*b* 차이도 되돌린다. 못 재면(눈 감음 등) 밝기만
+  const sb = p.colorCorr === "sclera" ? scleraLab(base.im, base.lm) : null, sc = sb ? scleraLab(cur.im, cur.lm) : null;
+  const corr = sb && sc ? colorShiftCorr(lit?.corr ?? noCorr, sb, sc) : lit?.corr ?? noCorr;
   const ctx: DecideContext = lit ? { lightShift: lit.shift } : {};
+  // 정렬 잔차는 눈 폭으로 나눠 해상도와 상관없게 (#43)
+  if (opts.alignResidual !== undefined && cur.unit.eye > 0) ctx.alignResidual = opts.alignResidual / cur.unit.eye;
 
   let result: PartScore;
   if (partId === "liner") {
@@ -92,7 +97,10 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
   } else if (partId === "brow") {
     const gb = sampleBrow(base);
     const cost = (f: SampleFrame) => meanLighter(gb.lab, sampleBrow(f).lab, corr);
-    result = browResult(compareRegion(gb, sampleBrow(register(cur, cost)), corr, p.dEThresh.brow));
+    const gc = sampleBrow(register(cur, cost));
+    result = browResult(compareRegion(gb, gc, corr, p.dEThresh.brow));
+    const hf = browHidden(gb, gc);
+    if (hf !== null) ctx.hairFrac = hf;
   } else if (partId === "lip") {
     const lc = sampleLip(cur, lipOf(guide, cur).offset);
     result = compareLip(sampleLip(base, lipOf(guide, base).offset), lc, corr, p);
@@ -107,6 +115,7 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
     const side = (s: Side) => {
       const b = sampleRegion(base, regionOf(guide, partId, base, s), s, halves), c = sampleRegion(cur, regionOf(guide, partId, cur, s), s, halves);
       if (!b || !c) return { delta: 0, index: 0, dir: 0, color: null as Lab | null };   // 영역이 사진 밖 → 화장 없음으로 (확인만)
+      if (b.hidden !== undefined || c.hidden !== undefined) ctx.hairFrac = Math.max(ctx.hairFrac ?? 0, b.hidden ?? 0, c.hidden ?? 0);
       const dir = b.outer && b.inner && c.outer && c.inner ? deltaE(b.outer, corr(c.outer)) - deltaE(b.inner, corr(c.inner)) : 0;
       return { ...intensityIndex(b.part, c.part, b.ring, c.ring, corr, p), dir, color: c.part as Lab | null };
     };
@@ -128,6 +137,18 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
   return { result, ctx };
 }
 
+/** 눈썹 안쪽 칸 중 머리카락에 가린 비율 — 두 사진 중 한쪽이라도 가렸으면 가림, 좌우 중 큰 쪽. 마스크가 없으면 null */
+function browHidden(base: RegionGrid, cur: RegionGrid): number | null {
+  if (!base.meta.hidden && !cur.meta.hidden) return null;
+  const n = { R: 0, L: 0 }, h = { R: 0, L: 0 };
+  cur.meta.side.forEach((s, i) => {
+    if (!cur.meta.inside[i]) return;
+    n[s]++;
+    if (base.meta.hidden?.[i] || cur.meta.hidden?.[i]) h[s]++;
+  });
+  return Math.max(n.R ? h.R / n.R : 0, n.L ? h.L / n.L : 0);
+}
+
 // ---------- 부위별 미세 정렬 (#169 — 맨얼굴 오채점) ----------
 
 /**
@@ -145,7 +166,7 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
  * minGain: 안 옮긴 자리보다 비용(밝아진 L*)이 이만큼 줄어야 옮긴다 (#174 리뷰: 잡음 속에서 엉뚱하게 옮겨 라이너 96 → 84).
  *   합성 실측(잡음 σ 0~10): 진짜 1~2px 어긋남은 라이너 2.2~3.6 · 눈썹 0.1~0.2 줄고, 잡음 때문에 옮길 때는 0.03 이하
  */
-export const REGISTER = { range: 0.022, minGain: 0.1 };
+export const REGISTER = { ...scoreRules.register };   // 값은 rules/score.json (#44)
 
 function shiftFrame(f: SampleFrame, dx: number, dy: number): SampleFrame {
   return { ...f, lm: f.lm.map((q) => ({ ...q, x: q.x + dx, y: q.y + dy })) };
@@ -267,6 +288,8 @@ export interface BundleInput {
   im: RgbaImage;
   pts: readonly Pt[];
   occluded: boolean | null;
+  /** 이 장의 머리카락 마스크 (screens/hair-segmenter). 없으면 머리카락을 안 뺀다 */
+  hair?: HairMask;
 }
 
 export interface BundleScore {
@@ -281,7 +304,7 @@ export interface BundleScore {
 
 /**
  * 확인받기 3~5장을 각각 채점해 합친다.
- *  - 가려진 장은 뺀다. 다 가려졌으면 확인만(hand)
+ *  - 가려진 장은 뺀다. 다 가려졌으면 확인만(occluded)
  *  - 점수 난 장이 절반 이상이면 점수 = 중앙값. 흔들린 한 장이 점수를 끌고 가지 않게 (이슈는 "평균" — 튀는 값에 강한 쪽을 골랐다)
  *  - 아니면 확인만, 이유는 가장 많이 나온 것
  *  - 한 줄 평·코드·사진은 대표 장(점수가 중앙값에 가장 가까운 장, 확인만이면 그 이유가 나온 첫 장)에서
@@ -292,14 +315,14 @@ export function scoreBundle(partId: PartId, base: SampleFrame, frames: readonly 
   const excluded = frames.length - kept.length;
   if (!kept.length) {
     const outcome: ScoreOutcome = {
-      decision: "check_only", score: null, diagnosisCodes: [], checkReason: "hand",
-      diagnosis: oneLiner(partId, { status: "check_only", reason: "hand", score: null }), lrIndex: null,
+      decision: "check_only", score: null, diagnosisCodes: [], checkReason: "occluded",
+      diagnosis: oneLiner(partId, { status: "check_only", reason: "occluded", score: null }), lrIndex: null,
       metrics: { frames: { used: 0, excluded } },
     };
     return { outcome, pick: null, cur: null, used: 0, excluded };
   }
   const each = kept.map(({ f, i }) => {
-    const { frame, fit } = alignedFrame(base, f.im, f.pts);
+    const { frame, fit } = alignedFrame(base, f.im, f.pts, f.hair);
     const { result, ctx } = scorePart(partId, base, frame, guide, { ...opts, alignResidual: fit.residual }, p);
     return { i, cur: frame, out: toOutcome(partId, result, ctx, p) };
   });

@@ -86,3 +86,24 @@ describe("shotGate 이마 급변", () => {
     expect(shotGate("front_open", { ...ok, foreheadOccluded: false }).ok).toBe(true);
   });
 });
+
+describe("어두울 때 (2026-09-28 Android 어두움: 잡음으로 가림 오판)", () => {
+  const dark: Lab = { L: 42, a: 9, b: -1 };
+  it("어두운 이마가 잡음으로 ΔE 30 튀어도 가림 아님 (임계 20 × 2)", () => {
+    const noisy = Array.from({ length: 60 }, (_, i) => (i % 7 === 3 ? { L: 42 + 28, a: 9 + 8, b: -1 + 8 } : dark));
+    expect(run(noisy).occ.some(Boolean)).toBe(false);
+  });
+  it("어두워도 손처럼 크게(ΔE 40 넘게) 바뀌면 가림", () => {
+    const handDark: Lab = { L: 90, a: 20, b: 15 };   // 폰 화면 빛에 비친 손 — 크게 밝아짐
+    const { occ } = run([...rep(dark, 20), ...rep(handDark, 30)]);
+    expect(occ.slice(22, 50).every(Boolean)).toBe(true);
+  });
+  it("밝은 이마를 손이 가려 어두워지면 여전히 기본 임계(20)로 잡힌다", () => {
+    const { occ } = run([...rep(skin, 20), ...rep({ L: 45, a: 14, b: 18 }, 30)]);   // ΔE ≈ 20.4
+    expect(occ.slice(22, 50).every(Boolean)).toBe(true);
+  });
+  it("기본값: darkL 50, darkScale 2 (가정값)", () => {
+    expect(FOREHEAD_JUMP.darkL).toBe(50);
+    expect(FOREHEAD_JUMP.darkScale).toBe(2);
+  });
+});

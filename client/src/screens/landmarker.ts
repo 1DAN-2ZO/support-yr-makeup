@@ -27,13 +27,17 @@ export async function createLandmarker(mode: "VIDEO" | "IMAGE"): Promise<FaceLan
  * 저장해 둔 쌩얼 사진에서 랜드마크를 다시 찾는다 (세션 복원, core/restore.ts).
  * 못 찾으면 null — 그러면 촬영부터 다시.
  */
-export async function landmarksFromImage(blob: Blob): Promise<{ lm: { x: number; y: number }[]; w: number; h: number } | null> {
+export async function landmarksFromImage(blob: Blob): Promise<{ lm: { x: number; y: number }[]; w: number; h: number; expression: Record<string, number> | null } | null> {
   const bmp = await createImageBitmap(blob);
   const lmk = await createLandmarker("IMAGE");
   try {
-    const raw = lmk.detect(bmp).faceLandmarks[0];
+    const res = lmk.detect(bmp);
+    const raw = res.faceLandmarks[0];
     if (!raw) return null;
-    return { lm: raw.map((p) => ({ x: p.x * bmp.width, y: p.y * bmp.height })), w: bmp.width, h: bmp.height };
+    // 표정 점수도 같이 — 복원한 기준의 expression (#177). draft 에는 없다
+    const cats = res.faceBlendshapes[0]?.categories ?? [];
+    const expression = cats.length ? Object.fromEntries(cats.map((c) => [c.categoryName, c.score])) : null;
+    return { lm: raw.map((p) => ({ x: p.x * bmp.width, y: p.y * bmp.height })), w: bmp.width, h: bmp.height, expression };
   } finally {
     lmk.close();
     bmp.close();

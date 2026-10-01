@@ -6,6 +6,7 @@ import {
   lookDetail,
   tileState,
   tiles,
+  catalogTiles,
 } from "@core/look-view";
 import { CONTOUR_PRODUCTS, LOOKS, SUMMARY_TEMPLATE } from "@core/looks";
 import { computeSummary, DEFAULT_TEMPLATE } from "@core/review";
@@ -165,5 +166,22 @@ describe("합산 설정 — 전 룩 공통 (결정 2026-09-22)", () => {
     const s = computeSummary(parts, SUMMARY_TEMPLATE);
     expect(s.total).toBe(80);
     expect(s.measuredCount).toBe(SUMMARY_TEMPLATE.partIds.length);
+  });
+});
+
+describe("화장 목록 타일 — 서버 그림 없이 (2026-09-29: Stable-Makeup 빼고 AR·VLM)", () => {
+  it("C1 화장 10개가 순서대로, 처음부터 전부 누를 수 있다", () => {
+    const ts = catalogTiles(LOOKS);
+    expect(ts.map((t) => t.lookId)).toEqual(LOOKS.map((l) => l.id));
+    expect(ts.every((t) => t.selectable)).toBe(true);
+  });
+
+  it("C2 대표 이미지가 있으면 그것, 없으면 그 화장의 색 견본(입술·볼·섀도)", () => {
+    const withImg = { ...LOOKS[0]!, image: "looks/daily.jpg" };
+    const [a, b] = catalogTiles([withImg, LOOKS[1]!]);
+    expect(a!.imageUrl).toBe("looks/daily.jpg");
+    expect(b!.imageUrl).toBeNull();
+    expect(b!.swatch.length).toBeGreaterThan(0);
+    expect(b!.swatch.every((c) => /^#[0-9a-f]{6}$/.test(c))).toBe(true);
   });
 });

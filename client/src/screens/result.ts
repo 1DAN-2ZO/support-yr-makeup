@@ -14,9 +14,9 @@
 import type { RgbaImage } from "../core/color";
 import type { ScoreOutcome } from "../core/flow";
 import { guideOutline } from "../core/overlay";
-import { frameOf } from "../core/sampling";
+import { frameOf, type HairMask } from "../core/sampling";
 import { scoreBundle, type GuideSource } from "../core/score-part";
-import { PART_NAME } from "../core/score";
+import { PARAMS, PART_NAME } from "../core/score";
 import type { Baseline, CaptureBundle, PartId, PartStatus } from "../core/types";
 import type { Screen, ScreenContext } from "./shell";
 
@@ -35,7 +35,53 @@ export interface ResultDeps {
   getStatus?: (part: PartId) => PartStatus;
   /** 이미지 → 픽셀. 안 주면 캔버스로. 테스트에서 바꿔 끼운다 */
   toRgba?: (src: ImageBitmap | Blob) => Promise<RgbaImage>;
+  /**
+   * 사진 → 머리카락 마스크 (screens/hair-segmenter createHairMasker). 주면 맨얼굴·확인받기 사진마다 만들어
+   * 앞머리·옆머리 칸을 채점에서 뺀다. 안 주거나 null 이면 전과 같이 (docs/research/hair-skin-2026-09-29)
+   */
+  hairMask?: (im: RgbaImage) => Promise<HairMask | null>;
+  /** 마스크를 이만큼만 기다린다 (ms). 처음엔 모델을 내려받는데, 폰 네트워크가 멈추면 "채점 중…" 에 영영 서 있게 된다 */
+  hairTimeoutMs?: number;
+  /** 개발용(?tune): 판정 근거 숫자를 한 줄로 — 밝기 차·머리카락 가림·정렬·쓴 장 수. 사용자 화면엔 안 나온다 */
+  tune?: boolean;
+  /** ?tune "채점 사진 저장" 에 같이 담을 것 (화장 id·개인화 계획 등) */
+  tuneInfo?: () => Record<string, unknown>;
+  /** 픽셀 → PNG data URL. 테스트에서 바꿔 끼운다 (기본 캔버스) */
+  toPng?: (im: RgbaImage) => string;
+  /** 파일 내려받기. 테스트에서 바꿔 끼운다 (기본 <a download>) */
+  download?: (name: string, text: string) => void;
 }
+
+/**
+ * [개발용 ?tune] 채점에 쓴 사진·얼굴 점·결과를 한 파일로 — 폰에서 난 오채점을 PC 에서 그대로 재현한다
+ * (2026-09-30 폰 시험: 맨얼굴인데 눈썹 70 · 라이너 43). 본인 사진만, 저장소 밖($DHE_DATA_DIR)에 둔다
+ */
+function scoreDump(part: PartId, baseline: Baseline, bareIm: RgbaImage, ims: RgbaImage[], bundle: CaptureBundle, outcome: ScoreOutcome, info: Record<string, unknown>, toPng: (im: RgbaImage) => string): string {
+  return JSON.stringify({
+    kind: "nudy-score-dump", v: 1, at: new Date().toISOString(), part, info,
+    bare: { png: toPng(bareIm), w: bareIm.w, h: bareIm.h, lm: baseline.lm, lmFrame: { w: baseline.w, h: baseline.h } },
+    frames: ims.map((im, i) => ({ png: toPng(im), w: im.w, h: im.h, pts: bundle.pts[i], occluded: bundle.handOverlap[i] ?? null })),
+    outcome,
+  });
+}
+
+function canvasPng(im: RgbaImage): string {
+  const c = document.createElement("canvas");
+  c.width = im.w;
+  c.height = im.h;
+  c.getContext("2d")?.putImageData(new ImageData(new Uint8ClampedArray(im.data), im.w, im.h), 0, 0);
+  return c.toDataURL("image/png");
+}
+
+function saveFile(name: string, text: string): void {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+}
+
+const HAIR_TIMEOUT_MS = 3000;
 
 const GUIDE_COLOR = "#3FD1C4";
 const INTENSITY: readonly PartId[] = ["shadow", "cheek"];
@@ -75,13 +121,21 @@ export function resultScreen<S>(deps: ResultDeps): Screen<S> {
       const t0 = performance.now();
       void (async () => {
         let outcome: ScoreOutcome;
+        let shot: { bare: RgbaImage; ims: RgbaImage[] } | null = null;   // ?tune 사진 저장용
         try {
           // 확인받기 묶음 전체를 채점한다 (3-3): 가려진 장은 빼고, 점수는 중앙값, 사진은 대표 장
           const [bareIm, ...ims] = await Promise.all([toRgba(baseline.bareImage!), ...bundle.frames.map((f) => toRgba(f))]);
+          shot = { bare: bareIm, ims };
           if (!alive) return;
           const guide = deps.guide();
-          const base = frameOf(bareIm, baseline.lm);
-          const b = scoreBundle(part, base, ims.map((im, i) => ({ im, pts: bundle.pts[i]!, occluded: bundle.handOverlap[i] ?? null })), guide);
+          // 머리카락 마스크 — 실패한 장은 null(그 장은 머리카락을 안 뺌). 맨얼굴 것도 같이: 한쪽이라도 가린 칸은 뺀다
+          // 늦으면 기다리지 않는다 — 마스크 없이 채점 (전과 같은 결과)
+          const hairOf = deps.hairMask ?? (async () => null);
+          const late = new Promise<null>((r) => setTimeout(() => r(null), deps.hairTimeoutMs ?? HAIR_TIMEOUT_MS));
+          const [bareHair, ...hairs] = await Promise.all([bareIm, ...ims].map((im) => Promise.race([hairOf(im).catch(() => null), late])));
+          if (!alive) return;
+          const base = frameOf(bareIm, baseline.lm, bareHair ?? undefined);
+          const b = scoreBundle(part, base, ims.map((im, i) => ({ im, pts: bundle.pts[i]!, occluded: bundle.handOverlap[i] ?? null, ...(hairs[i] ? { hair: hairs[i] } : {}) })), guide);
           outcome = b.outcome;
           if (b.pick !== null && b.cur) drawOverlay(canvas, bundle.frames[b.pick]!, ims[b.pick]!, guideOutline(part, b.cur.lm, guide(part, b.cur)));
           ctx.log.log({ name: "score", part, status: outcome.decision === "scored" ? "passed" : "check_only", check_reason: outcome.checkReason, ms: Math.round(performance.now() - t0) });
@@ -93,6 +147,18 @@ export function resultScreen<S>(deps: ResultDeps): Screen<S> {
           return;
         }
         fill(scoreEl, say, extra, part, outcome);
+        if (deps.tune && shot) {
+          const sh = shot;
+          row.before(tuneLine(outcome));
+          const dump = el("button", "secondary result-dump");
+          dump.textContent = "채점 사진 저장 (개발용)";
+          const done = outcome;
+          dump.addEventListener("click", () => {
+            const text = scoreDump(part, baseline, sh.bare, sh.ims, bundle, done, deps.tuneInfo?.() ?? {}, deps.toPng ?? canvasPng);
+            (deps.download ?? saveFile)(`nudy-score-${part}-${Date.now()}.json`, text);
+          });
+          row.before(dump);
+        }
         row.replaceWith(buttons(ctx, deps, part, outcome));
       })();
 
@@ -101,6 +167,15 @@ export function resultScreen<S>(deps: ResultDeps): Screen<S> {
       };
     },
   };
+}
+
+/** [개발용 ?tune] 판정 근거 한 줄 — "밝기가 달라요" 가 왜 떴는지 폰에서 바로 본다 */
+function tuneLine(o: ScoreOutcome): HTMLElement {
+  const m = (o.metrics ?? {}) as { lightShift?: number; hairFrac?: number; alignResidual?: number; frames?: { used: number; excluded: number } };
+  const f = (v: number | undefined, d = 1): string => (typeof v === "number" ? v.toFixed(d) : "-");
+  const p = line("result-tune muted", "");
+  p.textContent = `밝기 차 ${f(m.lightShift)} (한계 ${PARAMS.lightTol}) · 머리카락 ${f(m.hairFrac, 2)} (한계 ${PARAMS.hairMax}) · 정렬 ${f(m.alignResidual, 3)} (한계 ${PARAMS.alignMax}) · 사용 ${m.frames?.used ?? "-"}장 / 제외 ${m.frames?.excluded ?? "-"}장 · ${o.checkReason ?? "채점"}`;
+  return p;
 }
 
 /** 점수(또는 확인만) · 한 줄 평 · 강도 부위 한 줄. 숫자는 점수뿐 */
