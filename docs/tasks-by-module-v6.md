@@ -23,7 +23,7 @@
 | 1 | 1-4 | 4장 연속 촬영 시 이마 L*·**a*·b*** 변동 폭 측정 (조명 3종 × 3명) | 숫자 → E-5, S-4 근거 | ③ |
 | 1 | 1-5 | 이벤트 찍기: `consent`, `capture{shot, ok, retry, reason}`, `restore` | `log()` 호출 | ⑥ |
 | 2 | 1-6 ★ | 눈 흰자 a*·b* 참조 **실제 구현** → `Baseline.scleraLab` | 코드 + 테스트 | ③ |
-| 2 | 1-7 ★ | 세션 저장을 IndexedDB로: 상태 JSON + 사진 3장(쌩얼·완성 예상·최종 프레임, WebP 1024) · 끝내기 시 localStorage·IndexedDB·메모리 동시 삭제 | 저장소 모듈 + 잔존 0 테스트 | ⑥ |
+| 2 | 1-7 ★ | 세션 저장을 IndexedDB로: 상태 JSON + 사진 3장(쌩얼·완성 예상·최종 프레임, WebP 1024 — **쌩얼은 원본 크기**, #240) · 끝내기 시 localStorage·IndexedDB·메모리 동시 삭제 | 저장소 모듈 + 잔존 0 테스트 | ⑥ |
 | 2 | 1-8 | 되는 기기는 WB·노출 잠금(`applyConstraints`), Wake Lock, `visibilitychange`·`webglcontextlost` 복구 | 코드 | — |
 | 2 | 1-9 | 게이트에 a*·b* 변동 조건(`color`) 추가 — 임계는 1-4 결과로 | 코드 | ③ |
 | 2 | 1-10 | 눈 감음·45° 장 용도 확정 반영: 쓰면 눈꺼풀 기준점 추출, 안 쓰면 정면 2장으로 축소 | 코드 + 정의서 정정 | ⑥ |

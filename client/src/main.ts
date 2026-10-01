@@ -198,7 +198,7 @@ async function boot(): Promise<void> {
   };
   let vlmImage: { baseline: unknown; url: Promise<string> } | null = null;
   const imageFor = (b: NonNullable<Session["baseline"]>): Promise<string> => {
-    // 얼굴 점은 촬영 프레임(b.w·b.h) 좌표, 쌩얼은 긴 변 1024 로 줄여 저장 — faceImage 가 맞춘다
+    // 얼굴 점은 촬영 프레임(b.w·b.h) 좌표, 쌩얼은 원본 크기로 저장(#240, 예전 세션은 1024) — faceImage 가 맞춘다
     if (vlmImage?.baseline !== b) vlmImage = { baseline: b, url: bareOf(b).then((photo) => faceImage(photo, b.lm, { w: b.w, h: b.h })) };
     const url = vlmImage.url;
     url.catch(() => { if (vlmImage?.url === url) vlmImage = null; });   // 실패는 기억하지 않는다
