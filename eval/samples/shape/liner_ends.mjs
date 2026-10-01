@@ -1,4 +1,4 @@
-// 라이너 — 지금 방식(띠 전체, 칸 색 차이) vs 양 끝·칸 색 차이(linerEnds) vs 양 끝·획 추출(linerStroke = 조합이 쓰는 것) 을 같은 합성 라이너에
+// 라이너 — 지금 방식(띠 전체, 칸 색 차이) vs 양 끝·칸 색 차이(linerEnds) vs 섞기(linerMixResult = 조합이 쓰는 것: 채움·두께는 지금 방식, 꼬리 길이·앞쪽 자리는 획 추출) 을 같은 합성 라이너에
 //   SET=ffhq node eval/samples/shape/liner_ends.mjs          (FFHQ 동양인 확인한 30장)
 //   SET=ep LIMIT=60 node eval/samples/shape/liner_ends.mjs   (EasyPortrait)
 //   COVER=0.9 → 합성 라이너를 더 진하게 (기본 0.7)
@@ -86,7 +86,7 @@ for (const id of ids) {
       const a = core.scorePart("liner", base, frame, guide, o), h = core.scoreHybrid("liner", base, frame, guide, o);
       const gc = guide("liner", frame).liner, e = core.linerEndsResult({ R: core.linerEnds(base, frame, "R", g, gc), L: core.linerEnds(base, frame, "L", g, gc) });
       const da = core.decide("liner", a.result, a.ctx), dh = core.decide("liner", h.result, h.ctx), de = core.decide("liner", e, a.ctx);
-      rows.push({ id, look: look.id, level, guideThick: g.thick, A: da, E: de, S: dh, codesA: a.result.codes, codesE: [...h.result.codes, ...(h.result.metrics?.endCodes ?? [])], ends: h.result.metrics?.ends ?? null });
+      rows.push({ id, look: look.id, level, guideThick: g.thick, A: da, E: de, S: dh, codesA: a.result.codes, codesE: [...h.result.codes, ...(h.result.metrics?.endCodes ?? [])], ends: h.result.metrics?.perEye ?? null });
     };
     judge("bare", im, lm);
     judge("zoom", z.im, z.lm);
@@ -100,26 +100,26 @@ for (const id of ids) {
 writeFileSync(join(OUT, `liner-ends-${SET}.json`), JSON.stringify(rows));
 const q = (v, p) => (v.length ? v.slice().sort((a, b) => a - b)[Math.min(v.length - 1, Math.floor(v.length * p))] : NaN);
 const pc = (n, d) => String(Math.round((n / (d || 1)) * 100)).padStart(3) + "%";
-console.log(`# 라이너 — 지금 방식 vs 양 끝(칸 색 차이) vs 양 끝(획 추출) · ${SET === "ep" ? "EasyPortrait" : "FFHQ 동양인"} ${ids.length}명 × 화장 10종 · 눈 폭 중앙 ${q(eyeW, 0.5).toFixed(0)}px · 덮는 비율 ${COVER}`);
+console.log(`# 라이너 — 지금 방식 vs 양 끝(칸 색 차이) vs 섞기 · ${SET === "ep" ? "EasyPortrait" : "FFHQ 동양인"} ${ids.length}명 × 화장 10종 · 눈 폭 중앙 ${q(eyeW, 0.5).toFixed(0)}px · 덮는 비율 ${COVER}`);
 console.log("\n분포 = 전체 중 맞음·조금·많이·확인만 비율, 일치 = 기대 판정과 같은 비율, 점수 = 중앙");
-console.log("단계 (기대)            | 지금 방식: 분포 | 일치 | 점수 || 양 끝·칸 색 차이: 일치 | 점수 || 양 끝·획 추출: 분포 | 일치 | 점수");
+console.log("단계 (기대)            | 지금 방식: 분포 | 일치 | 점수 || 양 끝·칸 색 차이: 일치 | 점수 || 섞기: 분포 | 일치 | 점수");
 for (const lv of ["bare", "zoom", ...Object.keys(LEVELS)]) {
   const xs = rows.filter((x) => x.level === lv), exp = LEVELS[lv]?.[0];
   const cell = (m, dist = true) => { const sc = xs.filter((x) => x[m].status === "scored"), by = (k) => sc.filter((x) => fold(x[m].score) === k).length; return `${dist ? `${pc(by("ok"), xs.length)}·${pc(by("slight"), xs.length)}·${pc(by("off"), xs.length)}·${pc(xs.length - sc.length, xs.length)} | ` : ""}${exp ? pc(by(exp), xs.length) : `점수 남 ${pc(sc.length, xs.length)}`} | ${String(q(sc.map((x) => x[m].score), 0.5)).padStart(4)}`; };
   console.log(`${(KO[lv] + (exp ? ` (${EK[exp]})` : " (점수 없음)")).padEnd(18)} | ${cell("A")} || ${cell("E", false)} || ${cell("S")}`);
 }
-console.log("\n## 획 추출이 잰 값 (중앙, 눈 폭 %)\n단계          | 꼬리 − 가이드 | 앞쪽 시작 | 눈꼬리 채움 | 앞트임 채움 | 가운데 채움 | 번짐 | 두께 − 가이드");
+console.log("\n## 섞기가 잰 값 (중앙, 눈 폭 %)\n단계          | 꼬리 − 가이드 | 앞쪽 시작 | 채움 | 번짐 | 두께 − 가이드");
 for (const lv of Object.keys(LEVELS)) {
   const es = rows.filter((x) => x.level === lv && x.ends).flatMap((x) => [x.ends.R, x.ends.L]).filter((e) => e.present), m = (f) => (q(es.map(f), 0.5) * 100).toFixed(1).padStart(6);
-  console.log(`${KO[lv].padEnd(10)} | ${m((e) => e.wingDrawn - e.wingGuide)} | ${m((e) => e.innerStart)} | ${m((e) => e.outerCoverage)} | ${m((e) => e.innerCoverage)} | ${m((e) => e.midCoverage)} | ${m((e) => e.overflow)} | ${m((e) => e.thickness - e.guideThick)}`);
+  console.log(`${KO[lv].padEnd(10)} | ${m((e) => e.wingDrawn - e.wingGuide)} | ${m((e) => e.innerStart)} | ${m((e) => e.coverage)} | ${m((e) => e.overflow)} | ${m((e) => e.thickness - e.guideThick)}`);
 }
-console.log("\n## 진단 코드 (점수 난 것 중 뜬 비율, 좌우 합침) — 지금 방식 / 획 추출");
+console.log("\n## 진단 코드 (점수 난 것 중 뜬 비율, 좌우 합침) — 지금 방식 / 섞기");
 for (const lv of Object.keys(LEVELS)) for (const [m, k] of [["A", "codesA"], ["S", "codesE"]]) {
   const xs = rows.filter((x) => x.level === lv && x[m].status === "scored"), c = {};
   for (const x of xs) for (const code of new Set(x[k].map((s) => s.replace(/_[RL]$/, "")))) c[code] = (c[code] ?? 0) + 1;
-  console.log(`${KO[lv].padEnd(10)} ${m === "A" ? "지금" : "획  "} | ` + (Object.entries(c).filter(([, v]) => v / xs.length >= 0.1).sort((a, b) => b[1] - a[1]).map(([code, v]) => `${code.replace("LINER_", "")} ${pc(v, xs.length).trim()}`).join(" · ") || "없음"));
+  console.log(`${KO[lv].padEnd(10)} ${m === "A" ? "지금" : "섞기"} | ` + (Object.entries(c).filter(([, v]) => v / xs.length >= 0.1).sort((a, b) => b[1] - a[1]).map(([code, v]) => `${code.replace("LINER_", "")} ${pc(v, xs.length).trim()}`).join(" · ") || "없음"));
 }
-console.log("\n## 가이드 두께별 '가이드대로' 일치율 — 지금 / 획 추출");
+console.log("\n## 가이드 두께별 '가이드대로' 일치율 — 지금 / 섞기");
 for (const t of [...new Set(rows.map((x) => x.guideThick))].sort((a, b) => a - b)) {
   const xs = rows.filter((x) => x.level === "ok" && x.guideThick === t), hit = (m) => xs.filter((x) => x[m].status === "scored" && fold(x[m].score) === "ok").length;
   console.log(`두께 ${(t * 100).toFixed(1)}%: ${pc(hit("A"), xs.length)} / ${pc(hit("S"), xs.length)}`);

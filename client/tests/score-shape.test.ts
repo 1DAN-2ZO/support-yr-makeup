@@ -239,10 +239,10 @@ describe("조합 — 부위마다 결과 모양과 원본 대조를 섞는다 (�
     expect(v.status).toBe("check_only");
   });
 
-  it("C6 라이너는 원본 대조인데 양 끝(눈꼬리·앞트임)으로 점수를 낸다 — 결과 모양은 눈꼬리 주름을 꼬리로 읽는다", () => {
+  it("C6 라이너는 원본 대조 — 채움·두께는 지금 방식, 꼬리 길이·앞쪽 자리는 획 추출로 섞는다 — 결과 모양은 눈꼬리 주름을 꼬리로 읽는다", () => {
     const bare = frame(() => null);
     const h = scoreHybrid("liner", bare, frame(linerPaint()), withBrow, { templateColor: [30, 25, 28] });
-    expect(h.route).toBe("ends");
+    expect(h.route).toBe("liner_mix");
     expect(h.result.score).toBeGreaterThan(70);
     expect(scoreHybrid("liner", bare, bare, withBrow, { templateColor: [30, 25, 28] }).result.present).toBe(false);
   });
@@ -354,5 +354,44 @@ describe("라이너 획 추출 — 가늘고 어두운 선만 골라 비교한�
     const far = { x: corner.x + (tip.x - corner.x) * 1.6, y: corner.y + (tip.y - corner.y) * 1.6 };
     const e = stroke(outline(guideThick, far));
     expect(e.wingDrawn - e.wingGuide).toBeGreaterThan(0.04);
+  });
+});
+
+describe("라이너 섞기 — 채움·두께는 지금 방식, 꼬리 길이·앞쪽 자리는 획 추출 (scoreHybrid)", () => {
+  // 실제 사진에 덧그린 두 장(2026-10-01): 지금 방식은 채움·두께를 맞히고 긴 꼬리를 못 봤다(가이드 끝까지만 본다). 획 추출은 그 반대
+  const g = geomOf("liner").liner!;
+  const INK: [number, number, number] = [30, 25, 28];
+  const lid = LM.eyeA.upper.map(P).reverse(), lidL = LM.eyeB.upper.map(P).reverse();
+  const up = (q: Pt): Pt => ({ x: q.x, y: q.y - 2 });
+  const d2seg = (x: number, y: number, a: Pt, b: Pt): number => { const dx = b.x - a.x, dy = b.y - a.y, k = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy || 1))); return Math.hypot(x - a.x - k * dx, y - a.y - k * dy); };
+  const strokes = (paths: Pt[][]): Paint => (x, y) => (paths.some((path) => path.some((_, i) => i > 0 && d2seg(x, y, path[i - 1]!, path[i]!) <= 2)) ? INK : null);
+  const along = (a: Pt, b: Pt, k: number): Pt => ({ x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k });
+  /** 양쪽 눈에 같은 모양 — wingK = 꼬리 길이 배수, from = 눈머리 쪽에서 건너뛸 점 수 */
+  const both = (wingK: number, from = 0): Paint => strokes([[...lid.slice(from).map(up), up(along(g.wing.R[0], g.wing.R[1], wingK))], [...lidL.slice(from).map(up), up(along(g.wing.L[0], g.wing.L[1], wingK))]]);
+  const bare = frame(() => null);
+  const mix = (p: Paint) => scoreHybrid("liner", bare, frame(p), guide, { templateColor: INK });
+  const extra = (h: ReturnType<typeof mix>): string[] => (h.result.metrics as { endCodes?: string[] }).endCodes ?? [];
+
+  it("M1 가이드대로 그리면 높은 점수 · 꼬리·앞쪽 지적 없음", () => {
+    const h = mix(both(1));
+    expect(h.route).toBe("liner_mix");
+    expect(h.result.score).toBeGreaterThanOrEqual(80);
+    expect(extra(h)).toEqual([]);
+  });
+
+  it("M2 꼬리를 길게 빼면 '꼬리가 길다' 로 감점한다 — 지금 방식은 가이드 끝까지만 봐서 점수가 그대로다", () => {
+    const ok = mix(both(1)), long = mix(both(1.7));
+    expect(extra(long)).toEqual(expect.arrayContaining(["LINER_WING_LONG_R", "LINER_WING_LONG_L"]));
+    expect(long.result.score!).toBeLessThan(ok.result.score! - 10);
+  });
+
+  it("M3 앞쪽을 비우면 '앞쪽이 비었다'", () => {
+    const h = mix(both(1, 3));
+    expect(extra(h)).toEqual(expect.arrayContaining(["LINER_INNER_SHORT_R", "LINER_INNER_SHORT_L"]));
+    expect(h.result.score!).toBeLessThan(mix(both(1)).result.score!);
+  });
+
+  it("M4 맨얼굴끼리는 그린 게 없다", () => {
+    expect(mix(() => null).result.present).toBe(false);
   });
 });

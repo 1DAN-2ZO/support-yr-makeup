@@ -11,7 +11,7 @@
 import { deltaE, pointInPoly, rgbToLab, type Lab } from "./color";
 import { LINER_OFFS, boxOf, eyeClosed, isHair, labBox, sampleForehead, type SampleFrame } from "./sampling";
 import { LM, at } from "./landmarks";
-import { PARAMS, browResult, lightCorr, noCorr, scoreForm, type DecideContext, type LightCorr, type LinerStrip, type PartScore, type RegionSideMetrics, type ScoreParams, type Side } from "./score";
+import { PARAMS, browResult, lightCorr, noCorr, scoreForm, type DecideContext, type LightCorr, type LinerEyeMetrics, type LinerStrip, type PartScore, type RegionSideMetrics, type ScoreParams, type Side } from "./score";
 import { scorePart, type GuideSource, type ScorePartOptions } from "./score-part";
 import type { PartId, Pt } from "./types";
 
@@ -488,6 +488,54 @@ export function linerEndsResult(per: Record<Side, LinerEnds>, p: ScoreParams = P
   return { present, score: Math.round(Math.max(0, form - innerPen)), codes, lrIndex: null, metrics: { ends: per, endCodes, thickness } };
 }
 
+/**
+ * 라이너 섞기 — 항목마다 잘 재는 쪽 값을 쓴다. 실제 사진에 덧그린 두 장으로 본 것 (2026-10-01):
+ *   채움·두께·번짐 = 지금 방식(띠 전체, 칸 색 차이) — 선이 이어졌는지·두께를 맞혔다. 획 추출은 맨얼굴 속눈썹 선을 빼다가 그 위의 선도 지운다
+ *   꼬리 길이 = 둘 중 긴 쪽 — 지금 방식은 가이드 끝까지만 본다. 꼬리 높이 = 획 추출이 꼬리를 봤으면 그쪽
+ *   앞쪽 시작 자리 = 두 방법(획 추출 · 칸 색 차이) 중 더 앞에서 잡은 쪽 — 한쪽만 믿으면 그렸는데 '비었다' 가 된다. 눈머리 넘김 = 획 추출
+ * 점수 식은 지금 채점(scoreForm) 그대로 + 앞쪽 시작 자리가 허용 폭을 넘은 만큼 (같은 자, 최대 20점). a = 지금 방식, s = 획 추출, e = 양 끝·칸 색 차이
+ */
+export function linerMixResult(a: Record<Side, LinerEyeMetrics>, s: Record<Side, LinerEnds>, e: Record<Side, LinerEnds>, p: ScoreParams = PARAMS): PartScore {
+  const codes: PartScore["codes"] = [], endCodes: string[] = [];
+  const mixed = (k: Side) => {
+    const sawWing = s[k].wingDrawn > 0;
+    return {
+      present: a[k].present || s[k].present,
+      coverage: a[k].coverage, overflow: a[k].overflow, thickness: a[k].thickness, guideThick: a[k].guideThick, gapRatio: a[k].gapRatio,
+      wingGuide: a[k].wingGuide, wingDrawn: Math.max(a[k].wingDrawn, s[k].wingDrawn),
+      wingDev: sawWing ? s[k].wingDev : a[k].wingDev,
+      // 눈머리를 넘겼으면(음수) 획 추출 값, 아니면 둘 중 더 앞
+      innerStart: s[k].innerStart < 0 ? s[k].innerStart : Math.min(s[k].innerStart, e[k].innerStart),
+    };
+  };
+  const per = { R: mixed("R"), L: mixed("L") };
+  const present = per.R.present || per.L.present;
+  if (!present) return { present, score: null, codes, lrIndex: null, metrics: { perEye: per, endCodes } };
+  /** 앞쪽 시작 자리가 허용 폭을 넘은 만큼 (눈 폭 비율) */
+  const innerExcess = (v: number): number => (v >= 0 ? Math.max(0, v - LINER_ENDS.innerShort) : Math.max(0, -v - LINER_ENDS.innerOver));
+  for (const k of ["R", "L"] as const) {
+    const m = per[k];
+    if (!m.present) { codes.push(`LINER_GAP_${k}`); continue; }
+    if (m.wingDev > p.tol.wingDev) codes.push(`LINER_WING_HIGH_${k}`);
+    else if (m.wingDev < -p.tol.wingDev) codes.push(`LINER_WING_LOW_${k}`);
+    if (m.wingDrawn < m.wingGuide - p.tol.wingShort) codes.push(`LINER_WING_SHORT_${k}`);
+    else if (m.wingDrawn > m.wingGuide + p.tol.wingShort) endCodes.push(`LINER_WING_LONG_${k}`);
+    if (m.innerStart > LINER_ENDS.innerShort) endCodes.push(`LINER_INNER_SHORT_${k}`);
+    else if (m.innerStart < -LINER_ENDS.innerOver) endCodes.push(`LINER_INNER_OVER_${k}`);
+    if (m.gapRatio > 0.25) codes.push(`LINER_GAP_${k}`);
+    if (m.overflow > 0.35) codes.push(`LINER_OUT_${k}`);
+  }
+  const avg = (f: (m: ReturnType<typeof mixed>) => number): number => (f(per.R) + f(per.L)) / 2;
+  const thickness = avg((m) => m.thickness), guideThick = avg((m) => m.guideThick);
+  if (thickness > guideThick + p.tol.thickOver) codes.push("LINER_THICK");
+  else if (thickness < guideThick - p.tol.thickUnder && thickness > 0) codes.push("LINER_THIN");
+  const lrDiff = Math.abs(per.R.wingDev - per.L.wingDev);
+  if (lrDiff > p.tol.lrDiff) codes.push("LINER_LR_DIFF");
+  const form = scoreForm({ coverage: avg((m) => m.coverage), overflow: avg((m) => m.overflow), wingDelta: avg((m) => m.wingDrawn - m.wingGuide), thickDelta: thickness - guideThick });
+  const innerPen = Math.min(20, (avg((m) => innerExcess(m.innerStart)) / ENDS_UNIT) * 8);
+  return { present, score: Math.round(Math.max(0, form - innerPen)), codes, lrIndex: null, metrics: { perEye: per, endCodes, lrDiff, thickness } };
+}
+
 // ---------- 갈림 규칙 ----------
 
 export type ShapeRoute = "shape" | "compare" | "check_only";
@@ -533,15 +581,15 @@ export interface HybridOptions extends ScorePartOptions {
 export interface HybridScore {
   result: PartScore;
   ctx: DecideContext;
-  /** shape = 결과 모양 · compare = 원본 대조(지금 채점 그대로) · mixed = 눈썹(채움은 결과 모양, 넘침은 원본 대조) · ends = 라이너(원본 대조, 양 끝만 점수) · check_only = 확인만 */
-  route: ShapeRoute | "mixed" | "ends";
+  /** shape = 결과 모양 · compare = 원본 대조(지금 채점 그대로) · mixed = 눈썹(채움은 결과 모양, 넘침은 원본 대조) · liner_mix = 라이너(원본 대조 — 채움·두께는 칸 색 차이, 꼬리 길이·앞쪽 자리는 획 추출) · check_only = 확인만 */
+  route: ShapeRoute | "mixed" | "liner_mix";
 }
 
 /**
  * 조합 채점 (실험) — 부위마다 결과 모양과 원본 대조를 섞는다. 팀 방향(2026-10-01): 채움은 원래 있던 것 + 그린 것, 번짐은 그린 것만.
  * 실험 근거 (eval/samples/shape/README.md):
  *   눈썹   채움 = 결과 모양 (원래 눈썹의 70% 가 테두리를 70% 넘게 채운다) · 넘침 = 원본 대조 (원래 눈썹의 92% 가 테두리 밖에 걸린다)
- *   라이너 원본 대조 (결과 모양은 눈꼬리 주름·접힌 선을 꼬리로 읽는다) — 점수는 양 끝(눈꼬리 · 앞트임)에서, 획 추출로 (linerStroke)
+ *   라이너 원본 대조 (결과 모양은 눈꼬리 주름·접힌 선을 꼬리로 읽는다) — 채움·두께는 지금 방식, 꼬리 길이·앞쪽 자리는 획 추출로 섞는다 (linerMixResult)
  *   입술·섀도우·볼  쌩얼을 보고 가른다 (routeOf) — 타고난 모습이 템플릿 색 쪽이면 원본 대조, 아니면 결과 모양
  * 결과 모양 쪽 점수는 지금 채점과 같은 식(scoreForm: 채움·넘침)이라 같은 자로 비교할 수 있다. 앱에는 아직 연결하지 않았다.
  */
@@ -553,7 +601,10 @@ export function scoreHybrid(partId: PartId, base: SampleFrame, cur: SampleFrame,
     if (!gb || !gc) return { ...a, route: "compare" };
     // 조명은 지금 채점처럼 이마 밝기 비율로 맞춘다 (흰자 색 보정 · 미세 정렬은 실험에서 뺐다)
     const fb = sampleForehead(base), fc = sampleForehead(cur), corr = fb && fc ? lightCorr(fb.L, fc.L) : noCorr;
-    return { result: linerEndsResult({ R: linerStroke(base, cur, "R", gb, gc, corr, p), L: linerStroke(base, cur, "L", gb, gc, corr, p) }, p), ctx: a.ctx, route: "ends" };
+    const perA = (a.result.metrics as { perEye?: Record<Side, LinerEyeMetrics> }).perEye;
+    if (!perA) return { ...a, route: "compare" };
+    const both = (f: typeof linerStroke): Record<Side, LinerEnds> => ({ R: f(base, cur, "R", gb, gc, corr, p), L: f(base, cur, "L", gb, gc, corr, p) });
+    return { result: linerMixResult(perA, both(linerStroke), both(linerEnds), p), ctx: a.ctx, route: "liner_mix" };
   }
 
   if (partId === "brow") {
