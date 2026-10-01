@@ -141,7 +141,8 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
           video.playsInline = true;
           video.srcObject = stream;
           await video.play();
-          const lmk = await createLandmarker("VIDEO");
+          // blendshapes: false — 표정 계수·변환행렬은 여기서 안 읽는다(쉐딩 등 모양은 랜드마크만으로 충분, #173)
+          const lmk = await createLandmarker("VIDEO", { blendshapes: false });
           closeLandmarker = () => lmk.close();
           if (!alive) return cleanup();
 
