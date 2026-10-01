@@ -22,12 +22,21 @@ const queue = () => {
   return { add: (cb: Cb) => { const h = n++; m.set(h, cb); return h; }, remove: (h: number) => { m.delete(h); }, fire: (t: number) => { const cbs = [...m.values()]; m.clear(); cbs.forEach((cb) => cb(t)); }, size: () => m.size };
 };
 let cam = queue(), draw = queue();
+/** 카메라에 건 잠금 (applyConstraints 로 넘긴 칸 이름) */
+let locked: string[] = [];
 
 beforeEach(() => {
   vi.useFakeTimers();
   detect.mockClear();
-  cam = queue(); draw = queue();
-  const track = { stop: () => {}, applyConstraints: async () => {} };
+  cam = queue(); draw = queue(); locked = [];
+  // 노출·색·초점 모두 수동 잠금이 되는 카메라 (지금 값도 알려 줌)
+  const modes = ["manual", "continuous"];
+  const track = {
+    stop: () => {},
+    getCapabilities: () => ({ exposureMode: modes, whiteBalanceMode: modes, focusMode: modes }),
+    getSettings: () => ({ exposureTime: 166, iso: 400, colorTemperature: 4800, focusDistance: 0.3 }),
+    applyConstraints: async (c: { advanced?: Record<string, unknown>[] }) => { for (const a of c.advanced ?? []) locked.push(...Object.keys(a).filter((k) => k.endsWith("Mode"))); },
+  };
   const stream = { getTracks: () => [track], getVideoTracks: () => [track] };
   Object.defineProperty(navigator, "mediaDevices", { value: { getUserMedia: async () => stream }, configurable: true });
   vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(async () => {});
@@ -97,5 +106,12 @@ describe.each([
     cam.fire(66);
     draw.fire(80);
     expect(detect).toHaveBeenCalledTimes(1);
+  });
+
+  it("CS3 밝기(노출)는 잠그지 않는다 — 색·초점만 (촬영 DEFAULT_LOCKS 와 같게. 노출을 잠그면 하얗게 날아감, 2026-09-30)", async () => {
+    const off = await mount();
+    expect(locked).not.toContain("exposureMode");
+    expect(locked).toEqual(expect.arrayContaining(["whiteBalanceMode", "focusMode"]));
+    off();
   });
 });
