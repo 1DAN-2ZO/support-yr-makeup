@@ -256,6 +256,8 @@ def test_end_to_end_with_fake_server(tmp_path):
     assert "renderSheet" in page  # 앱 렌더러가 묶여 들어갔다
     key = json.loads((data / "vlm-eval" / "out" / "sheet-fake.key.json").read_text(encoding="utf-8"))
     assert page.count("<section data-n=") == len(key)  # 문항이 한 번씩만 (주석 안에 또 들어가지 않게)
+    for side in "NAB":  # 문항마다 기준(개인화 없음) · A · B 자리
+        assert page.count(f'{side}" width=1 height=1>') == len(key), side
     blob = page[page.index("id=data>") + 8 : page.index("</script>", page.index("id=data>"))]
     sheet_data = json.loads(blob)
     it = sheet_data["items"][0]
