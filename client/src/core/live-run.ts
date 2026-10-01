@@ -2,7 +2,7 @@
  * 화면 4 진행 (프레임마다 부른다): 게이트 한 줄 · 가이드 테두리 · 확인받기 묶음 (정의서 3-4 상태, 2-1 #21).
  * 카메라·DOM 없이 돌아서 테스트할 수 있다. 화면(screens/live.ts)은 측정값만 넣는다 — ① capture-run 과 같은 나눔.
  *
- *   guide_shown ─(게이트 통과)→ ready ─[확인받기]→ capturing(3~5장) → done → 화면 5
+ *   guide_shown ─(게이트 통과 · 또는 각도·안정에 3초, #235)→ ready ─[확인받기]→ capturing(3~5장) → done → 화면 5
  *                                                     └ failed → guide_shown (다시 통과해야 누를 수 있다)
  *
  * 가이드 모양은 밖에서 받는다(GuideSource) — 채점(화면 5)과 같은 것을 넘겨야 "따라 그린 선 = 채점 기준" 이 된다.

@@ -2,7 +2,7 @@
  * 화면 4 — 실시간 테두리 (F-05·F-07, 정의서 3-6b·3-7·3-8). 모듈 ②.
  *
  * 라이브 프리뷰 위에 부위 테두리(선만)를 겹치고, 게이트 한 줄 + "확인받기" 버튼 하나.
- * 게이트를 통과하면 버튼이 켜지고, 누르면 다음 프레임부터 3~5장을 모아 세션에 두고 화면 5 로 간다.
+ * 게이트를 통과하면(또는 각도·안정에 3초 넘게 막히면, #235) 버튼이 켜지고, 누르면 다음 프레임부터 3~5장을 모아 세션에 두고 화면 5 로 간다.
  * 진행 판단은 core/live-run.ts (카메라 없이 테스트). 이 파일은 카메라·측정·그리기만.
  *
  * 카메라 여는 방식은 화면 1(capture.ts)과 같다: 1080p · 잠금 안 함(켤 때·끌 때 남은 잠금 풀기, #267) · 초광각 확대 · 화면 꺼짐 방지 · 홈 다녀오면 다시 켬.
@@ -39,6 +39,7 @@ import type { Baseline, CaptureBundle, PartId, Pt } from "@core/types";
 import { faceCropOf } from "@core/capture-measure";
 import { DEFAULT_LOCKS, applyCameraLocks, applyUltraWideZoom, bindVisibility, releaseCameraLocks, requestWakeLock, type WakeLockSentinelLike } from "./camera-locks";
 import { startFrameLoop } from "./camera-loop";
+import { smoothTuner } from "./smooth-tune";
 import { foreheadLabOf, grabFrame, sharpnessOf } from "./frame-measure";
 import { createLandmarker } from "./landmarker";
 import { strokeOutline } from "./outline-draw";
@@ -199,6 +200,8 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         guide: deps.getGuide?.() ?? lookGuide(deps.getLookParts()),
         smooth: stab,
       });
+      // 개발용 ?tune: 테두리 떨림 필터 값을 폰에서 맞춘다 — 2-b 와 같은 슬라이더 (#235 · #244)
+      if (run.smoother && q.has("tune")) wrap.append(smoothTuner(run.smoother));
       const events = createLiveEvents(ctx.log);
       let follow: ReturnType<typeof createCropFollow> | null = null;
       let followAspect = 0;
@@ -307,11 +310,12 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         // 묶음을 모으는 동안은 세지 않는다 — 얼굴 놓침도 막힘도 (#170 리뷰)
         events.face(!!lm, now);
         events.gate(r.gate.ok ? null : r.gate.firstFail, now);
-        // 실패 문구는 다시 통과할 때까지 그대로 둔다 — 게이트 문구가 바로 덮으면 왜 안 찍혔는지 못 본다
-        if (line.textContent === LIVE_TEXT.failed && !r.gate.ok) return;
+        // 실패 문구는 다시 누를 수 있을 때까지 그대로 둔다 — 게이트 문구가 바로 덮으면 왜 안 찍혔는지 못 본다
+        if (line.textContent === LIVE_TEXT.failed && !r.pressable) return;
         line.textContent = r.gate.text;
         line.classList.toggle("ready", r.gate.ok);
-        btn.disabled = !r.gate.ok;
+        // 각도·안정에 3초 넘게 막히면 문구는 안내 그대로 두고 버튼만 켠다 — 판단은 채점에 (#235)
+        btn.disabled = !r.pressable;
       }
 
       async function start(): Promise<void> {
