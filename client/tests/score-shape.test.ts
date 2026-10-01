@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { LM } from "@core/landmarks";
 import { frameOf } from "@core/sampling";
-import { linerBand, shapeFill, tintFill, tintProgress } from "@core/score-shape";
+import { browShape, linerBand, shapeFill, tintFill, tintProgress } from "@core/score-shape";
 import { rgbToLab } from "@core/color";
 import { sampleLiner } from "@core/sampling";
 import type { Pt } from "@core/types";
@@ -124,5 +124,48 @@ describe("결과 모양 — 라이너 띠 (어두운 띠의 두께 · 꼬리)", 
     const liner = linerPaint();
     const shaded: Paint = (x, y) => liner(x, y) ?? (x < outerX - 2 ? [170, 125, 100] : null);
     expect(band(frame(shaded)).wingCoverage).toBeGreaterThan(0.7);
+  });
+});
+
+describe("결과 모양 — 눈썹 점수 (채움 + 넘침, 원래 눈썹과 그린 것을 가리지 않는다)", () => {
+  // 이 브랜치는 '결과 모양으로만 본다'(채점 목적 2안)를 끝까지 만들어 보는 실험 — 원래 눈썹이 가이드 밖에 있어도 감점하고 알린다.
+  // '원래 것은 봐준다'(번짐은 그린 것만)는 나중에 팀 방향(섞기)으로 합칠 때의 규칙
+  const R: Pt[] = [...LM.browA.upper.map(P), ...LM.browA.lower.map(P).reverse()];
+  const L: Pt[] = [...LM.browB.upper.map(P), ...LM.browB.lower.map(P).reverse()];
+  const regions = { R, L };
+  const grow = (poly: Pt[], k: number): Pt[] => { const c = { x: poly.reduce((a, q) => a + q.x, 0) / poly.length, y: poly.reduce((a, q) => a + q.y, 0) / poly.length }; return poly.map((q) => ({ x: c.x + (q.x - c.x) * k, y: c.y + (q.y - c.y) * k })); };
+  const inAny = (polys: Pt[][]): Paint => (x, y) => (polys.some((poly) => { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const a = poly[i]!, b = poly[j]!; if (a.y > y !== b.y > y && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) c = !c; } return c; }) ? BROWN : null);
+
+  it("S1 가이드 안에만 눈썹이 있으면 넘침 0 · 높은 점수 · 진단 없음", () => {
+    const r = browShape(frame(browPaint), regions);
+    expect(r.present).toBe(true);
+    expect(r.codes).toEqual([]);
+    expect(r.score).toBeGreaterThanOrEqual(90);
+  });
+
+  it("S2 눈썹이 가이드보다 크면(원래 눈썹이든 그린 것이든) 넘침으로 감점하고 '테두리 밖으로 나갔어요'", () => {
+    const big = browShape(frame(inAny([grow(R, 1.6), grow(L, 1.6)])), regions);
+    expect(big.codes).toContain("BROW_OUT_R");
+    expect(big.codes).toContain("BROW_OUT_L");
+    expect(big.score!).toBeLessThan(browShape(frame(browPaint), regions).score!);
+  });
+
+  it("S3 한쪽만 넘치면 그쪽만 알린다", () => {
+    const r = browShape(frame(inAny([grow(R, 1.6), L])), regions);
+    expect(r.codes).toContain("BROW_OUT_R");
+    expect(r.codes).not.toContain("BROW_OUT_L");
+  });
+
+  it("S4 꼬리 쪽이 비면 '꼬리가 덜 그려졌어요'", () => {
+    const noTail: Paint = (x, y) => (x > 215 && x < 385 ? browPaint(x, y) : null);   // 양쪽 눈썹의 바깥(꼬리) 절반을 비움
+    const r = browShape(frame(noTail), regions);
+    expect(r.codes).toContain("BROW_TAIL_SHORT_R");
+    expect(r.codes).toContain("BROW_TAIL_SHORT_L");
+  });
+
+  it("S5 눈썹이 아예 안 보이면 점수 없음 (없음)", () => {
+    const r = browShape(frame(() => null), regions);
+    expect(r.present).toBe(false);
+    expect(r.score).toBeNull();
   });
 });

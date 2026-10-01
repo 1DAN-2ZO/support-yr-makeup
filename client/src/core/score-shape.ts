@@ -10,7 +10,8 @@
 
 import { pointInPoly, rgbToLab, type Lab } from "./color";
 import { boxOf, isHair, labBox, type SampleFrame } from "./sampling";
-import type { LinerStrip } from "./score";
+import { at } from "./landmarks";
+import { browResult, type LinerStrip, type PartScore, type RegionSideMetrics, type Side } from "./score";
 import type { Pt } from "./types";
 
 export interface ShapeFillOptions {
@@ -35,6 +36,12 @@ export const SHAPE_FILL: ShapeFillOptions = { minDark: 4, darkFrac: 0.35, darkPc
 export interface ShapeFill {
   /** 가이드 안 칸 중 "있는 칸" 비율 (0~1). 머리카락에 가린 칸은 뺀다 */
   coverage: number;
+  /** 가이드 바로 밖(주변 피부 띠보다 안쪽) 칸 중 "있는 칸" 비율 — 가이드보다 넘친 정도. 원래 눈썹과 그린 것을 가리지 않는다 */
+  spill: number;
+  /** 꼬리 쪽 칸의 채움 (tailFrom 을 줬을 때만 — 그 점에서 먼 쪽 40%) */
+  tailCoverage: number | null;
+  /** 가이드 안 "있는 칸" 수 */
+  hits: number;
   /** 센 칸 수 */
   n: number;
   /** 주변 피부 (못 재면 null — coverage 0) */
@@ -59,28 +66,61 @@ function distToEdge(x: number, y: number, poly: readonly Pt[]): number {
 }
 
 /** 가이드 다각형 안을 칸으로 훑어, 주변 피부보다 뚜렷이 어두운 칸의 비율을 낸다 (눈썹처럼 어둡게 그리는 부위) */
-export function shapeFill(f: SampleFrame, poly: readonly Pt[], opt: ShapeFillOptions = SHAPE_FILL): ShapeFill {
+/** tailFrom: 얼굴 가운데 쪽 점(미간). 주면 그 점에서 먼 쪽 40% 를 꼬리로 보고 꼬리 채움도 낸다 */
+export function shapeFill(f: SampleFrame, poly: readonly Pt[], opt: ShapeFillOptions = SHAPE_FILL, tailFrom?: Pt): ShapeFill {
   const box = boxOf(f.unit.eye), e = f.unit.eye;
   const near = opt.band[0] * e, far = opt.band[1] * e;
   const xs = poly.map((p) => p.x), ys = poly.map((p) => p.y);
-  const inside: number[] = [], ring: Lab[] = [];
+  const none = { coverage: 0, spill: 0, tailCoverage: null, hits: 0, n: 0 };
+  const dist = tailFrom ? poly.map((q) => Math.hypot(q.x - tailFrom.x, q.y - tailFrom.y)) : null;
+  const lo = dist ? Math.min(...dist) : 0, span = dist ? Math.max(...dist) - lo || 1 : 1;
+  const isTail = (x: number, y: number): boolean => !!tailFrom && (Math.hypot(x - tailFrom.x, y - tailFrom.y) - lo) / span >= 0.6;
+  const inside: number[] = [], tail: number[] = [], edge: number[] = [], ring: Lab[] = [];
   for (let y = Math.max(0, Math.floor(Math.min(...ys) - far)); y <= Math.min(f.im.h - 1, Math.ceil(Math.max(...ys) + far)); y += box) {
     for (let x = Math.max(0, Math.floor(Math.min(...xs) - far)); x <= Math.min(f.im.w - 1, Math.ceil(Math.max(...xs) + far)); x += box) {
       if (isHair(f, x, y)) continue;
-      if (pointInPoly(x, y, poly)) { inside.push(labBox(f.im, x, y, box).L); continue; }
+      if (pointInPoly(x, y, poly)) {
+        const L = labBox(f.im, x, y, box).L;
+        inside.push(L);
+        if (isTail(x, y)) tail.push(L);
+        continue;
+      }
       const d = distToEdge(x, y, poly);
       if (d >= near && d <= far) ring.push(labBox(f.im, x, y, box));
+      else if (d < near) edge.push(labBox(f.im, x, y, box).L);
     }
   }
-  if (!ring.length) return { coverage: 0, n: 0, skin: null };
+  if (!ring.length) return { ...none, skin: null };
   const skin: Lab = { L: medianOf(ring.map((c) => c.L)), a: medianOf(ring.map((c) => c.a)), b: medianOf(ring.map((c) => c.b)) };
-  if (!inside.length) return { coverage: 0, n: 0, skin };
+  if (!inside.length) return { ...none, skin };
   // 이 눈썹의 진하기 = 안쪽 칸을 어두운 순으로 늘어놓은 darkPct 지점. 그 darkFrac 배보다 어두우면 "있는 칸"
   // (연한 눈썹도, 진한 눈썹 옆 옅은 그림자도 가른다)
   const sorted = inside.slice().sort((a, b) => a - b), darkLevel = sorted[Math.floor(sorted.length * opt.darkPct)]!;
   const need = Math.max(opt.minDark, (skin.L - darkLevel) * opt.darkFrac);
-  const hit = inside.filter((L) => skin.L - L >= need).length;
-  return { coverage: hit / inside.length, n: inside.length, skin };
+  const on = (L: number): boolean => skin.L - L >= need;
+  const hits = inside.filter(on).length;
+  return {
+    coverage: hits / inside.length,
+    spill: edge.length ? edge.filter(on).length / edge.length : 0,
+    tailCoverage: tailFrom && tail.length ? tail.filter(on).length / tail.length : null,
+    hits,
+    n: inside.length,
+    skin,
+  };
+}
+
+/**
+ * 눈썹 점수 — 결과 모양으로만 (채움 + 넘침). 지금 채점(browResult)과 같은 점수 식·같은 진단 코드를 쓴다 → 두 방식을 같은 자로 비교한다.
+ * 원래 눈썹과 그린 것을 가리지 않으므로, **원래 눈썹이 가이드보다 크면 넘침으로 감점하고 "테두리 밖으로 나갔어요"** 가 뜬다.
+ * 이 브랜치는 '결과 모양으로만 본다'(채점 목적 2안)를 끝까지 만들어 보는 실험이다 — '원래 것은 봐준다'는 팀 방향(섞기)으로 합칠 때의 규칙.
+ */
+export function browShape(f: SampleFrame, regions: Record<Side, readonly Pt[]>, opt: ShapeFillOptions = SHAPE_FILL): PartScore {
+  const center = at(f.lm, 168);   // 미간 — 여기서 먼 쪽이 꼬리
+  const side = (s: Side): RegionSideMetrics => {
+    const r = shapeFill(f, regions[s], opt, center);
+    return { coverage: r.coverage, overflow: r.spill, tailCoverage: r.tailCoverage ?? r.coverage, present: r.hits >= 6, hitLift: null };
+  };
+  return browResult({ R: side("R"), L: side("L") });
 }
 
 // ---------- 템플릿 색 쪽으로 물든 정도 (입술·섀도우·볼) ----------
