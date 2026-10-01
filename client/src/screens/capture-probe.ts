@@ -19,7 +19,7 @@ import { createLogger, memorySink } from "@core/log";
 import { createCaptureEvents } from "@core/capture-events";
 import { foreheadStep, startForeheadTrack } from "@core/occlusion";
 import { settleStep, startSettle, type Settle } from "@core/capture-run";
-import { applyCameraLocks, applyUltraWideZoom, camSnapshot, lockReportRow, requestWakeLock } from "@screens/camera-locks";
+import { ALL_LOCKS, applyCameraLocks, applyUltraWideZoom, camSnapshot, lockReportRow, releaseCameraLocks, requestWakeLock } from "@screens/camera-locks";
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -67,7 +67,7 @@ interface ProbeResult {
   lockRow: string;
   /**
    * 카메라 잠금 진단 (2026-09-30 S26 Ultra 가 잠금 뒤 밝아짐, S8+ 는 괜찮음).
-   * 주소에 ?lock=off | wb | wbfocus(기본, 앱과 같음) | all 로 잠금을 골라 비교한다. 잠금 전후 카메라 값과 이마 밝기 흐름(0.1초 간격)
+   * 주소에 ?lock=off(기본, 앱과 같음) | wb | wbfocus | all 로 잠금을 골라 비교한다. 잠금 전후 카메라 값과 이마 밝기 흐름(0.1초 간격)
    */
   camDiag: { mode: string; before: Record<string, unknown>; after: Record<string, unknown>; after2s: Record<string, unknown>; errors: Record<string, string> | null; trace: { t: number; L: number | null }[] } | null;
   /** 전면 카메라 zoom 지원 범위 (없으면 null). iPhone 초광각 대응 (b) 검토용 */
@@ -203,9 +203,10 @@ async function start(): Promise<void> {
       trace.push({ t: Math.round(performance.now() - t0), L: L === null ? null : r1(L) });
     };
     const traceFor = async (ms: number): Promise<void> => { const end = performance.now() + ms; while (performance.now() < end) { sample(); await new Promise((r) => setTimeout(r, 100)); } };
-    const mode = new URLSearchParams(location.search).get("lock") ?? "wbfocus";   // 기본 = 앱과 같이 노출은 안 잠금 (DEFAULT_LOCKS)
-    const only = mode === "off" ? [] : mode === "wb" ? ["whiteBalanceMode" as const] : mode === "wbfocus" ? ["whiteBalanceMode" as const, "focusMode" as const] : undefined;
+    const mode = new URLSearchParams(location.search).get("lock") ?? "off";   // 기본 = 앱과 같이 안 잠금 (DEFAULT_LOCKS, #267)
+    const only = mode === "all" ? ALL_LOCKS : mode === "wb" ? ["whiteBalanceMode" as const] : mode === "wbfocus" ? ["whiteBalanceMode" as const, "focusMode" as const] : [];
     const tl = track as unknown as Parameters<typeof applyCameraLocks>[0];
+    await releaseCameraLocks(tl);   // 앞 세션이 남긴 잠금부터 푼다 (#267)
     await traceFor(1500);
     const before = camSnapshot(tl);
     const rep = await applyCameraLocks(tl, only);
@@ -465,7 +466,7 @@ function renderThumbs(): void {
 
 async function finish(): Promise<void> {
   state.loop = false;
-  state.stream?.getTracks().forEach((t) => t.stop());
+  for (const t of state.stream?.getTracks() ?? []) await releaseCameraLocks(t as unknown as Parameters<typeof releaseCameraLocks>[0]).finally(() => t.stop());   // 잠금 풀고 끄기 (#267)
   const shots = state.order.map((id) => state.shots[id]?.rec).filter((r): r is ShotRecord => !!r);
   const result: ProbeResult = {
     ua: navigator.userAgent, startedAt: state.startedAt, frameW: state.frameW, frameH: state.frameH,
