@@ -5,7 +5,7 @@
  * 게이트를 통과하면 버튼이 켜지고, 누르면 다음 프레임부터 3~5장을 모아 세션에 두고 화면 5 로 간다.
  * 진행 판단은 core/live-run.ts (카메라 없이 테스트). 이 파일은 카메라·측정·그리기만.
  *
- * 카메라 여는 방식은 화면 1(capture.ts)과 같다: 1080p · 색·초점 고정(노출은 안 잠금) · 초광각 확대 · 화면 꺼짐 방지 · 홈 다녀오면 다시 켬.
+ * 카메라 여는 방식은 화면 1(capture.ts)과 같다: 1080p · 잠금 안 함(켤 때·끌 때 남은 잠금 풀기, #267) · 초광각 확대 · 화면 꺼짐 방지 · 홈 다녀오면 다시 켬.
  * 프레임 루프는 공용 camera-loop (#245, 결정 A3 — 새 프레임에만 추론, 없으면 rAF).
  *
  * 떨림 1차(#23): 영상 전체가 아니라 **부위 확대 창**(crop.cropSpec)만 캔버스에 그린다 (정의서 3-3).
@@ -37,7 +37,7 @@ import type { Outline } from "@core/overlay";
 import { wantedOrientation, type ScreenId } from "@core/screens";
 import type { Baseline, CaptureBundle, PartId, Pt } from "@core/types";
 import { faceCropOf } from "@core/capture-measure";
-import { DEFAULT_LOCKS, applyCameraLocks, applyUltraWideZoom, bindVisibility, requestWakeLock, type WakeLockSentinelLike } from "./camera-locks";
+import { DEFAULT_LOCKS, applyCameraLocks, applyUltraWideZoom, bindVisibility, releaseCameraLocks, requestWakeLock, type WakeLockSentinelLike } from "./camera-locks";
 import { startFrameLoop } from "./camera-loop";
 import { foreheadLabOf, grabFrame, sharpnessOf } from "./frame-measure";
 import { createLandmarker } from "./landmarker";
@@ -226,7 +226,8 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
 
       const stopCamera = (): void => {
         stopLoop();
-        stream?.getTracks().forEach((t) => t.stop());
+        // 잠금을 풀고 끈다 — PC 웹캠은 잠금을 기기에 저장해서 다음에 열 때 남는다 (#267)
+        for (const t of stream?.getTracks() ?? []) void releaseCameraLocks(t as unknown as Parameters<typeof releaseCameraLocks>[0]).finally(() => t.stop());
         stream = null;
         void wake?.release().catch(() => {});
         wake = null;
@@ -327,10 +328,14 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         if (!alive || stream !== st) return;
         const track = st.getVideoTracks()[0];
         if (track) {
-          // 자동 노출이 자리 잡은 뒤 잠근다 (1-3·1-8). 노출은 잠그지 않고 색·초점만 — 촬영과 같게 (DEFAULT_LOCKS, ① 2026-09-30:
-          // 노출을 잠그면 1.5초 뒤 하얗게 날아가거나 오히려 흔들림). 화면 4 밝기 차는 게이트가 이마로 본다
-          await new Promise((r) => setTimeout(r, 1500));
-          await applyCameraLocks(track as unknown as Parameters<typeof applyCameraLocks>[0], DEFAULT_LOCKS);
+          const tl = track as unknown as Parameters<typeof applyCameraLocks>[0];
+          // 앞 세션·다른 화면이 남긴 잠금부터 푼다 (#267: PC 웹캠이 하얗게·파랗게 고정된 채 남음)
+          await releaseCameraLocks(tl);
+          // 잠금은 촬영과 같은 기본(DEFAULT_LOCKS — 지금은 아무것도 안 잠금, #268). 잠글 게 있을 때만 자동이 자리 잡을 1.5초를 기다린다
+          if (DEFAULT_LOCKS.length) {
+            await new Promise((r) => setTimeout(r, 1500));
+            await applyCameraLocks(tl, DEFAULT_LOCKS);
+          }
           await applyUltraWideZoom(track as unknown as Parameters<typeof applyUltraWideZoom>[0]);
         }
         wake = await requestWakeLock(navigator.wakeLock as unknown as Parameters<typeof requestWakeLock>[0]);

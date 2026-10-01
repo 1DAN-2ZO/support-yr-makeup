@@ -21,7 +21,7 @@ import { CAPTURE_GUIDE, SHOTS, burstShot, burstStep, nextShot, shotGate, startBu
 import { foreheadStep, startForeheadTrack } from "@core/occlusion";
 import type { Baseline, FaceShape, Pt } from "@core/types";
 import type { ScreenId } from "@core/screens";
-import { DEFAULT_LOCKS, applyCameraLocks, applyUltraWideZoom, bindVisibility, requestWakeLock, type WakeLockSentinelLike } from "./camera-locks";
+import { ALL_LOCKS, applyCameraLocks, applyUltraWideZoom, bindVisibility, releaseCameraLocks, requestWakeLock, type WakeLockSentinelLike } from "./camera-locks";
 import { startFrameLoop } from "./camera-loop";
 import { foreheadLabOf, grabFrame, sharpnessOf } from "./frame-measure";
 import { BARE_MAX_SIDE, encodeForStore } from "./image-encode";
@@ -212,7 +212,8 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
 
         stopCamera = () => {
           stopLoop();
-          stream?.getTracks().forEach((t) => t.stop());
+          // 잠금을 풀고 끈다 — PC 웹캠은 잠금을 기기에 저장해서 다음에 열 때 남는다 (#267)
+          for (const t of stream?.getTracks() ?? []) void releaseCameraLocks(t as unknown as Parameters<typeof releaseCameraLocks>[0]).finally(() => t.stop());
           stream = null;
           void wake?.release().catch(() => {});
           wake = null;
@@ -234,12 +235,16 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
           await video.play();
           const track = stream.getVideoTracks()[0];
           if (track) {
-            // 자동 노출이 자리 잡은 뒤 잠근다 (1-3·1-8). 안 되는 기기는 보정으로만
-            await new Promise((r) => setTimeout(r, 1500));
-            // 노출은 잠그지 않고 색·초점만 (DEFAULT_LOCKS, 2026-09-30 S26 A/B). 비교용으로 주소 ?lock=all(전부) · off(안 잠금)
+            const tl = track as unknown as Parameters<typeof applyCameraLocks>[0];
+            // 앞 세션·다른 화면이 남긴 잠금부터 푼다 (#267: PC 웹캠이 하얗게·파랗게 고정된 채 남음)
+            await releaseCameraLocks(tl);
+            // 기본은 아무것도 안 잠근다 (DEFAULT_LOCKS, #267). 비교용 주소 ?lock=all · wb · wbfocus
             const lockMode = new URLSearchParams(location.search).get("lock");
-            const only = lockMode === "all" ? undefined : lockMode === "off" ? ([] as const) : DEFAULT_LOCKS;
-            await applyCameraLocks(track as unknown as Parameters<typeof applyCameraLocks>[0], only);
+            const only = lockMode === "all" ? ALL_LOCKS : lockMode === "wb" ? (["whiteBalanceMode"] as const) : lockMode === "wbfocus" ? (["whiteBalanceMode", "focusMode"] as const) : undefined;
+            if (only) {
+              await new Promise((r) => setTimeout(r, 1500));   // 자동이 자리 잡은 뒤 잠근다
+              await applyCameraLocks(tl, only);
+            }
             await applyUltraWideZoom(track as unknown as Parameters<typeof applyUltraWideZoom>[0]);
           }
           wake = await requestWakeLock(navigator.wakeLock as unknown as Parameters<typeof requestWakeLock>[0]);

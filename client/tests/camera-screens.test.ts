@@ -22,20 +22,22 @@ const queue = () => {
   return { add: (cb: Cb) => { const h = n++; m.set(h, cb); return h; }, remove: (h: number) => { m.delete(h); }, fire: (t: number) => { const cbs = [...m.values()]; m.clear(); cbs.forEach((cb) => cb(t)); }, size: () => m.size };
 };
 let cam = queue(), draw = queue();
-/** 카메라에 건 잠금 (applyConstraints 로 넘긴 칸 이름) */
-let locked: string[] = [];
+/** 카메라에 한 일 차례대로 — applyConstraints 의 "칸=값" · 끄기 "stop" */
+let camLog: string[] = [];
 
 beforeEach(() => {
   vi.useFakeTimers();
   detect.mockClear();
-  cam = queue(); draw = queue(); locked = [];
+  cam = queue(); draw = queue(); camLog = [];
   // 노출·색·초점 모두 수동 잠금이 되는 카메라 (지금 값도 알려 줌)
   const modes = ["manual", "continuous"];
   const track = {
-    stop: () => {},
+    stop: () => { camLog.push("stop"); },
     getCapabilities: () => ({ exposureMode: modes, whiteBalanceMode: modes, focusMode: modes }),
     getSettings: () => ({ exposureTime: 166, iso: 400, colorTemperature: 4800, focusDistance: 0.3 }),
-    applyConstraints: async (c: { advanced?: Record<string, unknown>[] }) => { for (const a of c.advanced ?? []) locked.push(...Object.keys(a).filter((k) => k.endsWith("Mode"))); },
+    applyConstraints: async (c: { advanced?: Record<string, unknown>[] }) => {
+      for (const a of c.advanced ?? []) for (const [k, v] of Object.entries(a)) if (k.endsWith("Mode")) camLog.push(`${k}=${String(v)}`);
+    },
   };
   const stream = { getTracks: () => [track], getVideoTracks: () => [track] };
   Object.defineProperty(navigator, "mediaDevices", { value: { getUserMedia: async () => stream }, configurable: true });
@@ -60,8 +62,8 @@ function ctxOf(screen: "capture" | "live"): ScreenContext<null> {
   return { root, session: null, go: vi.fn(), goPart: vi.fn(), log: createLogger({ sid: "s1", screen, part: null, ver }, memorySink().sink) };
 }
 
-/** 화면을 띄우고 카메라 준비(노출 잠금 전 1.5초 대기 포함)가 끝날 때까지 */
-async function mountCapture(): Promise<() => void> {
+/** 화면을 띄우고 카메라 준비가 끝날 때까지 (wait: 흘려 보낼 시간 ms) */
+async function mountCapture(wait = 2000): Promise<() => void> {
   const ctx = ctxOf("capture");
   const deps: CaptureDeps = {
     getShots: () => ({}), setShot: vi.fn(), getBaseline: () => null, setBaseline: vi.fn(),
@@ -71,16 +73,16 @@ async function mountCapture(): Promise<() => void> {
   };
   const off = captureScreen<null>(deps).mount(ctx) as () => void;
   Array.from(ctx.root.querySelectorAll("button")).find((b) => b.textContent === CAPTURE_GUIDE.button)!.click();
-  await vi.advanceTimersByTimeAsync(2000);
+  await vi.advanceTimersByTimeAsync(wait);
   return off;
 }
 
-async function mountLive(): Promise<() => void> {
+async function mountLive(wait = 2000): Promise<() => void> {
   const ctx = ctxOf("live");
   const baseline = { lm: LMS, unit: { eye: 60, lip: 100, face: 300 }, foreheadL: 60, w: 600, h: 600, expression: null } as unknown as Baseline;
   const deps: LiveDeps = { getPart: () => "lip", getBaseline: () => baseline, getBaseAb: () => null, getLookParts: () => ({}), setCapture: vi.fn(), next: "result" };
   const off = liveScreen<null>(deps).mount(ctx) as () => void;
-  await vi.advanceTimersByTimeAsync(2000);
+  await vi.advanceTimersByTimeAsync(wait);
   return off;
 }
 
@@ -108,10 +110,27 @@ describe.each([
     expect(detect).toHaveBeenCalledTimes(1);
   });
 
-  it("CS3 밝기(노출)는 잠그지 않는다 — 색·초점만 (촬영 DEFAULT_LOCKS 와 같게. 노출을 잠그면 하얗게 날아감, 2026-09-30)", async () => {
+  it("CS3 카메라를 잠그지 않는다 — 노출·색·초점 모두 자동 (DEFAULT_LOCKS, #267·#268: 잠그면 PC 웹캠이 하얗게·파랗게)", async () => {
     const off = await mount();
-    expect(locked).not.toContain("exposureMode");
-    expect(locked).toEqual(expect.arrayContaining(["whiteBalanceMode", "focusMode"]));
+    expect(camLog.filter((e) => e.endsWith("=manual"))).toEqual([]);
+    off();
+  });
+
+  it("CS4 켤 때 남아 있던 잠금을 풀고(자동으로), 끌 때도 풀고 나서 끈다 — PC 웹캠은 잠금을 기기에 저장한다 (#267)", async () => {
+    const off = await mount();
+    expect(camLog).toEqual(expect.arrayContaining(["exposureMode=continuous", "whiteBalanceMode=continuous", "focusMode=continuous"]));
+    expect(camLog).not.toContain("stop");
+    camLog = [];
+    off();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(camLog.at(-1)).toBe("stop");
+    expect(camLog.slice(0, -1)).toEqual(expect.arrayContaining(["exposureMode=continuous", "whiteBalanceMode=continuous", "focusMode=continuous"]));
+  });
+
+  it("CS5 잠글 게 없으면 1.5초 안 기다린다 — 카메라가 켜지자마자 얼굴을 찾기 시작", async () => {
+    const off = await mount(100);
+    cam.fire(33);
+    expect(detect).toHaveBeenCalledTimes(1);
     off();
   });
 });
