@@ -35,8 +35,21 @@ describe("결과 모양 — 가이드 안 채움 (지금 사진만)", () => {
     expect(shapeFill(dim, outline).coverage).toBe(0);
   });
 
+  it("H6 연한 눈썹(피부와 밝기 차 9쯤)도 채움으로 센다 — 기준을 그 사람 눈썹 진하기에 맞춘다", () => {
+    // EasyPortrait 455개: 실제 눈썹과 피부의 밝기 차는 중앙 17, 열 중 하나는 8 이하. 고정 기준 12 는 연한 눈썹을 놓쳤다 (평균 오차 24%p)
+    const light: Paint = (x, y) => (browPaint(x, y) ? [196, 150, 122] : null);
+    expect(shapeFill(frame(light), outline).coverage).toBeGreaterThan(0.8);
+  });
+
+  it("H7 진한 눈썹 옆에 옅은 그림자가 있어도 그림자는 안 센다 — 기준이 눈썹 진하기의 절반", () => {
+    const half: Paint = (x, y) => (browPaint(x, y) ? (x < 215 ? BROWN : [205, 157, 128]) : null);   // 꼬리 쪽은 눈썹, 안쪽은 옅은 그림자(차 6쯤)
+    const c = shapeFill(frame(half), outline).coverage;
+    expect(c).toBeGreaterThan(0.35);
+    expect(c).toBeLessThan(0.65);
+  });
+
   it("H5 주변 피부보다 조금만 어두운 칸은 안 센다 (그림자·잡티)", () => {
-    const faint: Paint = (x, y) => (browPaint(x, y) ? [210, 160, 130] : null);   // 피부(224,172,140)보다 살짝만
+    const faint: Paint = (x, y) => (browPaint(x, y) ? [215, 164, 133] : null);   // 피부(224,172,140)보다 살짝만 (밝기 차 3쯤)
     expect(shapeFill(frame(faint), outline).coverage).toBe(0);
     expect(BROWN[0]).toBeLessThan(120);
   });

@@ -14,12 +14,23 @@ import type { LinerStrip } from "./score";
 import type { Pt } from "./types";
 
 export interface ShapeFillOptions {
-  /** 주변 피부보다 L* 가 이만큼 어두우면 "있는 칸" (가정값 — 그림자·잡티는 4~6 쯤) */
-  darkL: number;
-  /** 주변 피부 띠: 가이드를 가운데 기준으로 이 배율만큼 키운 것에서 안쪽 배율까지를 뺀 것 (sampleRegion 과 같은 1.3~1.8) */
-  ring: readonly [number, number];
+  /**
+   * 주변 피부보다 L* 가 적어도 이만큼 어두워야 "있는 칸".
+   * 실제 기준은 (그 사람 눈썹 진하기 × darkFrac)와 이 값 중 큰 쪽: EasyPortrait 눈썹 455개에서 피부와 밝기 차가
+   * 중앙 17 · 열 중 하나는 8 이하라, 12 로 고정하면 연한 눈썹을 놓쳤다 (평균 오차 24%p).
+   * 세 값(4 · 0.35 · 0.25)은 EasyPortrait 정답 눈썹 마스크에 맞춘 것 — 사람 단위로 반 나눠 236개로 맞추고 224개로 확인 (2026-10-01):
+   * 칸 단위로 "눈썹이라 한 칸 중 맞은 비율" 83% · "실제 눈썹 칸 중 찾은 비율" 84% · IoU 0.71.
+   * 성긴 꼬리 쪽은 덜 잡는다(찾은 비율 71%) — 정답 마스크는 "눈썹 자리", 이 값은 "보이는 진하기" 라서
+   */
+  minDark: number;
+  /** 눈썹 진하기(피부와의 밝기 차)의 이 비율보다 어두우면 "있는 칸" */
+  darkFrac: number;
+  /** 눈썹 진하기로 보는 지점 — 안쪽 칸을 어두운 순으로 늘어놓은 이 자리 */
+  darkPct: number;
+  /** 주변 피부 띠: 가이드에서 이 거리(눈 폭 비율)만큼 떨어진 바깥 칸. 가운데 기준으로 키우면 길쭉한 눈썹에선 띠가 좌우 끝에 몰린다 */
+  band: readonly [number, number];
 }
-export const SHAPE_FILL: ShapeFillOptions = { darkL: 12, ring: [1.3, 1.8] };
+export const SHAPE_FILL: ShapeFillOptions = { minDark: 4, darkFrac: 0.35, darkPct: 0.25, band: [0.1, 0.28] };
 
 export interface ShapeFill {
   /** 가이드 안 칸 중 "있는 칸" 비율 (0~1). 머리카락에 가린 칸은 뺀다 */
@@ -36,25 +47,40 @@ const scale = (poly: readonly Pt[], k: number): Pt[] => {
 };
 const medianOf = (v: number[]): number => v.sort((a, b) => a - b)[Math.floor(v.length / 2)]!;
 
-/** 가이드 다각형 안을 칸으로 훑어, 주변 피부보다 뚜렷이 어두운 칸의 비율을 낸다 (눈썹·라이너처럼 어둡게 그리는 부위) */
+/** 점에서 다각형 가장자리까지 거리 */
+function distToEdge(x: number, y: number, poly: readonly Pt[]): number {
+  let best = Infinity;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i]!, b = poly[(i + 1) % poly.length]!, dx = b.x - a.x, dy = b.y - a.y;
+    const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+    best = Math.min(best, Math.hypot(x - a.x - t * dx, y - a.y - t * dy));
+  }
+  return best;
+}
+
+/** 가이드 다각형 안을 칸으로 훑어, 주변 피부보다 뚜렷이 어두운 칸의 비율을 낸다 (눈썹처럼 어둡게 그리는 부위) */
 export function shapeFill(f: SampleFrame, poly: readonly Pt[], opt: ShapeFillOptions = SHAPE_FILL): ShapeFill {
-  const box = boxOf(f.unit.eye);
-  const hole = scale(poly, opt.ring[0]), outer = scale(poly, opt.ring[1]);
-  const cells = (region: readonly Pt[], keep: (x: number, y: number) => boolean): Lab[] => {
-    const xs = region.map((p) => p.x), ys = region.map((p) => p.y), out: Lab[] = [];
-    for (let y = Math.max(0, Math.floor(Math.min(...ys))); y <= Math.min(f.im.h - 1, Math.ceil(Math.max(...ys))); y += box) {
-      for (let x = Math.max(0, Math.floor(Math.min(...xs))); x <= Math.min(f.im.w - 1, Math.ceil(Math.max(...xs))); x += box) {
-        if (pointInPoly(x, y, region) && keep(x, y) && !isHair(f, x, y)) out.push(labBox(f.im, x, y, box));
-      }
+  const box = boxOf(f.unit.eye), e = f.unit.eye;
+  const near = opt.band[0] * e, far = opt.band[1] * e;
+  const xs = poly.map((p) => p.x), ys = poly.map((p) => p.y);
+  const inside: number[] = [], ring: Lab[] = [];
+  for (let y = Math.max(0, Math.floor(Math.min(...ys) - far)); y <= Math.min(f.im.h - 1, Math.ceil(Math.max(...ys) + far)); y += box) {
+    for (let x = Math.max(0, Math.floor(Math.min(...xs) - far)); x <= Math.min(f.im.w - 1, Math.ceil(Math.max(...xs) + far)); x += box) {
+      if (isHair(f, x, y)) continue;
+      if (pointInPoly(x, y, poly)) { inside.push(labBox(f.im, x, y, box).L); continue; }
+      const d = distToEdge(x, y, poly);
+      if (d >= near && d <= far) ring.push(labBox(f.im, x, y, box));
     }
-    return out;
-  };
-  const ring = cells(outer, (x, y) => !pointInPoly(x, y, hole));
+  }
   if (!ring.length) return { coverage: 0, n: 0, skin: null };
   const skin: Lab = { L: medianOf(ring.map((c) => c.L)), a: medianOf(ring.map((c) => c.a)), b: medianOf(ring.map((c) => c.b)) };
-  const inside = cells(poly, () => true);
-  const hit = inside.filter((c) => skin.L - c.L >= opt.darkL).length;
-  return { coverage: inside.length ? hit / inside.length : 0, n: inside.length, skin };
+  if (!inside.length) return { coverage: 0, n: 0, skin };
+  // 이 눈썹의 진하기 = 안쪽 칸을 어두운 순으로 늘어놓은 darkPct 지점. 그 darkFrac 배보다 어두우면 "있는 칸"
+  // (연한 눈썹도, 진한 눈썹 옆 옅은 그림자도 가른다)
+  const sorted = inside.slice().sort((a, b) => a - b), darkLevel = sorted[Math.floor(sorted.length * opt.darkPct)]!;
+  const need = Math.max(opt.minDark, (skin.L - darkLevel) * opt.darkFrac);
+  const hit = inside.filter((L) => skin.L - L >= need).length;
+  return { coverage: hit / inside.length, n: inside.length, skin };
 }
 
 // ---------- 템플릿 색 쪽으로 물든 정도 (입술·섀도우·볼) ----------
@@ -155,7 +181,7 @@ export interface LinerBand {
  * 기준 피부는 **줄마다 그 줄의 바깥쪽 칸**(선에서 먼 칸) — 띠 전체에서 하나로 잡으면 눈꼬리 바깥의 그늘(얼굴 굴곡)을
  * 꼬리로 읽는다 (FFHQ 맨얼굴 20명 중 19명이 꼬리 100%). 눈꺼풀 줄은 위쪽 칸만(아래는 눈알), 꼬리 줄은 위아래 양쪽.
  */
-export function linerBand(strip: LinerStrip, darkL = SHAPE_FILL.darkL): LinerBand {
+export function linerBand(strip: LinerStrip, darkL = 12): LinerBand {
   const { offs, isWing, thick } = strip.meta, step = offs.length > 1 ? offs[1]! - offs[0]! : 0;
   const far = offs[offs.length - 1]! - 3 * step;   // 선에서 먼 칸 (맨 끝 세 칸)
   const widths: number[] = [];
