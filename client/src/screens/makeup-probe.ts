@@ -69,6 +69,28 @@ if (!ctx2d || !offCtx) throw new Error("캔버스 2D 를 쓸 수 없음");
 const g: CanvasRenderingContext2D = ctx2d;
 const o: CanvasRenderingContext2D = offCtx;
 
+/**
+ * 일부 WebKit(Safari 27 확인, 2026-09-30 실측: `getContext("2d").filter`가 `undefined`)은
+ * CanvasRenderingContext2D.filter 자체가 없다 — `o.filter = "blur(...)"` 가 조용히 무시돼
+ * 블러 없이 도형만 그려졌다. UA 문자열 대신 기능 자체를 한 번 감지해서 분기한다.
+ */
+const SUPPORTS_CANVAS_FILTER = typeof o.filter === "string";
+let blurTmp: HTMLCanvasElement | null = null;
+/** filter 없는 환경의 블러 대체 — 줄였다가 다시 키우면 보간 자체가 블러 역할을 한다(정확한 가우시안은 아님, 근사). */
+function blurByDownscale(blurPx: number): void {
+  const scale = Math.max(0.05, Math.min(1, 1 / (1 + blurPx / 3)));
+  const sw = Math.max(1, Math.round(off.width * scale)), sh = Math.max(1, Math.round(off.height * scale));
+  if (!blurTmp) blurTmp = document.createElement("canvas");
+  blurTmp.width = sw;
+  blurTmp.height = sh;
+  const t = blurTmp.getContext("2d")!;
+  t.clearRect(0, 0, sw, sh);
+  t.drawImage(off, 0, 0, sw, sh);
+  o.clearRect(0, 0, off.width, off.height);
+  o.imageSmoothingEnabled = true;
+  o.drawImage(blurTmp, 0, 0, off.width, off.height);
+}
+
 type Part = "brow" | "shadow" | "liner" | "cheek" | "lip" | "contour" | "highlight" | "under" | "aegyo" | "lash";
 /** blur 는 얼굴 폭 대비 번짐 — 섀도·볼은 넓게, 라이너는 거의 없이. lash(마스카라)는 낱개 선이라 블러 안 먹임(0 이지만 미사용) */
 const PARTS: { id: Part; name: string; blur: number }[] = [
@@ -445,10 +467,15 @@ const rgba = (hex: string, a: number): string => {
 };
 
 function paint(blurPx: number, alpha: number, draw: (ctx: CanvasRenderingContext2D) => void, blends: GlobalCompositeOperation[] = ["source-over"]): void {
-  o.filter = "none";
   o.clearRect(0, 0, off.width, off.height);
-  o.filter = `blur(${Math.max(0.5, blurPx)}px)`;
-  draw(o);
+  if (SUPPORTS_CANVAS_FILTER) {
+    o.filter = `blur(${Math.max(0.5, blurPx)}px)`;
+    draw(o);
+    o.filter = "none";
+  } else {
+    draw(o);
+    blurByDownscale(Math.max(0.5, blurPx));
+  }
   if (meshMode()) {
     // 무늬에는 색과 세기만 담는다 — 섞는 건 셰이더가 한다
     if (blends.includes("screen")) { aLight.globalAlpha = alpha; aLight.drawImage(off, 0, 0); return; }
