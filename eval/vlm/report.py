@@ -413,6 +413,52 @@ def _photo_url(face: dict) -> str:
     return "data:image/jpeg;base64," + base64.b64encode(p.read_bytes()).decode()
 
 
+# 머리카락 가림 — 앱 AR(fullrender)과 같은 모델·크기. 앱은 브라우저에서 돌리지만
+# 평가지는 인터넷 없이 열려야 해서 같은 모델로 미리 계산해 넣는다
+# (screens/hair-segmenter.ts MODELS[0] · fullrender HAIR_AR.width)
+HAIR_MODEL_URL = "https://storage.googleapis.com/mediapipe-models/image_segmenter/hair_segmenter/float32/latest/hair_segmenter.tflite"
+HAIR_WIDTH = 320
+HAIR_INDEX = 1
+
+
+def hair_masks(faces: list[dict]) -> dict[str, dict]:
+    """사진마다 머리카락 확률 마스크 → {id: {w, h, b64}} (0~255 한 바이트 — 앱 hairBytes 와 같은 양자화)"""
+    import base64  # noqa: PLC0415
+    import urllib.request  # noqa: PLC0415
+
+    import mediapipe as mp  # noqa: PLC0415
+    import numpy as np  # noqa: PLC0415
+    from mediapipe.tasks.python import BaseOptions  # noqa: PLC0415
+    from mediapipe.tasks.python.vision import (  # noqa: PLC0415
+        ImageSegmenter,
+        ImageSegmenterOptions,
+        RunningMode,
+    )
+    from PIL import Image  # noqa: PLC0415
+
+    model = data_dir() / "models" / "hair_segmenter.tflite"
+    if not model.exists():
+        model.parent.mkdir(parents=True, exist_ok=True)
+        urllib.request.urlretrieve(HAIR_MODEL_URL, model)
+    opts = ImageSegmenterOptions(
+        base_options=BaseOptions(model_asset_path=str(model)),
+        running_mode=RunningMode.IMAGE,
+        output_confidence_masks=True,
+        output_category_mask=False,
+    )
+    out = {}
+    with ImageSegmenter.create_from_options(opts) as seg:
+        for f in faces:
+            im = Image.open(data_dir() / "vlm-eval" / "photos" / f["photo"]).convert("RGB")
+            w, h = HAIR_WIDTH, round(im.height * HAIR_WIDTH / im.width)
+            small = np.asarray(im.resize((w, h), Image.Resampling.BILINEAR))
+            r = seg.segment(mp.Image(image_format=mp.ImageFormat.SRGB, data=small))
+            conf = r.confidence_masks[HAIR_INDEX].numpy_view()
+            b = np.clip(np.round(np.nan_to_num(conf) * 255), 0, 255).astype(np.uint8)
+            out[f["id"]] = {"w": w, "h": h, "b64": base64.b64encode(b.tobytes()).decode()}
+    return out
+
+
 def _blind(x: object) -> object:
     """평가지에 넣는 계획에서 누가 만들었는지 드러나는 칸을 지운다 — 항목마다 source: vlm|rule,
     거절 목록, 근거 문장. 렌더러는 이 칸을 읽지 않는다 (makeup-paint · personal-guide · contour)"""
@@ -484,7 +530,10 @@ def sheet(model: str, variant: str = "A") -> None:
         ["node", str(HERE / "sheet_bundle.mjs")], capture_output=True, text=True, encoding="utf-8", check=True
     ).stdout
     # <script> 안에 넣는 JSON·JS — "</" 가 태그를 닫지 않게 (JSON 에서 "\/" 는 "/" 와 같다)
-    data = json.dumps({"photos": photos, "items": items}, ensure_ascii=False).replace("</", r"<\/")
+    hair = hair_masks([faces[p] for p in photos])
+    data = json.dumps({"photos": photos, "hair": hair, "items": items}, ensure_ascii=False).replace(
+        "</", r"<\/"
+    )
     out = data_dir() / "vlm-eval" / "out"
     out.mkdir(parents=True, exist_ok=True)
     page = _fill(

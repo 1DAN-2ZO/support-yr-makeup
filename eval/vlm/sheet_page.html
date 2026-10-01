@@ -125,7 +125,7 @@ document.getElementById('save').addEventListener('click', () => trySave(false));
 document.getElementById('saveAnyway').addEventListener('click', () => trySave(true));
 
 const status = document.getElementById('status');
-const items = DATA.items.map((it) => ({ ...it, img: DATA.photos[it.photo] }));
+const items = DATA.items.map((it) => ({ ...it, img: DATA.photos[it.photo], hair: (DATA.hair || {})[it.photo] || null }));
 let drawn = 0;
 window.renderSheet(items, (n, side, c) => {
   const slot = document.querySelector('[data-slot="' + n + side + '"]');
