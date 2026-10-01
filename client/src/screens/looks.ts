@@ -57,11 +57,21 @@ export function looksScreen<S>(deps: LooksDeps): Screen<S> {
 
       function head(): HTMLElement {
         const el = document.createElement("div");
+        el.className = "looks-head";
+        el.innerHTML = `
+          <div class="nudy-logo looks-logo" aria-label="nudy">
+            <span>nudy</span>
+            <i aria-hidden="true"></i>
+          </div>
+          <div class="looks-coach">
+            <img src="/ui/nudy-coach-simple.svg" alt="" aria-hidden="true" />
+            <div><span>오늘 원하는 메이크업 무드를 골라주세요</span><i aria-hidden="true"></i></div>
+          </div>
+        `;
         const h = document.createElement("h1");
-        h.textContent = "어떤 화장으로 할까요";
+        h.textContent = "템플릿 선택";
         const p = document.createElement("p");
-        p.className = "muted";
-        p.textContent = "누르면 내 얼굴에 맞춰 조정해요.";
+        p.textContent = "누르면 내 얼굴에 맞춰 자동으로 조정해요";
         el.append(h, p);
         return el;
       }
@@ -80,6 +90,9 @@ export function looksScreen<S>(deps: LooksDeps): Screen<S> {
         btn.className = "look-card" + (t.lookId === picked ? " picked" : "");
         btn.disabled = !t.selectable;
         btn.setAttribute("aria-pressed", String(t.lookId === picked));
+        btn.style.setProperty("--look-a", t.swatch[0] ?? "#ff9bac");
+        btn.style.setProperty("--look-b", t.swatch[1] ?? "#ffd8df");
+        btn.style.setProperty("--look-c", t.swatch[2] ?? "#f5d0b8");
 
         const thumb = document.createElement("div");
         thumb.className = "look-thumb";
@@ -104,7 +117,11 @@ export function looksScreen<S>(deps: LooksDeps): Screen<S> {
         name.className = "look-name";
         name.textContent = t.name;
 
-        btn.append(thumb, name);
+        const meta = document.createElement("span");
+        meta.className = "look-meta";
+        meta.textContent = "mood look";
+
+        btn.append(thumb, name, meta);
         btn.addEventListener("click", () => pick(t.lookId));
         li.append(btn);
         return li;

@@ -19,6 +19,7 @@ export const CONSENT_TEXT = {
   notice: "처리 안내",
   status: "오늘 얼굴 기준 만들기",
   bubble: "먼저 맨얼굴을 확인할게요",
+  coachMessage: "찍기전에 확인해주세요",
   checks: ["앞머리", "안경", "밝기"],
   title: "사진 처리 안내",
   body: "맨얼굴 사진 3장(정면·왼쪽·오른쪽)을 서버로 보내 화장 완성 예상을 만들어요. 처리가 끝나면 서버에서 바로 지워요. 눈 감은 사진과 화장하는 모습은 이 폰에만 있고, 끝내기를 누르면 폰에서도 지워요.",
@@ -48,6 +49,16 @@ export function consentScreen<S>(deps: ConsentDeps): Screen<S> {
           <i aria-hidden="true"></i>
         </div>
         <img class="nudy-coach-face" src="/ui/nudy-coach-simple.svg" alt="" aria-hidden="true" />
+        <div class="nudy-coach-bubble">
+          <span>${CONSENT_TEXT.coachMessage}</span>
+          <i aria-hidden="true"></i>
+        </div>
+        <svg class="shading-guide" viewBox="0 0 941 1672" aria-hidden="true">
+          <path class="shading-guide-main" d="M616 753 Q563 828 478 868" />
+          <circle class="shading-guide-dot" cx="486" cy="862" r="8" />
+          <line class="shading-guide-line" x1="493" y1="861" x2="540" y2="882" />
+        </svg>
+        <div class="makeup-label label-shading">쉐딩</div>
         <div class="intro-bottom-sheet">
           <div class="intro-checks">
             <div class="intro-check">

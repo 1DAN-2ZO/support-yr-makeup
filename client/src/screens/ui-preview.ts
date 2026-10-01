@@ -11,6 +11,7 @@ import { LOOKS } from "../core/looks";
 import type { CaptureBundle, JobStatus, LookJob, PartId, PartResult, Versions } from "../core/types";
 import { doneScreen } from "./done";
 import { fullRenderScreen } from "./fullrender";
+import { guideScreen } from "./guide";
 import { looksScreen } from "./looks";
 import { processingScreen } from "./processing";
 import { resultScreen } from "./result";
@@ -67,6 +68,14 @@ const SCREENS: Record<string, () => Promise<Screen<null>>> = {
   "서버 처리": async () => processingScreen<null>({ jobs: mutableJobSource(LOOKS.map((l) => ({ ...job(l.id, "running", 0) }))) }),
   "2 화장": async () => looksScreen<null>({ getLookId: () => lookId, setLookId: (id) => { lookId = id; } }),
   "2-b 완성 예상": async () => fullRenderScreen<null>({ getLookId: () => lookId }),
+  "3 가이드": async () => {
+    const bare = await bitmapOf(BARE_IMAGE);
+    const baseline = { lm: LMS, unit: { eye: 90, lip: 120, face: 400 }, foreheadL: 70, scleraLab: null, faceShape: { label: "oval" as const, confidence: 1, method: "rule" as const, version: "t" }, bareImage: bare, w: 600, h: 600, expression: null };
+    return guideScreen<null>({
+      getPart: () => "liner", firstPart: () => "liner", getBaseline: () => baseline, getLook: () => LOOKS.find((l) => l.id === lookId) ?? LOOKS[0]!,
+      getFaceShape: () => baseline.faceShape, getGuide: () => guide, toBitmap: async () => bare,
+    });
+  },
   "5 결과 (라이너)": async () => {
     const bare = await bitmapOf(BARE_IMAGE), made = image(linerPaint());
     const frame = await bitmapOf(made);

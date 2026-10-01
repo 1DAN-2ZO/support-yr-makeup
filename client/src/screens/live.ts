@@ -222,7 +222,7 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         if (!run.press()) return;
         collecting = true;
         btn.disabled = true;
-        line.textContent = LIVE_TEXT.capturing;
+        setStatus(LIVE_TEXT.capturing);
       });
 
       const stopCamera = (): void => {
@@ -240,6 +240,9 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         if (!alive) return;
         if ("requestVideoFrameCallback" in video) vfc = video.requestVideoFrameCallback(() => frame());
         else raf = requestAnimationFrame(() => frame());
+      };
+      const setStatus = (text: string): void => {
+        line.textContent = text;
       };
 
       function frame(): void {
@@ -311,7 +314,7 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         }
         if (r.bundle?.status === "failed") {
           collecting = false;
-          line.textContent = LIVE_TEXT.failed;
+          setStatus(LIVE_TEXT.failed);
           line.classList.remove("ready");
           btn.disabled = true;
           return;
@@ -322,7 +325,7 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         events.gate(r.gate.ok ? null : r.gate.firstFail, now);
         // 실패 문구는 다시 통과할 때까지 그대로 둔다 — 게이트 문구가 바로 덮으면 왜 안 찍혔는지 못 본다
         if (line.textContent === LIVE_TEXT.failed && !r.gate.ok) return;
-        line.textContent = r.gate.text;
+        setStatus(r.gate.text);
         line.classList.toggle("ready", r.gate.ok);
         btn.disabled = !r.gate.ok;
       }
@@ -353,7 +356,7 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
 
       start().catch((e: unknown) => {
         if (!alive) return;
-        line.textContent = LIVE_TEXT.cameraFail;
+        setStatus(LIVE_TEXT.cameraFail);
         ctx.log.log({ name: "error", where: "live", msg: `camera:${String(e).slice(0, 120)}` });
       });
 

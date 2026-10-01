@@ -87,6 +87,26 @@ function showUnavailable(): void {
   root.append(box);
 }
 
+function showBootError(e: unknown): void {
+  console.error(e);
+  const root = el("screen");
+  root.textContent = "";
+  const box = document.createElement("div");
+  box.className = "unavailable";
+  const h = document.createElement("h1");
+  h.textContent = "앱을 다시 열어 주세요";
+  const p = document.createElement("p");
+  p.className = "muted";
+  p.textContent = "초기 화면을 불러오지 못했어요. 새로고침하면 다시 시작합니다.";
+  const again = document.createElement("button");
+  again.type = "button";
+  again.className = "primary";
+  again.textContent = "새로고침";
+  again.addEventListener("click", () => location.reload());
+  box.append(h, p, again);
+  root.append(box);
+}
+
 /** 개발 중 서버 주소(VITE_DHE_API)가 없을 때 — 규칙만으로 돈다고 알린다 */
 function showDevRuleOnly(): void {
   // UI 작업 중 화면을 가리지 않게 개발 경고는 콘솔에만 남긴다.
@@ -485,4 +505,4 @@ async function restore(store: SessionStore, events: CaptureEvents, fresh: Sessio
   return { ...plan.session, baseline: rebuildBaseline(plan.baseline, found, blob) };
 }
 
-void boot();
+void boot().catch(showBootError);
