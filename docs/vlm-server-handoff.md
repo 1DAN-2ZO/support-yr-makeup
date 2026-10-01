@@ -19,7 +19,7 @@
 - `image`: 얼굴 가운데를 자른 **512×512 JPEG data URL** (앱 `screens/vlm-image.ts` 가 만든다). 서버가 다시 자르거나 줄이지 않는다
 - `prompt`: 앱이 만든 글 전체 (`core/vlm-prompt.ts`, 형식 E). 서버가 고치지 않는다
 - `schema`: 제약 디코딩용 JSON 스키마 (`core/vlm-flow.ts vlmSchema`). **얼굴마다 다르다** — 이 얼굴에서 관문이 받아 주는 값만 enum 으로 들어 있다. 캐시하지 말고 요청마다 그대로 쓴다
-- `prompt_ver`: 지금 `vlm-prompt-v2`. 로그에 남긴다
+- `prompt_ver`: 지금 `vlm-prompt-v4` (앱 `core/vlm-flow.ts` 의 `PROMPT_VER`). 로그에 남긴다
 - 앱 시간 제한은 **25초** (`PLAN_TIMEOUT_MS`). 관문에서 거절되면 앱이 **한 번 더** 묻는다 — 한 사용자가 최대 두 번 연달아 부른다
 - CORS: 앱 주소에서 부를 수 있게 (개발용 가짜 서버 `scripts/dev-vlm-mock.mjs` 가 같은 계약이다 — 앱 쪽 시험에 쓰면 된다)
 

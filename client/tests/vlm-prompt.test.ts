@@ -69,6 +69,12 @@ describe("VLM 프롬프트 — 형식 E", () => {
     expect(d).toContain("lip.overline: 0 / 0.1 / 0.2 / 0.3");
     for (const k of ["blush.position", "blush.size", "highlight.tZone", "faceShape.label", "higher", "lower", "oval", "heart"]) expect(d).toContain(k);
   });
+
+  it("얼굴형 이름은 화면 문구 · 얼굴형 평가와 같은 말로 — heart 는 역삼각형 (rules/looks.json · eval/faceshape)", () => {
+    const p = buildVlmPrompt(measure(8), look);
+    expect(p).toContain("heart(역삼각형)");
+    expect(p).not.toContain("하트");
+  });
 });
 
 describe("선택지 — 이 얼굴에서 관문이 받아 주는 값만", () => {
