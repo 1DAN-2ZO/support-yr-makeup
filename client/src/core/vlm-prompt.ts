@@ -15,7 +15,7 @@
 
 import type { FaceMeasure } from "./face-measure";
 import type { Look, LookPartId } from "./looks";
-import { BLUSH_POSITIONS, DROOP_MARGIN_DEG, FACE_SHAPES, LINER_STYLES, PLAN_LIMITS, PLAN_RULES, droopDeg, planLiner, resolvePlan, type LinerStyle } from "./personalize";
+import { BLUSH_POSITIONS, DROOP_TILT_DEG, FACE_SHAPES, LINER_STYLES, PLAN_LIMITS, PLAN_RULES, isDroopy, planLiner, resolvePlan, tiltDeg, type LinerStyle } from "./personalize";
 import type { FaceShape } from "./types";
 
 const PART_NAME: Record<LookPartId, string> = { brow: "눈썹", liner: "아이라이너", shadow: "섀도", cheek: "블러셔", lip: "입술" };
@@ -46,7 +46,7 @@ export function allowedChoices(m: FaceMeasure): AllowedChoices {
   const overline = lr != null && lr >= R.lipTarget ? [0] : [...CHOICE_STEPS.overline];
   const parts: LookPartId[] = ["brow", "liner", "shadow", "cheek", "lip"];
   const intensity = Object.fromEntries(parts.map((p) => [p, CHOICE_STEPS.intensity.filter((v) => v <= (R.intensityCap[p] ?? Infinity))])) as Record<LookPartId, number[]>;
-  return { liner: LINER_STYLES.filter((s) => s !== "drop" || droopDeg(m) > DROOP_MARGIN_DEG), shadow, overline, intensity };
+  return { liner: LINER_STYLES.filter((s) => s !== "drop" || isDroopy(m)), shadow, overline, intensity };
 }
 
 const KO: Record<string, string> = {
@@ -57,7 +57,7 @@ const KO: Record<string, string> = {
 const opts = (xs: readonly (string | number)[]): string => xs.map((x) => (typeof x === "string" && KO[x] ? `${x}(${KO[x]})` : String(x))).join(" / ");
 
 export function buildVlmPrompt(m: FaceMeasure, look: Look, faceShape?: FaceShape | null): string {
-  const droop = droopDeg(m);
+  const tilt = tiltDeg(m);
   const rule = planLiner(m);
   const base = resolvePlan(m, { faceShape: faceShape ?? null });   // 규칙만으로 정한 값 — VLM 이 바꿀지 판단하는 출발점
   const gap = (m.eye.R.lidGapRatio + m.eye.L.lidGapRatio) / 2;
@@ -75,7 +75,7 @@ ${parts}
 
 ## 이 얼굴을 잰 값 (얼굴 점 478개에서 계산)
 - 눈꼬리 기울기: 오른쪽 ${f1(m.eye.R.tiltDeg)}°, 왼쪽 ${f1(m.eye.L.tiltDeg)}° (한국 20대 여성 평균 약 8.4~8.8°)
-- 눈꼬리 처짐 α − β 평균: ${f1(droop)}° → ${droop > DROOP_MARGIN_DEG ? "처진 눈" : "처진 눈 아님"} (${DROOP_MARGIN_DEG}° 를 넘으면 처진 눈. ILoveEye 2022 는 0 기준, 측정 흔들림만큼 여유를 둠)
+- 처진 눈 판정: 평균 기울기 ${f1(tilt)}° → ${isDroopy(m) ? "처진 눈" : "처진 눈 아님"} (${DROOP_TILT_DEG}° 보다 작으면 — 눈꼬리가 앞머리보다 낮으면 — 처진 눈)
 - 눈 가로세로 비: 오른쪽 ${m.eye.R.aspect.toFixed(2)}, 왼쪽 ${m.eye.L.aspect.toFixed(2)}
 - 눈썹 굽은 정도: 오른쪽 ${m.brow.R.curvature.toFixed(3)}, 왼쪽 ${m.brow.L.curvature.toFixed(3)} (0 = 일자)
 - 눈두덩(눈꺼풀→눈썹 아랫선 ÷ 눈 폭): ${gap.toFixed(2)} (표준 ${PLAN_RULES.lidGapStd}) → 규칙 섀도 범위 ${base.shadow.range.toFixed(2)}

@@ -9,7 +9,7 @@
 
 import { measureFace, type FaceMeasure } from "../../client/src/core/face-measure";
 import { lookById, LOOKS } from "../../client/src/core/looks";
-import { DROOP_MARGIN_DEG, PLAN_RULES, droopDeg, resolvePlan, type PersonalPlan } from "../../client/src/core/personalize";
+import { DROOP_TILT_DEG, PLAN_RULES, isDroopy, resolvePlan, tiltDeg, type PersonalPlan } from "../../client/src/core/personalize";
 import type { FaceShape, Pt } from "../../client/src/core/types";
 import { vlmSchema } from "../../client/src/core/vlm-flow";
 import { buildVlmPrompt } from "../../client/src/core/vlm-prompt";
@@ -43,13 +43,13 @@ export function prompt(m: FaceMeasure, lookId: string, variant: Variant, faceSha
   const i = full.indexOf(MEASURE_HEAD), j = full.indexOf(DECIDE_HEAD);
   if (i < 0 || j < 0) throw new Error("앱 프롬프트 모양이 바뀌었다 — entry.ts 의 제목 두 개를 맞춰 주세요");
   const shape = faceShape ? `${faceShape.label}` : null;
-  const gap = (m.eye.R.lidGapRatio + m.eye.L.lidGapRatio) / 2, droop = droopDeg(m), lip = m.lip.upperLowerRatio;
+  const gap = (m.eye.R.lidGapRatio + m.eye.L.lidGapRatio) / 2, lip = m.lip.upperLowerRatio;
   let section = "";
   if (variant === "B") {
     // 말만 (숫자 없음) — 작은 모델은 숫자보다 말을 잘 따른다는 가설 (조사 보고서)
     section = [
       `${MEASURE_HEAD} (얼굴 점 478개에서 계산)`,
-      `- 눈꼬리: ${droop > DROOP_MARGIN_DEG ? "처진 눈" : "처진 눈 아님"}`,
+      `- 눈꼬리: ${isDroopy(m) ? "처진 눈" : "처진 눈 아님"}`,
       `- 눈두덩: ${gap < PLAN_RULES.lidGapStd - PLAN_RULES.lidGapTol ? "좁은 편" : gap > PLAN_RULES.lidGapStd + PLAN_RULES.lidGapTol ? "넓은 편" : "보통"}`,
       `- 윗입술: ${lip == null ? "모름" : lip < PLAN_RULES.lipTarget ? "아랫입술보다 얇은 편" : "충분함"}`,
       `- 얼굴형 판정: ${shape ?? "없음 — 사진을 보고 골라 주세요"}`,
@@ -59,7 +59,6 @@ export function prompt(m: FaceMeasure, lookId: string, variant: Variant, faceSha
     section = [
       `${MEASURE_HEAD} (얼굴 점 478개에서 계산)`,
       `- 눈꼬리 기울기(°): 오른쪽 ${f1(m.eye.R.tiltDeg)}, 왼쪽 ${f1(m.eye.L.tiltDeg)}`,
-      `- 눈꼬리 처짐 α − β 평균(°): ${f1(droop)}`,
       `- 눈두덩 비: ${gap.toFixed(2)}`,
       `- 윗입술 ÷ 아랫입술: ${lip == null ? "모름" : lip.toFixed(2)}`,
       `- 얼굴형 판정: ${shape ?? "없음"}`,
@@ -153,14 +152,10 @@ export function rulePlan(m: FaceMeasure, faceShape: FaceShape | null = null): Re
 export function flips(m: FaceMeasure, faceShape: FaceShape | null = null): { name: string; field: string; m: FaceMeasure; ruleBefore: unknown; ruleAfter: unknown }[] {
   const clone = (): FaceMeasure => JSON.parse(JSON.stringify(m)) as FaceMeasure;
   const out: { name: string; field: string; m: FaceMeasure }[] = [];
-  // 눈꼬리: 처진 눈 기준(DROOP_MARGIN_DEG)을 확실히 넘게 옮긴다 — 부호만 바꾸면 기준 안쪽에서 맴돌아 규칙이 안 바뀐다
-  const droop = clone(), d = droopDeg(m), target = d > DROOP_MARGIN_DEG ? -1 : DROOP_MARGIN_DEG + 3, shift = target - d;
-  for (const s of ["R", "L"] as const) {
-    const e = droop.eye[s];
-    e.alphaDeg += shift;
-    e.outerCornerDown = e.alphaDeg > e.betaDeg;
-    e.tiltDeg += target > 0 ? -Math.abs(e.tiltDeg) - 3 : Math.abs(e.tiltDeg) + 3;   // 처지면 기울기도 내려간 쪽으로
-  }
+  // 눈꼬리: 처진 눈 기준(DROOP_TILT_DEG, 눈꼬리 기울기)의 반대편으로 확실히 옮긴다 — 처진 눈 ↔ 아닌 눈.
+  // 좌우 기울기 차이는 두고 평균만 옮긴다. α·β 는 판정에 안 쓰니 그대로
+  const droop = clone(), t = tiltDeg(m), target = isDroopy(m) ? DROOP_TILT_DEG + 6 : DROOP_TILT_DEG - 4, shift = target - t;
+  for (const s of ["R", "L"] as const) droop.eye[s].tiltDeg += shift;
   out.push({ name: "droop", field: "liner.style", m: droop });
   // 눈두덩: 좁은 쪽 ↔ 넓은 쪽 (표준을 가운데로 대칭)
   const lid = clone();
