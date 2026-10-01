@@ -1,9 +1,16 @@
 /**
- * 얼굴 점 떨림 필터(One-Euro, smoothing.ts) 값 — 2-b AR(fullrender) · 화면 4 테두리(live-run)가 같이 쓴다 (#244).
+ * 얼굴 점 떨림 필터(One-Euro, smoothing.ts) 값 — 2-b AR(fullrender) · 화면 4 테두리(live-run). 맞추는 곳은 이 파일 하나 (#244).
  *
  * ④ 기본값(2.5 / 0.08)은 움직이기 시작할 때 뒤처졌다 (2026-09-29 폰: "트래킹이 느려졌다", 2026-09-30 화면 4 라이너 테두리가 눈알 위에 박힘 #235).
  * 기준(minCutoff)↑ = 가만히 있을 때도 덜 부드럽게(더 딱 붙음), 반응성(beta)↑ = 움직일 때 더 빨리 따라감.
  * dCutoff↑ = 속도 추정(edx)이 더 빨리 반응 → beta가 더 일찍 켜짐 (#173, 기존 1.0 고정이 원인 후보).
  * 폰에서 ?tune(2-b · 화면 4)으로 맞춰 보고 여기 값을 정한다
  */
+/** 2-b AR */
 export const SMOOTH = { minCutoff: 4, beta: 0.3, dCutoff: 1 };
+
+/**
+ * 화면 4 테두리. 2026-10-01 PC 웹캠 ?tune: 슬라이더 최대(10 · 1 · 5)에서 잘 따라오고 가만히 있어도 선이 안 떨렸다.
+ * 2-b 도 이 값으로 시험해 괜찮으면 하나로 합치고, 아니면 화면 4 만 이 값 (#244). 폰 확인 전 — 가정값
+ */
+export const LIVE_SMOOTH = { minCutoff: 10, beta: 1, dCutoff: 5 };

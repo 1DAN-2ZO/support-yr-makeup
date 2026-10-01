@@ -11,7 +11,7 @@ import type { Lab } from "@core/color";
 import type { Pt } from "@core/types";
 import { LMS, W, H } from "./helpers/synth-face";
 import { LandmarkSmoother } from "@core/smoothing";
-import { SMOOTH } from "@core/smooth-params";
+import { LIVE_SMOOTH } from "@core/smooth-params";
 
 // 합성 얼굴은 턱(152)이 가운데라 고개를 숙인 것으로 잰다 → 턱을 내려 정면으로
 const FACE: Pt[] = LMS.map((p, i) => (i === LM.chin ? { x: 300, y: 464 } : p));
@@ -169,7 +169,9 @@ describe("live run", () => {
     expect(o.polys).toEqual([want.R, want.L]);
   });
 
-  it("L16 테두리는 One-Euro 로 부드럽게 — 가만히 있는데 점이 떨리면 선은 덜 떨린다 (#23)", () => {
+  // LIVE_SMOOTH(10 · 1 · 5)는 따라오기 우선이라 거의 끈 것에 가깝다 — 번갈아 ±3px 떨림 폭: 끔 6 · LIVE 5.3 · 2-b 값 2.9 · ④ 기본 1.7.
+  // PC 웹캠은 점 떨림이 작아 이 값에서도 선이 안 떨렸다(2026-10-01). 폰에서 떨리면 값을 내린다 (#235 · #244)
+  it("L16 테두리는 One-Euro 를 거친다 — 가만히 있는데 점이 떨리면 선은 끈 것보다 덜 떨린다 (#23)", () => {
     const jittered = (i: number) => FACE.map((p) => ({ x: p.x + (i % 2 ? 3 : -3), y: p.y }));
     const spread = (smooth: boolean) => {
       const lr = createLiveRun<string>({ partId: "lip", baseline: { lm: FACE, foreheadL: SKIN.L }, guide: lookGuide({}), smooth });
@@ -179,12 +181,13 @@ describe("live run", () => {
       return Math.max(...tail) - Math.min(...tail);
     };
     expect(spread(false)).toBeCloseTo(6, 6);
-    expect(spread(true)).toBeLessThan(6 * 0.5);
+    expect(spread(true)).toBeLessThan(6 * 0.95);
   });
 
-  it("L30 테두리 떨림 필터는 2-b AR 과 같은 값(SMOOTH 4 · 0.3) — 옛 기본값(2.5 · 0.08)은 움직일 때 늦게 따라왔다 (#235 · #244)", () => {
+  it("L30 테두리 떨림 필터는 화면 4 값(LIVE_SMOOTH 10 · 1 · 5, PC ?tune) — 옛 기본값(2.5 · 0.08)은 움직일 때 늦게 따라왔다 (#235 · #244)", () => {
+    expect(LIVE_SMOOTH).toEqual({ minCutoff: 10, beta: 1, dCutoff: 5 });
     const lr = createLiveRun<string>({ partId: "lip", baseline: { lm: FACE, foreheadL: SKIN.L }, guide: lookGuide({}) });
-    const ref = new LandmarkSmoother(Array.from({ length: 478 }, (_, i) => i), SMOOTH);
+    const ref = new LandmarkSmoother(Array.from({ length: 478 }, (_, i) => i), LIVE_SMOOTH);
     const old = new LandmarkSmoother(Array.from({ length: 478 }, (_, i) => i));
     const i0 = LM.lipsOuter[0]!;
     let got = 0, want = 0, slow = 0;

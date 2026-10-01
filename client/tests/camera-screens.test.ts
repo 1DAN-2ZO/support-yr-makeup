@@ -4,6 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CAPTURE_GUIDE } from "@core/flow";
 import { GATE_TEXT } from "@core/gate";
+import { LIVE_SMOOTH } from "@core/smooth-params";
 import { LM } from "@core/landmarks";
 import { createLogger, memorySink } from "@core/log";
 import type { Baseline, Pt, Versions } from "@core/types";
@@ -196,11 +197,12 @@ describe("화면 4 확인받기", () => {
     off();
   });
 
-  it("LP3 주소에 ?tune 이면 떨림 필터 슬라이더 세 개 (2-b 와 같은 것)", async () => {
+  it("LP3 주소에 ?tune 이면 떨림 필터 슬라이더 세 개 (2-b 와 같은 것) — 화면 4 값에서 시작", async () => {
     window.history.pushState({}, "", "/?tune");
     try {
       const { root, off } = await open();
-      expect(root.querySelectorAll(".ar-tune input[type=range]")).toHaveLength(3);
+      const rs = Array.from(root.querySelectorAll<HTMLInputElement>(".ar-tune input[type=range]"));
+      expect(rs.map((r) => Number(r.value))).toEqual([LIVE_SMOOTH.minCutoff, LIVE_SMOOTH.beta, LIVE_SMOOTH.dCutoff]);
       off();
     } finally {
       window.history.pushState({}, "", "/");

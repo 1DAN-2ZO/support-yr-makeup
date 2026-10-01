@@ -30,6 +30,7 @@ import { createLiveEvents } from "@core/live-events";
 import { LIVE_LIMITS } from "@core/gate";
 import { gateReadout, recentStats } from "@core/gate-readout";
 import { createLiveRun, type LiveFrame } from "@core/live-run";
+import { LIVE_SMOOTH } from "@core/smooth-params";
 import type { Logger } from "@core/log";
 import type { LookPart, LookPartId } from "@core/looks";
 import type { GuideSource } from "@core/score-part";
@@ -201,7 +202,7 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         smooth: stab,
       });
       // 개발용 ?tune: 테두리 떨림 필터 값을 폰에서 맞춘다 — 2-b 와 같은 슬라이더 (#235 · #244)
-      if (run.smoother && q.has("tune")) wrap.append(smoothTuner(run.smoother));
+      if (run.smoother && q.has("tune")) wrap.append(smoothTuner(run.smoother, LIVE_SMOOTH));
       const events = createLiveEvents(ctx.log);
       let follow: ReturnType<typeof createCropFollow> | null = null;
       let followAspect = 0;

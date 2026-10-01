@@ -21,7 +21,7 @@ import { partInRect } from "./landmarks";
 import { foreheadStep, startForeheadTrack, type ForeheadTrack } from "./occlusion";
 import { guideOutline, type Outline } from "./overlay";
 import type { GuideSource } from "./score-part";
-import { SMOOTH } from "./smooth-params";
+import { LIVE_SMOOTH } from "./smooth-params";
 import { LandmarkSmoother } from "./smoothing";
 import type { GateResult, PartId, Pt } from "./types";
 
@@ -58,7 +58,7 @@ export interface LiveRunOptions {
   baseExpr?: Readonly<Record<string, number>> | null;
   /** 테두리 모양. 채점과 같은 것 */
   guide: GuideSource;
-  /** 테두리를 그릴 점에 One-Euro(④ smoothing.ts, 값은 2-b 와 같은 SMOOTH)를 건다. 기본 켬 — 떨림 비교(#23)용으로 끌 수 있다 */
+  /** 테두리를 그릴 점에 One-Euro(④ smoothing.ts, 값은 LIVE_SMOOTH)를 건다. 기본 켬 — 떨림 비교(#23)용으로 끌 수 있다 */
   smooth?: boolean;
   limits?: LiveLimits;
 }
@@ -103,8 +103,8 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
   let softSince: number | null = null;
   let collector: ReturnType<typeof createBundleCollector<I>> | null = null;
   // 그리기 전용. 게이트·묶음(채점)에는 원래 점을 쓴다 — 필터 지연이 채점 위치를 끌고 가지 않게.
-  // 값은 2-b AR 과 같게 (#235: ④ 기본값 2.5·0.08 은 라이너 테두리가 늦게 따라와 눈알 위에 박혔다)
-  const smoother = opt.smooth === false ? null : new LandmarkSmoother(Array.from({ length: 478 }, (_, i) => i), SMOOTH);
+  // 값은 LIVE_SMOOTH (#235: ④ 기본값 2.5·0.08 은 라이너 테두리가 늦게 따라와 눈알 위에 박혔다)
+  const smoother = opt.smooth === false ? null : new LandmarkSmoother(Array.from({ length: 478 }, (_, i) => i), LIVE_SMOOTH);
 
   return {
     /** 화면 4 개발용 ?tune 슬라이더가 값을 바꾼다 */
