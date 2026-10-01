@@ -22,7 +22,7 @@
 |---|---|---|
 | [AAAI 2017] Examples-Rules Guided Deep Neural Network for Makeup Recommendation | 씀 | `client/src/core/face-measure.ts`에 인용 (Alashkar 2017, 눈모양 분류 정확도 61.1%) |
 | [AAPS 2020] Comparison of eye measurements between young Korean women with inborn double eyelids and those with single eyelids | 씀 | 아직 코드 미반영 — MRD1 등 한국 여성 눈 실측값, 라이너 두께 기준을 눈폭→눈높이로 바꿀 근거 |
-| [JKAOMS 2020] Diagnostic analysis of vertical orbital dystopia and canthal tilt for surgical correction | 씀 | `personalize.ts` 처진 눈 경계 4° 근거 — 한국인 눈꼬리 기울기 0~5° 를 class I(76명 중 14명)로 따로 묶음, 0° 미만 0명 |
+| [JKAOMS 2020] Diagnostic analysis of vertical orbital dystopia and canthal tilt for surgical correction | 씀 | `personalize.ts` 처진 눈 경계 5° 근거 (class I 경계를 그대로 씀) — 한국인 눈꼬리 기울기 0~5° 를 class I(76명 중 14명)로 따로 묶음, 0° 미만 0명 |
 | [AJBC 2021] 여성의 눈 형태에 컬러 이미지 스케일을 이용한 스모키 메이크업 이미지의 분석 | 참고 | 일러스트 자극, 통계검정 없음, 형용사 빈도만 |
 | [Front Psychol 2019] Viewpoint Invariance of Eye Size Illusion Caused by Eyeshadow | 참고 | 효과크기 2.4~3.7%는 확인했으나(메시 워핑 정당화엔 방향성만 도움), 필수 수치는 아님 |
 | [PLOS ONE 2016] Facial Cosmetics and Attractiveness - Comparing the Effect Sizes of Professionally-Applied Cosmetics and Identity | 참고 | 제품 존재 이유(비즈니스 피치)지 엔지니어링 파라미터 아님 |
