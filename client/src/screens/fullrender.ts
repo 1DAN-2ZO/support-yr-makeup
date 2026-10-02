@@ -13,7 +13,11 @@
  * 사진은 저장하지 않는다 — 카메라 영상은 이 화면 안에서만 쓴다.
  */
 
+import { EYE_CONTOUR, applyAffine, browSpanRatio, farEyeWeight, robustAffine, stretchAlong } from "../core/eye-fit";
 import { measureFace } from "../core/face-measure";
+import { rigidPoseDiff } from "../core/gate";
+import { LM } from "../core/landmarks";
+import { FAR_EYE_DEFAULT, farSide, outerFromBrow } from "../core/live-run";
 import { lookById } from "../core/looks";
 import { lookDetail } from "../core/look-view";
 import { resolvePlan, type PersonalPlan } from "../core/personalize";
@@ -44,6 +48,66 @@ export interface FullRenderDeps {
  * 가정값 — 폰에서 ?tune 의 "머리카락 분할 ms" 를 보고 정한다. ?nohair 면 끄고 비교
  */
 export const HAIR_AR = { intervalMs: 200, width: 320 };   // 폰(2026-09-30 Android): 분할 24~34ms → 500 에서 200 으로
+
+/**
+ * 고개를 크게 돌리면 먼 쪽 눈 랜드마크가 틀어지는 문제 보정 (eye-fit.ts, 2026-10-02 PC 실측 #277) — 화면 4
+ * (live-run.ts)에서 먼저 검증된 걸 2-b AR에도 그대로 가져온다. 공식은 live-run.ts의 먼 쪽 눈 보정과 같다(중복
+ * 구현 금지, farSide·outerFromBrow는 거기서 가져다 씀) — 다만 테두리 다각형이 아니라 랜드마크 배열 자체를 고친다.
+ * 메시 워프(makeup-gl)가 이 배열을 그대로 꼭짓점으로 쓰므로, 여기서 고치면 그 눈 위의 모든 화장(섀도우·라이너 등)이
+ * 같이 고쳐진다. yaw 12° 안쪽이면(farEyeWeight 0) 그대로 cur 를 돌려준다 — 보정 없음.
+ */
+function correctFarEye(baseLm: readonly Pt[], cur: readonly Pt[]): Pt[] {
+  const d = rigidPoseDiff(baseLm, cur).yaw, w = farEyeWeight(Math.abs(d));
+  if (w <= 0) return [...cur];
+  const far = farSide(d, cur), g = FAR_EYE_DEFAULT;
+  const nearEye = far === "R" ? LM.eyeB : LM.eyeA;   // near = far 의 반대쪽
+  const floor = 0.03 * Math.hypot(cur[nearEye.outer]!.x - cur[nearEye.inner]!.x, cur[nearEye.outer]!.y - cur[nearEye.inner]!.y);
+  const t = robustAffine(EYE_CONTOUR[far].map((i) => baseLm[i]!), EYE_CONTOUR[far].map((i) => cur[i]!), Math.max(1, floor));
+  if (!t) return [...cur];
+  const eye = far === "R" ? LM.eyeA : LM.eyeB, brow = far === "R" ? LM.browA : LM.browB;
+  const k = browSpanRatio(baseLm, cur, brow, g.browHalf ? Math.floor(brow.upper.length / 2) : 0);
+  let fix = (q: Pt): Pt => q;
+  const O = applyAffine(t, baseLm[eye.outer]!), I = applyAffine(t, baseLm[eye.inner]!);
+  const len = Math.hypot(O.x - I.x, O.y - I.y);
+  if (len < 1e-6) return [...cur];
+  const dir = { x: (O.x - I.x) / len, y: (O.y - I.y) / len };
+  if (k) {
+    const want = k * Math.hypot(baseLm[eye.outer]!.x - baseLm[eye.inner]!.x, baseLm[eye.outer]!.y - baseLm[eye.inner]!.y);
+    const f = Math.min(2, Math.max(0.5, want / len));
+    const anchor = g.anchorInner ? I : { x: (O.x + I.x) / 2, y: (O.y + I.y) / 2 };
+    fix = (q) => stretchAlong(q, anchor, dir, f);
+  }
+  if (g.capHeight) {
+    const n = { x: -dir.y, y: dir.x }, m = Math.floor(eye.upper.length / 2);
+    const up = fix(applyAffine(t, baseLm[eye.upper[m]!]!)), lo = fix(applyAffine(t, baseLm[eye.lower[m]!]!));
+    const h = Math.abs((up.x - lo.x) * n.x + (up.y - lo.y) * n.y);
+    const bo = baseLm[eye.outer]!, bi = baseLm[eye.inner]!, bl = Math.hypot(bo.x - bi.x, bo.y - bi.y) || 1;
+    const bn = { x: -(bo.y - bi.y) / bl, y: (bo.x - bi.x) / bl }, bu = baseLm[eye.upper[m]!]!, bw = baseLm[eye.lower[m]!]!;
+    const hb = Math.abs((bu.x - bw.x) * bn.x + (bu.y - bw.y) * bn.y);
+    const sv = Math.hypot(cur[10]!.x - cur[168]!.x, cur[10]!.y - cur[168]!.y) / (Math.hypot(baseLm[10]!.x - baseLm[168]!.x, baseLm[10]!.y - baseLm[168]!.y) || 1);
+    if (h > hb * sv && h > 1e-6) {
+      const before = fix, a = before(O), b = before(I), c = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, s = (hb * sv) / h;
+      fix = (q) => stretchAlong(before(q), c, n, s);
+    }
+  }
+  if (g.outerFromBrow) {
+    const want = outerFromBrow(baseLm, cur, eye.outer, brow);
+    if (want) {
+      const before = fix, a = before(I), b = before(O);
+      const have = (b.x - a.x) * dir.x + (b.y - a.y) * dir.y, need = (want.x - a.x) * dir.x + (want.y - a.y) * dir.y;
+      if (have > 1e-6 && need > have) {
+        const f2 = Math.min(2, need / have);
+        fix = (q) => stretchAlong(before(q), a, dir, f2);
+      }
+    }
+  }
+  const out = [...cur];
+  for (const i of EYE_CONTOUR[far]) {
+    const p = cur[i]!, q = fix(applyAffine(t, baseLm[i]!));
+    out[i] = { x: p.x + (q.x - p.x) * w, y: p.y + (q.y - p.y) * w };
+  }
+  return out;
+}
 
 export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
   return {
@@ -198,7 +262,9 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
                 paintMakeup({ mul: atlas.mul.getContext("2d")!, col: atlas.col.getContext("2d")!, light: atlas.light.getContext("2d")! }, off, ref, paintLook, p, p.liner.plan.style, LASHES);
               }
               if (hairOn && lm && ref && ticker.due(now)) segment(now, w, hh);
-              gl.render(video, w, hh, atlas.mul, atlas.col, atlas.light, lm && ref ? { lm, ref, beauty: 0.3, radius: w * 0.004, hair } : null);
+              // 먼 쪽 눈 보정(#277) — 메시 워프 꼭짓점으로 그대로 들어가니 그 눈 위 화장 전부가 같이 고쳐진다
+              const fixedLm = lm && ref ? correctFarEye(ref, lm) : lm;
+              gl.render(video, w, hh, atlas.mul, atlas.col, atlas.light, fixedLm && ref ? { lm: fixedLm, ref, beauty: 0.3, radius: w * 0.004, hair } : null);
               if (!live) {
                 live = true;
                 stage.replaceChildren(canvas);

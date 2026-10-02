@@ -140,8 +140,8 @@ function nearerEye(poly: readonly Pt[], lm: readonly Pt[]): Side {
   return Math.hypot(m.x - r.x, m.y - r.y) <= Math.hypot(m.x - l.x, m.y - l.y) ? "R" : "L";
 }
 
-/** 먼 쪽 눈 = 코끝이 움직인 쪽 눈 (고개를 돌리면 먼 쪽 눈이 코 뒤로 간다) */
-const farSide = (d: number, cur: readonly Pt[]): Side => ((d > 0) === (eyeCenter("R", cur).x > eyeCenter("L", cur).x) ? "R" : "L");
+/** 먼 쪽 눈 = 코끝이 움직인 쪽 눈 (고개를 돌리면 먼 쪽 눈이 코 뒤로 간다). 2-b AR(fullrender.ts)도 같은 보정에 쓴다 — 중복 구현 금지 */
+export const farSide = (d: number, cur: readonly Pt[]): Side => ((d > 0) === (eyeCenter("R", cur).x > eyeCenter("L", cur).x) ? "R" : "L");
 
 /**
  * C안: 고개를 많이 돌리면 먼 쪽 눈 테두리를 정면 눈 모양 틀로 — 지금 눈꺼풀 점에 틀을 맞추고 튀는 점은 무시 (eye-fit, 2026-10-02 PC).
@@ -230,8 +230,11 @@ function farEyeFit(o: Outline, base: readonly (readonly Pt[])[], sides: readonly
   };
 }
 
-/** 눈썹(가운데 → 바깥 끝, 위·아래 평균)을 축으로 정면 눈꼬리 끝의 자리를 기억해 두고 지금 눈썹에 놓는다 (H안). 눈썹이 납작하면 null */
-function outerFromBrow(baseLm: readonly Pt[], cur: readonly Pt[], outer: number, brow: { upper: readonly number[]; lower: readonly number[] }): Pt | null {
+/**
+ * 눈썹(가운데 → 바깥 끝, 위·아래 평균)을 축으로 정면 눈꼬리 끝의 자리를 기억해 두고 지금 눈썹에 놓는다 (H안).
+ * 눈썹이 납작하면 null. 2-b AR(fullrender.ts)도 같은 보정에 쓴다 — 중복 구현 금지
+ */
+export function outerFromBrow(baseLm: readonly Pt[], cur: readonly Pt[], outer: number, brow: { upper: readonly number[]; lower: readonly number[] }): Pt | null {
   const mid = Math.floor(brow.upper.length / 2);
   const avg = (lm: readonly Pt[], k: number): Pt => ({ x: (lm[brow.upper[k]!]!.x + lm[brow.lower[k]!]!.x) / 2, y: (lm[brow.upper[k]!]!.y + lm[brow.lower[k]!]!.y) / 2 });
   const frame = (lm: readonly Pt[]) => {
