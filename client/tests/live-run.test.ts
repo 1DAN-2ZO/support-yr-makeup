@@ -1,7 +1,7 @@
 // 화면 4 진행 (2-1 넷째 조각, #21) 검증 — 카메라 없이 프레임 측정값만 넣는다
 // 프레임마다: 게이트 한 줄 · 가이드 테두리 · (확인받기 뒤) 묶음 모으기
 import { describe, expect, it } from "vitest";
-import { FAR_FADE, createLiveRun, type LiveFrame } from "@core/live-run";
+import { FAR_EYE_DEFAULT, FAR_FADE, createLiveRun, type LiveFrame } from "@core/live-run";
 import { GATE_TEXT, LIVE_LIMITS, RIGID_POSE, poseOf } from "@core/gate";
 import { linerOutline, lookGuide } from "@core/guides";
 import type { GuideSource } from "@core/score-part";
@@ -385,13 +385,14 @@ describe("live run", () => {
     expect(lashX(far).length).toBeGreaterThan(0);
   });
 
-  // G안 (F안 다듬기, 2026-10-02 PC): 1 눈머리 고정 · 2 눈썹 앞쪽 절반 비율 · 3 높이는 정면보다 커지지 않게 — 화면 4 ?g=0·1·12·123 로 하나씩 비교
-  const G_ALL = { anchorInner: true, browHalf: true, capHeight: true };
+  // G안 (F안 다듬기, 2026-10-02 PC): 1 눈머리 고정 · 2 눈썹 앞쪽 절반 비율 · 3 높이는 정면보다 커지지 않게 — 화면 4 ?g= 로 하나씩 비교.
+  // 1 은 PC 에서 MediaPipe 눈머리 점 자체가 끌려가 있어 기본에서 뺐다. H안: 눈꼬리 끝은 먼 쪽 눈썹 꼬리 위치로
+  const G_ALL = { anchorInner: true, browHalf: true, capHeight: true, outerFromBrow: false };
   const linerG = (lm: Pt[], farEye: typeof G_ALL) => createLiveRun<string>({ partId: "liner", baseline: { lm: FACE, foreheadL: SKIN.L }, guide: lookGuide({}), smooth: false, farEye }).step(frame({ lm })).outline!;
   const nearPt = (poly: readonly Pt[], q: Pt, eps: number) => poly.some((p) => Math.hypot(p.x - q.x, p.y - q.y) < eps);
   const B = LM.eyeB;
 
-  it("L40 G1 눈머리 고정 — 먼 쪽 눈꺼풀 점이 눈머리 쪽으로 쪼그라들면(눈머리는 맞고 눈꼬리만 짧음) 눈머리는 그대로 두고 눈꼬리 쪽으로만 늘인다", () => {
+  it("L40 G1 눈머리 고정 (기본 꺼짐) — 먼 쪽 눈꺼풀 점이 눈머리 쪽으로 쪼그라들면 눈머리는 그대로 두고 눈꼬리 쪽으로만 늘인다", () => {
     const lm = turnedFace(0.25), ix = FACE[B.inner]!.x;
     for (const i of [...B.upper, ...B.lower]) lm[i] = { x: ix + (FACE[i]!.x - ix) * 0.6, y: FACE[i]!.y };
     const g1 = farPoly(linerG(lm, G_ALL)), mid = farPoly(linerG(lm, { ...G_ALL, anchorInner: false }));
@@ -421,6 +422,19 @@ describe("live run", () => {
     const shut = turnedFace(0.25);
     for (const i of [...B.upper, ...B.lower]) shut[i] = { x: FACE[i]!.x, y: 250 + (FACE[i]!.y - 250) * 0.4 };
     expect(nearPt(farPoly(linerG(shut, G_ALL)), shut[top]!, 1)).toBe(true);
+  });
+
+  it("L43 H안 — 먼 쪽 눈꼬리 끝은 먼 쪽 눈썹 꼬리 위치로 (정면에서 본 눈꼬리 ↔ 눈썹 관계). 눈꼬리 쪽이 짧게 잡혀도 끝까지 편다 · 줄이지는 않는다", () => {
+    expect(FAR_EYE_DEFAULT).toEqual({ anchorInner: false, browHalf: true, capHeight: true, outerFromBrow: true });
+    const lm = turnedFace(0.25), ix = FACE[B.inner]!.x;
+    for (const i of [...B.upper, ...B.lower]) lm[i] = { x: ix + (FACE[i]!.x - ix) * 0.6, y: FACE[i]!.y };   // 눈꼬리 쪽이 짧게
+    const withH = farPoly(linerG(lm, { ...FAR_EYE_DEFAULT })), noH = farPoly(linerG(lm, { ...FAR_EYE_DEFAULT, outerFromBrow: false }));
+    expect(nearPt(withH, FACE[B.outer]!, 1)).toBe(true);
+    expect(nearPt(noH, FACE[B.outer]!, 5)).toBe(false);
+    // 눈이 통째로 바깥으로 7px 옮겨 잡혔으면(눈썹 기준보다 더 바깥) 줄여서 끌어당기지 않는다
+    const out = turnedFace(0.25);
+    for (const i of [...B.upper, ...B.lower]) out[i] = { x: FACE[i]!.x + 7, y: FACE[i]!.y };
+    expect(nearPt(farPoly(linerG(out, { ...FAR_EYE_DEFAULT })), out[B.outer]!, 0.5)).toBe(true);
   });
 
   it("L38 많이 돌린 채 먼 쪽 눈이 통째로 움직이면 틀도 같이 움직인다 — A·B안처럼 얼어붙지 않는다", () => {

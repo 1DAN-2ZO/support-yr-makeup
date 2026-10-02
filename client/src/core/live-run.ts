@@ -65,20 +65,23 @@ export interface LiveRunOptions {
   /** 테두리를 그릴 점에 One-Euro(④ smoothing.ts, 값은 LIVE_SMOOTH)를 건다. 기본 켬 — 떨림 비교(#23)용으로 끌 수 있다 */
   smooth?: boolean;
   limits?: LiveLimits;
-  /** 먼 쪽 눈 틀 맞추기 다듬기(G안)를 하나씩 켜고 끄기 — 화면 4 개발용 ?g=0·1·12·123 비교. 기본 전부 켬 */
+  /** 먼 쪽 눈 틀 맞추기 다듬기(G안 · H안)를 하나씩 켜고 끄기 — 화면 4 개발용 ?g= 비교. 기본 FAR_EYE_DEFAULT */
   farEye?: FarEyeOptions;
 }
 
 export interface FarEyeOptions {
-  /** 1 눈 폭을 고칠 때 눈머리를 고정하고 눈꼬리 쪽으로만 (아니면 가운데 기준 — F안) */
+  /** 1 눈 폭을 고칠 때 MediaPipe 눈머리를 고정하고 눈꼬리 쪽으로만 (아니면 가운데 기준 — F안). PC 에서 그 눈머리 점도 끌려가 있어 기본 꺼짐 */
   anchorInner: boolean;
   /** 2 눈 폭 비율을 눈썹 앞쪽 절반으로 (아니면 눈썹 전체) */
   browHalf: boolean;
   /** 3 높이는 정면보다 커지지 않게 — 눈을 감아 작아지는 것만 따라감 */
   capHeight: boolean;
+  /** H 눈꼬리 끝은 먼 쪽 눈썹 꼬리 위치로 (정면에서 본 눈꼬리 ↔ 눈썹 관계). 늘리기만 한다 */
+  outerFromBrow: boolean;
 }
 
-const FAR_EYE_ALL: FarEyeOptions = { anchorInner: true, browHalf: true, capHeight: true };
+/** PC 시험(2026-10-02)으로 고른 조합 — 2 · 3 · H */
+export const FAR_EYE_DEFAULT: FarEyeOptions = { anchorInner: false, browHalf: true, capHeight: true, outerFromBrow: true };
 
 export interface LiveStep<I> {
   gate: GateResult;
@@ -140,7 +143,7 @@ const farSide = (d: number, cur: readonly Pt[]): Side => ((d > 0) === (eyeCenter
  * C안: 고개를 많이 돌리면 먼 쪽 눈 테두리를 정면 눈 모양 틀로 — 지금 눈꺼풀 점에 틀을 맞추고 튀는 점은 무시 (eye-fit, 2026-10-02 PC).
  * 각도 차 12 → 25 에서 그물(눈꺼풀 점 그대로) → 틀로 서서히. 가까운 쪽은 그대로
  */
-function farEyeFit(o: Outline, base: readonly (readonly Pt[])[], sides: readonly Side[], baseLm: readonly Pt[], cur: readonly Pt[], g: FarEyeOptions = FAR_EYE_ALL): Outline {
+function farEyeFit(o: Outline, base: readonly (readonly Pt[])[], sides: readonly Side[], baseLm: readonly Pt[], cur: readonly Pt[], g: FarEyeOptions = FAR_EYE_DEFAULT): Outline {
   const d = rigidPoseDiff(baseLm, cur).yaw, w = farEyeWeight(Math.abs(d));
   if (w <= 0) return o;
   const far = farSide(d, cur), near: Side = far === "R" ? "L" : "R";
@@ -180,6 +183,19 @@ function farEyeFit(o: Outline, base: readonly (readonly Pt[])[], sides: readonly
       fix = (q) => stretchAlong(before(q), c, n, s);
     }
   }
+  if (g.outerFromBrow) {
+    // H안: 크게 돌리면 먼 쪽 눈 바깥쪽은 관자놀이로 돌아 들어가 눌려 보여 눈꼬리 쪽이 짧게 잡힌다. 먼 쪽 눈썹은 잘 따라오니
+    // 정면에서 본 '눈꼬리 끝 ↔ 눈썹(가운데 → 바깥 끝)' 관계로 지금 눈꼬리 끝을 정하고, 눈머리 쪽은 그대로 둔 채 그만큼 편다 (늘리기만)
+    const want = outerFromBrow(baseLm, cur, eye.outer, brow);
+    if (want) {
+      const before = fix, a = before(I), b = before(O);
+      const have = (b.x - a.x) * dir.x + (b.y - a.y) * dir.y, need = (want.x - a.x) * dir.x + (want.y - a.y) * dir.y;
+      if (have > 1e-6 && need > have) {
+        const f2 = Math.min(2, need / have);
+        fix = (q) => stretchAlong(before(q), a, dir, f2);
+      }
+    }
+  }
   return {
     polys: o.polys.map((poly, i) => (sides[i] !== far ? poly : poly.map((p, j) => {
       const q = fix(applyAffine(t, base[i]![j]!));
@@ -187,6 +203,22 @@ function farEyeFit(o: Outline, base: readonly (readonly Pt[])[], sides: readonly
     }))),
     lines: o.lines,
   };
+}
+
+/** 눈썹(가운데 → 바깥 끝, 위·아래 평균)을 축으로 정면 눈꼬리 끝의 자리를 기억해 두고 지금 눈썹에 놓는다 (H안). 눈썹이 납작하면 null */
+function outerFromBrow(baseLm: readonly Pt[], cur: readonly Pt[], outer: number, brow: { upper: readonly number[]; lower: readonly number[] }): Pt | null {
+  const mid = Math.floor(brow.upper.length / 2);
+  const avg = (lm: readonly Pt[], k: number): Pt => ({ x: (lm[brow.upper[k]!]!.x + lm[brow.lower[k]!]!.x) / 2, y: (lm[brow.upper[k]!]!.y + lm[brow.lower[k]!]!.y) / 2 });
+  const frame = (lm: readonly Pt[]) => {
+    const m = avg(lm, mid), e = avg(lm, 0), L = Math.hypot(e.x - m.x, e.y - m.y);
+    return L > 1e-6 ? { m, L, u: { x: (e.x - m.x) / L, y: (e.y - m.y) / L } } : null;
+  };
+  const fb = frame(baseLm), fc = frame(cur);
+  if (!fb || !fc) return null;
+  const o = baseLm[outer]!, dx = o.x - fb.m.x, dy = o.y - fb.m.y;
+  // 눈썹 축 좌표(눈썹 길이 단위): a = 축 방향, b = 수직
+  const a = (dx * fb.u.x + dy * fb.u.y) / fb.L, b = (-dx * fb.u.y + dy * fb.u.x) / fb.L;
+  return { x: fc.m.x + fc.L * (a * fc.u.x - b * fc.u.y), y: fc.m.y + fc.L * (a * fc.u.y + b * fc.u.x) };
 }
 
 /** 후보 1 (보관): 먼 쪽 눈 테두리 진하기 1 → min */
