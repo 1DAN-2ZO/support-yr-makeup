@@ -496,6 +496,22 @@ describe("live run", () => {
     expect(alphaOf("liner", 0.7, null).alpha).toBeNull();
   });
 
+  it("L47 I안 — 펜 때문에 눈 점이 떨려도 테두리는 덜 떨린다 (머리 움직임은 바로). eyeSmooth: null 이면 끔", () => {
+    const eye = new Set<number>([...LM.eyeB.upper, ...LM.eyeB.lower]);
+    const spread = (eyeSmooth?: null) => {
+      const lr = createLiveRun<string>({ partId: "liner", baseline: { lm: FACE, foreheadL: SKIN.L }, guide: lookGuide({}), ...(eyeSmooth === null ? { eyeSmooth } : {}) });
+      const xs: number[] = [];
+      for (let k = 0; k < 90; k++) {
+        const lm = FACE.map((p, i) => (eye.has(i) ? { x: p.x + (k % 2 ? 1.5 : -1.5), y: p.y } : p));
+        const r = lr.step(frame({ lm }));
+        if (k >= 45) xs.push(r.drawn![LM.eyeB.upper[4]!]!.x);
+      }
+      return Math.max(...xs) - Math.min(...xs);
+    };
+    expect(spread()).toBeLessThan(3 * 0.3);
+    expect(spread(null)).toBeGreaterThan(3 * 0.6);
+  });
+
   it("L24 폰을 가로로 들면 카메라가 옆이라 얼굴이 돌아간 것으로 찍힌다 — 기준 각도 차를 '오른쪽/왼쪽으로 돌려' 로 알려 준다 (폰 시험 2026-09-30)", () => {
     const turned = turnedFace(0.11);
     const r = run("liner").step(frame({ lm: turned }));
