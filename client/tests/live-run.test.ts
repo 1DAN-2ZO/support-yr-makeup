@@ -347,8 +347,9 @@ describe("live run", () => {
     expect(width(narrow) / width(wide)).toBeCloseTo(0.7, 1);
   });
 
-  // 라이너 아래 선은 MediaPipe 눈꺼풀 점 그대로 따라간다 — 눈을 감거나 내리깔 때도 붙어 있게.
-  // (고개를 많이 돌리면 먼 쪽 눈꺼풀 점이 빗나가는 일이 있어 눈 주변 점으로 옮겨 봤지만 더 나빠져 되돌림, 2026-10-02 PC)
+  // 라이너 아래 선은 MediaPipe 눈꺼풀 점을 따라간다 — 눈을 감거나 내리깔 때도 붙어 있게.
+  // 고개를 많이 돌리면 먼 쪽 눈꺼풀 점 몇 개가 빗나간다(먼 쪽 눈머리가 코 쪽으로) → C안: 정면 눈 모양 틀을 지금 눈꺼풀 점에 맞추고 튀는 점은 무시
+  // (A안 눈 주변 점 평면 변환 · B안 머리 입체 회전은 더 나빠져 되돌림, 2026-10-02 PC)
   const dragged = (f: number): Pt[] => {
     const lm = turnedFace(f);   // 코끝이 이미지 오른쪽으로 → 먼 쪽 눈 = 이미지 오른쪽 눈(eyeB)
     lm[LM.eyeB.inner] = { x: lm[LM.eyeB.inner]!.x - 20, y: lm[LM.eyeB.inner]!.y };
@@ -358,11 +359,25 @@ describe("live run", () => {
   const farPoly = (o: { polys: Pt[][] }) => o.polys.reduce((a, b) => (Math.max(...b.map((p) => p.x)) > Math.max(...a.map((p) => p.x)) ? b : a));
   const dragTip = () => ({ x: FACE[LM.eyeB.inner]!.x - 20, y: FACE[LM.eyeB.inner]!.y });
 
-  it("L33 고개를 돌려도 라이너는 눈꺼풀 점을 따라간다 — 눈을 감거나 내리깔 때도 붙어 있게", () => {
-    for (const turn of [0.05, 0.25]) {
-      const got = farPoly(linerAt(dragged(turn)));
-      expect(got.some((p) => Math.hypot(p.x - dragTip().x, p.y - dragTip().y) < 1e-6), String(turn)).toBe(true);
-    }
+  it("L33 조금 돌렸을 때(각도 차 12 안)는 라이너가 눈꺼풀 점을 그대로 따라간다", () => {
+    const got = farPoly(linerAt(dragged(0.05)));
+    expect(got.some((p) => Math.hypot(p.x - dragTip().x, p.y - dragTip().y) < 1e-6)).toBe(true);
+  });
+
+  it("L37 많이 돌리면(각도 차 25 넘게) 먼 쪽 눈은 눈 모양 틀로 — 튀는 눈꺼풀 점 하나는 무시, 가까운 쪽은 그대로 점을 따라간다 (C안)", () => {
+    const lm = dragged(0.25), nearTip = { x: lm[LM.eyeA.inner]!.x + 6, y: lm[LM.eyeA.inner]!.y + 3 };
+    lm[LM.eyeA.inner] = nearTip;
+    const o = linerAt(lm), far = farPoly(o), nearP = o.polys.find((q) => q !== far)!;
+    expect(far.some((p) => Math.hypot(p.x - dragTip().x, p.y - dragTip().y) < 5)).toBe(false);
+    expect(far.some((p) => Math.hypot(p.x - FACE[LM.eyeB.inner]!.x, p.y - FACE[LM.eyeB.inner]!.y) < 0.5)).toBe(true);
+    expect(nearP.some((p) => Math.hypot(p.x - nearTip.x, p.y - nearTip.y) < 1e-6)).toBe(true);
+  });
+
+  it("L38 많이 돌린 채 먼 쪽 눈이 통째로 움직이면 틀도 같이 움직인다 — A·B안처럼 얼어붙지 않는다", () => {
+    const lm = turnedFace(0.25);
+    for (const i of [...LM.eyeB.upper, ...LM.eyeB.lower]) lm[i] = { x: FACE[i]!.x + 7, y: FACE[i]!.y - 4 };
+    const far = farPoly(linerAt(lm));
+    for (const i of LM.eyeB.upper) expect(far.some((p) => Math.hypot(p.x - lm[i]!.x, p.y - lm[i]!.y) < 0.5), String(i)).toBe(true);
   });
 
   it("L36 고개를 많이 돌리면 먼 쪽 눈 테두리는 흐리게 — 붙게 만들 수 없는 각도라 믿고 따라 그리지 않게 (2026-10-02 PC). 가까운 쪽 · 조금 돌렸을 때 · 눈 아닌 부위는 그대로", () => {

@@ -200,6 +200,8 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
       // 개발용 ?gate: 게이트가 본 값(선명 · 막힌 조건 · 안정 수 · 각도 · 표정 …) — 폰 시험에서 왜 안 넘어가는지 숫자로 (2026-09-30)
       const gateDbg = q.has("gate") ? recentStats(90) : null;
       const dots = q.has("dots");
+      // 후보 1(먼 쪽 눈 흐리게)은 보관 — 주소에 ?fade 를 붙일 때만 (2026-10-02)
+      const fade = q.has("fade");
       if (meter || poseCal || gateDbg) {
         stage.append(readout);
         readout.addEventListener("click", () => {
@@ -305,7 +307,7 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
           readout.style.whiteSpace = "pre";
           readout.textContent = poseCal.step(lm, res.facialTransformationMatrixes?.[0]?.data ?? null, f.expr?.["jawOpen"] ?? 0);
         }
-        const vm = drawView(view, video, shown, r.outline, dots && lm ? EYE_DOTS.map((i) => lm[i]!) : null, r.alpha);
+        const vm = drawView(view, video, shown, r.outline, dots && lm ? EYE_DOTS.map((i) => lm[i]!) : null, fade ? r.alpha : null);
         if (meter && vm && r.outline) {
           // 화면 흔들림: 영상의 고정된 한 점(가운데)이 캔버스에서 어디 찍히나 — 창이 움직이면 사진 전체가 튄다
           meter.view.push([{ x: (sw / 2 - vm.crop.x) * vm.s + vm.ox, y: (sh / 2 - vm.crop.y) * vm.s + vm.oy }]);

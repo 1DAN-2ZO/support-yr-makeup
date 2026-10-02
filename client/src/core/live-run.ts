@@ -21,6 +21,7 @@ import { partInRect } from "./landmarks";
 import { pinOutline, placeOutline } from "./mesh-pin";
 import { LM } from "./landmarks";
 import type { Side } from "./score";
+import { EYE_CONTOUR, applyAffine, farEyeWeight, robustAffine } from "./eye-fit";
 import { foreheadStep, startForeheadTrack, type ForeheadTrack } from "./occlusion";
 import { guideOutline, type Outline } from "./overlay";
 import type { GuideSource } from "./score-part";
@@ -119,12 +120,37 @@ function nearerEye(poly: readonly Pt[], lm: readonly Pt[]): Side {
   return Math.hypot(m.x - r.x, m.y - r.y) <= Math.hypot(m.x - l.x, m.y - l.y) ? "R" : "L";
 }
 
-/** 먼 쪽 눈 테두리 진하기 1 → min. 먼 쪽 = 코끝이 움직인 쪽 눈 (고개를 돌리면 먼 쪽 눈이 코 뒤로 간다) */
+/** 먼 쪽 눈 = 코끝이 움직인 쪽 눈 (고개를 돌리면 먼 쪽 눈이 코 뒤로 간다) */
+const farSide = (d: number, cur: readonly Pt[]): Side => ((d > 0) === (eyeCenter("R", cur).x > eyeCenter("L", cur).x) ? "R" : "L");
+
+/**
+ * C안: 고개를 많이 돌리면 먼 쪽 눈 테두리를 정면 눈 모양 틀로 — 지금 눈꺼풀 점에 틀을 맞추고 튀는 점은 무시 (eye-fit, 2026-10-02 PC).
+ * 각도 차 12 → 25 에서 그물(눈꺼풀 점 그대로) → 틀로 서서히. 가까운 쪽은 그대로
+ */
+function farEyeFit(o: Outline, base: readonly (readonly Pt[])[], sides: readonly Side[], baseLm: readonly Pt[], cur: readonly Pt[]): Outline {
+  const d = rigidPoseDiff(baseLm, cur).yaw, w = farEyeWeight(Math.abs(d));
+  if (w <= 0) return o;
+  const far = farSide(d, cur), near: Side = far === "R" ? "L" : "R";
+  // 점 흔들림(px)은 튀는 점으로 안 본다 — 가까운 쪽 눈 폭의 3% (가까운 쪽은 잘 잡힌다)
+  const nearEye = near === "R" ? LM.eyeA : LM.eyeB;
+  const floor = 0.03 * Math.hypot(cur[nearEye.outer]!.x - cur[nearEye.inner]!.x, cur[nearEye.outer]!.y - cur[nearEye.inner]!.y);
+  const t = robustAffine(EYE_CONTOUR[far].map((i) => baseLm[i]!), EYE_CONTOUR[far].map((i) => cur[i]!), Math.max(1, floor));
+  if (!t) return o;
+  return {
+    polys: o.polys.map((poly, i) => (sides[i] !== far ? poly : poly.map((p, j) => {
+      const q = applyAffine(t, base[i]![j]!);
+      return { x: p.x + (q.x - p.x) * w, y: p.y + (q.y - p.y) * w };
+    }))),
+    lines: o.lines,
+  };
+}
+
+/** 후보 1 (보관): 먼 쪽 눈 테두리 진하기 1 → min */
 function farEyeAlpha(sides: readonly Side[], baseLm: readonly Pt[], cur: readonly Pt[]): number[] {
   const d = rigidPoseDiff(baseLm, cur).yaw;
   const t = Math.min(1, Math.max(0, (Math.abs(d) - FAR_FADE.from) / (FAR_FADE.to - FAR_FADE.from)));
   const a = 1 - (1 - FAR_FADE.min) * t * t * (3 - 2 * t);
-  const far: Side = (d > 0) === (eyeCenter("R", cur).x > eyeCenter("L", cur).x) ? "R" : "L";
+  const far = farSide(d, cur);
   return sides.map((s) => (s === far ? a : 1));
 }
 
@@ -144,8 +170,9 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
   // 매 장면 새로 그리면 크기·각도가 화면 기준(눈 폭 평균 · 화면 위쪽)이라 고개를 돌릴 때 원근이 안 들어가 어긋났다 (2026-10-02 PC).
   // 화면 3(맨얼굴 사진 위 테두리)·채점(맨얼굴 기준)과도 같은 모양
   const pinned = pinOutline(outlineOf(opt.partId, opt.baseline.lm, opt.guide), opt.baseline.lm);
-  // 눈 부위: 테두리 다각형마다 어느 눈 쪽인지 — 고개를 많이 돌리면 먼 쪽을 흐리게 (FAR_FADE)
-  const sides = EYE_PARTS.includes(opt.partId) ? placeOutline(pinned, opt.baseline.lm).polys.map((poly) => nearerEye(poly, opt.baseline.lm)) : null;
+  // 눈 부위: 테두리 다각형마다 어느 눈 쪽인지 — 고개를 많이 돌리면 먼 쪽은 눈 모양 틀로(C안) · 흐리게(후보 1, 화면이 고름)
+  const baseOutline = placeOutline(pinned, opt.baseline.lm).polys;
+  const sides = EYE_PARTS.includes(opt.partId) ? baseOutline.map((poly) => nearerEye(poly, opt.baseline.lm)) : null;
 
   return {
     /** 화면 4 개발용 ?tune 슬라이더가 값을 바꾼다 */
@@ -188,7 +215,10 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
         measure = { ...m, stableCount: r.stable };
         const cur = smoother?.smooth(f.lm, f.t) ?? f.lm;
         outline = placeOutline(pinned, cur);
-        if (sides) alpha = farEyeAlpha(sides, opt.baseline.lm, cur);
+        if (sides) {
+          outline = farEyeFit(outline, baseOutline, sides, opt.baseline.lm, cur);
+          alpha = farEyeAlpha(sides, opt.baseline.lm, cur);
+        }
       }
       if (gate.ok || !softFail(gate)) softSince = null;
       else softSince ??= f.t;
