@@ -28,6 +28,13 @@ const frame = (over: Partial<LiveFrame<string>> = {}): LiveFrame<string> => {
   return { t, lm: FACE, w: W, h: H, sharpness: 400, lab: SKIN, image: () => `img${t}`, ...over };
 };
 
+/** 테두리는 그물에 붙였다 옮긴 점이라 소수점 끝자리까지는 같지 않다 — 1e-6 px 안이면 같은 점 */
+const near = (a: Pt, b: Pt): boolean => Math.abs(a.x - b.x) < 1e-6 && Math.abs(a.y - b.y) < 1e-6;
+const samePolys = (got: readonly (readonly Pt[])[], want: readonly (readonly Pt[])[]): void => {
+  expect(got.map((s) => s.length)).toEqual(want.map((s) => s.length));
+  got.forEach((s, i) => s.forEach((p, j) => expect(near(p, want[i]![j]!), `${i}:${j} ${JSON.stringify(p)} ≠ ${JSON.stringify(want[i]![j])}`).toBe(true)));
+};
+
 /** 코끝이 이미지 오른쪽으로 눈꼬리 거리의 f 배 — 0.11 이면 강체 yaw 약 13.6° (차 한계 12°, 정면 한계 15° 안), 0.13 이면 약 16° (정면 한계도 넘음) */
 const turnedFace = (f: number): Pt[] => {
   const D = Math.hypot(FACE[LM.eyeB.outer]!.x - FACE[LM.eyeA.outer]!.x, FACE[LM.eyeB.outer]!.y - FACE[LM.eyeA.outer]!.y);
@@ -56,12 +63,12 @@ describe("live run", () => {
   it("L3 라이너 테두리 = 두께 윤곽(linerOutline) 좌우 두 다각형", () => {
     const r = run("liner").step(frame());
     const want = linerOutline({ lm: FACE, unit: unitScale(FACE) }, 0.045);
-    expect(r.outline!.polys).toEqual([want.R, want.L]);
+    samePolys(r.outline!.polys, [want.R, want.L]);
   });
 
   it("L4 입술 테두리 = 입술 바깥 윤곽", () => {
     const r = run("lip").step(frame());
-    expect(r.outline!.polys).toEqual([LM.lipsOuter.map((i) => FACE[i]!)]);
+    samePolys(r.outline!.polys, [LM.lipsOuter.map((i) => FACE[i]!)]);
   });
 
   it("L5 게이트를 통과하기 전에는 확인받기가 안 눌린다", () => {
@@ -163,10 +170,10 @@ describe("live run", () => {
       ? { liner: { wing: { R: [FACE[LM.eyeA.outer]!, tipR], L: [FACE[LM.eyeB.outer]!, tipL] }, thick: 0.08 } }
       : lookGuide({})(p, f));
     const o = run("liner", custom).step(frame()).outline!;
-    expect(o.polys[0]).toContainEqual(tipR);
-    expect(o.polys[1]).toContainEqual(tipL);
+    expect(o.polys[0]!.some((p) => near(p, tipR))).toBe(true);
+    expect(o.polys[1]!.some((p) => near(p, tipL))).toBe(true);
     const want = linerOutline({ lm: FACE, unit: unitScale(FACE) }, 0.08, { R: [FACE[LM.eyeA.outer]!, tipR], L: [FACE[LM.eyeB.outer]!, tipL] });
-    expect(o.polys).toEqual([want.R, want.L]);
+    samePolys(o.polys, [want.R, want.L]);
   });
 
   // LIVE_SMOOTH(10 · 1 · 5)는 따라오기 우선이라 거의 끈 것에 가깝다 — 번갈아 ±3px 떨림 폭: 끔 6 · LIVE 5.3 · 2-b 값 2.9 · ④ 기본 1.7.
@@ -327,6 +334,17 @@ describe("live run", () => {
     const rs = [lr.step(frame()), lr.step(frame())];
     expect(rs.map((r) => r.pressable)).toEqual([false, true]);
     expect(rs.map((r) => r.gate.ok)).toEqual([false, true]);
+  });
+
+  it("L31 화면 4 테두리는 맨얼굴 정면에서 그린 모양을 얼굴 그물에 붙여 옮긴다 — 고개를 돌려 한쪽이 좁아지면 그쪽 테두리도 좁아진다 (2026-10-02 PC)", () => {
+    // 화면 왼쪽 절반만 가로로 0.7 배 (먼 쪽 얼굴이 좁아 보이는 것). 볼 타원은 얼굴 폭 비율로 그려서, 매번 새로 그리면 양쪽 크기가 같다
+    const cx = 300;
+    const turned = FACE.map((p) => (p.x < cx ? { x: cx + (p.x - cx) * 0.7, y: p.y } : p));
+    const o = createLiveRun<string>({ partId: "cheek", baseline: { lm: FACE, foreheadL: SKIN.L }, guide: lookGuide({}), smooth: false }).step(frame({ lm: turned })).outline!;
+    const width = (poly: readonly Pt[]) => Math.max(...poly.map((p) => p.x)) - Math.min(...poly.map((p) => p.x));
+    const [a, b] = o.polys;
+    const [narrow, wide] = Math.min(...a!.map((p) => p.x)) < cx ? [a!, b!] : [b!, a!];
+    expect(width(narrow) / width(wide)).toBeCloseTo(0.7, 1);
   });
 
   it("L24 폰을 가로로 들면 카메라가 옆이라 얼굴이 돌아간 것으로 찍힌다 — 기준 각도 차를 '오른쪽/왼쪽으로 돌려' 로 알려 준다 (폰 시험 2026-09-30)", () => {

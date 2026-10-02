@@ -18,6 +18,7 @@ import { exprDiff } from "./expression";
 import { gateStep, rigidPoseDiff, softFail, type LiveLimits, LIVE_LIMITS, livePose, type LiveMeasure } from "./gate";
 import { linerOutline, GUIDE_PARAMS } from "./guides";
 import { partInRect } from "./landmarks";
+import { pinOutline, placeOutline } from "./mesh-pin";
 import { foreheadStep, startForeheadTrack, type ForeheadTrack } from "./occlusion";
 import { guideOutline, type Outline } from "./overlay";
 import type { GuideSource } from "./score-part";
@@ -105,6 +106,10 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
   // 그리기 전용. 게이트·묶음(채점)에는 원래 점을 쓴다 — 필터 지연이 채점 위치를 끌고 가지 않게.
   // 값은 LIVE_SMOOTH (#235: ④ 기본값 2.5·0.08 은 라이너 테두리가 늦게 따라와 눈알 위에 박혔다)
   const smoother = opt.smooth === false ? null : new LandmarkSmoother(Array.from({ length: 478 }, (_, i) => i), LIVE_SMOOTH);
+  // 테두리는 맨얼굴(기준) 정면에서 한 번 그려 얼굴 그물에 붙이고, 매 장면 지금 얼굴로 옮긴다 (2-b AR 화장과 같은 방식).
+  // 매 장면 새로 그리면 크기·각도가 화면 기준(눈 폭 평균 · 화면 위쪽)이라 고개를 돌릴 때 원근이 안 들어가 어긋났다 (2026-10-02 PC).
+  // 화면 3(맨얼굴 사진 위 테두리)·채점(맨얼굴 기준)과도 같은 모양
+  const pinned = pinOutline(outlineOf(opt.partId, opt.baseline.lm, opt.guide), opt.baseline.lm);
 
   return {
     /** 화면 4 개발용 ?tune 슬라이더가 값을 바꾼다 */
@@ -144,7 +149,7 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
         stable = r.stable;
         gate = r.gate;
         measure = { ...m, stableCount: r.stable };
-        outline = outlineOf(opt.partId, smoother?.smooth(f.lm, f.t) ?? f.lm, opt.guide);
+        outline = placeOutline(pinned, smoother?.smooth(f.lm, f.t) ?? f.lm);
       }
       if (gate.ok || !softFail(gate)) softSince = null;
       else softSince ??= f.t;
