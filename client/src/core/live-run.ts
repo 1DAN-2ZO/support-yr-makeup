@@ -67,6 +67,8 @@ export interface LiveRunOptions {
   limits?: LiveLimits;
   /** 먼 쪽 눈 틀 맞추기 다듬기(G안 · H안)를 하나씩 켜고 끄기 — 화면 4 개발용 ?g= 비교. 기본 FAR_EYE_DEFAULT */
   farEye?: FarEyeOptions;
+  /** 아주 크게 돌렸을 때 먼 쪽 눈 흐리게(후보 1)의 구간. null 이면 끔. 기본 FAR_FADE — 화면 4 개발용 ?fade= */
+  fade?: FadeRange | null;
 }
 
 export interface FarEyeOptions {
@@ -120,11 +122,13 @@ export function outlineOf(partId: PartId, lm: readonly Pt[], guide: GuideSource)
 const optExpr = (d: number | undefined): { exprDiff?: number } => (d === undefined ? {} : { exprDiff: d });
 
 /**
- * 고개를 많이 돌리면 먼 쪽 눈 테두리를 흐리게 (2026-10-02 PC) — 그 각도에선 MediaPipe 가 먼 쪽 눈꺼풀을 빗나가게 잡아
- * 테두리를 붙일 수 없었다(눈 주변 점 평면 변환 · 머리 입체 회전 둘 다 더 나빴다). 틀린 선을 믿고 따라 그리지 않게.
- * 각도 차(rigidPoseDiff 눈금, 화면 4 한계 12 와 같은 눈금) from 까지 그대로 → to 부터 min. 가정값
+ * 후보 1 — 아주 크게 돌리면 먼 쪽 눈 테두리를 흐리게 (2026-10-02 PC). 먼 쪽 눈 틀 맞추기(C · F · G · H)로 각도 차 40~59 에서도
+ * 붙는 걸 봤으니 그 너머, 그것으로도 못 잡는 각도에서만 — 틀린 선을 믿고 따라 그리지 않게.
+ * 각도 차(rigidPoseDiff 눈금, 화면 4 한계 12 와 같은 눈금) from 까지 그대로 → to 부터 min. 가정값 — 화면 4 ?fade=from-to 로 바꿔 본다
  */
-export const FAR_FADE = { from: 15, to: 30, min: 0.25 } as const;
+export const FAR_FADE: FadeRange = { from: 55, to: 75, min: 0.3 };
+
+export interface FadeRange { from: number; to: number; min: number }
 
 const EYE_PARTS: readonly PartId[] = ["brow", "liner", "shadow"];
 const EYE_IDS: Record<Side, readonly number[]> = { R: [...LM.eyeA.upper, ...LM.eyeA.lower], L: [...LM.eyeB.upper, ...LM.eyeB.lower] };
@@ -242,11 +246,11 @@ function outerFromBrow(baseLm: readonly Pt[], cur: readonly Pt[], outer: number,
   return { x: fc.m.x + fc.L * (a * fc.u.x - b * fc.u.y), y: fc.m.y + fc.L * (a * fc.u.y + b * fc.u.x) };
 }
 
-/** 후보 1 (보관): 먼 쪽 눈 테두리 진하기 1 → min */
-function farEyeAlpha(sides: readonly Side[], baseLm: readonly Pt[], cur: readonly Pt[]): number[] {
+/** 후보 1: 먼 쪽 눈 테두리 진하기 1 → min */
+function farEyeAlpha(sides: readonly Side[], baseLm: readonly Pt[], cur: readonly Pt[], r: FadeRange): number[] {
   const d = rigidPoseDiff(baseLm, cur).yaw;
-  const t = Math.min(1, Math.max(0, (Math.abs(d) - FAR_FADE.from) / (FAR_FADE.to - FAR_FADE.from)));
-  const a = 1 - (1 - FAR_FADE.min) * t * t * (3 - 2 * t);
+  const t = Math.min(1, Math.max(0, (Math.abs(d) - r.from) / (r.to - r.from || 1)));
+  const a = 1 - (1 - r.min) * t * t * (3 - 2 * t);
   const far = farSide(d, cur);
   return sides.map((s) => (s === far ? a : 1));
 }
@@ -315,7 +319,8 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
         outline = placeOutline(pinned, cur);
         if (sides) {
           outline = farEyeFit(outline, baseOutline, sides, weights!, opt.baseline.lm, cur, opt.farEye);
-          alpha = farEyeAlpha(sides, opt.baseline.lm, cur);
+          const fade = opt.fade === undefined ? FAR_FADE : opt.fade;
+          if (fade) alpha = farEyeAlpha(sides, opt.baseline.lm, cur, fade);
         }
       }
       if (gate.ok || !softFail(gate)) softSince = null;

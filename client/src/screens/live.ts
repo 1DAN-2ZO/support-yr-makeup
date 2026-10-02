@@ -30,7 +30,7 @@ import { LM } from "@core/landmarks";
 import { createLiveEvents } from "@core/live-events";
 import { LIVE_LIMITS } from "@core/gate";
 import { gateReadout, recentStats } from "@core/gate-readout";
-import { createLiveRun, type LiveFrame } from "@core/live-run";
+import { FAR_FADE, createLiveRun, type LiveFrame } from "@core/live-run";
 import { LIVE_SMOOTH } from "@core/smooth-params";
 import type { Logger } from "@core/log";
 import type { LookPart, LookPartId } from "@core/looks";
@@ -200,8 +200,8 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
       // 개발용 ?gate: 게이트가 본 값(선명 · 막힌 조건 · 안정 수 · 각도 · 표정 …) — 폰 시험에서 왜 안 넘어가는지 숫자로 (2026-09-30)
       const gateDbg = q.has("gate") ? recentStats(90) : null;
       const dots = q.has("dots");
-      // 후보 1(먼 쪽 눈 흐리게)은 보관 — 주소에 ?fade 를 붙일 때만 (2026-10-02)
-      const fade = q.has("fade");
+      // 후보 1(아주 크게 돌렸을 때 먼 쪽 눈 흐리게) — 기본 켬. 개발용 ?fade=0 끄기 · ?fade=50-70 구간 바꾸기
+      const fadeQ = q.get("fade"), fadeR = fadeQ?.match(/^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/);
       if (meter || poseCal || gateDbg) {
         stage.append(readout);
         readout.addEventListener("click", () => {
@@ -226,6 +226,7 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         guide: deps.getGuide?.() ?? lookGuide(deps.getLookParts()),
         smooth: stab,
         // 개발용 ?g=: 먼 쪽 눈 틀 맞추기 다듬기를 하나씩 켜서 비교 (1 눈머리 고정 · 2 눈썹 앞쪽 절반 · 3 높이 제한 · h 눈꼬리를 눈썹으로). 없으면 23h
+        ...(fadeQ === "0" ? { fade: null } : fadeR ? { fade: { ...FAR_FADE, from: Number(fadeR[1]), to: Number(fadeR[2]) } } : {}),
         ...(q.has("g") ? { farEye: { anchorInner: (q.get("g") ?? "").includes("1"), browHalf: (q.get("g") ?? "").includes("2"), capHeight: (q.get("g") ?? "").includes("3"), outerFromBrow: (q.get("g") ?? "").includes("h") } } : {}),
       });
       // 개발용 ?tune: 테두리 떨림 필터 값을 폰에서 맞춘다 — 2-b 와 같은 슬라이더 (#235 · #244)
@@ -309,7 +310,7 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
           readout.style.whiteSpace = "pre";
           readout.textContent = poseCal.step(lm, res.facialTransformationMatrixes?.[0]?.data ?? null, f.expr?.["jawOpen"] ?? 0);
         }
-        const vm = drawView(view, video, shown, r.outline, dots && lm ? EYE_DOTS.map((i) => lm[i]!) : null, fade ? r.alpha : null);
+        const vm = drawView(view, video, shown, r.outline, dots && lm ? EYE_DOTS.map((i) => lm[i]!) : null, r.alpha);
         if (meter && vm && r.outline) {
           // 화면 흔들림: 영상의 고정된 한 점(가운데)이 캔버스에서 어디 찍히나 — 창이 움직이면 사진 전체가 튄다
           meter.view.push([{ x: (sw / 2 - vm.crop.x) * vm.s + vm.ox, y: (sh / 2 - vm.crop.y) * vm.s + vm.oy }]);

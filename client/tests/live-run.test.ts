@@ -473,22 +473,27 @@ describe("live run", () => {
     for (const i of LM.eyeB.upper) expect(far.some((p) => Math.hypot(p.x - lm[i]!.x, p.y - lm[i]!.y) < 0.5), String(i)).toBe(true);
   });
 
-  it("L36 고개를 많이 돌리면 먼 쪽 눈 테두리는 흐리게 — 붙게 만들 수 없는 각도라 믿고 따라 그리지 않게 (2026-10-02 PC). 가까운 쪽 · 조금 돌렸을 때 · 눈 아닌 부위는 그대로", () => {
-    expect(FAR_FADE.min).toBeLessThan(1);
-    const alphaOf = (part: "liner" | "lip", f: number) => createLiveRun<string>({ partId: part, baseline: { lm: FACE, foreheadL: SKIN.L }, guide: lookGuide({}), smooth: false }).step(frame({ lm: turnedFace(f) }));
-    // 코끝이 이미지 오른쪽으로(각도 차 약 31) → 먼 쪽 = 이미지 오른쪽 눈
-    const big = alphaOf("liner", 0.25);
+  it("L36 후보 1 — 아주 크게 돌린 각도(눈 틀 맞추기로도 못 잡는 곳)에서만 먼 쪽 눈 테두리를 흐리게. 가까운 쪽 · 덜 돌렸을 때 · 눈 아닌 부위는 그대로", () => {
+    // C·F·G·H 로 각도 차 40~59 에서도 붙는 걸 PC 로 봤다 (2026-10-02) → 그 너머에서만
+    expect(FAR_FADE).toEqual({ from: 55, to: 75, min: 0.3 });
+    const alphaOf = (part: "liner" | "lip", f: number, fade?: { from: number; to: number; min: number } | null) =>
+      createLiveRun<string>({ partId: part, baseline: { lm: FACE, foreheadL: SKIN.L }, guide: lookGuide({}), smooth: false, ...(fade !== undefined ? { fade } : {}) }).step(frame({ lm: turnedFace(f) }));
+    // 코끝이 이미지 오른쪽으로 크게(각도 차 약 87) → 먼 쪽 = 이미지 오른쪽 눈
+    const big = alphaOf("liner", 0.7);
     const rightIdx = big.outline!.polys.findIndex((q) => Math.min(...q.map((p) => p.x)) > 300);
     expect(big.alpha).toHaveLength(2);
     expect(big.alpha![rightIdx]).toBeCloseTo(FAR_FADE.min, 6);
     expect(big.alpha![1 - rightIdx]).toBe(1);
-    // 반대로 돌리면 반대쪽이 흐려진다
-    const other = alphaOf("liner", -0.25);
+    // 반대로 돌리면 반대쪽
+    const other = alphaOf("liner", -0.7);
     expect(other.alpha![rightIdx]).toBe(1);
     expect(other.alpha![1 - rightIdx]).toBeCloseTo(FAR_FADE.min, 6);
-    // 조금 돌렸을 때(각도 차 약 6) · 눈 아닌 부위는 흐리게 하지 않는다
-    expect(alphaOf("liner", 0.05).alpha).toEqual([1, 1]);
-    expect(alphaOf("lip", 0.25).alpha).toBeNull();
+    // 각도 차 약 31 (잘 붙는 범위) · 눈 아닌 부위는 흐리게 하지 않는다
+    expect(alphaOf("liner", 0.25).alpha).toEqual([1, 1]);
+    expect(alphaOf("lip", 0.7).alpha).toBeNull();
+    // 화면이 구간을 바꾸거나(?fade=15-30) 끌 수 있다(?fade=0)
+    expect(alphaOf("liner", 0.25, { from: 15, to: 30, min: 0.25 }).alpha![rightIdx]).toBeCloseTo(0.25, 6);
+    expect(alphaOf("liner", 0.7, null).alpha).toBeNull();
   });
 
   it("L24 폰을 가로로 들면 카메라가 옆이라 얼굴이 돌아간 것으로 찍힌다 — 기준 각도 차를 '오른쪽/왼쪽으로 돌려' 로 알려 준다 (폰 시험 2026-09-30)", () => {
