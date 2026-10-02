@@ -40,6 +40,7 @@ import { wantedOrientation, type ScreenId } from "@core/screens";
 import type { Baseline, CaptureBundle, PartId, Pt } from "@core/types";
 import { faceCropOf } from "@core/capture-measure";
 import { DEFAULT_LOCKS, applyCameraLocks, applyUltraWideZoom, bindVisibility, releaseCameraLocks, requestWakeLock, type WakeLockSentinelLike } from "./camera-locks";
+import { bareDepth } from "./bare-depth";
 import { startFrameLoop } from "./camera-loop";
 import { smoothTuner } from "./smooth-tune";
 import { foreheadLabOf, grabFrame, sharpnessOf } from "./frame-measure";
@@ -253,7 +254,8 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         const sw = video.videoWidth, sh = video.videoHeight;
         const res = lmk.detectForVideo(video, now);
         const raw = res.faceLandmarks[0];
-        const lm = raw ? raw.map((p) => ({ x: p.x * sw, y: p.y * sh })) : null;
+        // 깊이(z)도 같이 — 고개를 많이 돌렸을 때 먼 쪽 눈 테두리를 입체로 옮긴다 (head3d). x 와 같은 눈금(영상 폭)
+        const lm = raw ? raw.map((p) => ({ x: p.x * sw, y: p.y * sh, z: p.z * sw })) : null;
         // 확대 창: 칸 비율이 바뀌면(방향 전환) 새로 잡는다. 얼굴을 3초 넘게 잃으면 옛 자리에서 미끄러져 오지 않게 새로 (3-9 자리 비움)
         const aspect = view.clientWidth && view.clientHeight ? view.clientWidth / view.clientHeight : 3 / 4;
         if (!follow || Math.abs(aspect - followAspect) > 0.01) { follow = createCropFollow(part!, aspect); followAspect = aspect; }
@@ -357,6 +359,10 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         // 기다리는 사이 떠나거나 숨었으면(stopCamera) 루프를 켜지 않는다
         if (!alive || stream !== st) { void wake?.release().catch(() => {}); return; }
         stopLoop = startFrameLoop(video, frame);
+        // 눈 부위: 맨얼굴 사진의 깊이를 한 번 재서 넘긴다 — 오기 전까지는 지금처럼 눈꺼풀 점만 (B안 2026-10-02)
+        if (wantedOrientation(part!) === "landscape") {
+          void bareDepth(baseline!).then((z) => { if (z && alive) run.setBaseDepth(z); }).catch(() => {});
+        }
       }
 
       start().catch((e: unknown) => {
