@@ -60,6 +60,15 @@ describe("mesh pin", () => {
     close(p.lines[0]!, o.lines[0]!);
   });
 
+  it("M7 얼굴 점과 같은 자리의 점은 그 얼굴 점에 붙는다 — 이웃 삼각형 변 위에 걸쳐 있어도 (라이너 아래 선 = 눈꺼풀 점 그대로)", () => {
+    const ids = [362, 133, 33, 263];
+    const pins = pinPoints(LMS, ids.map((i) => LMS[i]!));
+    for (const [k, i] of ids.entries()) {
+      const moved = LMS.map((p, j) => (j === i ? { x: p.x - 20, y: p.y + 7 } : p));
+      close([placePins(moved, pins)[k]!], [moved[i]!]);
+    }
+  });
+
   it("M6 그물은 MediaPipe 삼각형 852개", () => {
     expect(FACE_TRIANGLES).toHaveLength(852);
   });

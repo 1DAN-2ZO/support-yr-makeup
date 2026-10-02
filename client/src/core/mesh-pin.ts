@@ -28,6 +28,11 @@ function bary(p: Pt, a: Pt, b: Pt, c: Pt): [number, number, number] | null {
 }
 
 function pinOne(base: readonly Pt[], p: Pt, tris: readonly Triangle[]): Pin {
+  // 얼굴 점과 같은 자리면 그 얼굴 점에 붙인다 — 이웃 삼각형 변 위에 걸쳐 있어도 (라이너 아래 선 = 눈꺼풀 점 그대로)
+  for (let tri = 0; tri < tris.length; tri++) {
+    const c = tris[tri]!.findIndex((k) => { const q = base[k]; return !!q && Math.abs(q.x - p.x) < 1e-9 && Math.abs(q.y - p.y) < 1e-9; });
+    if (c >= 0) return { tri, w: [c === 0 ? 1 : 0, c === 1 ? 1 : 0, c === 2 ? 1 : 0] };
+  }
   let inside: Pin | null = null, insideMin = -Infinity;
   let near: Pin | null = null, nearD = Infinity;
   tris.forEach(([i, j, k], tri) => {

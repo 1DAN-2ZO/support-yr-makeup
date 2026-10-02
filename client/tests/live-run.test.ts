@@ -347,6 +347,32 @@ describe("live run", () => {
     expect(width(narrow) / width(wide)).toBeCloseTo(0.7, 1);
   });
 
+  // 고개를 많이 돌리면 먼 쪽 눈꺼풀 점이 빗나간다 (PC 2026-10-02: 먼 쪽 눈머리가 코 쪽으로 삐져나옴) → 먼 쪽 눈은 눈 주변 점으로 옮긴다
+  const dragged = (f: number): Pt[] => {
+    const lm = turnedFace(f);   // 코끝이 이미지 오른쪽으로 → 먼 쪽 눈 = 이미지 오른쪽 눈(eyeB)
+    lm[LM.eyeB.inner] = { x: lm[LM.eyeB.inner]!.x - 20, y: lm[LM.eyeB.inner]!.y };
+    return lm;
+  };
+  const linerAt = (lm: Pt[]) => createLiveRun<string>({ partId: "liner", baseline: { lm: FACE, foreheadL: SKIN.L }, guide: lookGuide({}), smooth: false }).step(frame({ lm })).outline!;
+  const farPoly = (o: { polys: Pt[][] }) => o.polys.reduce((a, b) => (Math.max(...b.map((p) => p.x)) > Math.max(...a.map((p) => p.x)) ? b : a));
+  const dragTip = () => ({ x: FACE[LM.eyeB.inner]!.x - 20, y: FACE[LM.eyeB.inner]!.y });
+
+  it("L32 고개를 많이 돌리면(각도 차 25 넘게) 먼 쪽 눈 라이너는 눈 주변 점으로 옮긴다 — 빗나간 눈꺼풀 점을 안 따라간다. 가까운 쪽은 그대로 눈꺼풀 점", () => {
+    const base = farPoly(linerAt(FACE));
+    // 가까운 쪽(eyeA) 눈머리도 움직여 본다 — 이건 따라가야 한다
+    const lm = dragged(0.25), nearTip = { x: lm[LM.eyeA.inner]!.x + 6, y: lm[LM.eyeA.inner]!.y + 3 };
+    lm[LM.eyeA.inner] = nearTip;
+    const o = linerAt(lm), got = farPoly(o), nearP = o.polys.find((q) => q !== got)!;
+    expect(got.some((p) => Math.hypot(p.x - dragTip().x, p.y - dragTip().y) < 2)).toBe(false);
+    got.forEach((p, i) => expect(Math.hypot(p.x - base[i]!.x, p.y - base[i]!.y), String(i)).toBeLessThan(0.5));
+    expect(nearP.some((p) => Math.hypot(p.x - nearTip.x, p.y - nearTip.y) < 1e-6)).toBe(true);
+  });
+
+  it("L33 조금 돌렸을 때(각도 차 12 안)는 지금처럼 눈꺼풀 점을 따라간다 — 눈을 감거나 내리깔 때도 붙어 있게", () => {
+    const got = farPoly(linerAt(dragged(0.05)));
+    expect(got.some((p) => Math.hypot(p.x - dragTip().x, p.y - dragTip().y) < 1e-6)).toBe(true);
+  });
+
   it("L24 폰을 가로로 들면 카메라가 옆이라 얼굴이 돌아간 것으로 찍힌다 — 기준 각도 차를 '오른쪽/왼쪽으로 돌려' 로 알려 준다 (폰 시험 2026-09-30)", () => {
     const turned = turnedFace(0.11);
     const r = run("liner").step(frame({ lm: turned }));

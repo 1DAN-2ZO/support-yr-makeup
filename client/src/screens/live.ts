@@ -26,6 +26,7 @@ import type { BundleOf } from "@core/capture-bundle";
 import { ROLL_MAX, cropSpec, faceRoll, type Rect } from "@core/crop";
 import { clampRect, createCropFollow, jitterMeter } from "@core/crop-follow";
 import { lookGuide } from "@core/guides";
+import { LM } from "@core/landmarks";
 import { createLiveEvents } from "@core/live-events";
 import { LIVE_LIMITS } from "@core/gate";
 import { gateReadout, recentStats } from "@core/gate-readout";
@@ -84,8 +85,11 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text = ""):
 /** 창(영상 px) → 캔버스 px. 창이 영상 끝에 걸려 비율이 깨졌으면 여백을 둔다(contain) */
 interface ViewMap { s: number; ox: number; oy: number; crop: Rect }
 
+/** [개발용 ?dots] MediaPipe 가 준 눈꺼풀 점 그대로 (필터 전) — 테두리가 틀어질 때 점이 틀어졌는지, 옮기기가 틀어졌는지 가른다 */
+const EYE_DOTS: readonly number[] = [...LM.eyeA.upper, ...LM.eyeA.lower, ...LM.eyeB.upper, ...LM.eyeB.lower];
+
 /** 확대 창만 거울로 그리고 그 위에 테두리 (선만, F-07) */
-function drawView(cv: HTMLCanvasElement, video: HTMLVideoElement, crop: Rect, o: Outline | null): ViewMap | null {
+function drawView(cv: HTMLCanvasElement, video: HTMLVideoElement, crop: Rect, o: Outline | null, dots: readonly Pt[] | null = null): ViewMap | null {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   const W = Math.round(cv.clientWidth * dpr), H = Math.round(cv.clientHeight * dpr);
   if (!W || !H) return null;
@@ -103,6 +107,11 @@ function drawView(cv: HTMLCanvasElement, video: HTMLVideoElement, crop: Rect, o:
   g.translate(-crop.x, -crop.y);
   g.drawImage(video, crop.x, crop.y, crop.w, crop.h, crop.x, crop.y, crop.w, crop.h);
   if (o) strokeOutline(g, o, Math.max(2, W / 400) / s);
+  if (dots) {
+    g.fillStyle = "#ffb000";
+    const r = Math.max(2, W / 350) / s;
+    for (const p of dots) { g.beginPath(); g.arc(p.x, p.y, r, 0, Math.PI * 2); g.fill(); }
+  }
   g.restore();
   return { s, ox, oy, crop };
 }
@@ -177,6 +186,7 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
       const poseCal = q.has("pose") ? createPoseProbe() : null;
       // 개발용 ?gate: 게이트가 본 값(선명 · 막힌 조건 · 안정 수 · 각도 · 표정 …) — 폰 시험에서 왜 안 넘어가는지 숫자로 (2026-09-30)
       const gateDbg = q.has("gate") ? recentStats(90) : null;
+      const dots = q.has("dots");
       if (meter || poseCal || gateDbg) {
         stage.append(readout);
         readout.addEventListener("click", () => {
@@ -282,7 +292,7 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
           readout.style.whiteSpace = "pre";
           readout.textContent = poseCal.step(lm, res.facialTransformationMatrixes?.[0]?.data ?? null, f.expr?.["jawOpen"] ?? 0);
         }
-        const vm = drawView(view, video, shown, r.outline);
+        const vm = drawView(view, video, shown, r.outline, dots && lm ? EYE_DOTS.map((i) => lm[i]!) : null);
         if (meter && vm && r.outline) {
           // 화면 흔들림: 영상의 고정된 한 점(가운데)이 캔버스에서 어디 찍히나 — 창이 움직이면 사진 전체가 튄다
           meter.view.push([{ x: (sw / 2 - vm.crop.x) * vm.s + vm.ox, y: (sh / 2 - vm.crop.y) * vm.s + vm.oy }]);

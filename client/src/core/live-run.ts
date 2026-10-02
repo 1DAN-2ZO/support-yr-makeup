@@ -19,6 +19,9 @@ import { gateStep, rigidPoseDiff, softFail, type LiveLimits, LIVE_LIMITS, livePo
 import { linerOutline, GUIDE_PARAMS } from "./guides";
 import { partInRect } from "./landmarks";
 import { pinOutline, placeOutline } from "./mesh-pin";
+import { applyAffine, eyeFrameAffine, farEyeWeight } from "./eye-frame";
+import { LM } from "./landmarks";
+import type { Side } from "./score";
 import { foreheadStep, startForeheadTrack, type ForeheadTrack } from "./occlusion";
 import { guideOutline, type Outline } from "./overlay";
 import type { GuideSource } from "./score-part";
@@ -95,6 +98,36 @@ export function outlineOf(partId: PartId, lm: readonly Pt[], guide: GuideSource)
 
 const optExpr = (d: number | undefined): { exprDiff?: number } => (d === undefined ? {} : { exprDiff: d });
 
+const EYE_PARTS: readonly PartId[] = ["brow", "liner", "shadow"];
+const EYE_IDS: Record<Side, readonly number[]> = { R: [...LM.eyeA.upper, ...LM.eyeA.lower], L: [...LM.eyeB.upper, ...LM.eyeB.lower] };
+const mean = (ps: readonly Pt[]): Pt => ({ x: ps.reduce((a, p) => a + p.x, 0) / ps.length, y: ps.reduce((a, p) => a + p.y, 0) / ps.length });
+const eyeCenter = (side: Side, lm: readonly Pt[]): Pt => mean(EYE_IDS[side].map((i) => lm[i]!));
+/** 이 테두리 다각형이 어느 눈 쪽인지 — 눈 가운데에 더 가까운 쪽 */
+function nearerEye(poly: readonly Pt[], lm: readonly Pt[]): Side {
+  const m = mean(poly), r = eyeCenter("R", lm), l = eyeCenter("L", lm);
+  return Math.hypot(m.x - r.x, m.y - r.y) <= Math.hypot(m.x - l.x, m.y - l.y) ? "R" : "L";
+}
+
+/**
+ * 고개를 많이 돌렸을 때 먼 쪽 눈 테두리를 눈 주변 점으로 옮긴 자리 쪽으로 넘긴다 (eye-frame, 2026-10-02 PC).
+ * 먼 쪽 = 코끝이 움직인 쪽 눈 (고개를 돌리면 먼 쪽 눈이 코 뒤로 간다). 가까운 쪽은 지금처럼 눈꺼풀 점(그물)
+ */
+function farEyeByFrame(o: Outline, base: Outline, sides: readonly Side[], baseLm: readonly Pt[], cur: readonly Pt[]): Outline {
+  const d = rigidPoseDiff(baseLm, cur).yaw, w = farEyeWeight(Math.abs(d));
+  if (w <= 0) return o;
+  const rx = eyeCenter("R", cur).x, lx = eyeCenter("L", cur).x;
+  const far: Side = (d > 0) === (rx > lx) ? "R" : "L";
+  const t = eyeFrameAffine(baseLm, cur, far);
+  if (!t) return o;
+  return {
+    polys: o.polys.map((poly, i) => (sides[i] !== far ? poly : poly.map((p, j) => {
+      const q = applyAffine(t, base.polys[i]![j]!);
+      return { x: p.x + (q.x - p.x) * w, y: p.y + (q.y - p.y) * w };
+    }))),
+    lines: o.lines,
+  };
+}
+
 export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): LiveStep<I>; press(): boolean; readonly smoother: LandmarkSmoother | null } {
   const limits = opt.limits ?? LIVE_LIMITS;
   let stable = 0;
@@ -109,7 +142,10 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
   // 테두리는 맨얼굴(기준) 정면에서 한 번 그려 얼굴 그물에 붙이고, 매 장면 지금 얼굴로 옮긴다 (2-b AR 화장과 같은 방식).
   // 매 장면 새로 그리면 크기·각도가 화면 기준(눈 폭 평균 · 화면 위쪽)이라 고개를 돌릴 때 원근이 안 들어가 어긋났다 (2026-10-02 PC).
   // 화면 3(맨얼굴 사진 위 테두리)·채점(맨얼굴 기준)과도 같은 모양
-  const pinned = pinOutline(outlineOf(opt.partId, opt.baseline.lm, opt.guide), opt.baseline.lm);
+  const baseOutline = outlineOf(opt.partId, opt.baseline.lm, opt.guide);
+  const pinned = pinOutline(baseOutline, opt.baseline.lm);
+  // 눈 부위: 테두리 다각형마다 어느 눈 쪽인지 — 고개를 많이 돌리면 먼 쪽 눈은 눈 주변 점으로 옮긴다 (eye-frame)
+  const sides = EYE_PARTS.includes(opt.partId) ? baseOutline.polys.map((poly) => nearerEye(poly, opt.baseline.lm)) : null;
 
   return {
     /** 화면 4 개발용 ?tune 슬라이더가 값을 바꾼다 */
@@ -149,7 +185,9 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
         stable = r.stable;
         gate = r.gate;
         measure = { ...m, stableCount: r.stable };
-        outline = placeOutline(pinned, smoother?.smooth(f.lm, f.t) ?? f.lm);
+        const cur = smoother?.smooth(f.lm, f.t) ?? f.lm;
+        outline = placeOutline(pinned, cur);
+        if (sides) outline = farEyeByFrame(outline, baseOutline, sides, opt.baseline.lm, cur);
       }
       if (gate.ok || !softFail(gate)) softSince = null;
       else softSince ??= f.t;
