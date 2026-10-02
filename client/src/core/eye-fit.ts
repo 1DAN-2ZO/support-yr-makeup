@@ -5,7 +5,8 @@
  * 정면에서 본 그 사람의 눈 모양(눈꺼풀 점 16개)을 하나의 틀로 보고, 지금 눈꺼풀 점에 늘이기·기울이기·옮기기(아핀)로 한꺼번에 맞추되
  * 튀는 점은 무게를 빼며 다시 맞춘다(Tukey 가중 반복). MediaPipe 눈 정보는 그대로 쓰면서 틀린 몇 개만 거른다 —
  * 눈 주변 점(A안)·머리 입체 회전(B안)과 달리 틀을 세로로 눌러 맞출 수 있어 눈을 감거나 내리깔아도 따라간다.
- * 점 대부분이 한쪽으로 같이 쏠리면 못 고친다.
+ * 점 대부분이 한쪽으로 같이 쏠리면 못 고친다 — 그래서 F안: 먼 쪽 눈 폭만 먼 쪽 눈썹이 줄어든 비율로 고친다(stretchAlong · browSpanRatio).
+ * 고개를 돌리면 눈썹과 눈은 비슷한 비율로 좁아지고, 눈썹은 그물로 잘 따라간다. 위치까지 눈썹에서 가져오면 A안처럼 깊이 문제라 폭만.
  */
 
 import { LM } from "./landmarks";
@@ -69,6 +70,26 @@ export function robustAffine(src: readonly Pt[], dst: readonly Pt[], floor: numb
     t = next;
   }
   return t;
+}
+
+/** c 를 지나는 dir(단위 벡터) 방향 성분만 f 배 — 수직 성분은 그대로 (눈 폭만 고치기) */
+export function stretchAlong(p: Pt, c: Pt, dir: Pt, f: number): Pt {
+  const a = (p.x - c.x) * dir.x + (p.y - c.y) * dir.y;
+  return { x: p.x + (f - 1) * a * dir.x, y: p.y + (f - 1) * a * dir.y };
+}
+
+/** 눈썹 길이 비율(지금 / 정면) — 바깥 끝 · 안쪽 끝(위·아래 눈썹 선 평균) 사이 거리. 못 재면 null */
+export function browSpanRatio(base: readonly Pt[], cur: readonly Pt[], brow: { upper: readonly number[]; lower: readonly number[] }): number | null {
+  const end = (lm: readonly Pt[], k: "first" | "last"): Pt | null => {
+    const u = lm[k === "first" ? brow.upper[0]! : brow.upper[brow.upper.length - 1]!], l = lm[k === "first" ? brow.lower[0]! : brow.lower[brow.lower.length - 1]!];
+    return u && l ? { x: (u.x + l.x) / 2, y: (u.y + l.y) / 2 } : null;
+  };
+  const span = (lm: readonly Pt[]): number | null => {
+    const a = end(lm, "first"), b = end(lm, "last");
+    return a && b ? Math.hypot(a.x - b.x, a.y - b.y) : null;
+  };
+  const sb = span(base), sc = span(cur);
+  return sb && sc ? sc / sb : null;
 }
 
 /** 각도 차가 이만큼까지는 눈꺼풀 점(그물) 그대로, 이만큼부터는 눈 모양 틀만 (rigidPoseDiff 눈금 — 화면 4 각도 차 한계 12 와 같은 눈금). 가정값 */

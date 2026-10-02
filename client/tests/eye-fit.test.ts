@@ -1,7 +1,7 @@
 // C안 (2026-10-02 PC) — 눈 모양 틀에 맞추기. 정면 눈 모양(눈꺼풀 점 16개)을 하나의 틀로 지금 눈꺼풀 점에 한꺼번에 맞추되,
 // 튀는 점(먼 쪽 눈머리가 코 쪽으로 삐져나옴)은 무시한다. 틀을 세로로 눌러 맞출 수 있어 눈을 감거나 내리깔아도 따라간다
 import { describe, expect, it } from "vitest";
-import { EYE_CONTOUR, farEyeWeight, robustAffine } from "@core/eye-fit";
+import { EYE_CONTOUR, farEyeWeight, robustAffine, stretchAlong } from "@core/eye-fit";
 import { applyAffine } from "@core/eye-fit";
 import { LM } from "@core/landmarks";
 import type { Pt } from "@core/types";
@@ -44,6 +44,15 @@ describe("eye fit (C안)", () => {
       expect(new Set(EYE_CONTOUR[s]).size).toBe(16);
       for (const i of [...eye.upper, ...eye.lower]) expect(EYE_CONTOUR[s]).toContain(i);
     }
+  });
+
+  it("F1 한 방향으로만 늘이기 — 가운데를 지나는 축 방향 성분만 f 배, 수직 성분은 그대로 (눈 폭만 고치기)", () => {
+    const c = { x: 100, y: 50 }, dir = { x: Math.cos(0.3), y: Math.sin(0.3) };
+    const n = { x: -dir.y, y: dir.x };
+    const p = { x: c.x + 10 * dir.x + 4 * n.x, y: c.y + 10 * dir.y + 4 * n.y };
+    const q = stretchAlong(p, c, dir, 1.5);
+    expect(dist(q, { x: c.x + 15 * dir.x + 4 * n.x, y: c.y + 15 * dir.y + 4 * n.y })).toBeLessThan(1e-9);
+    expect(dist(stretchAlong(c, c, dir, 3), c)).toBeLessThan(1e-12);
   });
 
   it("C5 먼 쪽 눈을 틀로 넘기는 정도 — 각도 차 12 까지 0, 25 부터 1, 사이는 차츰", () => {

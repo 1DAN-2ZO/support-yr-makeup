@@ -21,7 +21,7 @@ import { partInRect } from "./landmarks";
 import { pinOutline, placeOutline } from "./mesh-pin";
 import { LM } from "./landmarks";
 import type { Side } from "./score";
-import { EYE_CONTOUR, applyAffine, farEyeWeight, robustAffine } from "./eye-fit";
+import { EYE_CONTOUR, applyAffine, browSpanRatio, farEyeWeight, robustAffine, stretchAlong } from "./eye-fit";
 import { foreheadStep, startForeheadTrack, type ForeheadTrack } from "./occlusion";
 import { guideOutline, type Outline } from "./overlay";
 import type { GuideSource } from "./score-part";
@@ -136,9 +136,21 @@ function farEyeFit(o: Outline, base: readonly (readonly Pt[])[], sides: readonly
   const floor = 0.03 * Math.hypot(cur[nearEye.outer]!.x - cur[nearEye.inner]!.x, cur[nearEye.outer]!.y - cur[nearEye.inner]!.y);
   const t = robustAffine(EYE_CONTOUR[far].map((i) => baseLm[i]!), EYE_CONTOUR[far].map((i) => cur[i]!), Math.max(1, floor));
   if (!t) return o;
+  // F안: 눈꺼풀 점이 통째로 눈동자 쪽으로 쪼그라들면 틀도 쪼그라든다 → 눈 폭만 먼 쪽 눈썹이 줄어든 비율로 (위치·위아래는 그대로)
+  const eye = far === "R" ? LM.eyeA : LM.eyeB, brow = far === "R" ? LM.browA : LM.browB;
+  const k = browSpanRatio(baseLm, cur, brow);
+  let fix = (q: Pt): Pt => q;
+  if (k) {
+    const O = applyAffine(t, baseLm[eye.outer]!), I = applyAffine(t, baseLm[eye.inner]!);
+    const len = Math.hypot(O.x - I.x, O.y - I.y), want = k * Math.hypot(baseLm[eye.outer]!.x - baseLm[eye.inner]!.x, baseLm[eye.outer]!.y - baseLm[eye.inner]!.y);
+    if (len > 1e-6) {
+      const f = Math.min(2, Math.max(0.5, want / len)), M = { x: (O.x + I.x) / 2, y: (O.y + I.y) / 2 }, dir = { x: (O.x - I.x) / len, y: (O.y - I.y) / len };
+      fix = (q) => stretchAlong(q, M, dir, f);
+    }
+  }
   return {
     polys: o.polys.map((poly, i) => (sides[i] !== far ? poly : poly.map((p, j) => {
-      const q = applyAffine(t, base[i]![j]!);
+      const q = fix(applyAffine(t, base[i]![j]!));
       return { x: p.x + (q.x - p.x) * w, y: p.y + (q.y - p.y) * w };
     }))),
     lines: o.lines,

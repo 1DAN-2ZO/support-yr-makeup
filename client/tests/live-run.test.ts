@@ -373,6 +373,18 @@ describe("live run", () => {
     expect(nearP.some((p) => Math.hypot(p.x - nearTip.x, p.y - nearTip.y) < 1e-6)).toBe(true);
   });
 
+  it("L39 많이 돌렸을 때 먼 쪽 눈꺼풀 점이 통째로 눈동자 쪽으로 쪼그라들어도(가로 0.6 배) 테두리 폭은 먼 쪽 눈썹이 줄어든 비율대로 (F안)", () => {
+    const lm = turnedFace(0.25);
+    const eye = LM.eyeB, cx = (FACE[eye.outer]!.x + FACE[eye.inner]!.x) / 2;
+    for (const i of [...eye.upper, ...eye.lower]) lm[i] = { x: cx + (FACE[i]!.x - cx) * 0.6, y: FACE[i]!.y };
+    const lashX = (poly: readonly Pt[]) => eye.upper.map((i) => poly.find((p) => Math.abs(p.y - FACE[i]!.y) < 3 && Math.abs(p.x - FACE[i]!.x) < 30)).filter(Boolean);
+    const far = farPoly(linerAt(lm)), base = farPoly(linerAt(FACE));
+    const span = (ps: readonly Pt[]) => Math.max(...ps.map((p) => p.x)) - Math.min(...ps.map((p) => p.x));
+    // 눈썹은 그대로(비율 1) → 테두리 폭도 정면 그대로. 쪼그라든 점(0.6 배)을 따라가지 않는다
+    expect(span(far) / span(base)).toBeGreaterThan(0.95);
+    expect(lashX(far).length).toBeGreaterThan(0);
+  });
+
   it("L38 많이 돌린 채 먼 쪽 눈이 통째로 움직이면 틀도 같이 움직인다 — A·B안처럼 얼어붙지 않는다", () => {
     const lm = turnedFace(0.25);
     for (const i of [...LM.eyeB.upper, ...LM.eyeB.lower]) lm[i] = { x: FACE[i]!.x + 7, y: FACE[i]!.y - 4 };
