@@ -36,12 +36,13 @@ def test_sessions_cover_the_cases(S):
     assert core([{"op": "sessions"}])[0] == S  # 같은 seed → 같은 세션
 
 
-def test_b_is_short_numberless_and_names_the_fix(S):
+def test_b_is_one_short_numberless_line(S):
     meta = core([{"op": "meta"}])[0]
     for s in S:
         assert len(s["B"]) <= meta["maxChars"]
         assert not any(ch.isdigit() for ch in s["B"])
-        assert len(s["A"].splitlines()) == 6  # A = 지금 화면 6 부위 줄
+        assert s["B"].count(".") == 1  # 한줄평
+        assert len(s["A"].splitlines()) == 6  # 부위별 한 줄 = 화면 6 맥락
 
 
 def _gate(s, comment, praise="none", fix="none"):
@@ -63,9 +64,16 @@ def test_gate_catches_what_the_first_runs_got_wrong(S):
         in _gate(one, "전체적으로 좋아요. 다음에도 힘내요.", fix=fix)["reasons"]
     )
     # 전부 잘된 세션에서 잘된 부위를 고치라고 함 (Gemma 첫 실행)
-    r = _gate(good, "눈썹은 잘 됐어요. 섀도우와 볼터치는 다음엔 조금 더 신경 써주시면 좋을 것 같아요.")
+    r = _gate(good, "눈썹은 잘 됐어요, 섀도우와 볼터치는 조금 더 신경 써주시면 좋을 것 같아요.")
     assert "잘된 부위를 고치라고 함" in r["reasons"]
-    assert _gate(good, "전체적으로 잘 됐어요. 섀도우도 깔끔하게 잘 됐어요.")["ok"]
+    assert _gate(good, "전체적으로 잘 됐어요, 섀도우도 깔끔하게 잘 됐어요.")["ok"]
+    # 한 문장에 칭찬 + 할 일 — 칭찬 마디는 걸리지 않는다
+    praise = one["schema"]["properties"]["praise_part"]["enum"][0]
+    pko = {"brow": "눈썹", "liner": "아이라이너", "shadow": "섀도우", "lip": "입술", "cheek": "볼터치"}[
+        praise
+    ]
+    assert _gate(one, f"{pko}는 잘 되셨어요, 다음엔 {ko}부터 다듬어 보세요.", praise=praise, fix=fix)["ok"]
+    assert "한줄평이 아님" in _gate(one, f"좋아요. 정말요. 다음엔 {ko}. 해 봐요.", fix=fix)["reasons"]
 
 
 def test_sheet_hides_which_is_which_and_ratings_use_ci(tmp_path, monkeypatch, S):
@@ -89,24 +97,25 @@ def test_sheet_hides_which_is_which_and_ratings_use_ci(tmp_path, monkeypatch, S)
         text = f"다음엔 {name}부터 다시 해 봐요." if int(s["id"][1:]) <= 15 else "1번부터 다시 해요."
         raw = json.dumps({"praise_part": "none", "fix_part": fix, "comment": text}, ensure_ascii=False)
         rows.append({"session": s["id"], "kind": s["kind"], "rep": 0, "ms": 100, "content": raw})
-    (d / "runs" / "fake.jsonl").write_text(
-        "\n".join(json.dumps(r, ensure_ascii=False) for r in rows), encoding="utf-8"
-    )
+    lines = (json.dumps(r, ensure_ascii=False) for r in rows)
+    (d / "runs" / "fake.jsonl").write_text("\n".join(lines), encoding="utf-8")
     page = report.sheet("fake").read_text(encoding="utf-8")
     # 정답표는 key.json 에만
     assert '"C"' not in page and '"B"' not in page and '"map":' not in page and "c_fallback" not in page
-    key = json.loads((d / "out" / "comment-fake.key.json").read_text(encoding="utf-8"))
-    assert sum(k["c_fallback"] for k in key) == 15 and all(len(k["map"]) == 2 for k in key if k["c_fallback"])
-    # 평가자 하나가 C 가 있는 문항에서 늘 C 를 고름
+    key = json.loads((d / "out" / "oneline-fake.key.json").read_text(encoding="utf-8"))
+    assert sum(k["c_fallback"] for k in key) == 15  # C 가 거절된 세션은 평가지에서 빠진다 (B 대 B 가 되므로)
+    assert page.count("다시 해 봐요") >= 15 and "1번부터" not in page
+    # 평가자 하나: C 가 있는 15문항 중 10번 C, 3번 B, 2번 비슷함
     items = []
-    for k in key:
+    for i, k in enumerate(x for x in key if not x["c_fallback"]):
         inv = {v: c for c, v in k["map"].items()}
-        items.append({"id": k["id"], "order": 1, "shown": list(k["map"]), "pick": inv.get("C", inv["B"])})
+        pick = inv["C"] if i < 10 else inv["B"] if i < 13 else "same"
+        items.append({"id": k["id"], "order": i + 1, "shown": list(k["map"]), "pick": pick})
     f = tmp_path / "r.json"
     f.write_text(
-        json.dumps({"sheet": "comment-fake", "who": "t", "seed": 1, "items": items}, ensure_ascii=False),
+        json.dumps({"sheet": "oneline-fake", "who": "t", "seed": 1, "items": items}, ensure_ascii=False),
         encoding="utf-8",
     )
     text = report.ratings([str(f)])
-    assert "C 15/15" in text  # 대신 쓴 문항(B 만 고를 수 있음)은 C 대 B 에서 빠진다
-    assert "통과" in text
+    assert "C 10/13" in text  # 비슷함은 뺀다
+    assert "못 넘음" in text  # 10/13 의 95% 하한은 50% 아래

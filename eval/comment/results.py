@@ -1,12 +1,12 @@
-"""화면 6 종합 코멘트 확인 실험 (#287) — 요약 · 평가지 · 집계.
+"""화면 6 한줄평 확인 실험 (#287) — 요약 · 평가지 · 집계.
 
     uv run --extra vlm python eval/comment/results.py                         # 모델별 자동 지표
     uv run --extra vlm python eval/comment/results.py --sheet text-gemma4_e4b  # 평가지 (A · B · C 가림)
-    uv run --extra vlm python eval/comment/results.py --ratings comment-rating-*.json
+    uv run --extra vlm python eval/comment/results.py --ratings oneline-rating-*.json
 
 관문은 저장된 응답에 지금 코드(comment.ts gateC)로 다시 건다 — 관문을 고치면 다시 묻지 않아도 된다.
-평가지의 C 는 앱이 보여 줄 그대로: 관문을 통과한 LLM 글, 거절되면 B (앱의 대신 쓰기와 같다).
-통과 기준 (미리 정함, #287): C 를 B 보다 고른 비율의 95% 신뢰구간 하한 > 50%.
+부위별 한 줄(A)은 화면 6 에 늘 나오므로 비교 대상이 아니라 문항의 맥락이다. 비교는 한줄평 B(규칙) 대 C(LLM).
+통과 기준 (미리 정함, #287): C 를 B 보다 고른 비율(비슷함 뺌)의 95% 신뢰구간 하한 > 50%.
 """
 
 from __future__ import annotations
@@ -63,7 +63,7 @@ def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
 def summary(models: list[str]) -> str:
     S = sessions()
     lines = [
-        f"# 화면 6 종합 코멘트 — 자동 지표 ({date.today()})",
+        f"# 화면 6 한줄평 — 자동 지표 ({date.today()})",
         "",
         "| 모델 | 관문 통과 | 같은 입력 같은 답 | p50 ms | p95 ms | 글 길이 평균 | 거절 이유 |",
         "|---|---|---|---|---|---|---|",
@@ -83,7 +83,7 @@ def summary(models: list[str]) -> str:
             f"| {m} | {ok}/{len(R)} | {same}/{len(by)} | {pct(ms, 0.5):.0f} | {pct(ms, 0.95):.0f} | "
             f"{sum(ln) / len(ln):.0f}자 | {', '.join(f'{k} {v}' for k, v in why.most_common()) or '—'} |"
         )
-    lines.append(f"| (B 규칙 요약) | — | — | — | — | {sum(bl) / len(bl):.0f}자 | — |")
+    lines.append(f"| (B 규칙 한줄평) | — | — | — | — | {sum(bl) / len(bl):.0f}자 | — |")
     return "\n".join(lines)
 
 
@@ -91,6 +91,9 @@ def summary(models: list[str]) -> str:
 
 
 def sheet(model: str) -> Path:
+    """평가지 — 부위별 한 줄(화면 6 에 늘 나옴)은 맥락, 한줄평 B · C 를 비교 (+ 비슷함).
+    C 가 관문에서 거절된 세션은 앱이 B 를 보여 주므로 B 와 B 를 비교하게 된다 —
+    평가지에서 빼고 개수만 적는다"""
     S = sessions()
     R = [r for r in regate(model, S) if r["rep"] == 0]
     from_model = {r["session"]: r for r in R}
@@ -98,35 +101,39 @@ def sheet(model: str) -> Path:
     items, key = [], []
     for sid, s in S.items():
         r = from_model[sid]
-        c_text = r["gate"]["comment"] if r["gate"]["ok"] else s["B"]
-        # C 가 관문에서 거절되면 앱은 B 를 보여 준다 —
-        # 같은 글 두 개를 내지 않고 A · B 만 (C 대 B 계산에서 뺀다)
-        kinds = "ABC" if r["gate"]["ok"] else "AB"
-        texts = {"A": s["A"], "B": s["B"], "C": c_text}
-        ids = rnd.sample(range(100, 999), len(kinds))
-        cands = [{"id": f"c{i}", "text": texts[k]} for i, k in zip(ids, kinds, strict=True)]
+        row = {
+            "id": sid,
+            "kind": s["kind"],
+            "c_fallback": not r["gate"]["ok"],
+            "c_reasons": r["gate"]["reasons"],
+        }
+        if row["c_fallback"]:
+            key.append({**row, "map": {}})
+            continue
+        ids = rnd.sample(range(100, 999), 2)
+        texts = {"B": s["B"], "C": r["gate"]["comment"]}
+        cands = [{"id": f"c{i}", "text": texts[k]} for i, k in zip(ids, "BC", strict=True)]
         rnd.shuffle(cands)
-        key.append(
-            {
-                "id": sid,
-                "kind": s["kind"],
-                "map": {f"c{i}": k for i, k in zip(ids, kinds, strict=True)},
-                "c_fallback": not r["gate"]["ok"],
-                "c_reasons": r["gate"]["reasons"],
-            }
-        )
+        key.append({**row, "map": {f"c{i}": k for i, k in zip(ids, "BC", strict=True)}})
         parts = sorted(s["parts"], key=lambda p: STATUS_ORDER.index(p["partId"]))
+        says = dict(line.split(": ", 1) for line in s["A"].splitlines())
         items.append(
             {
                 "id": sid,
                 "look": s["lookName"],
                 "parts": [
-                    {"name": PART_KO[p["partId"]], "status": p["status"], "score": p["score"]} for p in parts
+                    {
+                        "name": PART_KO[p["partId"]],
+                        "status": p["status"],
+                        "score": p["score"],
+                        "say": says[PART_KO[p["partId"]]],
+                    }
+                    for p in parts
                 ],
                 "cands": cands,
             }
         )
-    name = f"comment-{model}"
+    name = f"oneline-{model}"
     data = json.dumps({"sheet": name, "items": items}, ensure_ascii=False).replace("</", r"<\/")
     page = (HERE / "sheet_page.html").read_text(encoding="utf-8")
     page = page.replace("{{COUNT}}", str(len(items))).replace("{{DATA}}", data)
@@ -158,7 +165,7 @@ def ratings(files: list[str]) -> str:
     key = {
         k["id"]: k for k in json.loads((out_dir() / "out" / f"{name}.key.json").read_text(encoding="utf-8"))
     }
-    picks: list[tuple[str, str, str, int]] = []  # (평가자, 세션, A·B·C, 보인 자리)
+    picks: list[tuple[str, str, str, int]] = []  # (평가자, 세션, B · C · same, 보인 자리 — same 은 0)
     who_count: Counter = Counter()
     for f in files:
         r = json.loads(Path(f).read_text(encoding="utf-8"))
@@ -166,34 +173,39 @@ def ratings(files: list[str]) -> str:
         for it in r["items"]:
             if not it["pick"]:
                 continue
-            picks.append((who, it["id"], key[it["id"]]["map"][it["pick"]], it["shown"].index(it["pick"]) + 1))
+            if it["pick"] == "same":
+                picks.append((who, it["id"], "same", 0))
+            else:
+                picks.append(
+                    (who, it["id"], key[it["id"]]["map"][it["pick"]], it["shown"].index(it["pick"]) + 1)
+                )
             who_count[who] += 1
     tot = Counter(p[2] for p in picks)
-    cb = [p for p in picks if p[2] in "BC" and not key[p[1]]["c_fallback"]]
-    k = sum(p[2] == "C" for p in cb)
-    lo, hi = wilson(k, len(cb))
-    verdict = "통과 — LLM 을 넣는다" if lo > 0.5 else "못 넘음 — B(규칙 요약)를 넣고 LLM 은 MVP 에서 뺀다"
+    k, n = tot["C"], tot["B"] + tot["C"]
+    lo, hi = wilson(k, n)
+    verdict = (
+        "통과 — LLM 한줄평을 넣는다" if lo > 0.5 else "못 넘음 — B(규칙 한줄평)를 넣고 LLM 은 MVP 에서 뺀다"
+    )
+    fb = sum(v["c_fallback"] for v in key.values())
     lines = [
-        f"# 화면 6 종합 코멘트 — 사람 평가 ({name}, {date.today()})",
+        f"# 화면 6 한줄평 — 사람 평가 ({name}, {date.today()})",
         "",
-        f"평가자 {len(who_count)}명 ({', '.join(f'{w} {n}' for w, n in who_count.items())}) "
+        f"평가자 {len(who_count)}명 ({', '.join(f'{w} {c}' for w, c in who_count.items())}) "
         f"· 답 {len(picks)}",
-        f"- 고른 수: A 이어 붙이기 {tot['A']} · B 규칙 요약 {tot['B']} · C LLM {tot['C']}",
-        f"- **C 대 B** (둘 중 하나를 고른 답만): C {k}/{len(cb)} = {k / max(1, len(cb)):.1%} "
-        f"(95% {lo:.2f}~{hi:.2f}) → {verdict}",
-        f"- C 가 관문에서 거절돼 B 로 대신한 문항: {sum(v['c_fallback'] for v in key.values())}개 "
-        "— A · B 만 보여 줬고 C 대 B 에서 뺐다",
+        f"- 고른 수: B 규칙 {tot['B']} · C LLM {tot['C']} · 비슷함 {tot['same']}",
+        f"- **C 대 B** (비슷함 뺌): C {k}/{n} = {k / max(1, n):.1%} (95% {lo:.2f}~{hi:.2f}) → {verdict}",
+        f"- C 가 관문에서 거절돼 평가지에서 뺀 세션: {fb}개 / {len(key)} — 앱에서는 이 세션에 B 가 나간다",
         "",
-        "| 세션 종류 | A | B | C |",
+        "| 세션 종류 | B | C | 비슷함 |",
         "|---|---|---|---|",
     ]
     by_kind: dict[str, Counter] = defaultdict(Counter)
     for _, sid, x, _ in picks:
         by_kind[key[sid]["kind"]][x] += 1
     for kd, c in sorted(by_kind.items()):
-        lines.append(f"| {kd} | {c['A']} | {c['B']} | {c['C']} |")
-    pos = Counter(p[3] for p in picks)
-    lines += ["", f"자리 쏠림 (보인 순서 1·2·3번 고른 수): {pos[1]} · {pos[2]} · {pos[3]}"]
+        lines.append(f"| {kd} | {c['B']} | {c['C']} | {c['same']} |")
+    pos = Counter(p[3] for p in picks if p[3])
+    lines += ["", f"자리 쏠림 (보인 순서 1·2번 고른 수): {pos[1]} · {pos[2]}"]
     text = "\n".join(lines)
     (out_dir() / "out" / f"ratings-{name}.md").write_text(text, encoding="utf-8")
     return text

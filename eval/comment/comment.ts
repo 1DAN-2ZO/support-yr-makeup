@@ -1,9 +1,9 @@
 /**
  * 화면 6 종합 코멘트 확인 실험 (#287) — 앱 코드(채점 타입 · 한 줄 평 · 문구표 · 합산)를 그대로 쓴다.
  *
- *   A 이어 붙이기  지금 화면 6: 부위마다 reviewLine 한 줄
- *   B 규칙 요약    가장 잘된 부위 하나 + 먼저 고칠 부위 하나(+ 좌우 균형) — 두세 문장
- *   C LLM 코멘트   같은 채점 결과를 글로 넘겨 텍스트 LLM 이 두세 문장 (사진 없음)
+ * 부위별 한 줄(A, reviewLine)은 화면 6 에 늘 나온다 — 비교 대상이 아니라 맥락이다. 정하는 것은 그 위에 놓을 **한줄평**:
+ *   B 규칙 한줄평  가장 잘된 부위 하나 + 먼저 고칠 부위 하나 — 한 문장
+ *   C LLM 한줄평   같은 채점 결과를 글로 넘겨 텍스트 LLM 이 한 문장 (사진 없음)
  *
  * B 는 일부러 약하게 만들지 않는다 — 간단한 규칙으로 같은 효과가 나면 LLM 자리가 아니다 (#286 의 교훈).
  * B · C 는 같은 길이 상한(MAX_CHARS)을 쓴다 — 긴 쪽이 자세해 보여 뽑히지 않게.
@@ -15,9 +15,9 @@ import { LOOKS } from "../../client/src/core/looks";
 import type { CheckReason, PartId, PartResult, SessionSummary } from "../../client/src/core/types";
 import { PART_IDS } from "../../client/src/core/types";
 
-/** B · C 길이 상한. 첫 실행(150자)에서 C 가 B 보다 두 배쯤 길어 긴 쪽이 뽑힐 수 있었다 → 100자 */
-export const MAX_CHARS = 100;
-export const PROMPT_VER = "comment-v2";
+/** B · C 길이 상한 — 한줄평. (v1 150자 · v2 100자는 "종합 코멘트" 두세 문장이었다. v3 부터 한줄평, 2026-10-02) */
+export const MAX_CHARS = 60;
+export const PROMPT_VER = "comment-v3";
 
 export interface Session {
   id: string;
@@ -135,25 +135,19 @@ function fixText(p: PartResult): string {
   return dot(diagText(code) ?? "");
 }
 
-/** B: 규칙 요약 — 두세 문장 */
+/** B: 규칙 한줄평 — 한 문장. 할 일 자세한 것은 부위별 한 줄에 있다 */
 export function commentB(s: Session): string {
   const good = goodParts(s), fix = fixParts(s);
-  const out: string[] = [];
-  if (!fix.length && good.length >= 3) out.push(`전체적으로 잘 됐어요. 특히 ${josa(name(good[0]!.partId), "이", "가")} 깔끔해요.`);
-  else if (good.length) out.push(`${josa(name(good[0]!.partId), "은", "는")} 잘 됐어요.`);
-  const f = fix[0];
-  if (f) {
-    if (f.status === "check_only") out.push(`${josa(name(f.partId), "은", "는")} 사진으로 확인하지 못했어요. ${CHECK_REASON_SHORT[f.checkReason ?? "faint"]}`);
-    else out.push(`다음엔 ${name(f.partId)}부터 봐 주세요. ${fixText(f)}`);
+  const g = good[0], f = fix[0];
+  const praise = g ? `${josa(name(g.partId), "은", "는")} 잘 됐어요` : "";
+  if (!f) {
+    if (good.length >= 3) return `전체적으로 잘 됐어요, 특히 ${josa(name(g!.partId), "이", "가")} 깔끔해요.`;
+    return praise ? `${praise}, 다음엔 건너뛴 부위도 해 봐요.` : "다음엔 건너뛴 부위도 해 봐요.";
   }
-  const lr = s.parts.find((p) => p !== f && isLook(p) && p.status === "passed" && hasLr(p));
-  if (lr) out.push(`${name(lr.partId)} 양쪽 균형도 같이 봐 주세요.`);
-  else if (fix[1] && fix[1].status === "passed") out.push(`${josa(name(fix[1].partId), "도", "도")} 한 번 더 봐 주세요.`);
-  const skipped = s.parts.filter((p) => p.status === "skipped");
-  if (out.length < 3 && skipped.length) out.push(`건너뛴 ${skipped.length > 1 ? `${name(skipped[0]!.partId)} 등은` : josa(name(skipped[0]!.partId), "은", "는")} 다음에 해 봐요.`);
-  let t = out.join(" ");
-  while (t.length > MAX_CHARS && out.length > 1) { out.pop(); t = out.join(" "); }
-  return t;
+  const todo = f.status === "check_only"
+    ? `${josa(name(f.partId), "은", "는")} 한 번 더 확인해 봐요`
+    : hasLr(f) ? `다음엔 ${name(f.partId)} 양쪽 균형부터 맞춰 봐요` : `다음엔 ${name(f.partId)}부터 다듬어 봐요`;
+  return praise ? `${praise}, ${todo}.` : `${todo}.`;
 }
 
 // ---------- C ----------
@@ -167,7 +161,7 @@ export function promptC(s: Session): string {
     return `- ${name(p.partId)}: ${STATUS[p.status] ?? p.status} · ${what}${hasLr(p) ? " · 좌우 차이 있음" : ""}`;
   });
   return `당신은 메이크업 코치입니다. 사용자가 "${s.lookName}" 화장을 따라 하고 받은 부위별 채점 결과입니다.
-이 결과를 묶어, 사용자가 다음에 화장할 때 무엇을 먼저 고칠지 알 수 있는 종합 코멘트를 씁니다.
+화면에는 아래 부위별 한 줄이 이미 보입니다. 그 위에 놓을 **한줄평**을 씁니다 — 결과를 묶어, 다음에 화장할 때 무엇을 먼저 고칠지 한눈에 알게.
 
 ## 채점 결과 (사진 없이 결과만)
 ${lines.join("\n")}
@@ -175,7 +169,7 @@ ${lines.join("\n")}
 ## 쓸 것 (순서대로)
 - praise_part: 가장 잘된 부위 하나 (완료이고 고칠 말이 없는 부위). 없으면 none
 - fix_part: 다음에 먼저 고칠 부위 하나 (완료인데 고칠 말이 있는 부위가 먼저, 없으면 사진으로 못 잰 부위). 없으면 none
-- comment: 두세 문장, ${MAX_CHARS}자 이내. 잘된 점 하나와 먼저 고칠 것 하나, 고치는 방법을 씁니다. 위 결과에 있는 내용만 씁니다.
+- comment: 한 문장(쉼표로 이어도 됩니다), ${MAX_CHARS}자 이내. 잘된 점 하나와 먼저 고칠 것 하나를 묶어 씁니다. 부위별 한 줄을 되풀이하지 않습니다. 위 결과에 있는 내용만 씁니다.
   잘됨·적당해요 인 부위는 고치라고 하지 않습니다. 결과에 없는 도구나 방법은 지어내지 않습니다.
   숫자와 점수는 쓰지 않습니다. 친근한 존댓말("~해요")로 씁니다.
 
@@ -221,16 +215,18 @@ export function gateC(s: Session, raw: string): GateC {
   if (c.length < 10 || c.length > MAX_CHARS) reasons.push("길이");
   if (/[0-9]/.test(c)) reasons.push("숫자");
   if (!/[.!?]$|요$/.test(c)) reasons.push("문장이 잘림");   // 길이 상한에 걸려 끊긴 글
-  if (/[A-Za-z]/.test(c)) reasons.push("영어 섞임");   // Qwen3-14B 가 "눈 liner" 를 썼다
+  if (/[A-Za-z]/.test(c)) reasons.push("영어 섞임");
+  if ((c.match(/[.!?]/g) ?? []).length > 2) reasons.push("한줄평이 아님");   // Qwen3-14B 가 "눈 liner" 를 썼다
   if (praise && !goodParts(s).some((p) => p.partId === praise)) reasons.push("칭찬 부위가 잘된 부위가 아님");
   if (fix && !fixParts(s).some((p) => p.partId === fix)) reasons.push("고칠 부위가 결과에 없음");
   if (fix && !c.includes(name(fix as PartId).split("·")[0]!)) reasons.push("고칠 부위를 글에서 말하지 않음");
   const skippedPraised = s.parts.filter((p) => p.status === "skipped").some((p) => new RegExp(`${name(p.partId)}[^.]*(잘|깔끔|좋)`).test(c));
   if (skippedPraised) reasons.push("건너뛴 부위를 칭찬함");
-  // 잘된 부위를 고치라고 함 — 문장 하나에 잘된 부위 이름 + 고치라는 말이 있고 칭찬 말은 없으면
+  // 잘된 부위를 고치라고 함 — 마디(쉼표·마침표로 나눈 조각) 하나에 잘된 부위 이름 + 고치라는 말이 있고 칭찬 말은 없으면.
+  // 한줄평은 "A 는 잘 됐어요, 다음엔 B 를 …" 처럼 한 문장에 칭찬과 할 일이 같이 오므로 문장이 아니라 마디로 본다
   const goodNames = goodParts(s).map((p) => name(p.partId));
-  for (const sent of c.split(/(?<=[.!?요])\s+/)) {
-    if (goodNames.some((g) => sent.includes(g)) && /신경|더 (진하게|연하게|얇게|길게|채워)|해 ?보세요|주시면|다음에는|다음엔/.test(sent) && !/잘 (됐|되었|하셨|표현|그리)|잘했|깔끔하게 (됐|되었|완성)|적당하게 잘/.test(sent)) {
+  for (const clause of c.split(/[,.!?]/)) {
+    if (goodNames.some((g) => clause.includes(g)) && /신경|더 (진하게|연하게|얇게|길게|채워)|채워|해 ?보세요|주시면|주세요/.test(clause) && !/잘|예쁘|자연스러|깔끔|적당/.test(clause)) {
       reasons.push("잘된 부위를 고치라고 함");
       break;
     }
