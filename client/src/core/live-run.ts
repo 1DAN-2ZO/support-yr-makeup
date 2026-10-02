@@ -18,10 +18,7 @@ import { exprDiff } from "./expression";
 import { gateStep, rigidPoseDiff, softFail, type LiveLimits, LIVE_LIMITS, livePose, type LiveMeasure } from "./gate";
 import { linerOutline, GUIDE_PARAMS } from "./guides";
 import { partInRect } from "./landmarks";
-import { pinDepth, pinOutline, placeOutline } from "./mesh-pin";
-import { HEAD_IDS, applyHead, farEyeWeight, fitHead } from "./head3d";
-import { LM } from "./landmarks";
-import type { Side } from "./score";
+import { pinOutline, placeOutline } from "./mesh-pin";
 import { foreheadStep, startForeheadTrack, type ForeheadTrack } from "./occlusion";
 import { guideOutline, type Outline } from "./overlay";
 import type { GuideSource } from "./score-part";
@@ -98,44 +95,8 @@ export function outlineOf(partId: PartId, lm: readonly Pt[], guide: GuideSource)
 
 const optExpr = (d: number | undefined): { exprDiff?: number } => (d === undefined ? {} : { exprDiff: d });
 
-const EYE_PARTS: readonly PartId[] = ["brow", "liner", "shadow"];
-const EYE_IDS: Record<Side, readonly number[]> = { R: [...LM.eyeA.upper, ...LM.eyeA.lower], L: [...LM.eyeB.upper, ...LM.eyeB.lower] };
-const mean = (ps: readonly Pt[]): Pt => ({ x: ps.reduce((a, p) => a + p.x, 0) / ps.length, y: ps.reduce((a, p) => a + p.y, 0) / ps.length });
-const eyeCenter = (side: Side, lm: readonly Pt[]): Pt => mean(EYE_IDS[side].map((i) => lm[i]!));
-/** 이 테두리 다각형이 어느 눈 쪽인지 — 눈 가운데에 더 가까운 쪽 */
-function nearerEye(poly: readonly Pt[], lm: readonly Pt[]): Side {
-  const m = mean(poly), r = eyeCenter("R", lm), l = eyeCenter("L", lm);
-  return Math.hypot(m.x - r.x, m.y - r.y) <= Math.hypot(m.x - l.x, m.y - l.y) ? "R" : "L";
-}
 
-/**
- * 고개를 많이 돌렸을 때 먼 쪽 눈 테두리를 머리를 입체로 돌린 자리로 넘긴다 (head3d, B안 2026-10-02 PC).
- * 먼 쪽 = 코끝이 움직인 쪽 눈 (고개를 돌리면 먼 쪽 눈이 코 뒤로 간다). 가까운 쪽은 지금처럼 눈꺼풀 점(그물).
- * 지금 점에 깊이(z)가 없으면(옛 화면·시험) 그대로
- */
-function farEyeHead(o: Outline, head: { base: readonly Pt[]; outline: readonly (readonly Pt[])[] }, sides: readonly Side[], baseLm: readonly Pt[], cur: readonly Pt[]): Outline {
-  const d = rigidPoseDiff(baseLm, cur).yaw, w = farEyeWeight(Math.abs(d));
-  if (w <= 0 || HEAD_IDS.some((i) => cur[i]?.z === undefined)) return o;
-  const far: Side = (d > 0) === (eyeCenter("R", cur).x > eyeCenter("L", cur).x) ? "R" : "L";
-  const m = fitHead(HEAD_IDS.map((i) => head.base[i]!), HEAD_IDS.map((i) => cur[i]!));
-  if (!m) return o;
-  return {
-    polys: o.polys.map((poly, i) => (sides[i] !== far ? poly : poly.map((p, j) => {
-      const q = applyHead(m, head.outline[i]![j]!);
-      return { x: p.x + (q.x - p.x) * w, y: p.y + (q.y - p.y) * w };
-    }))),
-    lines: o.lines,
-  };
-}
-
-
-export function createLiveRun<I>(opt: LiveRunOptions): {
-  step(f: LiveFrame<I>): LiveStep<I>;
-  press(): boolean;
-  readonly smoother: LandmarkSmoother | null;
-  /** 맨얼굴 점마다의 깊이(z, 맨얼굴 px). 화면이 사진에서 다시 재서 넘긴다 — 있으면 고개를 많이 돌렸을 때 먼 쪽 눈을 입체로 옮긴다 (head3d) */
-  setBaseDepth(z: readonly number[]): void;
-} {
+export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): LiveStep<I>; press(): boolean; readonly smoother: LandmarkSmoother | null } {
   const limits = opt.limits ?? LIVE_LIMITS;
   let stable = 0;
   let fj: ForeheadTrack = startForeheadTrack();
@@ -150,25 +111,10 @@ export function createLiveRun<I>(opt: LiveRunOptions): {
   // 매 장면 새로 그리면 크기·각도가 화면 기준(눈 폭 평균 · 화면 위쪽)이라 고개를 돌릴 때 원근이 안 들어가 어긋났다 (2026-10-02 PC).
   // 화면 3(맨얼굴 사진 위 테두리)·채점(맨얼굴 기준)과도 같은 모양
   const pinned = pinOutline(outlineOf(opt.partId, opt.baseline.lm, opt.guide), opt.baseline.lm);
-  // 눈 부위: 테두리 다각형마다 어느 눈 쪽인지 — 고개를 많이 돌리면 먼 쪽 눈은 머리를 입체로 돌린 자리로 (head3d, B안)
-  const sides = EYE_PARTS.includes(opt.partId) ? placeOutline(pinned, opt.baseline.lm).polys.map((poly) => nearerEye(poly, opt.baseline.lm)) : null;
-  /** 맨얼굴 깊이가 오면: 머리 맞추기용 입체 점 · 테두리 점의 입체 위치 */
-  let head: { base: Pt[]; outline: Pt[][] } | null = null;
 
   return {
     /** 화면 4 개발용 ?tune 슬라이더가 값을 바꾼다 */
     smoother,
-    setBaseDepth(z) {
-      if (!sides || z.length < opt.baseline.lm.length) return;
-      const b = opt.baseline.lm;
-      head = {
-        base: b.map((p, i) => ({ x: p.x, y: p.y, z: z[i]! })),
-        outline: pinned.polys.map((poly) => poly.map((pin) => {
-          const p = placeOutline({ polys: [[pin]], lines: [] }, b).polys[0]![0]!;
-          return { x: p.x, y: p.y, z: pinDepth(pin, z) };
-        })),
-      };
-    },
     step(f) {
       let gate: GateResult;
       let measure: LiveMeasure | null = null;
@@ -204,9 +150,7 @@ export function createLiveRun<I>(opt: LiveRunOptions): {
         stable = r.stable;
         gate = r.gate;
         measure = { ...m, stableCount: r.stable };
-        const cur = smoother?.smooth(f.lm, f.t) ?? f.lm;
-        outline = placeOutline(pinned, cur);
-        if (sides && head) outline = farEyeHead(outline, head, sides, opt.baseline.lm, cur);
+        outline = placeOutline(pinned, smoother?.smooth(f.lm, f.t) ?? f.lm);
       }
       if (gate.ok || !softFail(gate)) softSince = null;
       else softSince ??= f.t;

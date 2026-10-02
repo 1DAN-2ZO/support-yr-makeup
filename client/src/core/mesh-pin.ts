@@ -65,12 +65,6 @@ export function placePins(cur: readonly Pt[], pins: readonly Pin[], tris: readon
   });
 }
 
-/** 붙여 둔 점의 깊이 — 기준 얼굴 점마다의 깊이(z)를 같은 무게로 섞는다 (head3d) */
-export function pinDepth(pin: Pin, z: readonly number[], tris: readonly Triangle[] = FACE_TRIANGLES): number {
-  const [i, j, k] = tris[pin.tri]!;
-  return pin.w[0] * (z[i] ?? 0) + pin.w[1] * (z[j] ?? 0) + pin.w[2] * (z[k] ?? 0);
-}
-
 export interface PinnedOutline {
   polys: Pin[][];
   lines: Pin[][];

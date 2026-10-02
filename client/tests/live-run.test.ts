@@ -365,42 +365,6 @@ describe("live run", () => {
     }
   });
 
-  // B안 (2026-10-02 PC): 고개를 많이 돌리면 먼 쪽 눈은 머리를 입체로 돌린 자리로 — 맨얼굴 깊이(z)가 있을 때만
-  // 입체 합성 얼굴: 가운데가 카메라에 가깝고(z 작음) 바깥으로 갈수록 멀다 · 눈은 12 만큼 안쪽
-  const EYE_PTS = new Set<number>([...LM.eyeA.upper, ...LM.eyeA.lower, ...LM.eyeB.upper, ...LM.eyeB.lower]);
-  const HEAD = FACE.map((p, i) => ({ x: p.x, y: p.y, z: 0.004 * ((p.x - 300) ** 2 + (p.y - 300) ** 2) - 120 + (EYE_PTS.has(i) ? 12 : 0) }));
-  /** 고개를 deg 만큼 돌린 얼굴 (35° → 각도 차 약 28, 먼 쪽 = eyeA). 먼 쪽 눈머리는 MediaPipe 처럼 코 쪽으로 20px 삐져나오게 */
-  const turned3d = (deg: number): Pt[] => {
-    const a = (deg * Math.PI) / 180;
-    const lm = HEAD.map((p) => ({ x: 300 + (p.x - 300) * Math.cos(a) + p.z * Math.sin(a), y: p.y, z: -(p.x - 300) * Math.sin(a) + p.z * Math.cos(a) }));
-    return lm;
-  };
-  const withBadInner = (lm: Pt[]): Pt[] => lm.map((p, i) => (i === LM.eyeA.inner ? { ...p, x: p.x + 20 } : p));
-  const liner3d = (lm: Pt[], depth: boolean) => {
-    const r = createLiveRun<string>({ partId: "liner", baseline: { lm: FACE, foreheadL: SKIN.L }, guide: lookGuide({}), smooth: false });
-    if (depth) r.setBaseDepth(HEAD.map((p) => p.z));
-    return r.step(frame({ lm })).outline!;
-  };
-  const leftPoly = (o: { polys: Pt[][] }) => o.polys.reduce((a, b) => (Math.min(...b.map((p) => p.x)) < Math.min(...a.map((p) => p.x)) ? b : a));
-  const hasNear = (poly: readonly Pt[], q: Pt, eps: number) => poly.some((p) => Math.hypot(p.x - q.x, p.y - q.y) < eps);
-
-  it("L34 맨얼굴 깊이가 있으면, 많이 돌렸을 때 먼 쪽 눈은 머리를 입체로 돌린 자리 — 빗나간 눈꺼풀 점을 안 따라간다. 가까운 쪽은 그대로", () => {
-    const truth = turned3d(35), lm = withBadInner(truth);
-    // 가까운 쪽(eyeB) 눈머리는 움직여 본다 — 이건 따라가야 한다 (눈 감기·내리깔기)
-    lm[LM.eyeB.inner] = { ...lm[LM.eyeB.inner]!, x: lm[LM.eyeB.inner]!.x - 4, y: lm[LM.eyeB.inner]!.y + 3 };
-    const o = liner3d(lm, true), far = leftPoly(o), nearP = o.polys.find((q) => q !== far)!;
-    expect(hasNear(far, truth[LM.eyeA.inner]!, 0.5)).toBe(true);
-    expect(hasNear(far, lm[LM.eyeA.inner]!, 5)).toBe(false);
-    expect(hasNear(nearP, lm[LM.eyeB.inner]!, 1e-6)).toBe(true);
-  });
-
-  it("L35 맨얼굴 깊이가 아직 없거나 조금 돌렸을 때는 지금처럼 눈꺼풀 점을 따라간다", () => {
-    const lm = withBadInner(turned3d(35));
-    expect(hasNear(leftPoly(liner3d(lm, false)), lm[LM.eyeA.inner]!, 1e-6)).toBe(true);
-    const small = withBadInner(turned3d(10));
-    expect(hasNear(leftPoly(liner3d(small, true)), small[LM.eyeA.inner]!, 1e-6)).toBe(true);
-  });
-
   it("L24 폰을 가로로 들면 카메라가 옆이라 얼굴이 돌아간 것으로 찍힌다 — 기준 각도 차를 '오른쪽/왼쪽으로 돌려' 로 알려 준다 (폰 시험 2026-09-30)", () => {
     const turned = turnedFace(0.11);
     const r = run("liner").step(frame({ lm: turned }));
