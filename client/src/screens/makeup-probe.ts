@@ -788,6 +788,7 @@ shotBtn.addEventListener("click", () => {
     stillLm = null;
     shotBtn.textContent = "사진 찍기";
     sendBtn.disabled = true;
+    drawPicker();
     return;
   }
   if (!lastLm) return;
@@ -797,6 +798,8 @@ shotBtn.addEventListener("click", () => {
   stillLm = lastLm;
   shotBtn.textContent = "다시 찍기";
   sendBtn.disabled = false;
+  pickFit();
+  drawPicker();
 });
 
 const promptFor = (lm: readonly Pt[]): string => {
@@ -821,6 +824,237 @@ sendBtn.addEventListener("click", () => {
     .catch(() => { planEl.textContent = planShown = "VLM 중계에 닿지 못했어요. 중계(server.mjs)가 켜져 있는지 확인해 주세요."; })
     .finally(() => { sendBtn.disabled = false; });
 });
+
+// ── 점 찍기 (랜드마크로 영역 만들기) ─────────────────
+// 가이드 선이 "네모네모하다·해외 느낌"이라는 실측 피드백(2026-10-01) — 참고 사진 번역 대신, 기준 사진
+// 위에서 478개 랜드마크 중 원하는 점을 직접 순서대로 찍어 영역을 만드는 방법으로 감. 결과는 코드에
+// 바로 붙여 넣을 인덱스 배열 텍스트. 좌우는 자동 대칭 안 함(MediaPipe 인덱스가 단순 대칭이 아니라
+// 잘못 매핑될 위험) — 양쪽 다 따로 찍는다.
+type PickPart = "brow" | "liner" | "shadow" | "lip" | "cheek" | "contour" | "highlight";
+type PickMode = "outline" | "band" | "regions" | "line";
+
+/** 부위별 찍기 방식: outline=닫힌 외곽선 하나, band=경계 2개(속눈썹 쪽·눈썹 쪽), regions=하위 영역 여러 개를 같이, line=기준선 하나(두께·꼬리는 숫자로 따로) */
+const PICK_MODE: Record<PickPart, PickMode> = {
+  brow: "outline", lip: "outline", cheek: "outline",
+  shadow: "band",
+  contour: "regions", highlight: "regions",
+  liner: "line",
+};
+/** 쉐딩·하이라이트: 하위 영역을 전부 같이 찍어서 합친다(동시에 쓰는 효과) — 블러셔와 달리 "하나만 골라 쓰는" 게 아님 */
+const PICK_SUBREGIONS: Partial<Record<PickPart, { id: string; name: string }[]>> = {
+  contour: [
+    { id: "faceEdge", name: "얼굴 외곽 (관자→볼 옆→턱)" },
+    { id: "jawline", name: "턱선 (안쪽 살짝 걸치게)" },
+    { id: "noseSide", name: "코 옆" },
+    { id: "hairline", name: "이마 헤어라인" },
+    { id: "underNostril", name: "콧볼 아래" },
+  ],
+  highlight: [
+    { id: "foreheadCenter", name: "이마 가운데" },
+    { id: "noseBridge", name: "콧대" },
+    { id: "noseTip", name: "코끝" },
+    { id: "cheekTop", name: "광대 위 (눈꼬리 아래 바깥)" },
+    { id: "browBone", name: "눈썹 뼈" },
+    { id: "underAegyo", name: "애교살 아래" },
+    { id: "chinTip", name: "턱끝" },
+  ],
+};
+/** 좌우를 따로 찍어야 하는 부위 */
+const PICK_HAS_SIDE: Record<PickPart, boolean> = {
+  brow: true, cheek: true, liner: true, shadow: true, lip: false, contour: false, highlight: false,
+};
+
+const pickcv = $<HTMLCanvasElement>("pickcv");
+const pickCtx = pickcv.getContext("2d")!;
+const pickPartSel = $<HTMLSelectElement>("pickPart");
+const pickSideSel = $<HTMLSelectElement>("pickSide");
+const pickSideWrap = $("pickSideWrap");
+const pickRegionSel = $<HTMLSelectElement>("pickRegion");
+const pickRegionWrap = $("pickRegionWrap");
+const pickEdgeSel = $<HTMLSelectElement>("pickEdge");
+const pickEdgeWrap = $("pickEdgeWrap");
+const pickZoomIn = $<HTMLInputElement>("pickZoom");
+const pickStatusEl = $("pickStatus");
+const pickOutEl = $<HTMLTextAreaElement>("pickOut");
+
+let pickZoom = 1;                 // still 원본 px → pickcv px 절대 배율
+let pickPanX = 0, pickPanY = 0;   // pickcv px 기준 이동
+let pickCurrent: number[] = [];   // 지금 구간에서 찍고 있는 랜드마크 인덱스 순서(점 순서 = 배열 순서)
+const pickResults: Record<string, number[]> = {}; // 완료된 구간들 — key는 pickKey() 참고
+
+function pickKey(): string {
+  const part = pickPartSel.value as PickPart;
+  const keyParts: string[] = [part];
+  if (PICK_HAS_SIDE[part]) keyParts.push(pickSideSel.value);
+  if (PICK_MODE[part] === "regions") keyParts.push(pickRegionSel.value);
+  if (PICK_MODE[part] === "band") keyParts.push(pickEdgeSel.value);
+  return keyParts.join("-");
+}
+
+/** 찍은 사진 크기에 맞춰 보기를 가운데로 꽉 채운다 — 사진 새로 찍을 때마다 다시 불린다 */
+function pickFit(): void {
+  if (!stillLm) return;
+  pickZoom = Math.min(pickcv.width / still.width, pickcv.height / still.height);
+  pickPanX = (pickcv.width - still.width * pickZoom) / 2;
+  pickPanY = (pickcv.height - still.height * pickZoom) / 2;
+  pickZoomIn.min = (pickZoom * 0.3).toFixed(3);
+  pickZoomIn.max = (pickZoom * 8).toFixed(3);
+  pickZoomIn.step = "0.01";
+  pickZoomIn.value = String(pickZoom);
+}
+
+function refreshPickControls(): void {
+  const part = pickPartSel.value as PickPart;
+  const mode = PICK_MODE[part];
+  pickSideWrap.hidden = !PICK_HAS_SIDE[part];
+  pickRegionWrap.hidden = mode !== "regions";
+  pickEdgeWrap.hidden = mode !== "band";
+  if (mode === "regions") {
+    const subs = PICK_SUBREGIONS[part] ?? [];
+    const keep = pickRegionSel.value;
+    pickRegionSel.innerHTML = "";
+    for (const s of subs) pickRegionSel.add(new Option(s.name, s.id));
+    if (subs.some((s) => s.id === keep)) pickRegionSel.value = keep;
+  }
+  pickCurrent = pickResults[pickKey()] ? [...pickResults[pickKey()]!] : [];
+  drawPicker();
+  updatePickOut();
+}
+[pickPartSel, pickSideSel, pickRegionSel, pickEdgeSel].forEach((el) => el.addEventListener("change", refreshPickControls));
+
+/** 캔버스 중심을 고정한 채 배율만 바꾼다 — 슬라이더·휠 공용 */
+function pickZoomTo(z: number): void {
+  const cx = pickcv.width / 2, cy = pickcv.height / 2;
+  const imgCx = (cx - pickPanX) / pickZoom, imgCy = (cy - pickPanY) / pickZoom;
+  pickZoom = Math.max(Number(pickZoomIn.min || "0.1"), Math.min(Number(pickZoomIn.max || "10"), z));
+  pickPanX = cx - imgCx * pickZoom;
+  pickPanY = cy - imgCy * pickZoom;
+  pickZoomIn.value = String(pickZoom);
+  drawPicker();
+}
+pickZoomIn.addEventListener("input", () => pickZoomTo(Number(pickZoomIn.value)));
+pickcv.addEventListener("wheel", (e) => {
+  if (!stillLm) return;
+  e.preventDefault();
+  pickZoomTo(pickZoom * (e.deltaY < 0 ? 1.1 : 0.9));
+}, { passive: false });
+$("pickReset").addEventListener("click", () => { pickFit(); drawPicker(); });
+$("pickUndo").addEventListener("click", () => { pickCurrent.pop(); drawPicker(); });
+$("pickClearAll").addEventListener("click", () => {
+  if (!confirm("찍은 점을 전부 지울까요?")) return;
+  for (const k of Object.keys(pickResults)) delete pickResults[k];
+  pickCurrent = [];
+  drawPicker();
+  updatePickOut();
+});
+$("pickDone").addEventListener("click", () => {
+  if (pickCurrent.length < 2) { pickStatusEl.textContent = "점을 2개 이상 찍어야 구간이 됩니다."; return; }
+  pickResults[pickKey()] = [...pickCurrent];
+  updatePickOut();
+  const part = pickPartSel.value as PickPart;
+  // band(섀도우): 속눈썹 쪽 끝나면 눈썹 쪽으로 자동 이동. regions(쉐딩·하이라이트): 다음 하위 영역으로 자동 이동
+  if (PICK_MODE[part] === "band" && pickEdgeSel.value === "lo") {
+    pickEdgeSel.value = "hi";
+  } else if (PICK_MODE[part] === "regions") {
+    const subs = PICK_SUBREGIONS[part] ?? [];
+    const i = subs.findIndex((s) => s.id === pickRegionSel.value);
+    if (i >= 0 && i + 1 < subs.length) pickRegionSel.value = subs[i + 1]!.id;
+  }
+  pickCurrent = pickResults[pickKey()] ? [...pickResults[pickKey()]!] : [];
+  pickStatusEl.textContent = "구간 저장함.";
+  drawPicker();
+});
+
+function updatePickOut(): void {
+  const lines = Object.entries(pickResults)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, idx]) => `  "${k}": [${idx.join(", ")}],`);
+  pickOutEl.value = lines.length ? `{\n${lines.join("\n")}\n}` : "(아직 없음)";
+}
+
+const pickToImage = (px: number, py: number): Pt => ({ x: (px - pickPanX) / pickZoom, y: (py - pickPanY) / pickZoom });
+const pickToCanvas = (p: Pt): Pt => ({ x: p.x * pickZoom + pickPanX, y: p.y * pickZoom + pickPanY });
+
+function drawPicker(): void {
+  pickCtx.clearRect(0, 0, pickcv.width, pickcv.height);
+  const lm = stillLm;
+  if (!lm) {
+    pickCtx.fillStyle = "#fff8";
+    pickCtx.font = "14px system-ui";
+    pickCtx.fillText("먼저 '사진 찍기'로 기준 사진을 잡아 주세요.", 12, 24);
+    return;
+  }
+  pickCtx.drawImage(still, pickPanX, pickPanY, still.width * pickZoom, still.height * pickZoom);
+  pickCtx.fillStyle = "#38bdf866";   // 전체 478점 — 옅게
+  for (const p of lm) {
+    const q = pickToCanvas(p);
+    pickCtx.beginPath();
+    pickCtx.arc(q.x, q.y, 2, 0, Math.PI * 2);
+    pickCtx.fill();
+  }
+  if (pickCurrent.length) {   // 지금 찍은 점들 — 순서·번호·선
+    pickCtx.strokeStyle = "#f59e0b";
+    pickCtx.lineWidth = 2;
+    pickCtx.beginPath();
+    pickCurrent.forEach((idx, i) => {
+      const q = pickToCanvas(at(lm, idx));
+      if (i === 0) pickCtx.moveTo(q.x, q.y); else pickCtx.lineTo(q.x, q.y);
+    });
+    pickCtx.stroke();
+    pickCurrent.forEach((idx, i) => {
+      const q = pickToCanvas(at(lm, idx));
+      pickCtx.fillStyle = "#f59e0b";
+      pickCtx.beginPath();
+      pickCtx.arc(q.x, q.y, 4, 0, Math.PI * 2);
+      pickCtx.fill();
+      pickCtx.fillStyle = "#fff";
+      pickCtx.font = "10px system-ui";
+      pickCtx.fillText(String(i + 1), q.x + 5, q.y - 5);
+    });
+  }
+}
+
+let pickDragging = false, pickDragMoved = false, pickDragStart = { x: 0, y: 0 };
+pickcv.addEventListener("pointerdown", (e) => {
+  if (!stillLm) return;
+  pickDragging = true;
+  pickDragMoved = false;
+  pickDragStart = { x: e.clientX, y: e.clientY };
+  pickcv.setPointerCapture(e.pointerId);
+});
+pickcv.addEventListener("pointermove", (e) => {
+  if (!pickDragging) return;
+  const dx = e.clientX - pickDragStart.x, dy = e.clientY - pickDragStart.y;
+  if (pickDragMoved || Math.hypot(dx, dy) > 4) {
+    pickDragMoved = true;
+    const scale = pickcv.width / pickcv.clientWidth;   // 표시 크기 ↔ 캔버스 내부 해상도 보정
+    pickPanX += dx * scale;
+    pickPanY += dy * scale;
+    pickDragStart = { x: e.clientX, y: e.clientY };
+    drawPicker();
+  }
+});
+pickcv.addEventListener("pointerup", (e) => {
+  pickDragging = false;
+  pickcv.releasePointerCapture(e.pointerId);
+  if (pickDragMoved || !stillLm) return;
+  const r = pickcv.getBoundingClientRect();
+  const scale = pickcv.width / r.width;
+  const clickImg = pickToImage((e.clientX - r.left) * scale, (e.clientY - r.top) * scale);
+  let best = -1, bestD = Infinity;
+  stillLm.forEach((p, i) => {
+    const d = dist(p, clickImg);
+    if (d < bestD) { bestD = d; best = i; }
+  });
+  const tolImg = 14 / pickZoom;   // 화면 14px 반경을 이미지 좌표로 환산 — 확대할수록 더 정밀하게 찍힘
+  if (best < 0 || bestD > tolImg) return;
+  if (pickCurrent.length && pickCurrent[pickCurrent.length - 1] === best) pickCurrent.pop();   // 같은 점 다시 클릭 = 취소
+  else pickCurrent.push(best);
+  pickStatusEl.textContent = `${pickCurrent.length}점 찍음 — 방금 ${best}번`;
+  drawPicker();
+});
+
+refreshPickControls();
 
 function tick(): void {
   if (!landmarker || video.readyState < 2) { requestAnimationFrame(tick); return; }
