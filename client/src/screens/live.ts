@@ -89,7 +89,7 @@ interface ViewMap { s: number; ox: number; oy: number; crop: Rect }
 const EYE_DOTS: readonly number[] = [...LM.eyeA.upper, ...LM.eyeA.lower, ...LM.eyeB.upper, ...LM.eyeB.lower];
 
 /** 확대 창만 거울로 그리고 그 위에 테두리 (선만, F-07) */
-function drawView(cv: HTMLCanvasElement, video: HTMLVideoElement, crop: Rect, o: Outline | null, dots: readonly Pt[] | null = null): ViewMap | null {
+function drawView(cv: HTMLCanvasElement, video: HTMLVideoElement, crop: Rect, o: Outline | null, dots: readonly Pt[] | null = null, alpha: readonly number[] | null = null): ViewMap | null {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   const W = Math.round(cv.clientWidth * dpr), H = Math.round(cv.clientHeight * dpr);
   if (!W || !H) return null;
@@ -106,7 +106,20 @@ function drawView(cv: HTMLCanvasElement, video: HTMLVideoElement, crop: Rect, o:
   g.scale(s, s);
   g.translate(-crop.x, -crop.y);
   g.drawImage(video, crop.x, crop.y, crop.w, crop.h, crop.x, crop.y, crop.w, crop.h);
-  if (o) strokeOutline(g, o, Math.max(2, W / 400) / s);
+  if (o) {
+    const lw = Math.max(2, W / 400) / s;
+    // 고개를 많이 돌리면 먼 쪽 눈 테두리는 흐리게 (live-run alpha, FAR_FADE)
+    strokeOutline(g, alpha ? { polys: o.polys.filter((_, i) => (alpha[i] ?? 1) >= 1), lines: o.lines } : o, lw);
+    if (alpha) {
+      o.polys.forEach((poly, i) => {
+        const a = alpha[i] ?? 1;
+        if (a >= 1) return;
+        g.globalAlpha = a;
+        strokeOutline(g, { polys: [poly], lines: [] }, lw);
+        g.globalAlpha = 1;
+      });
+    }
+  }
   if (dots) {
     g.fillStyle = "#ffb000";
     const r = Math.max(2, W / 350) / s;
@@ -292,7 +305,7 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
           readout.style.whiteSpace = "pre";
           readout.textContent = poseCal.step(lm, res.facialTransformationMatrixes?.[0]?.data ?? null, f.expr?.["jawOpen"] ?? 0);
         }
-        const vm = drawView(view, video, shown, r.outline, dots && lm ? EYE_DOTS.map((i) => lm[i]!) : null);
+        const vm = drawView(view, video, shown, r.outline, dots && lm ? EYE_DOTS.map((i) => lm[i]!) : null, r.alpha);
         if (meter && vm && r.outline) {
           // 화면 흔들림: 영상의 고정된 한 점(가운데)이 캔버스에서 어디 찍히나 — 창이 움직이면 사진 전체가 튄다
           meter.view.push([{ x: (sw / 2 - vm.crop.x) * vm.s + vm.ox, y: (sh / 2 - vm.crop.y) * vm.s + vm.oy }]);

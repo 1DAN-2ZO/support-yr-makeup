@@ -19,6 +19,8 @@ import { gateStep, rigidPoseDiff, softFail, type LiveLimits, LIVE_LIMITS, livePo
 import { linerOutline, GUIDE_PARAMS } from "./guides";
 import { partInRect } from "./landmarks";
 import { pinOutline, placeOutline } from "./mesh-pin";
+import { LM } from "./landmarks";
+import type { Side } from "./score";
 import { foreheadStep, startForeheadTrack, type ForeheadTrack } from "./occlusion";
 import { guideOutline, type Outline } from "./overlay";
 import type { GuideSource } from "./score-part";
@@ -77,6 +79,11 @@ export interface LiveStep<I> {
    * 뒤의 경우 문구는 게이트 안내 그대로 두고 판단은 채점에 맡긴다
    */
   pressable: boolean;
+  /**
+   * 테두리 다각형마다 진하기 (1 = 보통). 눈 부위에서 고개를 많이 돌리면 먼 쪽 눈은 흐리게 (FAR_FADE).
+   * 눈 부위가 아니거나 얼굴이 없으면 null
+   */
+  alpha: number[] | null;
 }
 
 /** 합성 없이 모양만 부를 때 넘기는 빈 이미지 — guides.ts 는 랜드마크와 기준 길이만 본다 */
@@ -95,6 +102,32 @@ export function outlineOf(partId: PartId, lm: readonly Pt[], guide: GuideSource)
 
 const optExpr = (d: number | undefined): { exprDiff?: number } => (d === undefined ? {} : { exprDiff: d });
 
+/**
+ * 고개를 많이 돌리면 먼 쪽 눈 테두리를 흐리게 (2026-10-02 PC) — 그 각도에선 MediaPipe 가 먼 쪽 눈꺼풀을 빗나가게 잡아
+ * 테두리를 붙일 수 없었다(눈 주변 점 평면 변환 · 머리 입체 회전 둘 다 더 나빴다). 틀린 선을 믿고 따라 그리지 않게.
+ * 각도 차(rigidPoseDiff 눈금, 화면 4 한계 12 와 같은 눈금) from 까지 그대로 → to 부터 min. 가정값
+ */
+export const FAR_FADE = { from: 15, to: 30, min: 0.25 } as const;
+
+const EYE_PARTS: readonly PartId[] = ["brow", "liner", "shadow"];
+const EYE_IDS: Record<Side, readonly number[]> = { R: [...LM.eyeA.upper, ...LM.eyeA.lower], L: [...LM.eyeB.upper, ...LM.eyeB.lower] };
+const mean = (ps: readonly Pt[]): Pt => ({ x: ps.reduce((a, p) => a + p.x, 0) / ps.length, y: ps.reduce((a, p) => a + p.y, 0) / ps.length });
+const eyeCenter = (side: Side, lm: readonly Pt[]): Pt => mean(EYE_IDS[side].map((i) => lm[i]!));
+/** 이 테두리 다각형이 어느 눈 쪽인지 — 눈 가운데에 더 가까운 쪽 */
+function nearerEye(poly: readonly Pt[], lm: readonly Pt[]): Side {
+  const m = mean(poly), r = eyeCenter("R", lm), l = eyeCenter("L", lm);
+  return Math.hypot(m.x - r.x, m.y - r.y) <= Math.hypot(m.x - l.x, m.y - l.y) ? "R" : "L";
+}
+
+/** 먼 쪽 눈 테두리 진하기 1 → min. 먼 쪽 = 코끝이 움직인 쪽 눈 (고개를 돌리면 먼 쪽 눈이 코 뒤로 간다) */
+function farEyeAlpha(sides: readonly Side[], baseLm: readonly Pt[], cur: readonly Pt[]): number[] {
+  const d = rigidPoseDiff(baseLm, cur).yaw;
+  const t = Math.min(1, Math.max(0, (Math.abs(d) - FAR_FADE.from) / (FAR_FADE.to - FAR_FADE.from)));
+  const a = 1 - (1 - FAR_FADE.min) * t * t * (3 - 2 * t);
+  const far: Side = (d > 0) === (eyeCenter("R", cur).x > eyeCenter("L", cur).x) ? "R" : "L";
+  return sides.map((s) => (s === far ? a : 1));
+}
+
 
 export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): LiveStep<I>; press(): boolean; readonly smoother: LandmarkSmoother | null } {
   const limits = opt.limits ?? LIVE_LIMITS;
@@ -111,6 +144,8 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
   // 매 장면 새로 그리면 크기·각도가 화면 기준(눈 폭 평균 · 화면 위쪽)이라 고개를 돌릴 때 원근이 안 들어가 어긋났다 (2026-10-02 PC).
   // 화면 3(맨얼굴 사진 위 테두리)·채점(맨얼굴 기준)과도 같은 모양
   const pinned = pinOutline(outlineOf(opt.partId, opt.baseline.lm, opt.guide), opt.baseline.lm);
+  // 눈 부위: 테두리 다각형마다 어느 눈 쪽인지 — 고개를 많이 돌리면 먼 쪽을 흐리게 (FAR_FADE)
+  const sides = EYE_PARTS.includes(opt.partId) ? placeOutline(pinned, opt.baseline.lm).polys.map((poly) => nearerEye(poly, opt.baseline.lm)) : null;
 
   return {
     /** 화면 4 개발용 ?tune 슬라이더가 값을 바꾼다 */
@@ -119,6 +154,7 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
       let gate: GateResult;
       let measure: LiveMeasure | null = null;
       let outline: Outline | null = null;
+      let alpha: number[] | null = null;
       let occluded: boolean | null = null;
       if (!f.lm) {
         smoother?.smooth(null, f.t);
@@ -150,7 +186,9 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
         stable = r.stable;
         gate = r.gate;
         measure = { ...m, stableCount: r.stable };
-        outline = placeOutline(pinned, smoother?.smooth(f.lm, f.t) ?? f.lm);
+        const cur = smoother?.smooth(f.lm, f.t) ?? f.lm;
+        outline = placeOutline(pinned, cur);
+        if (sides) alpha = farEyeAlpha(sides, opt.baseline.lm, cur);
       }
       if (gate.ok || !softFail(gate)) softSince = null;
       else softSince ??= f.t;
@@ -168,7 +206,7 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
         }
       }
       lastPressable = pressable;
-      return { gate, outline, bundle, measure, pressable };
+      return { gate, outline, bundle, measure, pressable, alpha };
     },
     press() {
       if (!lastPressable || collector) return false;

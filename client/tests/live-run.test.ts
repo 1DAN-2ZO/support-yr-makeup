@@ -1,7 +1,7 @@
 // 화면 4 진행 (2-1 넷째 조각, #21) 검증 — 카메라 없이 프레임 측정값만 넣는다
 // 프레임마다: 게이트 한 줄 · 가이드 테두리 · (확인받기 뒤) 묶음 모으기
 import { describe, expect, it } from "vitest";
-import { createLiveRun, type LiveFrame } from "@core/live-run";
+import { FAR_FADE, createLiveRun, type LiveFrame } from "@core/live-run";
 import { GATE_TEXT, LIVE_LIMITS, RIGID_POSE, poseOf } from "@core/gate";
 import { linerOutline, lookGuide } from "@core/guides";
 import type { GuideSource } from "@core/score-part";
@@ -363,6 +363,24 @@ describe("live run", () => {
       const got = farPoly(linerAt(dragged(turn)));
       expect(got.some((p) => Math.hypot(p.x - dragTip().x, p.y - dragTip().y) < 1e-6), String(turn)).toBe(true);
     }
+  });
+
+  it("L36 고개를 많이 돌리면 먼 쪽 눈 테두리는 흐리게 — 붙게 만들 수 없는 각도라 믿고 따라 그리지 않게 (2026-10-02 PC). 가까운 쪽 · 조금 돌렸을 때 · 눈 아닌 부위는 그대로", () => {
+    expect(FAR_FADE.min).toBeLessThan(1);
+    const alphaOf = (part: "liner" | "lip", f: number) => createLiveRun<string>({ partId: part, baseline: { lm: FACE, foreheadL: SKIN.L }, guide: lookGuide({}), smooth: false }).step(frame({ lm: turnedFace(f) }));
+    // 코끝이 이미지 오른쪽으로(각도 차 약 31) → 먼 쪽 = 이미지 오른쪽 눈
+    const big = alphaOf("liner", 0.25);
+    const rightIdx = big.outline!.polys.findIndex((q) => Math.min(...q.map((p) => p.x)) > 300);
+    expect(big.alpha).toHaveLength(2);
+    expect(big.alpha![rightIdx]).toBeCloseTo(FAR_FADE.min, 6);
+    expect(big.alpha![1 - rightIdx]).toBe(1);
+    // 반대로 돌리면 반대쪽이 흐려진다
+    const other = alphaOf("liner", -0.25);
+    expect(other.alpha![rightIdx]).toBe(1);
+    expect(other.alpha![1 - rightIdx]).toBeCloseTo(FAR_FADE.min, 6);
+    // 조금 돌렸을 때(각도 차 약 6) · 눈 아닌 부위는 흐리게 하지 않는다
+    expect(alphaOf("liner", 0.05).alpha).toEqual([1, 1]);
+    expect(alphaOf("lip", 0.25).alpha).toBeNull();
   });
 
   it("L24 폰을 가로로 들면 카메라가 옆이라 얼굴이 돌아간 것으로 찍힌다 — 기준 각도 차를 '오른쪽/왼쪽으로 돌려' 로 알려 준다 (폰 시험 2026-09-30)", () => {
