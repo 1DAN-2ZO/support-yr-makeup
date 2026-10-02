@@ -121,23 +121,23 @@ def test_parse_cond_and_pick_swap():
     assert pick_swap(me, pool, "daily", 0) == pick_swap(me, pool, "daily", 0)  # 다시 돌려도 같다
 
 
-def test_ef_schema_offers_only_values_the_gate_accepts():
+def test_ef_schema_offers_every_value_the_gate_accepts():
+    # v6 (2026-10-01): 얼굴별로 좁히던 선택지를 풀었다 — 오버라인 · drop · 진하기 상한 모두 전 범위
     m = core([{"op": "measure", "lm": LM}])[0]
-    m["lip"]["upperLowerRatio"] = 0.9  # 목표(0.8) 이상 → 오버라인은 0 만
+    m["lip"]["upperLowerRatio"] = 0.9  # 목표(0.8) 이상이어도 오버라인 전 범위
     for e in ("R", "L"):
-        m["eye"][e]["tiltDeg"] = 8  # 눈꼬리가 올라간 눈 = 처진 눈 아님 → drop 없음 (판정은 기울기, α·β 아님)
+        m["eye"][e]["tiltDeg"] = 8  # 처진 눈 아님이어도 drop 을 준다
     s, p = core(
         [{"op": "schema", "variant": "E", "m": m}, {"op": "prompt", "m": m, "look": "daily", "variant": "E"}]
     )
     props = s["properties"]
     assert list(props)[:2] == ["observation", "rationale"]  # 관찰 → 근거 → 결정
-    assert props["lip"]["properties"]["overline"]["enum"] == [0]
-    assert "drop" not in props["liner"]["properties"]["style"]["enum"]
-    assert all(v <= 1 for v in props["intensity"]["properties"]["brow"]["enum"])  # 눈썹은 올리지 않는다
+    assert props["lip"]["properties"]["overline"]["enum"] == [0, 0.1, 0.2, 0.3, 0.4, 0.5]
+    assert "drop" in props["liner"]["properties"]["style"]["enum"]
+    assert max(props["intensity"]["properties"]["brow"]["enum"]) == 1.5
     tail = p[p.index("## 정할 것") :]
     assert '"range":1' not in tail and "나쁜 예" not in tail  # 예시 값·예시 문장 없음
-    f = core([{"op": "prompt", "m": m, "look": "daily", "variant": "F"}])[0]
-    assert "규칙" not in f[f.index("## 이 얼굴을 잰 값") : f.index("## 정할 것")]  # F 는 규칙 값 없음
+    assert "규칙" not in p[p.index("## 이 사람의 얼굴") : p.index("## 정할 것")]  # v6 부터 E 도 규칙 값 없음
 
 
 # ---------- 앱 코드 다리 ----------
@@ -149,7 +149,7 @@ def test_prompt_variants_share_everything_but_measures():
     assert len({a, b, c, d}) == 4
     tail = a[a.index("## 정할 것") :]
     assert all(p.endswith(tail) for p in (b, c, d))  # 정할 것·답 형식은 같다
-    assert "°" not in b[b.index("## 이 얼굴을 잰 값") : b.index("## 정할 것")]  # B 는 숫자 없음
+    assert "°" not in b[b.index("## 이 사람의 얼굴") : b.index("## 정할 것")]  # B 는 숫자 없음
 
 
 def test_gate_rejects_garbage_and_accepts_rule_consistent():

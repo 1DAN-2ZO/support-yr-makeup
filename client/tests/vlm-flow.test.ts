@@ -11,8 +11,8 @@ const m = measureFace(LMS);
 const look = LOOKS[0]!;
 const rule = resolvePlan(m);
 const good = JSON.stringify({ liner: { style: rule.liner.plan.style }, rationale: { liner: "눈매에 맞춰 꼬리를 정했어요" } });
-// 눈두덩이 좁은데 넓히자고 함 — 관문이 거절하는 제안 (합성 얼굴은 눈두덩이 좁다)
-const bad = JSON.stringify({ shadow: { range: 1.2 } });
+// 범위 밖 — 관문이 거절하는 제안 (v6 부터 방향으로는 거절하지 않는다)
+const bad = JSON.stringify({ shadow: { range: 2 } });
 
 describe("VLM 개인화 흐름", () => {
   it("F1 관문을 통과하면 한 번만 묻고 VLM 의 근거 문장을 쓴다", async () => {
@@ -29,7 +29,7 @@ describe("VLM 개인화 흐름", () => {
     const r = await planWithVlm(m, look, null, ask);
     expect(ask).toHaveBeenCalledTimes(2);
     const second = ask.mock.calls[1]![0] as string;
-    expect(second).toContain("눈두덩이 좁은데 넓히자고 함");
+    expect(second).toContain("섀도 범위: 2 는 0.6~1.4 밖");
     expect(r.tries).toBe(2);
     expect(r.plan.rejected).toEqual([]);
   });
@@ -55,9 +55,9 @@ describe("VLM 개인화 흐름", () => {
     // llama.cpp 는 required 키만 순서를 고정한다 — 모두 required (진하기는 칸은 있고 안의 부위는 바꿀 것만)
     expect(s.required).toEqual(keys);
     expect(s.properties.shadow!.properties!.range!.enum).toEqual(allowedChoices(m).shadow);
-    expect(s.properties.linerThick!.properties!.scale!.enum).toEqual([0.8, 0.9, 1, 1.1, 1.2]);
+    expect(s.properties.linerThick!.properties!.scale!.enum).toEqual([0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4]);
     expect(JSON.stringify(s)).not.toMatch(/"minimum"|"maximum"/);   // 소수 범위는 llama.cpp 가 강제하지 않는다
-    expect(PROMPT_VER).toBe("vlm-prompt-v5");
+    expect(PROMPT_VER).toBe("vlm-prompt-v7");
   });
   it("F6 다시 묻다가 실패하면(시간 초과·붐빔) 첫 답(관문을 거친 계획)을 쓴다 — 버리지 않는다 (#179 리뷰)", async () => {
     const ask = vi.fn().mockResolvedValueOnce(bad).mockRejectedValueOnce(new Error("시간 초과"));

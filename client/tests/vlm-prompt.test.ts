@@ -15,12 +15,12 @@ const look = lookById("edgy")!;
 const decide = (p: string): string => p.slice(p.indexOf("## 정할 것"));
 
 describe("VLM 프롬프트", () => {
-  it("측정값과 규칙의 판단을 글로 넘긴다 — VLM 이 사진만 보고 추측하지 않게", () => {
+  it("측정값을 글로 넘긴다 — 규칙이 고른 값은 주지 않는다 (v6) — VLM 이 사진만 보고 추측하지 않게", () => {
     const p = buildVlmPrompt(measure(8.4), look);
     expect(p).toContain("8.4");          // 눈꼬리 기울기
-    expect(p).toMatch(/처진 눈 아님/);
+    expect(p).toMatch(/눈꼬리 기울기: .*→ 보통/);
     expect(p).not.toContain("α − β");     // 처진 눈 판정에 더 쓰지 않는다
-    expect(p).toMatch(/규칙 출발점: 라이너 winged/);
+    expect(p).not.toMatch(/규칙 출발점|규칙이 고른|규칙 섀도|규칙 오버라인/);   // v6 — 규칙값을 닻으로 주지 않는다
   });
 
   it("템플릿(룩 이름·부위 색)을 넘긴다", () => {
@@ -31,14 +31,30 @@ describe("VLM 프롬프트", () => {
 
   it("⑤ 얼굴형 판정이 있으면 알려 준다", () => {
     const p = buildVlmPrompt(measure(8), look, { label: "square", confidence: 0.9, method: "model", version: "t" });
-    expect(p).toMatch(/얼굴형 판정: square/);
+    expect(p).toMatch(/얼굴형: square/);
   });
 
   it("처진 눈 기준은 관문 상수와 같다 (눈꼬리 기울기) — 어긋나면 drop 이 늘 거절된다", () => {
-    const p = buildVlmPrompt(measure(DROOP_TILT_DEG + 1), look);
-    expect(p).toMatch(/→ 처진 눈 아님/);
-    expect(p).toContain(`${DROOP_TILT_DEG}° 보다 작으면`);
-    expect(buildVlmPrompt(measure(DROOP_TILT_DEG - 1), look)).toMatch(/→ 처진 눈 \(/);
+    expect(buildVlmPrompt(measure(DROOP_TILT_DEG + 1), look)).not.toMatch(/→ 처진 눈/);
+    const d = buildVlmPrompt(measure(DROOP_TILT_DEG - 1), look);
+    expect(d).toMatch(/→ 처진 눈 \(/);
+    expect(d).toContain(`${DROOP_TILT_DEG}° 보다 작음`);
+  });
+
+  it("v7 — 측정값마다 보통 얼굴과 비교한 말을 붙인다 (작은 모델은 숫자만으로 비교하지 못했다)", () => {
+    const std = PLAN_RULES.lidGapStd;
+    expect(buildVlmPrompt(measure(8, { gap: 0.4 }), look)).toMatch(/→ 좁은 눈두덩/);
+    expect(buildVlmPrompt(measure(8, { gap: 0.7 }), look)).toMatch(/→ 넓은 눈두덩/);
+    expect(buildVlmPrompt(measure(8, { gap: std }), look)).toMatch(/눈두덩.*→ 보통/);
+    expect(buildVlmPrompt(measure(8, { lip: 0.6 }), look)).toMatch(/→ 윗입술이 얇음/);
+    expect(buildVlmPrompt(measure(12), look)).toMatch(/→ 올라간 눈/);
+  });
+
+  it("v7 — 얼굴에서 이유를 찾은 부위만 바꾸고, 근거는 얼굴 특징을 먼저", () => {
+    const p = buildVlmPrompt(measure(8), look);
+    expect(p).toMatch(/이유가 없는 값은 1\(템플릿 그대로\)/);
+    expect(decide(p)).toMatch(/이유가 된 이 사람의 얼굴 특징을 먼저/);
+    expect(decide(p)).toMatch(/보통과 다른 점/);
   });
 });
 
@@ -65,8 +81,8 @@ describe("VLM 프롬프트 — 형식 E", () => {
 
   it("숫자는 0.1 단위 선택지로 준다 — llama.cpp 는 소수 범위를 강제하지 않는다", () => {
     const d = decide(buildVlmPrompt(measure(8, { lip: 0.6 }), look));
-    expect(d).toContain("linerThick.scale: 0.8 / 0.9 / 1 / 1.1 / 1.2");
-    expect(d).toContain("lip.overline: 0 / 0.1 / 0.2 / 0.3");
+    expect(d).toContain("linerThick.scale: 0.6 / 0.7 / 0.8 / 0.9 / 1 / 1.1 / 1.2 / 1.3 / 1.4");
+    expect(d).toContain("lip.overline: 0 / 0.1 / 0.2 / 0.3 / 0.4 / 0.5");
     for (const k of ["blush.position", "blush.size", "highlight.tZone", "faceShape.label", "higher", "lower", "oval", "heart"]) expect(d).toContain(k);
   });
 
@@ -77,30 +93,21 @@ describe("VLM 프롬프트 — 형식 E", () => {
   });
 });
 
-describe("선택지 — 이 얼굴에서 관문이 받아 주는 값만", () => {
-  it("처진 눈이 아니면 drop 을 주지 않는다", () => {
-    expect(allowedChoices(measure(8)).liner).not.toContain("drop");
-    expect(allowedChoices(measure(DROOP_TILT_DEG - 1)).liner).toContain("drop");
-    expect(decide(buildVlmPrompt(measure(8), look))).not.toContain("drop");
+describe("선택지 — v6 부터 얼굴과 상관없이 관문이 받는 값 전부 (VLM 에게 자유를 더 줌)", () => {
+  it("처진 눈이 아니어도 drop 을 준다", () => {
+    expect(allowedChoices(measure(8)).liner).toContain("drop");
+    expect(decide(buildVlmPrompt(measure(8), look))).toContain("drop");
   });
 
-  it("눈두덩이 좁으면 섀도를 넓히는 값, 넓으면 줄이는 값을 뺀다", () => {
+  it("섀도·오버라인은 측정과 상관없이 전 범위", () => {
     const std = PLAN_RULES.lidGapStd;
-    expect(allowedChoices(measure(8, { gap: std * 0.8 })).shadow).toEqual([0.8, 0.9, 1]);
-    expect(allowedChoices(measure(8, { gap: std * 1.2 })).shadow).toEqual([1, 1.1, 1.2]);
-    expect(allowedChoices(measure(8, { gap: std })).shadow).toEqual([0.8, 0.9, 1, 1.1, 1.2]);
+    expect(allowedChoices(measure(8, { gap: std * 0.8 })).shadow).toEqual(allowedChoices(measure(8, { gap: std * 1.2 })).shadow);
+    expect(allowedChoices(measure(8, { lip: PLAN_RULES.lipTarget })).overline).toEqual([0, 0.1, 0.2, 0.3, 0.4, 0.5]);
   });
 
-  it("윗입술이 이미 목표 이상이면 오버라인은 0 만", () => {
-    expect(allowedChoices(measure(8, { lip: PLAN_RULES.lipTarget })).overline).toEqual([0]);
-    expect(allowedChoices(measure(8, { lip: 0.6 })).overline).toEqual([0, 0.1, 0.2, 0.3]);
-  });
-
-  it("진하기는 부위별 상한까지 — 눈썹은 올리지 않고 눈 화장은 조금만", () => {
+  it("진하기는 모든 부위 0.5~1.5 — 관문 범위와 같은 끝", () => {
     const a = allowedChoices(measure(8));
-    expect(Math.max(...a.intensity.brow)).toBe(1);
-    expect(Math.max(...a.intensity.liner)).toBeLessThanOrEqual(PLAN_RULES.intensityCap.liner!);
-    expect(Math.max(...a.intensity.lip)).toBe(PLAN_LIMITS.intensity[1]);
-    expect(decide(buildVlmPrompt(measure(8), look))).toMatch(/brow 0\.7~1, liner 0\.7~1\.1, shadow 0\.7~1\.1/);
+    for (const xs of Object.values(a.intensity)) expect([xs[0], xs[xs.length - 1]]).toEqual([...PLAN_LIMITS.intensity]);
+    expect(decide(buildVlmPrompt(measure(8), look))).toMatch(/brow 0\.5~1\.5, liner 0\.5~1\.5/);
   });
 });

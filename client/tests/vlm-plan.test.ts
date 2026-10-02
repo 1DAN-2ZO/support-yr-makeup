@@ -62,11 +62,11 @@ describe("개인화 계획 — VLM 제안 받기", () => {
 });
 
 describe("개인화 계획 — VLM 제안 거르기 (항목별로, 나머지는 살린다)", () => {
-  it("라이너: 처진 눈이 아닌데 drop 이면 거절 (기존 관문)", () => {
+  it("라이너: 처진 눈이 아니어도 drop 을 받는다 (v6 — VLM 이 사진을 보고 정한다)", () => {
     const p = resolvePlan(measure(-4), {}, { liner: { style: "drop" }, shadow: { range: 1.1 } });
-    expect(p.liner.source).toBe("rule");
+    expect(p.liner).toMatchObject({ source: "vlm", plan: { style: "drop" } });
     expect(p.shadow.source).toBe("vlm");
-    expect(p.rejected.join()).toMatch(/drop/);
+    expect(p.rejected).toEqual([]);
   });
 
   it("얼굴형: 모르는 이름이면 거절", () => {
@@ -92,12 +92,12 @@ describe("개인화 계획 — VLM 제안 거르기 (항목별로, 나머지는 
     expect(p.rejected.join()).toMatch(/표준 눈썹/);
   });
 
-  it("섀도 범위: 0.8~1.2 밖이면 거절", () => {
+  it("섀도 범위: 0.6~1.4 밖이면 거절", () => {
     expect(resolvePlan(measure(), {}, { shadow: { range: 1.5 } }).shadow).toEqual({ range: 1, source: "rule" });
     expect(resolvePlan(measure(), {}, { shadow: { range: "넓게" } }).shadow.source).toBe("rule");
   });
 
-  it("진하기: 부위별로 0.7~1.3 밖이거나 모르는 부위면 그 부위만 뺀다", () => {
+  it("진하기: 부위별로 0.5~1.5 밖이거나 모르는 부위면 그 부위만 뺀다", () => {
     const p = resolvePlan(measure(), {}, { intensity: { lip: 2, cheek: 0.9, nose: 1 } });
     expect(p.intensity).toEqual({ cheek: 0.9 });
     expect(p.rejected.join()).toMatch(/lip/);
@@ -123,9 +123,9 @@ describe("개인화 계획 — 믿을 수 없는 얼굴형은 쓰지 않는다 (
 describe("개인화 계획 — 나머지 부위 (규칙값)", () => {
   it("가정값은 한 곳에 모여 있다", () => {
     expect(PLAN_RULES).toEqual({
-      lidGapStd: 0.55, shadowGain: 0.5, lidGapTol: 0.05,
+      lidGapStd: 0.55, shadowGain: 0.5,
       lipTarget: 0.8, lipOverlineMax: 0.3,
-      intensityCap: { brow: 1, liner: 1.15, shadow: 1.15 }, intensityMeanCap: 1.15,
+      intensityMeanCap: 1.15,
       blushShift: 0.03,
     });
   });
@@ -160,28 +160,25 @@ describe("개인화 계획 — 나머지 부위 (규칙값)", () => {
 });
 
 describe("개인화 계획 — 나머지 부위 (VLM 제안 거르기)", () => {
-  it("섀도: 측정과 반대 방향이면 거절 — 눈두덩이 넓은데 줄이자거나, 좁은데 넓히자", () => {
-    const wide = resolvePlan(measure(-4, { lidGap: 0.66 }), {}, { shadow: { range: 0.9 } });
-    expect(wide.shadow.source).toBe("rule");
-    expect(wide.rejected.join()).toMatch(/눈두덩/);
-    const narrow = resolvePlan(measure(-4, { lidGap: 0.44 }), {}, { shadow: { range: 1.1 } });
-    expect(narrow.shadow.source).toBe("rule");
-    expect(resolvePlan(measure(-4, { lidGap: 0.44 }), {}, { shadow: { range: 0.85 } }).shadow).toEqual({ range: 0.85, source: "vlm" });
+  it("섀도: 측정과 반대 방향이어도 범위 안이면 받는다 (v6 — VLM 이 사진을 보고 정한다)", () => {
+    expect(resolvePlan(measure(-4, { lidGap: 0.66 }), {}, { shadow: { range: 0.7 } }).shadow).toEqual({ range: 0.7, source: "vlm" });
+    expect(resolvePlan(measure(-4, { lidGap: 0.44 }), {}, { shadow: { range: 1.3 } }).shadow).toEqual({ range: 1.3, source: "vlm" });
   });
 
-  it("입술: 0~0.3 이면 받고, 윗입술이 이미 목표 이상인데 올리자면 거절", () => {
-    expect(resolvePlan(measure(-4, { lipRatio: 0.7 }), {}, { lip: { overline: 0.1 } }).lip).toEqual({ overline: 0.1, source: "vlm" });
-    const thick = resolvePlan(measure(-4, { lipRatio: 0.9 }), {}, { lip: { overline: 0.1 } });
-    expect(thick.lip).toEqual({ overline: 0, source: "rule" });
-    expect(thick.rejected.join()).toMatch(/윗입술/);
-    expect(resolvePlan(measure(), {}, { lip: { overline: 0.5 } }).lip.source).toBe("rule");
+  it("규칙 섀도 범위는 넓히지 않았다 — 여전히 0.8~1.2 (VLM 범위만 0.6~1.4)", () => {
+    expect(resolvePlan(measure(-4, { lidGap: 2 })).shadow.range).toBe(1.2);
+    expect(resolvePlan(measure(-4, { lidGap: 0.1 })).shadow.range).toBe(0.8);
   });
 
-  it("진하기: 눈썹은 올리지 않고(1 까지), 라이너·섀도는 1.15 까지 — 넘으면 그 부위만 뺀다", () => {
-    const p = resolvePlan(measure(), {}, { intensity: { brow: 1.1, liner: 1.2, shadow: 1.1, lip: 1.2 } });
-    expect(p.intensity).toEqual({ shadow: 1.1, lip: 1.2 });   // 평균 1.15 — 전체 상한 안
-    expect(p.rejected.join()).toMatch(/brow/);
-    expect(p.rejected.join()).toMatch(/liner/);
+  it("입술: 0~0.5 이면 받는다 — 윗입술이 이미 충분해도 (v6)", () => {
+    expect(resolvePlan(measure(-4, { lipRatio: 0.9 }), {}, { lip: { overline: 0.4 } }).lip).toEqual({ overline: 0.4, source: "vlm" });
+    expect(resolvePlan(measure(), {}, { lip: { overline: 0.6 } }).lip.source).toBe("rule");
+  });
+
+  it("진하기: 부위별 상한 없이 0.5~1.5 를 받는다 — 눈썹도 (v6). 전체 평균 상한은 남는다", () => {
+    const p = resolvePlan(measure(), {}, { intensity: { brow: 1.1, liner: 1.2, shadow: 0.9, lip: 0.6 } });
+    expect(p.intensity).toEqual({ brow: 1.1, liner: 1.2, shadow: 0.9, lip: 0.6 });
+    expect(p.rejected).toEqual([]);
   });
 
   it("진하기: 받은 배율의 평균이 1.15 를 넘으면 1 보다 큰 쪽을 같은 비율로 줄인다 (전체가 진해지지 않게)", () => {
@@ -196,14 +193,14 @@ describe("개인화 계획 — 나머지 부위 (VLM 제안 거르기)", () => {
     expect(resolvePlan(measure(), {}, { highlight: { tZone: "no" } }).highlight.source).toBe("rule");
   });
 
-  it("볼: 위치(higher/standard/lower)·크기(0.8~1.2)만 받는다", () => {
+  it("볼: 위치(higher/standard/lower)·크기(0.6~1.4)만 받는다", () => {
     expect(resolvePlan(measure(), {}, { blush: { position: "higher", size: 0.9 } }).blush).toEqual({ position: "higher", size: 0.9, source: "vlm" });
     const bad = resolvePlan(measure(), {}, { blush: { position: "chin", size: 2 } });
     expect(bad.blush).toEqual({ position: "standard", size: 1, source: "rule" });
     expect(bad.rejected.length).toBe(2);
   });
 
-  it("라이너 두께: 0.8~1.2 배만 받는다", () => {
+  it("라이너 두께: 0.6~1.4 배만 받는다", () => {
     expect(resolvePlan(measure(), {}, { linerThick: { scale: 0.9 } }).linerThick).toEqual({ scale: 0.9, source: "vlm" });
     expect(resolvePlan(measure(), {}, { linerThick: { scale: 1.5 } }).linerThick.source).toBe("rule");
   });

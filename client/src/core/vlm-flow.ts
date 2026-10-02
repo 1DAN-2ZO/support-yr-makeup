@@ -18,8 +18,14 @@ import { CHOICE_STEPS, RATIONALE_PARTS, allowedChoices, buildVlmPrompt } from ".
  *  v2 (2026-10-01) = 형식 E — VLM 선정 실험(eval/vlm)에서 확정. 예시 없음 · 관찰→근거→결정 · 숫자는 선택지
  *  v3 (2026-10-01, 시험) = 처진 눈을 눈꼬리 기울기로 판정 (personalize.isDroopy) — 프롬프트의 판정 줄이 바뀐다
  *  v4 (2026-10-01) = 얼굴형 heart 의 우리말을 하트형 → 역삼각형 (화면 문구 rules/looks.json · 얼굴형 평가와 같은 말)
- *  v5 (2026-10-01) = 처진 눈 경계 4° → 5° (personalize.DROOP_TILT_DEG) — 프롬프트의 판정 줄과 4~5° 얼굴의 라이너 선택지가 바뀐다 */
-export const PROMPT_VER = "vlm-prompt-v5";
+ *  v5 (2026-10-01) = 처진 눈 경계 4° → 5° (personalize.DROOP_TILT_DEG) — 프롬프트의 판정 줄과 4~5° 얼굴의 라이너 선택지가 바뀐다
+ *  v6 (2026-10-01) = VLM 에게 자유를 더 줌 — 선택지 넓힘(배율 0.6~1.4 · 진하기 0.5~1.5 · 오버라인 ~0.5),
+ *     얼굴별로 좁히던 선택지(drop · 섀도 방향 · 오버라인 · 부위별 진하기 상한)를 풀고, 프롬프트에서 규칙 출발점을 뺌.
+ *     사람 평가에서 VLM 계획이 규칙과 거의 같았다 (0.9 로 몰림, 라이너 스타일 60/60 규칙과 같음)
+ *  v7 (2026-10-01) = 얼굴을 보게 함 — 측정값마다 보통 얼굴과 비교한 말, 관찰은 보통과 다른 점, 근거는 얼굴 특징 먼저.
+ *     v6 은 얼굴과 상관없이 화장 종류마다 같은 값으로 몰렸다. 관찰 글 길이 80 → 120자
+ */
+export const PROMPT_VER = "vlm-prompt-v7";
 
 /**
  * 제약 디코딩용 JSON 스키마 — 이 얼굴에서 관문이 받아 주는 값만 enum 으로 (vlm-prompt.allowedChoices).
@@ -33,7 +39,7 @@ export function vlmSchema(m: FaceMeasure): object {
   const obj = (props: Record<string, object>) => ({ type: "object", properties: props, required: Object.keys(props), additionalProperties: false });
   const text = (n: number) => ({ type: "string", minLength: 4, maxLength: n });
   return obj({
-    observation: text(80),
+    observation: text(120),
     rationale: obj(Object.fromEntries(RATIONALE_PARTS.map((p) => [p, text(PLAN_LIMITS.rationaleMax)]))),
     liner: obj({ style: { enum: a.liner } }),
     linerThick: obj({ scale: { enum: [...CHOICE_STEPS.scale] } }),

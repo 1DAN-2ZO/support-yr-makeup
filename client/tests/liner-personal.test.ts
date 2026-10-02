@@ -55,11 +55,11 @@ describe("라이너 개인화 — 검증 관문 (VLM 제안도 여기를 지난�
     expect(resolveLiner(measure(8))).toEqual({ plan: { style: "winged", reason: "not_down" }, source: "rule" });
   });
 
-  it("처진 눈이 아닌데 Drop 을 제안하면 거절하고 규칙값으로", () => {
+  it("처진 눈이 아니어도 Drop 제안을 받는다 (v6 — VLM 이 사진을 보고 정한다)", () => {
     const r = resolveLiner(measure(8), "correct", { style: "drop" });
-    expect(r.source).toBe("rule");
-    expect(r.plan.style).toBe("winged");
-    expect(r.rejected).toMatch(/처진 눈이 아닌데/);
+    expect(r.source).toBe("vlm");
+    expect(r.plan).toEqual({ style: "drop", reason: "not_down" });
+    expect(r.rejected).toBeUndefined();
   });
 
   it("모르는 스타일은 거절", () => {

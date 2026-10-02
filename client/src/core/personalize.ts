@@ -89,14 +89,13 @@ export interface LinerDecision {
 
 /**
  * 검증 관문. 제안(VLM)이 있으면 측정과 대조해 받거나 거절하고, 없으면 규칙값.
- * 거절 조건: 모르는 스타일 / 처진 눈이 아닌데 drop(없는 처짐을 따라 그리게 된다).
+ * 거절 조건: 모르는 스타일. (처진 눈이 아닌데 drop 도 받는다 — 2026-10-01 v6, VLM 이 사진을 보고 정한다)
  */
 export function resolveLiner(m: FaceMeasure, adapt: LinerAdapt = "correct", proposal?: { style: string }): LinerDecision {
   const rule: LinerDecision = { plan: planLiner(m, adapt), source: "rule" };
   if (!proposal) return rule;
   const style = LINER_STYLES.find((s) => s === proposal.style);
   if (!style) return { ...rule, rejected: `모르는 스타일: ${proposal.style}` };
-  if (style === "drop" && !isDown(m)) return { ...rule, rejected: "처진 눈이 아닌데 drop 을 제안함" };
   return { plan: { style, reason: reasonOf(m, style) }, source: "vlm" };
 }
 
@@ -130,26 +129,31 @@ export const BROW_ARCHES: readonly BrowArch[] = ["flatter", "standard", "arched"
 export const FACE_SHAPES: readonly FaceShapeLabel[] = ["oval", "round", "square", "oblong", "heart"];
 const INTENSITY_PARTS: readonly LookPartId[] = ["brow", "liner", "shadow", "cheek", "lip"];
 
-/** 받아 주는 범위. 벗어나면 그 항목만 규칙값 — 가정값이다 */
+/**
+ * 받아 주는 범위. 벗어나면 그 항목만 규칙값 — 가정값이다.
+ * 2026-10-01 넓힘 (vlm-prompt-v6): 사람 평가에서 VLM 계획이 규칙과 거의 같아(0.9 로 몰림) 비교가 안 됐다.
+ * 측정과 반대 방향이라는 이유의 거절(섀도 · 오버라인 · drop)과 부위별 진하기 상한도 풀었다 — VLM 이 사진을 보고 정한다.
+ * 남은 안전장치: 이 범위 · 진하기 평균 상한(intensityMeanCap) · 근거 문장 검사.
+ */
 export const PLAN_LIMITS = {
-  shadowRange: [0.8, 1.2], intensity: [0.7, 1.3], rationaleMax: 40,
-  lipOverline: [0, 0.3], blushSize: [0.8, 1.2], linerThick: [0.8, 1.2],
+  shadowRange: [0.6, 1.4], intensity: [0.5, 1.5], rationaleMax: 40,
+  lipOverline: [0, 0.5], blushSize: [0.6, 1.4], linerThick: [0.6, 1.4],
 } as const;
+
+/** 규칙만으로 정하는 섀도 범위의 끝 — VLM 범위(PLAN_LIMITS)를 넓혀도 규칙값은 그대로 둔다 */
+export const RULE_SHADOW_RANGE = [0.8, 1.2] as const;
 
 /**
  * 개인화 규칙의 가정값 — 전부 여기 한 곳. 사용자 실험(#84)으로 맞춘다.
  *   lidGapStd      눈두덩(윗눈꺼풀 꼭대기 → 눈썹 아랫선) ÷ 눈 폭의 표준. 13.7 mm(JKSC) ÷ 24.8 mm(Jung 눈 폭 평균)
  *   shadowGain     표준에서 벗어난 비율의 몇 배만큼 섀도 범위를 바꿀지
- *   lidGapTol      섀도 제안의 방향을 따지지 않는 표준 둘레(±5%)
- *   lipTarget      윗입술 ÷ 아랫입술 목표. 오버라인은 모자란 만큼의 절반, 최대 lipOverlineMax
- *   intensityCap   부위별 진하기 배율 상한 — 눈썹은 올리지 않고, 눈 화장은 조금만
+ *   lipTarget      윗입술 ÷ 아랫입술 목표. 규칙 오버라인은 모자란 만큼의 절반, 최대 lipOverlineMax
  *   intensityMeanCap  받은 배율의 평균 상한 — 전체가 한꺼번에 진해지지 않게
  *   blushShift     볼 위치 higher/lower 가 옮기는 거리 (얼굴 폭 비율)
  */
 export const PLAN_RULES = {
-  lidGapStd: 0.55, shadowGain: 0.5, lidGapTol: 0.05,
+  lidGapStd: 0.55, shadowGain: 0.5,
   lipTarget: 0.8, lipOverlineMax: 0.3,
-  intensityCap: { brow: 1, liner: 1.15, shadow: 1.15 } as Partial<Record<LookPartId, number>>,
   intensityMeanCap: 1.15,
   blushShift: 0.03,
 };
@@ -238,12 +242,10 @@ export function resolvePlan(
   const R = PLAN_RULES, [s0, s1] = PLAN_LIMITS.shadowRange;
   const gap = (m.eye.R.lidGapRatio + m.eye.L.lidGapRatio) / 2;
   const clampTo = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
-  let shadow: PersonalPlan["shadow"] = { range: clampTo(1 + R.shadowGain * (gap / R.lidGapStd - 1), s0, s1), source: "rule" };
+  let shadow: PersonalPlan["shadow"] = { range: clampTo(1 + R.shadowGain * (gap / R.lidGapStd - 1), ...RULE_SHADOW_RANGE), source: "rule" };
   if (isObj(q.shadow) && q.shadow.range !== undefined) {
     const v = q.shadow.range;
     if (!inRange(v, PLAN_LIMITS.shadowRange)) rejected.push(`섀도 범위: ${String(v)} 는 ${s0}~${s1} 밖`);
-    else if (v < 1 && gap > R.lidGapStd * (1 + R.lidGapTol)) rejected.push("섀도 범위: 눈두덩이 넓은데 줄이자고 함");
-    else if (v > 1 && gap < R.lidGapStd * (1 - R.lidGapTol)) rejected.push("섀도 범위: 눈두덩이 좁은데 넓히자고 함");
     else shadow = { range: v, source: "vlm" };
   }
 
@@ -253,19 +255,16 @@ export function resolvePlan(
   if (isObj(q.lip) && q.lip.overline !== undefined) {
     const v = q.lip.overline;
     if (!inRange(v, PLAN_LIMITS.lipOverline)) rejected.push(`입술: 오버라인 ${String(v)} 는 ${PLAN_LIMITS.lipOverline.join("~")} 밖`);
-    else if (v > 0 && lr != null && lr >= R.lipTarget) rejected.push("입술: 윗입술이 이미 충분한데 올리자고 함");
     else lip = { overline: v, source: "vlm" };
   }
 
-  // 진하기 — 부위별 범위·상한, 그다음 전체 평균 상한
+  // 진하기 — 부위별 범위, 그다음 전체 평균 상한
   const intensity: PersonalPlan["intensity"] = {};
   if (isObj(q.intensity)) {
     for (const [k, v] of Object.entries(q.intensity)) {
       const part = INTENSITY_PARTS.find((s) => s === k);
-      const cap = part ? R.intensityCap[part] : undefined;
       if (!part) rejected.push(`진하기: 모르는 부위 ${k}`);
       else if (!inRange(v, PLAN_LIMITS.intensity)) rejected.push(`진하기: ${k} ${String(v)} 는 ${PLAN_LIMITS.intensity.join("~")} 밖`);
-      else if (cap !== undefined && v > cap) rejected.push(`진하기: ${k} 는 ${cap} 까지`);
       else intensity[part] = v;
     }
     const vals = Object.values(intensity) as number[];

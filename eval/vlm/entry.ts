@@ -31,7 +31,7 @@ export function lookIds(): string[] {
   return LOOKS.map((l) => l.id);
 }
 
-const MEASURE_HEAD = "## 이 얼굴을 잰 값";
+const MEASURE_HEAD = "## 이 사람의 얼굴";
 const DECIDE_HEAD = "## 정할 것";
 const f1 = (v: number): string => v.toFixed(1);
 
