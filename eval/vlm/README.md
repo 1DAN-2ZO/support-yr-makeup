@@ -4,6 +4,8 @@
 
 앱과 다른 것을 재지 않게 **측정·프롬프트·관문·화장 템플릿·렌더러는 앱 코드를 그대로 쓴다** (`entry.ts` 가 `client/src/core` 를 불러오고 `vlm_core.mjs` 가 esbuild 로 묶는다). 새로 만든 것은 실험 조건(입력 형식 B~F, 제약 디코딩 스키마, 측정값 뒤집기, 대조군)뿐이다.
 
+**정리 문서 (2026-10-02, 폐기 검토)**: `docs/reports/vlm-personalization-retrospective.md` — 한 것 · 결과 · 된 것과 안 된 것 · 다시 한다면.
+
 **2026-09-30 결과**: 후보 5개 1차 선별 → Gemma 4 E4B · Qwen3.5-9B 2차 → **잠정 Gemma 4 E4B + 형식 E**. 숫자는 `eval/results/2026-09-30_vlm_compare-{sel,fin}.csv`. 사람 평가(5·6단계)는 새 화장 템플릿이 나온 뒤에 한다.
 
 ## 준비 (학원 PC, 한 번)
