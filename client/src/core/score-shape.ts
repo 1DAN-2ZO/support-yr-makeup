@@ -552,6 +552,7 @@ export function linerEndsResult(per: Record<Side, LinerEnds>, p: ScoreParams = P
 /**
  * 라이너 섞기 — 항목마다 잘 재는 쪽 값을 쓴다. 실제 사진에 덧그린 두 장으로 본 것 (2026-10-01):
  *   채움·두께·번짐 = 지금 방식(띠 전체, 칸 색 차이) — 선이 이어졌는지·두께를 맞혔다. 획 추출은 맨얼굴 속눈썹 선을 빼다가 그 위의 선도 지운다
+ *     (채움은 양 끝 구간 채움이 더 높으면 그 값 — 가운데가 끊긴 것은 점수에 안 넣는다)
  *   꼬리 길이 = 둘 중 긴 쪽 — 지금 방식은 가이드 끝까지만 본다. 꼬리 높이 = 획 추출이 꼬리를 봤으면 그쪽
  *   앞쪽 시작 자리 = 두 방법(획 추출 · 칸 색 차이) 중 더 앞에서 잡은 쪽 — 한쪽만 믿으면 그렸는데 '비었다' 가 된다. 눈머리 넘김 = 획 추출
  * 점수 식은 지금 채점(scoreForm) 그대로 + 눈머리를 넘긴 만큼 (같은 자, 최대 20점). a = 지금 방식, s = 획 추출, e = 양 끝·칸 색 차이
@@ -560,10 +561,12 @@ export function linerMixResult(a: Record<Side, LinerEyeMetrics>, s: Record<Side,
   const codes: PartScore["codes"] = [], endCodes: string[] = [];
   const mixed = (k: Side) => {
     const sawWing = s[k].wingDrawn > 0;
+    const endsOf = (x: LinerEnds): number => (x.outerCoverage + x.innerCoverage) / 2, endsCov = Math.max(endsOf(s[k]), endsOf(e[k]));
     return {
       // 그렸는지는 획 추출이 정한다 — 칸 색 차이는 두 사진의 선명도가 다르면 어두운 띠 가장자리가 움직인 것을 그린 선으로 읽는다 (맨얼굴 5% 확대: 83%)
       present: s[k].present,
-      coverage: a[k].coverage, overflow: a[k].overflow, thickness: a[k].thickness, guideThick: a[k].guideThick, gapRatio: a[k].gapRatio,
+      // 가운데는 점수에 안 넣는다 — 양 끝(눈꼬리 · 앞트임) 채움이 더 높으면 그 값. '끊겼어요' 도 양 끝이 빈 만큼만
+      coverage: Math.max(a[k].coverage, endsCov), overflow: a[k].overflow, thickness: a[k].thickness, guideThick: a[k].guideThick, gapRatio: Math.min(a[k].gapRatio, 1 - endsCov),
       wingGuide: a[k].wingGuide, wingDrawn: Math.max(a[k].wingDrawn, s[k].wingDrawn),
       wingDev: sawWing ? s[k].wingDev : a[k].wingDev,
       // 눈머리를 넘겼으면(음수) 획 추출 값, 아니면 둘 중 더 앞

@@ -391,6 +391,14 @@ describe("라이너 섞기 — 채움·두께는 지금 방식, 꼬리 길이·�
     expect(h.result.score!).toBeLessThan(mix(both(1)).result.score!);
   });
 
+  it("M5 가운데가 끊겨도 양 끝(눈꼬리 · 앞트임)이 맞으면 점수가 거의 같다 — 눈 뜬 사진에서도 가운데는 점수에 안 넣는다", () => {
+    const full = both(1);
+    const gap: Paint = (x, y) => { const c = full(x, y); return c && Math.abs(x - 300) > 68 && Math.abs(x - 300) < 102 ? null : c; };   // 양쪽 눈 가운데 구간(x 198~232 · 368~402)을 비운다
+    const a = mix(full), b = mix(gap);
+    expect(b.result.score!).toBeGreaterThanOrEqual(a.result.score! - 5);
+    expect(b.result.codes.some((c) => c.startsWith("LINER_GAP"))).toBe(false);
+  });
+
   it("M4 맨얼굴끼리는 그린 게 없다", () => {
     expect(mix(() => null).result.present).toBe(false);
   });
