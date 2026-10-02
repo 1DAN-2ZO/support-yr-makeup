@@ -30,6 +30,7 @@ import { LM } from "@core/landmarks";
 import { createLiveEvents } from "@core/live-events";
 import { LIVE_LIMITS } from "@core/gate";
 import { gateReadout, recentStats } from "@core/gate-readout";
+import { createJumpProbe } from "@core/landmark-jump";
 import { FAR_FADE, createLiveRun, type LiveFrame } from "@core/live-run";
 import { LIVE_SMOOTH } from "@core/smooth-params";
 import type { Logger } from "@core/log";
@@ -202,11 +203,14 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
       const dots = q.has("dots");
       // 후보 1(아주 크게 돌렸을 때 먼 쪽 눈 흐리게) — 기본 켬. 개발용 ?fade=0 끄기 · ?fade=50-70 구간 바꾸기
       const fadeQ = q.get("fade"), fadeR = fadeQ?.match(/^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/);
-      if (meter || poseCal || gateDbg) {
+      // 개발용 ?jump: 브러시·손이 얼굴 앞에 있을 때 눈 점이 얼마나 튀나 (머리 움직임 뺀 눈 점 이동, 눈 폭 %) — 관찰 2026-10-02
+      const jump = q.has("jump") ? createJumpProbe() : null;
+      if (meter || poseCal || gateDbg || jump) {
         stage.append(readout);
         readout.addEventListener("click", () => {
           meter?.view.reset(); meter?.line.reset();
           poseCal?.reset();
+          jump?.reset();
         });
       }
       const line = el("p", "cam-gate", LIVE_TEXT.loading);
@@ -309,6 +313,13 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         if (poseCal && lm) {
           readout.style.whiteSpace = "pre";
           readout.textContent = poseCal.step(lm, res.facialTransformationMatrixes?.[0]?.data ?? null, f.expr?.["jawOpen"] ?? 0);
+        }
+        if (jump) {
+          // 다른 개발용 표시가 있으면 그 아래 줄로
+          const j = jump.step(lm, now);
+          readout.style.whiteSpace = "pre";
+          readout.textContent = gateDbg || poseCal ? `${readout.textContent}
+${j}` : j;
         }
         const vm = drawView(view, video, shown, r.outline, dots && lm ? EYE_DOTS.map((i) => lm[i]!) : null, r.alpha);
         if (meter && vm && r.outline) {
