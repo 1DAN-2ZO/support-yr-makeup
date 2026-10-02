@@ -225,6 +225,8 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         baseExpr: deps.getBaseExpr?.() ?? null,
         guide: deps.getGuide?.() ?? lookGuide(deps.getLookParts()),
         smooth: stab,
+        // 개발용 ?g=0·1·12·123: 먼 쪽 눈 틀 맞추기 다듬기(G안)를 하나씩 켜서 비교 — 없으면 전부 켬
+        ...(q.has("g") ? { farEye: { anchorInner: (q.get("g") ?? "").includes("1"), browHalf: (q.get("g") ?? "").includes("2"), capHeight: (q.get("g") ?? "").includes("3") } } : {}),
       });
       // 개발용 ?tune: 테두리 떨림 필터 값을 폰에서 맞춘다 — 2-b 와 같은 슬라이더 (#235 · #244)
       if (run.smoother && q.has("tune")) wrap.append(smoothTuner(run.smoother, LIVE_SMOOTH));

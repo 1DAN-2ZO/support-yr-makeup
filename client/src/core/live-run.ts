@@ -65,7 +65,20 @@ export interface LiveRunOptions {
   /** 테두리를 그릴 점에 One-Euro(④ smoothing.ts, 값은 LIVE_SMOOTH)를 건다. 기본 켬 — 떨림 비교(#23)용으로 끌 수 있다 */
   smooth?: boolean;
   limits?: LiveLimits;
+  /** 먼 쪽 눈 틀 맞추기 다듬기(G안)를 하나씩 켜고 끄기 — 화면 4 개발용 ?g=0·1·12·123 비교. 기본 전부 켬 */
+  farEye?: FarEyeOptions;
 }
+
+export interface FarEyeOptions {
+  /** 1 눈 폭을 고칠 때 눈머리를 고정하고 눈꼬리 쪽으로만 (아니면 가운데 기준 — F안) */
+  anchorInner: boolean;
+  /** 2 눈 폭 비율을 눈썹 앞쪽 절반으로 (아니면 눈썹 전체) */
+  browHalf: boolean;
+  /** 3 높이는 정면보다 커지지 않게 — 눈을 감아 작아지는 것만 따라감 */
+  capHeight: boolean;
+}
+
+const FAR_EYE_ALL: FarEyeOptions = { anchorInner: true, browHalf: true, capHeight: true };
 
 export interface LiveStep<I> {
   gate: GateResult;
@@ -127,7 +140,7 @@ const farSide = (d: number, cur: readonly Pt[]): Side => ((d > 0) === (eyeCenter
  * C안: 고개를 많이 돌리면 먼 쪽 눈 테두리를 정면 눈 모양 틀로 — 지금 눈꺼풀 점에 틀을 맞추고 튀는 점은 무시 (eye-fit, 2026-10-02 PC).
  * 각도 차 12 → 25 에서 그물(눈꺼풀 점 그대로) → 틀로 서서히. 가까운 쪽은 그대로
  */
-function farEyeFit(o: Outline, base: readonly (readonly Pt[])[], sides: readonly Side[], baseLm: readonly Pt[], cur: readonly Pt[]): Outline {
+function farEyeFit(o: Outline, base: readonly (readonly Pt[])[], sides: readonly Side[], baseLm: readonly Pt[], cur: readonly Pt[], g: FarEyeOptions = FAR_EYE_ALL): Outline {
   const d = rigidPoseDiff(baseLm, cur).yaw, w = farEyeWeight(Math.abs(d));
   if (w <= 0) return o;
   const far = farSide(d, cur), near: Side = far === "R" ? "L" : "R";
@@ -138,14 +151,33 @@ function farEyeFit(o: Outline, base: readonly (readonly Pt[])[], sides: readonly
   if (!t) return o;
   // F안: 눈꺼풀 점이 통째로 눈동자 쪽으로 쪼그라들면 틀도 쪼그라든다 → 눈 폭만 먼 쪽 눈썹이 줄어든 비율로 (위치·위아래는 그대로)
   const eye = far === "R" ? LM.eyeA : LM.eyeB, brow = far === "R" ? LM.browA : LM.browB;
-  const k = browSpanRatio(baseLm, cur, brow);
+  const k = browSpanRatio(baseLm, cur, brow, g.browHalf ? Math.floor(brow.upper.length / 2) : 0);
   let fix = (q: Pt): Pt => q;
+  const O = applyAffine(t, baseLm[eye.outer]!), I = applyAffine(t, baseLm[eye.inner]!);
+  const len = Math.hypot(O.x - I.x, O.y - I.y);
+  if (len < 1e-6) return o;
+  const dir = { x: (O.x - I.x) / len, y: (O.y - I.y) / len };
   if (k) {
-    const O = applyAffine(t, baseLm[eye.outer]!), I = applyAffine(t, baseLm[eye.inner]!);
-    const len = Math.hypot(O.x - I.x, O.y - I.y), want = k * Math.hypot(baseLm[eye.outer]!.x - baseLm[eye.inner]!.x, baseLm[eye.outer]!.y - baseLm[eye.inner]!.y);
-    if (len > 1e-6) {
-      const f = Math.min(2, Math.max(0.5, want / len)), M = { x: (O.x + I.x) / 2, y: (O.y + I.y) / 2 }, dir = { x: (O.x - I.x) / len, y: (O.y - I.y) / len };
-      fix = (q) => stretchAlong(q, M, dir, f);
+    const want = k * Math.hypot(baseLm[eye.outer]!.x - baseLm[eye.inner]!.x, baseLm[eye.outer]!.y - baseLm[eye.inner]!.y);
+    const f = Math.min(2, Math.max(0.5, want / len));
+    // G1: 눈머리는 잘 잡히니 고정하고 눈꼬리 쪽으로만 늘인다 (가운데 기준이면 눈머리까지 밀림)
+    const anchor = g.anchorInner ? I : { x: (O.x + I.x) / 2, y: (O.y + I.y) / 2 };
+    fix = (q) => stretchAlong(q, anchor, dir, f);
+  }
+  if (g.capHeight) {
+    // G3: 고개를 돌려도 눈 높이는 거의 그대로 — 눈동자 둘레로 모인 점에 맞춰 커진 높이는 정면 높이(× 머리 크기)까지만. 작아지는 건(눈 감기) 따라감
+    const n = { x: -dir.y, y: dir.x }, m = Math.floor(eye.upper.length / 2);
+    const up = fix(applyAffine(t, baseLm[eye.upper[m]!]!)), lo = fix(applyAffine(t, baseLm[eye.lower[m]!]!));
+    const h = Math.abs((up.x - lo.x) * n.x + (up.y - lo.y) * n.y);
+    // 정면 높이도 같은 식으로 — 정면 눈 축에 수직인 성분
+    const bo = baseLm[eye.outer]!, bi = baseLm[eye.inner]!, bl = Math.hypot(bo.x - bi.x, bo.y - bi.y) || 1;
+    const bn = { x: -(bo.y - bi.y) / bl, y: (bo.x - bi.x) / bl }, bu = baseLm[eye.upper[m]!]!, bw = baseLm[eye.lower[m]!]!;
+    const hb = Math.abs((bu.x - bw.x) * bn.x + (bu.y - bw.y) * bn.y);
+    // 머리 크기: 이마 위(10) ↔ 미간(168) — 고개를 좌우로 돌려도 거의 안 변한다
+    const sv = Math.hypot(cur[10]!.x - cur[168]!.x, cur[10]!.y - cur[168]!.y) / (Math.hypot(baseLm[10]!.x - baseLm[168]!.x, baseLm[10]!.y - baseLm[168]!.y) || 1);
+    if (h > hb * sv && h > 1e-6) {
+      const before = fix, a = before(O), b = before(I), c = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, s = (hb * sv) / h;
+      fix = (q) => stretchAlong(before(q), c, n, s);
     }
   }
   return {
@@ -228,7 +260,7 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
         const cur = smoother?.smooth(f.lm, f.t) ?? f.lm;
         outline = placeOutline(pinned, cur);
         if (sides) {
-          outline = farEyeFit(outline, baseOutline, sides, opt.baseline.lm, cur);
+          outline = farEyeFit(outline, baseOutline, sides, opt.baseline.lm, cur, opt.farEye);
           alpha = farEyeAlpha(sides, opt.baseline.lm, cur);
         }
       }

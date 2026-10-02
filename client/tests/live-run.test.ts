@@ -385,6 +385,44 @@ describe("live run", () => {
     expect(lashX(far).length).toBeGreaterThan(0);
   });
 
+  // G안 (F안 다듬기, 2026-10-02 PC): 1 눈머리 고정 · 2 눈썹 앞쪽 절반 비율 · 3 높이는 정면보다 커지지 않게 — 화면 4 ?g=0·1·12·123 로 하나씩 비교
+  const G_ALL = { anchorInner: true, browHalf: true, capHeight: true };
+  const linerG = (lm: Pt[], farEye: typeof G_ALL) => createLiveRun<string>({ partId: "liner", baseline: { lm: FACE, foreheadL: SKIN.L }, guide: lookGuide({}), smooth: false, farEye }).step(frame({ lm })).outline!;
+  const nearPt = (poly: readonly Pt[], q: Pt, eps: number) => poly.some((p) => Math.hypot(p.x - q.x, p.y - q.y) < eps);
+  const B = LM.eyeB;
+
+  it("L40 G1 눈머리 고정 — 먼 쪽 눈꺼풀 점이 눈머리 쪽으로 쪼그라들면(눈머리는 맞고 눈꼬리만 짧음) 눈머리는 그대로 두고 눈꼬리 쪽으로만 늘인다", () => {
+    const lm = turnedFace(0.25), ix = FACE[B.inner]!.x;
+    for (const i of [...B.upper, ...B.lower]) lm[i] = { x: ix + (FACE[i]!.x - ix) * 0.6, y: FACE[i]!.y };
+    const g1 = farPoly(linerG(lm, G_ALL)), mid = farPoly(linerG(lm, { ...G_ALL, anchorInner: false }));
+    expect(nearPt(g1, FACE[B.inner]!, 0.5)).toBe(true);
+    expect(nearPt(g1, FACE[B.outer]!, 1)).toBe(true);
+    expect(nearPt(mid, FACE[B.inner]!, 0.5)).toBe(false);   // 가운데 기준(F안)은 눈머리까지 밀린다
+  });
+
+  it("L41 G2 눈썹 앞쪽 절반 — 먼 쪽 눈썹 꼬리가 관자놀이로 돌아 들어가 짧아져도 눈 폭은 안 줄인다", () => {
+    const lm = turnedFace(0.25), br = LM.browB;
+    for (const line of [br.upper, br.lower]) for (const k of [0, 1]) {
+      const p = FACE[line[k]!]!, m = FACE[line[2]!]!;
+      lm[line[k]!] = { x: p.x + (m.x - p.x) * 0.4, y: p.y + (m.y - p.y) * 0.4 };
+    }
+    const span = (ps: readonly Pt[]) => Math.max(...ps.map((p) => p.x)) - Math.min(...ps.map((p) => p.x));
+    const base = span(farPoly(linerAt(FACE)));
+    expect(span(farPoly(linerG(lm, G_ALL))) / base).toBeGreaterThan(0.98);
+    expect(span(farPoly(linerG(lm, { ...G_ALL, browHalf: false }))) / base).toBeLessThan(0.95);   // 눈썹 전체 길이면 줄어든다
+  });
+
+  it("L42 G3 높이 — 먼 쪽 눈꺼풀 점이 눈동자 둘레로 모여 세로로 커지면(1.5 배) 정면 높이까지만, 눈을 감아 작아지는 건 따라간다", () => {
+    const top = B.upper[4]!;
+    const tall = turnedFace(0.25);
+    for (const i of [...B.upper, ...B.lower]) tall[i] = { x: FACE[i]!.x, y: 250 + (FACE[i]!.y - 250) * 1.5 };
+    expect(nearPt(farPoly(linerG(tall, G_ALL)), FACE[top]!, 1)).toBe(true);
+    expect(nearPt(farPoly(linerG(tall, { ...G_ALL, capHeight: false })), FACE[top]!, 1)).toBe(false);
+    const shut = turnedFace(0.25);
+    for (const i of [...B.upper, ...B.lower]) shut[i] = { x: FACE[i]!.x, y: 250 + (FACE[i]!.y - 250) * 0.4 };
+    expect(nearPt(farPoly(linerG(shut, G_ALL)), shut[top]!, 1)).toBe(true);
+  });
+
   it("L38 많이 돌린 채 먼 쪽 눈이 통째로 움직이면 틀도 같이 움직인다 — A·B안처럼 얼어붙지 않는다", () => {
     const lm = turnedFace(0.25);
     for (const i of [...LM.eyeB.upper, ...LM.eyeB.lower]) lm[i] = { x: FACE[i]!.x + 7, y: FACE[i]!.y - 4 };

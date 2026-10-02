@@ -78,10 +78,13 @@ export function stretchAlong(p: Pt, c: Pt, dir: Pt, f: number): Pt {
   return { x: p.x + (f - 1) * a * dir.x, y: p.y + (f - 1) * a * dir.y };
 }
 
-/** 눈썹 길이 비율(지금 / 정면) — 바깥 끝 · 안쪽 끝(위·아래 눈썹 선 평균) 사이 거리. 못 재면 null */
-export function browSpanRatio(base: readonly Pt[], cur: readonly Pt[], brow: { upper: readonly number[]; lower: readonly number[] }): number | null {
+/**
+ * 눈썹 길이 비율(지금 / 정면) — from 번째 점 · 안쪽 끝(위·아래 눈썹 선 평균) 사이 거리. 못 재면 null.
+ * from 0 = 눈썹 전체(바깥 끝부터), 가운데 = 앞쪽 절반 (G안 2: 크게 돌리면 먼 쪽 눈썹 꼬리는 관자놀이로 돌아 들어가 눈보다 더 짧아 보인다)
+ */
+export function browSpanRatio(base: readonly Pt[], cur: readonly Pt[], brow: { upper: readonly number[]; lower: readonly number[] }, from = 0): number | null {
   const end = (lm: readonly Pt[], k: "first" | "last"): Pt | null => {
-    const u = lm[k === "first" ? brow.upper[0]! : brow.upper[brow.upper.length - 1]!], l = lm[k === "first" ? brow.lower[0]! : brow.lower[brow.lower.length - 1]!];
+    const u = lm[k === "first" ? brow.upper[from]! : brow.upper[brow.upper.length - 1]!], l = lm[k === "first" ? brow.lower[from]! : brow.lower[brow.lower.length - 1]!];
     return u && l ? { x: (u.x + l.x) / 2, y: (u.y + l.y) / 2 } : null;
   };
   const span = (lm: readonly Pt[]): number | null => {
