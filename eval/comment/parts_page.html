@@ -1,0 +1,125 @@
+<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width, initial-scale=1"><title>부위 한 줄 평가</title>
+<!-- 화면 6 부위별 한 줄 실험(#287 3차) 평가지 — results.py --parts 가 채운다 — results.py --sheet 가 데이터를 채운다. 사진 없음.
+     부위별 한 줄(화면 6 에 늘 나옴)은 맥락으로 보여 주고, 그 위에 놓을 총평 두 개(규칙 · LLM)를 비교한다.
+     누가 어느 글인지는 정답표(key.json)에만 있고, 여기엔 뜻 없는 id 만 있다.
+     평가자마다 문항 순서와 글 자리를 섞는다 (처음 열 때 정한 seed 를 브라우저에 저장, 결과 파일에 같이 적는다) -->
+<style>
+:root { --bg:#f6f7f5; --paper:#fff; --fg:#1c2320; --muted:#5b6661; --line:#d9dfdb; --accent:#2f6b5a; --soft:#e3efe9; --warn:#8a6410; --warn-bg:#f7edd4; --good:#2f6b5a; --mid:#b08a2e; --low:#b5523b; }
+@media (prefers-color-scheme: dark) { :root { --bg:#141816; --paper:#1b201e; --fg:#e4e9e6; --muted:#9aa6a0; --line:#2e3633; --accent:#7cc1aa; --soft:#1f3029; --warn:#e2c173; --warn-bg:#362d18; --good:#7cc1aa; --mid:#d8b45a; --low:#e08a74; color-scheme: dark; } }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.6 "Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif; }
+.wrap { max-width:860px; margin:0 auto; padding:0 16px 80px; }
+h1 { font-size:24px; margin:24px 0 8px; }
+.guide { background:var(--paper); border:1px solid var(--line); border-radius:10px; padding:12px 18px; margin:12px 0 16px; }
+.bar { position:sticky; top:0; z-index:5; background:var(--bg); border-bottom:1px solid var(--line); padding:10px 0; display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; }
+.bar input { font:inherit; padding:4px 8px; border:1px solid var(--line); border-radius:6px; background:var(--paper); color:var(--fg); }
+.bar .prog { flex:1 1 200px; height:8px; background:var(--line); border-radius:99px; overflow:hidden; }
+.bar .prog i { display:block; height:100%; width:0; background:var(--accent); }
+section { background:var(--paper); border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin:14px 0; }
+section.done { border-color:var(--accent); }
+section h2 { font-size:16px; margin:0 0 8px; }
+.look { color:var(--muted); font-weight:400; font-size:13px; }
+table.res { border-collapse:collapse; width:100%; font-size:13px; margin-bottom:10px; }
+table.res td { padding:3px 6px; border-bottom:1px solid var(--line); vertical-align:middle; }
+table.res td.n { width:110px; white-space:nowrap; }
+table.res td.st { width:64px; color:var(--muted); white-space:nowrap; }
+table.res td.say { color:var(--muted); font-size:12px; }
+.meter { display:inline-block; width:120px; height:8px; background:var(--line); border-radius:99px; overflow:hidden; vertical-align:middle; }
+.meter i { display:block; height:100%; }
+.cands { display:grid; gap:8px; }
+.cand { display:grid; grid-template-columns:auto 1fr; gap:10px; align-items:start; border:1px solid var(--line); border-radius:8px; padding:10px 12px; cursor:pointer; }
+.cand:has(input:checked) { border-color:var(--accent); background:var(--soft); }
+.cand .t { white-space:pre-line; }
+.cand b { display:block; font-size:12px; color:var(--muted); }
+button { font:inherit; padding:8px 14px; border-radius:8px; border:1px solid var(--accent); background:var(--accent); color:var(--paper); cursor:pointer; }
+button.ghost { background:transparent; color:var(--accent); }
+.missing { background:var(--warn-bg); color:var(--warn); border-radius:8px; padding:10px 14px; margin:12px 0; }
+</style>
+<div class=wrap>
+<h1>부위 한 줄 평가</h1>
+<div class=guide>
+  <p>화장 연습 앱이 부위마다 채점한 뒤 보여 줄 <b>한 줄 평</b>을 고르는 평가입니다. 문항마다 위에 그 부위를 채점기가 잰 <b>수치와 기준</b>(정답 확인용 — 사용자에게는 안 보임)이 있고, 아래에 한 줄 평 두 개가 있습니다.</p>
+  <p><b>"이 부위 한 줄 평으로 더 좋은 것은?"</b> — 수치와 맞게, 무엇이 얼마나 어긋났고 어떻게 고칠지 잘 알려 주는 쪽. 차이를 모르겠으면 <b>비슷함</b>. 글의 자리는 문항마다 섞여 있습니다. 모두 {{COUNT}}문항, 5~10분.</p>
+  <p>다 하면 맨 아래 <b>결과 파일 받기</b>를 눌러 받은 파일을 보내 주세요. 입력은 이 브라우저에 자동 저장됩니다.</p>
+</div>
+<div class=bar><label>평가자 이름 <input id=who autocomplete=off></label><span id=count>0 / {{COUNT}}</span><span class=prog><i id=progbar></i></span></div>
+<div id=items></div>
+<div id=missing class=missing hidden></div>
+<p><button id=save>결과 파일 받기</button> <button id=saveAnyway class=ghost hidden>빠진 문항이 있어도 받기</button></p>
+</div>
+<script type=application/json id=data>{{DATA}}</script>
+<script>
+const DATA = JSON.parse(document.getElementById('data').textContent);
+const KEY = 'comment-pref:' + DATA.sheet;
+let saved = null;
+try { saved = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) {}
+// 평가자마다 다른 섞기 — 처음 열 때 정해 저장한다
+let seed = saved && saved.seed;
+if (!seed) seed = 1 + Math.floor(Math.random() * 2147483646);
+function rand(s) { return () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+const r = rand(seed);
+const shuffle = (xs) => { const a = xs.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const items = shuffle(DATA.items).map((it) => ({ ...it, cands: shuffle(it.cands) }));
+const STATUS = { passed: '완료', check_only: '확인만', skipped: '건너뜀' };
+const color = (s) => (s >= 85 ? 'var(--good)' : s >= 70 ? 'var(--mid)' : 'var(--low)');
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const box = document.getElementById('items');
+items.forEach((it, i) => {
+  const rows = it.parts.map((p) => `<tr><td class=n>${esc(p.name)}</td><td class=st>${STATUS[p.status] || p.status}</td><td>${p.score == null ? '' : `<span class=meter><i style="width:${p.score}%;background:${color(p.score)}"></i></span>`}</td><td class=say>${esc(p.say)}</td></tr>`).join('');
+  const cands = it.cands.map((c, k) => `<label class=cand><input type=radio name="q${it.id}" value="${c.id}"><span><b>${k + 1}번 한 줄</b><span class=t>${esc(c.text)}</span></span></label>`).join('')
+    + `<label class=cand><input type=radio name="q${it.id}" value="same"><span><b>비슷함</b><span class=t>차이를 모르겠어요</span></span></label>`;
+  const sec = document.createElement('section');
+  sec.dataset.id = it.id;
+  sec.innerHTML = `<h2>${i + 1}. <span class=look>화장: ${esc(it.look)}</span></h2><table class=res>${rows}</table><div class=cands>${cands}</div>`;
+  box.append(sec);
+});
+const sections = [...document.querySelectorAll('section[data-id]')];
+function collect() {
+  return {
+    kind: 'comment-pref', sheet: DATA.sheet, seed, who: document.getElementById('who').value.trim(),
+    items: items.map((it, i) => {
+      const c = document.querySelector(`input[name="q${it.id}"]:checked`);
+      return { id: it.id, order: i + 1, shown: it.cands.map((x) => x.id), pick: c ? c.value : null };
+    }),
+  };
+}
+function refresh() {
+  const res = collect();
+  let done = 0;
+  res.items.forEach((x) => { const s = sections.find((e) => e.dataset.id === x.id); s.classList.toggle('done', !!x.pick); done += !!x.pick; });
+  document.getElementById('count').textContent = done + ' / ' + sections.length;
+  document.getElementById('progbar').style.width = (100 * done / sections.length) + '%';
+  try { localStorage.setItem(KEY, JSON.stringify(res)); } catch (e) {}
+}
+if (saved) {
+  document.getElementById('who').value = saved.who || '';
+  (saved.items || []).forEach((x) => { if (!x.pick) return; const el = document.querySelector(`input[name="q${x.id}"][value="${x.pick}"]`); if (el) el.checked = true; });
+}
+refresh();
+document.addEventListener('change', refresh);
+document.addEventListener('input', refresh);
+function download(res) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(res, null, 1)], { type: 'application/json' }));
+  a.download = 'parts-rating-' + (res.who || 'noname') + '.json';
+  document.body.appendChild(a); a.click(); a.remove();
+}
+function trySave(force) {
+  const res = collect();
+  const miss = res.items.filter((x) => !x.pick).map((x) => x.order);
+  const msgs = [];
+  if (!res.who) msgs.push('맨 위에 평가자 이름을 적어 주세요.');
+  if (miss.length) msgs.push('아직 안 고른 문항: ' + miss.join(', '));
+  const box = document.getElementById('missing');
+  if (msgs.length && !force) {
+    box.innerHTML = msgs.map((m) => '<div>' + m + '</div>').join('');
+    box.hidden = false;
+    document.getElementById('saveAnyway').hidden = !res.who;
+    return;
+  }
+  box.hidden = true;
+  download(res);
+}
+document.getElementById('save').addEventListener('click', () => trySave(false));
+document.getElementById('saveAnyway').addEventListener('click', () => trySave(true));
+</script>

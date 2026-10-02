@@ -212,14 +212,117 @@ def ratings(files: list[str]) -> str:
     return text
 
 
+# ---------- 부위별 한 줄 (3차) ----------
+
+
+def part_rows(model: str) -> tuple[dict, list[dict]]:
+    """(세션 id → parts.json 항목, [{session, part, rep, ms, line, gate}]) — 관문은 지금 코드로 다시 건다"""
+    P = {s["id"]: s for s in json.loads((out_dir() / "parts.json").read_text(encoding="utf-8"))}
+    raw = (out_dir() / "runs" / f"{model}.parts.jsonl").read_text(encoding="utf-8").splitlines()
+    R = [json.loads(x) for x in raw if x.strip()]
+    out, reqs = [], []
+    for r in R:
+        s = P[r["session"]]
+        try:
+            lines = json.loads(r.get("content") or "{}").get("lines", {})
+        except json.JSONDecodeError:
+            lines = {}
+        for t in s["targets"]:
+            line = lines.get(t["part"], "")
+            out.append({"session": s["id"], "part": t["part"], "rep": r["rep"], "ms": r["ms"], "line": line})
+            reqs.append({"op": "gateLine", "session": s["session"], "part": t["part"], "line": line})
+    for o, g in zip(out, core(reqs), strict=True):
+        o["gate"] = g
+    return P, out
+
+
+def part_summary(model: str) -> str:
+    P, R = part_rows(model)
+    ok = sum(r["gate"]["ok"] for r in R)
+    by: dict[tuple, set] = defaultdict(set)
+    for r in R:
+        by[(r["session"], r["part"])].add(r["line"])
+    same = sum(len(v) == 1 for v in by.values())
+    ms = sorted({(r["session"], r["rep"]): r["ms"] for r in R}.values())
+    why = Counter(x.split(":")[0] for r in R for x in r["gate"]["reasons"])
+    ln = [len(r["line"]) for r in R]
+    rl = [len(t["rule"]) for s in P.values() for t in s["targets"]]
+    return "\n".join(
+        [
+            f"# 화면 6 부위별 한 줄 — 자동 지표 ({date.today()})",
+            "",
+            "| 모델 | 관문 통과 (줄) | 같은 입력 같은 답 | 세션당 p50 / p95 ms | 줄 길이 | 거절 이유 |",
+            "|---|---|---|---|---|---|",
+            f"| {model} | {ok}/{len(R)} | {same}/{len(by)} | {pct(ms, 0.5):.0f} / {pct(ms, 0.95):.0f} | "
+            f"{sum(ln) / len(ln):.0f}자 | {', '.join(f'{k} {v}' for k, v in why.most_common()) or '—'} |",
+            f"| (R 규칙 한 줄) | — | — | — | {sum(rl) / len(rl):.0f}자 | — |",
+        ]
+    )
+
+
+def part_sheet(model: str) -> Path:
+    """평가지 — 부위 하나의 채점 사실(수치 · 기준)을 보여 주고 R(규칙) · L(LLM) 한 줄을 비교 (+ 비슷함).
+    LLM 줄이 관문에서 거절되면 앱은 R 을 보여 주므로 그 줄은 빼고 개수만 적는다.
+    정답표에는 R = "B", L = "C" 로 적는다"""
+    P, R = part_rows(model)
+    rnd = random.Random(20261003)
+    items, key = [], []
+    for r in (x for x in R if x["rep"] == 0):
+        s = P[r["session"]]
+        t = next(x for x in s["targets"] if x["part"] == r["part"])
+        iid = f"{s['id']}-{t['part']}"
+        row = {
+            "id": iid,
+            "kind": PART_KO[t["part"]],
+            "c_fallback": not r["gate"]["ok"],
+            "c_reasons": r["gate"]["reasons"],
+        }
+        if row["c_fallback"]:
+            key.append({**row, "map": {}})
+            continue
+        ids = rnd.sample(range(100, 999), 2)
+        texts = {"B": t["rule"], "C": r["gate"]["line"]}
+        cands = [{"id": f"c{i}", "text": texts[k]} for i, k in zip(ids, "BC", strict=True)]
+        rnd.shuffle(cands)
+        key.append({**row, "map": {f"c{i}": k for i, k in zip(ids, "BC", strict=True)}})
+        items.append(
+            {
+                "id": iid,
+                "look": f"{s['lookName']} · {PART_KO[t['part']]}",
+                "parts": [
+                    {
+                        "name": PART_KO[t["part"]],
+                        "status": "passed",
+                        "score": t["score"],
+                        "say": " / ".join(t["facts"]),
+                    }
+                ],
+                "cands": cands,
+            }
+        )
+    name = f"parts-{model}"
+    data = json.dumps({"sheet": name, "items": items}, ensure_ascii=False).replace("</", r"<\/")
+    page = (HERE / "parts_page.html").read_text(encoding="utf-8")
+    page = page.replace("{{COUNT}}", str(len(items))).replace("{{DATA}}", data)
+    out = out_dir() / "out"
+    out.mkdir(parents=True, exist_ok=True)
+    (out / f"{name}.html").write_text(page, encoding="utf-8")
+    (out / f"{name}.key.json").write_text(json.dumps(key, ensure_ascii=False, indent=1), encoding="utf-8")
+    return out / f"{name}.html"
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--models", nargs="*", default=["text-gemma4_e4b", "text-qwen3_14b"])
     ap.add_argument("--sheet")
     ap.add_argument("--rule", default="B", help="평가지에서 C 와 비교할 규칙 총평 (B · B2)")
     ap.add_argument("--ratings", nargs="*")
+    ap.add_argument("--parts", help="부위별 한 줄: 모델 이름 — 자동 지표 + 평가지")
     a = ap.parse_args()
-    if a.sheet:
+    if a.parts:
+        print(part_summary(a.parts))
+        print(f"평가지 → {part_sheet(a.parts)}")
+    elif a.sheet:
         print(f"평가지 → {sheet(a.sheet, a.rule)}")
     elif a.ratings:
         print(ratings(a.ratings))

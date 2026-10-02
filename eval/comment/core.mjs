@@ -25,7 +25,7 @@ const require = createRequire(pathToFileURL(join(CLIENT, "package.json")));
 /** 캐시 열쇠: comment.ts + 앱 core 전부 + 규칙 파일 — 하나라도 바뀌면 다시 묶는다 */
 function stamp() {
   const h = createHash("sha1");
-  h.update(readFileSync(join(HERE, "comment.ts")));
+  for (const f of ["entry.ts", "comment.ts", "partline.ts"]) h.update(readFileSync(join(HERE, f)));
   const core = join(CLIENT, "src", "core");
   for (const f of readdirSync(core).filter((f) => f.endsWith(".ts")).sort()) h.update(readFileSync(join(core, f)));
   for (const f of ["looks.json", "score.json"]) h.update(readFileSync(join(ROOT, "rules", f)));
@@ -37,7 +37,7 @@ async function load() {
   if (!existsSync(out)) {
     const esbuild = require("esbuild");
     const r = await esbuild.build({
-      entryPoints: [join(HERE, "comment.ts")], bundle: true, format: "esm", platform: "node", target: "node20",
+      entryPoints: [join(HERE, "entry.ts")], bundle: true, format: "esm", platform: "node", target: "node20",
       write: false, logLevel: "silent", loader: { ".json": "json" },
     });
     mkdirSync(dirname(out), { recursive: true });
@@ -64,7 +64,22 @@ const out = reqs.map((q) => {
       case "sessions":
         return c.makeSessions(q.seed).map((s) => ({ ...s, A: c.commentA(s), B: c.commentB(s), B2: c.commentB2(s), prompt: c.promptC(s), schema: c.schemaC(s) }));
       case "gate": return c.gateC(q.session, q.raw);
-      case "meta": return { promptVer: c.PROMPT_VER, maxChars: c.MAX_CHARS };
+      case "parts": {
+        // 부위별 한 줄 — 수치를 지어 넣은 세션 (같은 seed → 같은 수치)
+        return c.makeSessions(q.seed).map((s, i) => {
+          c.fillMetrics(s, 9000 + i);
+          return {
+            id: s.id, kind: s.kind, lookId: s.lookId, lookName: s.lookName, session: s,
+            prompt: c.targets(s).length ? c.partPrompt(s) : null, schema: c.targets(s).length ? c.partSchema(s) : null,
+            targets: c.targets(s).map((p) => ({ part: p.partId, name: c.nameOf(p.partId), score: p.score, codes: c.issueCodesOf(p), facts: c.facts(p), rule: c.ruleLine(s, p) })),
+          };
+        });
+      }
+      case "gateLine": {
+        const p = q.session.parts.find((x) => x.partId === q.part);
+        return c.gateLine(q.session, p, q.line);
+      }
+      case "meta": return { promptVer: c.PROMPT_VER, maxChars: c.MAX_CHARS, partPromptVer: c.PART_PROMPT_VER, lineMax: c.LINE_MAX };
       default: return { error: `모르는 op: ${q.op}` };
     }
   } catch (e) {

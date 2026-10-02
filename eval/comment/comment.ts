@@ -15,9 +15,9 @@ import { LOOKS } from "../../client/src/core/looks";
 import type { CheckReason, PartId, PartResult, SessionSummary } from "../../client/src/core/types";
 import { PART_IDS } from "../../client/src/core/types";
 
-/** B · C 길이 상한. v1 150자 · v2 100자 "종합 코멘트" → v3 한줄평 60자 → v4 100자 → v5 총평 100자 → v6 입력값 전부 → v7 제품으로 할 일 (사용자 요청, 2026-10-02) */
+/** B · C 길이 상한. v1 150자 · v2 100자 "종합 코멘트" → v3 한줄평 60자 → v4 100자 → v5 총평 100자 → v6 입력값 전부 → v7 제품으로 할 일 → v8 화장 전문가 말투 검수 (2026-10-02) */
 export const MAX_CHARS = 100;
-export const PROMPT_VER = "comment-v7";
+export const PROMPT_VER = "comment-v8";
 
 export interface Session {
   id: string;
@@ -143,7 +143,7 @@ export function commentB(s: Session): string {
   const g = good[0], f = fix[0];
   const praise = g ? `${josa(name(g.partId), "은", "는")} 잘 됐어요` : "";
   if (!f) {
-    if (good.length >= 3) return `전체적으로 잘 됐어요, 특히 ${josa(name(g!.partId), "이", "가")} 깔끔해요.`;
+    if (good.length >= 3) return `전체적으로 잘 됐어요, 특히 ${josa(name(g!.partId), "이", "가")} 깔끔해요. 쉐딩과 하이라이트도 확인해 봐요.`;
     return praise ? `${praise}, 다음엔 건너뛴 부위도 해 봐요.` : "다음엔 건너뛴 부위도 해 봐요.";
   }
   const todo = f.status === "check_only"
@@ -174,24 +174,57 @@ const ro = (w: string): string => {   // 으로 / 로 (ㄹ 받침은 로)
   return w + (jong === 0 || jong === 8 ? "로" : "으로");
 };
 /** 진단 코드 → 도구를 쓴 할 일 (끝은 "보세요" 앞에 붙는 꼴) */
+/**
+ * 진단 코드 → 도구를 쓴 할 일 (끝은 "봐요" 앞에 붙는 꼴).
+ * 2026-10-02 화장 전문가 검수 반영: 동사는 "바르다" 로 통일(얹다 · 톡톡 · 두드리다 안 씀), 립은 바른다,
+ * 아이라이너는 "점막을 채우다", "얇게 시작해" → "얇게 그려", 섀도우는 눈꼬리 쪽을 진하게 + 경계는 브러시로 블렌딩해 그라데이션
+ */
 const TODO: Record<string, (tool: string) => string> = {
   LINER_WING_HIGH_R: (x) => `${ro(x)} 오른쪽 눈꼬리 선을 살짝 내려 그려`, LINER_WING_HIGH_L: (x) => `${ro(x)} 왼쪽 눈꼬리 선을 살짝 내려 그려`,
   LINER_WING_LOW_R: (x) => `${ro(x)} 오른쪽 눈꼬리 선을 살짝 올려 그려`, LINER_WING_LOW_L: (x) => `${ro(x)} 왼쪽 눈꼬리 선을 살짝 올려 그려`,
-  LINER_WING_SHORT_R: (x) => `${ro(x)} 오른쪽 눈꼬리 끝까지 쭉 빼듯이 그려`, LINER_WING_SHORT_L: (x) => `${ro(x)} 왼쪽 눈꼬리 끝까지 쭉 빼듯이 그려`,
-  LINER_THICK: (x) => `${ro(x)} 속눈썹 사이를 메우듯이 얇게 시작해`, LINER_THIN: (x) => `${ro(x)} 한 번 더 겹쳐 그려`,
-  LINER_GAP_R: (x) => `${ro(x)} 끊긴 곳을 짧게 이어 그리듯이 메워`, LINER_GAP_L: (x) => `${ro(x)} 끊긴 곳을 짧게 이어 그리듯이 메워`,
+  LINER_WING_SHORT_R: (x) => `${ro(x)} 오른쪽 눈꼬리 끝까지 빼서 그려`, LINER_WING_SHORT_L: (x) => `${ro(x)} 왼쪽 눈꼬리 끝까지 빼서 그려`,
+  LINER_THICK: (x) => `${ro(x)} 점막을 채우듯 얇게 그려`, LINER_THIN: (x) => `${ro(x)} 한 번 더 겹쳐 그려`,
+  LINER_GAP_R: (x) => `${ro(x)} 끊긴 곳을 이어 그려`, LINER_GAP_L: (x) => `${ro(x)} 끊긴 곳을 이어 그려`,
   LINER_OUT_R: (x) => `${ro(x)} 테두리 안쪽만 따라 그려`, LINER_OUT_L: (x) => `${ro(x)} 테두리 안쪽만 따라 그려`,
   LINER_LR_DIFF: (x) => `${ro(x)} 양쪽 눈꼬리 높이를 번갈아 보며 맞춰 그려`,
   BROW_TAIL_SHORT_R: (x) => `${ro(x)} 눈썹 꼬리 끝까지 가늘게 이어 그려`, BROW_TAIL_SHORT_L: (x) => `${ro(x)} 눈썹 꼬리 끝까지 가늘게 이어 그려`,
   BROW_OUT_R: (x) => `${ro(x)} 테두리 안쪽만 채워`, BROW_OUT_L: (x) => `${ro(x)} 테두리 안쪽만 채워`,
-  BROW_SPARSE: (x) => `${ro(x)} 빈 곳을 짧게 그리듯이 메워`, BROW_LR_DIFF: (x) => `${ro(x)} 양쪽 눈썹 높이를 번갈아 보며 맞춰 그려`,
+  BROW_SPARSE: (x) => `${ro(x)} 빈 곳을 결대로 채워`, BROW_LR_DIFF: (x) => `${ro(x)} 양쪽 눈썹 높이를 번갈아 보며 맞춰 그려`,
   LIP_OUT_LOWER: (x) => `${eul(x)} 아랫입술 선 안쪽부터 발라`, LIP_OUT_UPPER: (x) => `${eul(x)} 윗입술 선 안쪽부터 발라`,
-  LIP_UNDER: (x) => `${eul(x)} 입술 가운데에 톡톡 두드리듯이 채워`, LIP_LR_DIFF: (x) => `${eul(x)} 양쪽 입꼬리까지 고르게 발라`,
-  SHADOW_DIR: (x) => `${eul(x)} 눈 바깥쪽에 한 번 더 덧바르듯이 발라`,
-  SHADOW_LR_DIFF_R: (x) => `${eul(x)} 옅은 왼쪽에 한 번 더 덧발라`, SHADOW_LR_DIFF_L: (x) => `${eul(x)} 옅은 오른쪽에 한 번 더 덧발라`,
-  CHEEK_LR_DIFF_R: (x) => `${eul(x)} 옅은 왼쪽 볼에 톡톡 한 번 더 얹어`, CHEEK_LR_DIFF_L: (x) => `${eul(x)} 옅은 오른쪽 볼에 톡톡 한 번 더 얹어`,
-  TONE_OVER: (x) => `${eul(x)} 조금만 덜어 가볍게 펴 바르듯이 발라`, TONE_UNDER: (x) => `${eul(x)} 한 번 더 겹쳐 발라`,
+  LIP_UNDER: (x) => `${eul(x)} 입술 가운데까지 꼼꼼히 발라`, LIP_LR_DIFF: (x) => `${eul(x)} 양쪽 입꼬리까지 고르게 발라`,
+  SHADOW_DIR: (x) => `${eul(x)} 눈꼬리 쪽에 한 번 더 바르고 경계는 브러시로 블렌딩해`,
+  SHADOW_LR_DIFF_R: (x) => `${eul(x)} 옅은 왼쪽에 한 번 더 발라`, SHADOW_LR_DIFF_L: (x) => `${eul(x)} 옅은 오른쪽에 한 번 더 발라`,
+  CHEEK_LR_DIFF_R: (x) => `${eul(x)} 옅은 왼쪽 볼에 한 번 더 발라`, CHEEK_LR_DIFF_L: (x) => `${eul(x)} 옅은 오른쪽 볼에 한 번 더 발라`,
+  TONE_OVER: (x) => `${eul(x)} 조금만 덜어 발라`, TONE_UNDER: (x) => `${eul(x)} 한 번 더 발라`,
 };
+/** 선이 테두리 밖으로 나간 진단 — "지금 살짝 닦아 수정하거나, 다음엔 ~" (전문가 검수) */
+export const isOut = (code: string): boolean => /_OUT/.test(code);
+
+/** 진단 코드 → 그 진단을 말했다고 볼 낱말. 한 줄 · 총평이 진단과 상관없는 말을 하면 거른다 ("번졌는데 눈꼬리를 섬세하게 빼라") */
+export const CODE_WORDS: [RegExp, RegExp][] = [
+  [/_OUT/, /밖|번|테두리|넘|닦|안쪽|선을/],
+  [/WING_SHORT|TAIL_SHORT/, /꼬리|끝/],
+  [/WING_HIGH|WING_LOW/, /올|처|내려|높/],
+  [/LINER_THICK/, /두껍|얇|굵/],
+  [/LINER_THIN/, /가늘|옅|얇|겹쳐|흐/],
+  [/_GAP/, /끊|이어|비/],
+  [/LR_DIFF/, /양쪽|좌우|왼쪽|오른쪽|높이|균형|고르게/],
+  [/BROW_SPARSE|LIP_UNDER/, /비|빈|채|꼼꼼|가운데|안쪽/],
+  [/TONE_OVER/, /진|덜|가볍|연하/],
+  [/TONE_UNDER/, /옅|연|흐|한 번 더|진하게/],
+  [/SHADOW_DIR/, /안쪽|바깥|눈꼬리|그라데이션|블렌딩/],
+];
+export function mentionsDiagnosis(codes: readonly string[], text: string): boolean {
+  return codes.some((c) => CODE_WORDS.some(([code, words]) => code.test(c) && words.test(text)));
+}
+/** 전문가 검수에서 걸린 말 — 립을 두드림 · 얹다 · 톡톡 */
+export function styleProblems(part: PartId | null, text: string): string[] {
+  const out: string[] = [];
+  if (/톡톡|두드리/.test(text) && (part === "lip" || part === null)) out.push("립은 두드리지 않고 바른다");
+  if (/얹/.test(text)) out.push("얹다 대신 바르다");
+  return out;
+}
+
 const CHECK_TODO: Partial<Record<CheckReason, string>> = {
   faint: "조금 더 발라", lighting: "같은 자리에서 다시 확인받아", align: "정면을 보고 다시 확인받아", occluded: "가린 것을 치우고 다시 확인받아",
 };
@@ -208,7 +241,7 @@ export function commentB2(s: Session): string {
   const praise = g ? `${josa(name(g.partId), "은", "는")} 잘 됐어요` : "";
   if (!f) return commentB(s);   // 고칠 것이 없으면 B 와 같다
   const lead = (p: PartResult): string => (todo2(s, p).startsWith(name(p.partId)) ? todo2(s, p) : `${name(p.partId)}부터, ${todo2(s, p)}`);   // 도구 이름이 부위 이름과 같으면(섀도우) 되풀이하지 않는다
-  const t = f.status === "check_only" ? `${todo2(s, f)} 보세요` : `다음엔 ${lead(f)} 보세요`;
+  const t = f.status === "check_only" ? `${todo2(s, f)} 봐요` : `다음엔 ${lead(f)} 봐요`;
   const first = praise ? `${praise}, ${t}.` : `${t}.`;
   const lr = s.parts.find((p) => p !== f && isLook(p) && p.status === "passed" && hasLr(p));
   const second = fix.find((p) => p !== f && p.status === "passed");
@@ -219,6 +252,16 @@ export function commentB2(s: Session): string {
   const both = extra ? `${first} ${extra}` : first;
   return both.length <= MAX_CHARS ? both : first;
 }
+
+/** 말투 · 용어 — 화장 전문가 검수 (2026-10-02). 총평 · 부위 한 줄 프롬프트가 같이 쓴다 */
+export const STYLE_GUIDE = `## 말투 · 용어 (화장 전문가 검수)
+- 섀도우 · 블러셔 · 쉐딩 · 하이라이트 · 립은 모두 "바르다" 로 씁니다. "얹다" · "톡톡" · "두드리다" 는 쓰지 않습니다
+- 립은 두드리듯 채우지 않습니다 — "바른다"
+- 아이라이너는 "속눈썹 사이를 채우다" 대신 "점막을 채우다". "얇게 시작해 보세요" 대신 "얇게 그려 봐요"
+- 섀도우는 눈꼬리 쪽을 진하게, 눈두덩 위쪽 가장자리로 갈수록 연하게. 색을 겹칠 땐 브러시로 블렌딩해 그라데이션
+- 선이 테두리 밖으로 나갔으면 "지금 살짝 닦아 수정하거나, 다음엔 ~"
+- 진단에 없는 문제는 말하지 않습니다 (번졌는데 "눈꼬리를 섬세하게 빼라" 같은 말)
+- 전부 잘됐을 때 쉐딩 · 하이라이트는 "쉐딩과 하이라이트도 확인해서" 처럼 짧게`;
 
 // ---------- C ----------
 
@@ -267,6 +310,8 @@ ${lines.join("\n")}
 ## 이 화장에 쓰는 제품
 ${[...(look?.products ?? []), ...CONTOUR_PRODUCTS].map((x) => `- ${x}`).join("\n")}
 
+${STYLE_GUIDE}
+
 ## 쓸 것 (순서대로)
 - praise_part: 가장 잘된 부위 하나 (완료이고 진단이 없거나 TONE_OK 인 부위). 없으면 none
 - fix_part: 다음에 먼저 고칠 부위 하나 (완료인데 진단이 있는 부위가 먼저, 없으면 다시 확인받으면 되는 확인만 부위). 없으면 none
@@ -297,10 +342,10 @@ export function schemaC(s: Session): object {
 /** 반대 방향 말 — 고칠 부위의 진단과 반대로 고치라고 하면 지어낸 말. 반대 진단이 같이 있으면(오른쪽 높고 왼쪽 낮음) 따지지 않는다 */
 const OPPOSITE: [RegExp, RegExp, RegExp][] = [
   [/TONE_OVER/, /TONE_UNDER/, /더 진하게|진하게 (발라|올려)/],
-  [/TONE_UNDER/, /TONE_OVER/, /연하게|덜 바르|힘을 빼/],
+  [/TONE_UNDER/, /TONE_OVER/, /(?<!갈수록 )연하게 (발라|바르)|덜 바르|힘을 빼/],   // "가장자리로 갈수록 연하게" 는 그라데이션 (전문가 지침)
   [/WING_HIGH/, /WING_LOW/, /올려|올리세요/],
   [/WING_LOW/, /WING_HIGH/, /내려|내리세요/],
-  [/LINER_THICK/, /LINER_THIN/, /두껍게/],
+  [/LINER_THICK/, /LINER_THIN/, /두껍게|굵게/],
   [/LINER_THIN/, /LINER_THICK/, /얇게/],
 ];
 
@@ -318,6 +363,7 @@ export function gateC(s: Session, raw: string): GateC {
   if (/[0-9]/.test(c)) reasons.push("숫자");
   if (!/[.!?]$|요$/.test(c)) reasons.push("문장이 잘림");   // 길이 상한에 걸려 끊긴 글
   if (/[A-Za-z]/.test(c)) reasons.push("영어 섞임");
+  reasons.push(...styleProblems(null, c));
   // 이 화장 제품 목록에 없는 도구 — Qwen3-14B 가 "펜슬로 정리" 를 지어냈다 (펜슬이 없는 화장)
   const kit = [...(LOOKS.find((l) => l.id === s.lookId)?.products ?? []), ...CONTOUR_PRODUCTS].join(" ");
   const strange = TOOL_WORDS.filter((w) => c.includes(w) && !kit.includes(w));
@@ -328,6 +374,8 @@ export function gateC(s: Session, raw: string): GateC {
   // 부위를 제품·자리 이름으로 말해도 된다 ("젤 라이너로 눈꼬리를…", "립을…")
   const ALIAS: Partial<Record<PartId, RegExp>> = { brow: /눈썹/, liner: /라이너|아이라인|눈꼬리/, shadow: /섀도우|눈두덩/, lip: /입술|립|틴트/, cheek: /볼|블러셔/ };
   if (fix && !(ALIAS[fix as PartId] ?? new RegExp(name(fix as PartId))).test(c)) reasons.push("고칠 부위를 글에서 말하지 않음");
+  const fp = s.parts.find((p) => p.partId === fix);
+  if (fp && fp.status === "passed" && !mentionsDiagnosis(issueCodes(fp), c)) reasons.push("고칠 부위의 진단과 상관없는 말");
   const skippedPraised = s.parts.filter((p) => p.status === "skipped").some((p) => new RegExp(`${name(p.partId)}[^.]*(잘|깔끔|좋)`).test(c));
   if (skippedPraised) reasons.push("건너뛴 부위를 칭찬함");
   // 잘된 부위를 고치라고 함 — 마디(쉼표·마침표로 나눈 조각) 하나에 잘된 부위 이름 + 고치라는 말이 있고 칭찬 말은 없으면.
@@ -344,3 +392,8 @@ export function gateC(s: Session, raw: string): GateC {
   for (const [code, counter, words] of OPPOSITE) if (has(code) && !has(counter) && words.test(c)) reasons.push("반대 방향");
   return { ok: reasons.length === 0, reasons, comment: c, praise, fix };
 }
+
+// partline.ts (부위별 한 줄 실험)이 같이 쓴다
+export { issueCodes as issueCodesOf, josa as josaOf, name as nameOf, CONTOUR_PRODUCTS as CONTOUR_PRODUCTS_LIST, TOOL_WORDS as TOOL_WORDS_LIST };
+export const todoCode = (s: Session, p: PartResult, code: string): string => (TODO[code] ? TODO[code]!(toolOf(s.lookId, p.partId)) : todo2(s, p));
+export const todoFor = (s: Session, p: PartResult): string => todo2(s, p);

@@ -50,7 +50,7 @@ def test_rule_totals_are_short_numberless_and_b2_names_a_product(S):
             assert not any(ch.isdigit() for ch in s[k])
         assert len(s["A"].splitlines()) == 6  # 부위별 한 줄 = 화면 6 맥락
         if s["kind"] in ("one_big", "many"):  # 고칠 것이 있으면 B′ 는 이 화장 제품으로 할 일을 말한다
-            assert "보세요" in s["B2"]
+            assert "봐요" in s["B2"]
             assert any(
                 w in looks[s["lookId"]]
                 for w in ("펜슬", "라이너", "섀도우", "립", "틴트", "블러셔")
@@ -71,7 +71,10 @@ def test_gate_catches_what_the_first_runs_got_wrong(S):
     one = next(s for s in S if s["kind"] == "one_big")
     fix = one["schema"]["properties"]["fix_part"]["enum"][0]
     ko = {"brow": "눈썹", "liner": "아이라이너", "shadow": "섀도우", "lip": "입술", "cheek": "볼터치"}[fix]
-    assert _gate(one, f"다음엔 {ko}부터 다시 해 봐요.", fix=fix)["ok"]
+    assert _gate(one, one["B2"], fix=fix)["ok"]  # 진단을 말하는 글은 통과
+    assert (
+        "고칠 부위의 진단과 상관없는 말" in _gate(one, f"다음엔 {ko}부터 다시 해 봐요.", fix=fix)["reasons"]
+    )
     assert "숫자" in _gate(one, f"{ko}가 3점 낮아요. 다시 해 봐요.", fix=fix)["reasons"]
     assert "문장이 잘림" in _gate(one, f"다음엔 {ko}부터 다시 해 보는 것을 권", fix=fix)["reasons"]
     assert "영어 섞임" in _gate(one, f"눈 liner 는 좋아요. {ko}부터 봐요.", fix=fix)["reasons"]
@@ -88,7 +91,8 @@ def test_gate_catches_what_the_first_runs_got_wrong(S):
     pko = {"brow": "눈썹", "liner": "아이라이너", "shadow": "섀도우", "lip": "입술", "cheek": "볼터치"}[
         praise
     ]
-    assert _gate(one, f"{pko}는 잘 되셨어요, 다음엔 {ko}부터 다듬어 보세요.", praise=praise, fix=fix)["ok"]
+    todo = one["B2"].split("다음엔 ", 1)[1]  # B′ 의 할 일 (진단을 말한다)
+    assert _gate(one, f"{pko}는 잘 되셨어요, 다음엔 {todo}", praise=praise, fix=fix)["ok"]
     assert "총평이 너무 김" in _gate(one, f"좋아요. 정말요. 다음엔 {ko}. 해 봐요.", fix=fix)["reasons"]
     # 제품 목록에 없는 도구 · 부위를 제품 이름으로 말하기
     kit = next(s for s in S if s["lookId"] == "chic")  # 어른 여자: 펜슬 · 젤 라이너 · 섀도우 · 립 · 블러셔
@@ -107,15 +111,7 @@ def test_sheet_hides_which_is_which_and_ratings_use_ci(tmp_path, monkeypatch, S)
     rows = []
     for s in S:  # 가짜 LLM: 앞 절반은 관문 통과, 뒤 절반은 숫자가 들어가 거절
         fix = s["schema"]["properties"]["fix_part"]["enum"][0]
-        name = {
-            "brow": "눈썹",
-            "liner": "아이라이너",
-            "shadow": "섀도우",
-            "lip": "입술",
-            "cheek": "볼터치",
-            "none": "",
-        }[fix]
-        text = f"다음엔 {name}부터 다시 해 봐요." if int(s["id"][1:]) <= 15 else "1번부터 다시 해요."
+        text = s["B2"] if int(s["id"][1:]) <= 15 else "1번부터 다시 해요."
         raw = json.dumps({"praise_part": "none", "fix_part": fix, "comment": text}, ensure_ascii=False)
         rows.append({"session": s["id"], "kind": s["kind"], "rep": 0, "ms": 100, "content": raw})
     lines = (json.dumps(r, ensure_ascii=False) for r in rows)
@@ -125,7 +121,7 @@ def test_sheet_hides_which_is_which_and_ratings_use_ci(tmp_path, monkeypatch, S)
     assert '"C"' not in page and '"B"' not in page and '"map":' not in page and "c_fallback" not in page
     key = json.loads((d / "out" / "total-fake.key.json").read_text(encoding="utf-8"))
     assert sum(k["c_fallback"] for k in key) == 15  # C 가 거절된 세션은 평가지에서 빠진다 (B 대 B 가 되므로)
-    assert page.count("다시 해 봐요") >= 15 and "1번부터" not in page
+    assert "1번부터" not in page  # 거절된 LLM 글은 평가지에 안 나온다
     # 평가자 하나: C 가 있는 15문항 중 10번 C, 3번 B, 2번 비슷함
     items = []
     for i, k in enumerate(x for x in key if not x["c_fallback"]):

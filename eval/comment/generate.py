@@ -60,7 +60,15 @@ def main() -> None:
     ap.add_argument("--reps", type=int, default=2)
     ap.add_argument("--max-tokens", type=int, default=400)
     ap.add_argument("--port", type=int, default=8092)
+    ap.add_argument(
+        "--task",
+        choices=["total", "parts"],
+        default="total",
+        help="total = 총평, parts = 부위별 한 줄 (수치 넣음)",
+    )
     a = ap.parse_args()
+    if a.task == "parts":
+        return parts(a)
 
     conf = json.loads((HERE.parent / "vlm" / "models.json").read_text(encoding="utf-8"))
     cfg = conf["models"][a.model]
@@ -100,6 +108,44 @@ def main() -> None:
         for row in rows:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
     print(f"끝 → {out / (a.model + '.jsonl')}")
+
+
+def parts(a) -> None:
+    """부위별 한 줄 — 세션마다 한 번 요청, 고칠 말이 있는 완료 부위의 줄을 한꺼번에 받는다"""
+    conf = json.loads((HERE.parent / "vlm" / "models.json").read_text(encoding="utf-8"))
+    cfg = conf["models"][a.model]
+    S = core([{"op": "parts"}])[0]
+    out = out_dir() / "runs"
+    out.mkdir(parents=True, exist_ok=True)
+    (out_dir() / "parts.json").write_text(json.dumps(S, ensure_ascii=False), encoding="utf-8")
+    meta = core([{"op": "meta"}])[0]
+    srv = Server(cfg, conf["llama_server"], a.port, out / a.model)
+    srv.start()
+    rows = []
+    try:
+        for rep in range(a.reps):
+            for s in S:
+                if not s["prompt"]:
+                    continue
+                r = ask(srv.url, s["prompt"], s["schema"], cfg.get("request_extra", {}), a.max_tokens)
+                rows.append(
+                    {
+                        "model": a.model,
+                        "session": s["id"],
+                        "rep": rep,
+                        "prompt_ver": meta["partPromptVer"],
+                        **r,
+                    }
+                )
+                print(
+                    s["id"], rep, round(r["ms"]), (r.get("content") or r.get("error", ""))[:120], flush=True
+                )
+    finally:
+        srv.stop()
+    with (out / f"{a.model}.parts.jsonl").open("w", encoding="utf-8") as f:
+        for row in rows:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    print(f"끝 → {out / (a.model + '.parts.jsonl')}")
 
 
 if __name__ == "__main__":
