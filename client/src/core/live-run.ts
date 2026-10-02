@@ -143,7 +143,26 @@ const farSide = (d: number, cur: readonly Pt[]): Side => ((d > 0) === (eyeCenter
  * C안: 고개를 많이 돌리면 먼 쪽 눈 테두리를 정면 눈 모양 틀로 — 지금 눈꺼풀 점에 틀을 맞추고 튀는 점은 무시 (eye-fit, 2026-10-02 PC).
  * 각도 차 12 → 25 에서 그물(눈꺼풀 점 그대로) → 틀로 서서히. 가까운 쪽은 그대로
  */
-function farEyeFit(o: Outline, base: readonly (readonly Pt[])[], sides: readonly Side[], baseLm: readonly Pt[], cur: readonly Pt[], g: FarEyeOptions = FAR_EYE_DEFAULT): Outline {
+/**
+ * 먼 쪽 눈 보정을 테두리 점마다 얼마나 줄지 (0~1). 보정은 눈 근처에 맞춘 변환이라 멀리 늘려 쓰면 비틀린다 (PC 2026-10-02: 섀도우 위 테두리).
+ * 라이너는 전부 눈에 붙어 있어 1 · 눈썹은 그물 붙이기만으로 잘 따라와 0 ·
+ * 섀도우는 눈꺼풀 쪽 1 → 위 테두리(눈썹 쪽) 0 — 정면에서 눈꺼풀 점까지의 거리로 차츰
+ */
+function fitWeights(part: PartId, poly: readonly Pt[], side: Side, baseLm: readonly Pt[]): number[] {
+  if (part === "liner") return poly.map(() => 1);
+  if (part !== "shadow") return poly.map(() => 0);
+  const eye = EYE_IDS[side].map((i) => baseLm[i]!);
+  // 눈꺼풀 ↔ 눈썹 아래 간격(가운데) 의 절반부터는 보정 0 — 섀도우 위 테두리(간격의 약 55%)는 그물 붙이기 그대로
+  const e = side === "R" ? LM.eyeA : LM.eyeB, b = side === "R" ? LM.browA : LM.browB;
+  const top = baseLm[e.upper[Math.floor(e.upper.length / 2)]!]!, brow = baseLm[b.lower[Math.floor(b.lower.length / 2)]!]!;
+  const half = Math.hypot(top.x - brow.x, top.y - brow.y) / 2;
+  return poly.map((p) => {
+    const d = Math.min(...eye.map((q) => Math.hypot(p.x - q.x, p.y - q.y)));
+    return half > 0 ? Math.max(0, 1 - d / half) : d < 1e-9 ? 1 : 0;
+  });
+}
+
+function farEyeFit(o: Outline, base: readonly (readonly Pt[])[], sides: readonly Side[], weights: readonly (readonly number[])[], baseLm: readonly Pt[], cur: readonly Pt[], g: FarEyeOptions = FAR_EYE_DEFAULT): Outline {
   const d = rigidPoseDiff(baseLm, cur).yaw, w = farEyeWeight(Math.abs(d));
   if (w <= 0) return o;
   const far = farSide(d, cur), near: Side = far === "R" ? "L" : "R";
@@ -198,8 +217,10 @@ function farEyeFit(o: Outline, base: readonly (readonly Pt[])[], sides: readonly
   }
   return {
     polys: o.polys.map((poly, i) => (sides[i] !== far ? poly : poly.map((p, j) => {
+      const k = w * (weights[i]![j] ?? 0);
+      if (k <= 0) return p;
       const q = fix(applyAffine(t, base[i]![j]!));
-      return { x: p.x + (q.x - p.x) * w, y: p.y + (q.y - p.y) * w };
+      return { x: p.x + (q.x - p.x) * k, y: p.y + (q.y - p.y) * k };
     }))),
     lines: o.lines,
   };
@@ -249,6 +270,7 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
   // 눈 부위: 테두리 다각형마다 어느 눈 쪽인지 — 고개를 많이 돌리면 먼 쪽은 눈 모양 틀로(C안) · 흐리게(후보 1, 화면이 고름)
   const baseOutline = placeOutline(pinned, opt.baseline.lm).polys;
   const sides = EYE_PARTS.includes(opt.partId) ? baseOutline.map((poly) => nearerEye(poly, opt.baseline.lm)) : null;
+  const weights = sides ? baseOutline.map((poly, i) => fitWeights(opt.partId, poly, sides[i]!, opt.baseline.lm)) : null;
 
   return {
     /** 화면 4 개발용 ?tune 슬라이더가 값을 바꾼다 */
@@ -292,7 +314,7 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
         const cur = smoother?.smooth(f.lm, f.t) ?? f.lm;
         outline = placeOutline(pinned, cur);
         if (sides) {
-          outline = farEyeFit(outline, baseOutline, sides, opt.baseline.lm, cur, opt.farEye);
+          outline = farEyeFit(outline, baseOutline, sides, weights!, opt.baseline.lm, cur, opt.farEye);
           alpha = farEyeAlpha(sides, opt.baseline.lm, cur);
         }
       }

@@ -1,7 +1,8 @@
 // 화면 4 진행 (2-1 넷째 조각, #21) 검증 — 카메라 없이 프레임 측정값만 넣는다
 // 프레임마다: 게이트 한 줄 · 가이드 테두리 · (확인받기 뒤) 묶음 모으기
 import { describe, expect, it } from "vitest";
-import { FAR_EYE_DEFAULT, FAR_FADE, createLiveRun, type LiveFrame } from "@core/live-run";
+import { FAR_EYE_DEFAULT, FAR_FADE, createLiveRun, outlineOf, type LiveFrame } from "@core/live-run";
+import { pinOutline, placeOutline } from "@core/mesh-pin";
 import { GATE_TEXT, LIVE_LIMITS, RIGID_POSE, poseOf } from "@core/gate";
 import { linerOutline, lookGuide } from "@core/guides";
 import type { GuideSource } from "@core/score-part";
@@ -435,6 +436,34 @@ describe("live run", () => {
     const out = turnedFace(0.25);
     for (const i of [...B.upper, ...B.lower]) out[i] = { x: FACE[i]!.x + 7, y: FACE[i]!.y };
     expect(nearPt(farPoly(linerG(out, { ...FAR_EYE_DEFAULT })), out[B.outer]!, 0.5)).toBe(true);
+  });
+
+  // 부위마다 먼 쪽 눈 보정을 다르게 (PC 2026-10-02: 섀도우 위쪽 테두리가 비틀림) — 눈 근처용 변환을 눈썹 쪽까지 늘려 쓰면 비틀린다
+  const collapsedFar = (): Pt[] => {
+    const lm = turnedFace(0.25), cx = (FACE[B.outer]!.x + FACE[B.inner]!.x) / 2;
+    for (const i of [...B.upper, ...B.lower]) lm[i] = { x: cx + (FACE[i]!.x - cx) * 0.6, y: FACE[i]!.y };
+    return lm;
+  };
+  /** 먼 쪽 눈꺼풀 점만 통째로 (+7, -4) — 눈썹은 그대로. 보정(이동)이 눈썹 쪽까지 번지면 그물 붙이기와 달라진다 */
+  const shiftedFar = (): Pt[] => {
+    const lm = turnedFace(0.25);
+    for (const i of [...B.upper, ...B.lower]) lm[i] = { x: FACE[i]!.x + 7, y: FACE[i]!.y - 4 };
+    return lm;
+  };
+  const partAt = (part: "brow" | "shadow", lm: Pt[]) => createLiveRun<string>({ partId: part, baseline: { lm: FACE, foreheadL: SKIN.L }, guide: lookGuide({}), smooth: false, screen: undefined } as Parameters<typeof createLiveRun<string>>[0]).step(frame({ lm })).outline!;
+  const meshOnly = (part: "brow" | "shadow", lm: Pt[]) => placeOutline(pinOutline(outlineOf(part, FACE, lookGuide({})), FACE), lm);
+
+  it("L44 눈썹 테두리에는 먼 쪽 눈 보정을 안 한다 — 눈썹은 그물 붙이기만으로 잘 따라온다", () => {
+    for (const lm of [shiftedFar(), collapsedFar()]) samePolys(partAt("brow", lm).polys, meshOnly("brow", lm).polys);
+  });
+
+  it("L45 섀도우는 눈꺼풀 쪽만 먼 쪽 눈 보정, 위쪽 테두리(눈썹 쪽)는 그물 붙이기 그대로 — 사이는 차츰", () => {
+    const n = B.upper.length;   // 섀도우 영역 = 눈꺼풀 n 점 + 위 테두리 n 점(거꾸로)
+    const sl = shiftedFar(), sGot = farPoly(partAt("shadow", sl)), sMesh = farPoly(meshOnly("shadow", sl));
+    for (let j = n; j < 2 * n; j++) expect(Math.hypot(sGot[j]!.x - sMesh[j]!.x, sGot[j]!.y - sMesh[j]!.y), `위 ${j}`).toBeLessThan(1e-6);
+    const lm = collapsedFar(), got = farPoly(partAt("shadow", lm)), mesh = farPoly(meshOnly("shadow", lm));
+    expect(Math.hypot(got[0]!.x - FACE[B.outer]!.x, got[0]!.y - FACE[B.outer]!.y)).toBeLessThan(1);   // 눈꺼풀 쪽 눈꼬리는 제자리로 펴짐
+    expect(Math.hypot(mesh[0]!.x - FACE[B.outer]!.x, mesh[0]!.y - FACE[B.outer]!.y)).toBeGreaterThan(10);
   });
 
   it("L38 많이 돌린 채 먼 쪽 눈이 통째로 움직이면 틀도 같이 움직인다 — A·B안처럼 얼어붙지 않는다", () => {
