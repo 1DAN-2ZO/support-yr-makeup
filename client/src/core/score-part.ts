@@ -39,6 +39,11 @@ export interface PartGeometry {
   /** 섀도우·볼터치 영역 다각형, 좌우 하나씩 */
   regions?: Record<Side, readonly Pt[]>;
   /**
+   * 섀도우 눈꼬리 연장 (화장 shadow.tailExtend, #250) — regions 끝에 이어 붙이면 꼬리까지 한 모양이 되는 두 점 [가운데, 꼬리 끝].
+   * 화면 테두리(#30)·칠하기만 쓴다. 채점은 아직 쓰지 않는다 — 영역을 꼬리까지 넓힐지는 ⑥ 과 정한다
+   */
+  shadowTail?: Record<Side, readonly [Pt, Pt]>;
+  /**
    * 쉐딩 화면: 얼굴형 규칙(contourOutline)이 낸 밴드 배열 그대로. 좌우 구분 없이, 한쪽에 여러 개, 가운데 밴드(콧대·이마 위·턱 끝)도 섞여 있다.
    * 좌우 분류와 가운데 제외는 채점이 한다. 점수는 없고 좌우 차 한 줄씩만 (쉐딩·하이라이트). highlight 가 비어 있으면 하이라이트 비교는 건너뛴다
    */

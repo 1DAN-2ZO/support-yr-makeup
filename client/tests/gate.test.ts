@@ -67,6 +67,14 @@ describe("evaluateGate", () => {
     for (const p of ["lip", "cheek", "contour"] as const) expect(evaluateGate(p, good({ screen: "portrait" })).ok).toBe(true);
   });
 
+  it("V4d 입술·볼·쉐딩은 세로 화면에서만 — 가로면 '폰을 세로로 돌려 주세요' 로 막는다 (2026-10-01)", () => {
+    for (const p of ["lip", "cheek", "contour"] as const) {
+      const r = evaluateGate(p, good({ screen: "landscape" }));
+      expect(r.firstFail).toBe("angle");
+      expect(r.text).toBe(GATE_TEXT.toPortrait);
+    }
+  });
+
   it("V5 정면 한계: yaw ±15°, pitch ±10°", () => {
     expect(evaluateGate("lip", good({ yaw: 14, baseYaw: 14 })).ok).toBe(true);
     expect(evaluateGate("lip", good({ yaw: -16, baseYaw: -16 })).firstFail).toBe("angle");
@@ -181,6 +189,7 @@ describe("softFail", () => {
     expect(soft({ screen: "portrait" })).toBe(false);          // 눈 부위 세로 → 가로로 돌려
     expect(soft({ roll: 80 })).toBe(false);                    // 누운 얼굴 → 자동 회전
     expect(soft({ roll: 80 }, "lip")).toBe(false);             // 세로로 들어 주세요
+    expect(soft({ screen: "landscape" }, "lip")).toBe(false);  // 입술을 가로 → 세로로 돌려
     expect(soft({ partVisible: false })).toBe(false);
     expect(soft({ occluded: true })).toBe(false);
     expect(soft({ exprDiff: 1 }, "lip")).toBe(false);

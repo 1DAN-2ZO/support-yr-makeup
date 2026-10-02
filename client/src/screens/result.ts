@@ -16,7 +16,7 @@ import type { ScoreOutcome } from "../core/flow";
 import { scaleLm } from "../core/crop";
 import { guideOutline } from "../core/overlay";
 import { frameOf, type HairMask } from "../core/sampling";
-import { ROTATE_TEXT, mustRotate, nowOrientation } from "../core/orientation-lock";
+import { mustRotate, rotateText, nowOrientation } from "../core/orientation-lock";
 import type { Orientation } from "../core/screens";
 import { scoreBundle, type GuideSource } from "../core/score-part";
 import { PARAMS, PART_NAME } from "../core/score";
@@ -45,8 +45,8 @@ export interface ResultDeps {
    * 앞머리·옆머리 칸을 채점에서 뺀다. 안 주거나 null 이면 전과 같이 (docs/research/hair-skin-2026-09-29)
    */
   hairMask?: (im: RgbaImage) => Promise<HairMask | null>;
-  /** 지금 화면 방향 — 테스트에서 바꿔 끼운다 (기본 orientation 미디어 쿼리). 눈 부위는 가로에서만 (② #204 팀 협의) */
-  orientation?: () => Orientation;
+  /** 지금 화면 방향 — 테스트에서 바꿔 끼운다 (기본 orientation 미디어 쿼리). 눈 부위는 가로, 나머지는 세로에서만 (② 팀 협의). 모르면 null */
+  orientation?: () => Orientation | null;
   /** 마스크를 이만큼만 기다린다 (ms). 처음엔 모델을 내려받는데, 폰 네트워크가 멈추면 "채점 중…" 에 영영 서 있게 된다 */
   hairTimeoutMs?: number;
   /** 개발용(?tune): 판정 근거 숫자를 한 줄로 — 밝기 차·머리카락 가림·정렬·쓴 장 수. 사용자 화면엔 안 나온다 */
@@ -104,9 +104,9 @@ export function resultScreen<S>(deps: ResultDeps): Screen<S> {
         return;
       }
       wrap.append(line("result-part", PART_NAME[part]));
-      // 눈 부위는 가로에서만 (팀 협의 2026-09-30) — 세로면 채점도 안 돌리고 안내만. 돌리면 껍데기가 다시 그린다 (②)
+      // 눈 부위는 가로, 나머지는 세로에서만 (팀 협의 2026-09-30 · 10-01) — 방향이 틀리면 채점도 안 돌리고 안내만. 돌리면 껍데기가 다시 그린다 (②)
       if (mustRotate(part, (deps.orientation ?? nowOrientation)())) {
-        wrap.append(line("rotate-lock", ROTATE_TEXT));
+        wrap.append(line("rotate-lock", rotateText(part)));
         return;
       }
 

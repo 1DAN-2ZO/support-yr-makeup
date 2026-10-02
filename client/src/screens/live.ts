@@ -26,10 +26,11 @@ import type { BundleOf } from "@core/capture-bundle";
 import { ROLL_MAX, cropSpec, faceRoll, type Rect } from "@core/crop";
 import { clampRect, createCropFollow, jitterMeter } from "@core/crop-follow";
 import { lookGuide } from "@core/guides";
+import { LM } from "@core/landmarks";
 import { createLiveEvents } from "@core/live-events";
 import { LIVE_LIMITS } from "@core/gate";
 import { gateReadout, recentStats } from "@core/gate-readout";
-import { createLiveRun, type LiveFrame } from "@core/live-run";
+import { FAR_FADE, createLiveRun, type LiveFrame } from "@core/live-run";
 import { LIVE_SMOOTH } from "@core/smooth-params";
 import type { Logger } from "@core/log";
 import type { LookPart, LookPartId } from "@core/looks";
@@ -84,8 +85,11 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text = ""):
 /** 창(영상 px) → 캔버스 px. 창이 영상 끝에 걸려 비율이 깨졌으면 여백을 둔다(contain) */
 interface ViewMap { s: number; ox: number; oy: number; crop: Rect }
 
+/** [개발용 ?dots] MediaPipe 가 준 눈꺼풀 점 그대로 (필터 전) — 테두리가 틀어질 때 점이 틀어졌는지, 옮기기가 틀어졌는지 가른다 */
+const EYE_DOTS: readonly number[] = [...LM.eyeA.upper, ...LM.eyeA.lower, ...LM.eyeB.upper, ...LM.eyeB.lower];
+
 /** 확대 창만 거울로 그리고 그 위에 테두리 (선만, F-07) */
-function drawView(cv: HTMLCanvasElement, video: HTMLVideoElement, crop: Rect, o: Outline | null): ViewMap | null {
+function drawView(cv: HTMLCanvasElement, video: HTMLVideoElement, crop: Rect, o: Outline | null, dots: readonly Pt[] | null = null, alpha: readonly number[] | null = null): ViewMap | null {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   const W = Math.round(cv.clientWidth * dpr), H = Math.round(cv.clientHeight * dpr);
   if (!W || !H) return null;
@@ -102,7 +106,25 @@ function drawView(cv: HTMLCanvasElement, video: HTMLVideoElement, crop: Rect, o:
   g.scale(s, s);
   g.translate(-crop.x, -crop.y);
   g.drawImage(video, crop.x, crop.y, crop.w, crop.h, crop.x, crop.y, crop.w, crop.h);
-  if (o) strokeOutline(g, o, Math.max(2, W / 400) / s);
+  if (o) {
+    const lw = Math.max(2, W / 400) / s;
+    // 고개를 많이 돌리면 먼 쪽 눈 테두리는 흐리게 (live-run alpha, FAR_FADE)
+    strokeOutline(g, alpha ? { polys: o.polys.filter((_, i) => (alpha[i] ?? 1) >= 1), lines: o.lines } : o, lw);
+    if (alpha) {
+      o.polys.forEach((poly, i) => {
+        const a = alpha[i] ?? 1;
+        if (a >= 1) return;
+        g.globalAlpha = a;
+        strokeOutline(g, { polys: [poly], lines: [] }, lw);
+        g.globalAlpha = 1;
+      });
+    }
+  }
+  if (dots) {
+    g.fillStyle = "#ffb000";
+    const r = Math.max(2, W / 350) / s;
+    for (const p of dots) { g.beginPath(); g.arc(p.x, p.y, r, 0, Math.PI * 2); g.fill(); }
+  }
   g.restore();
   return { s, ox, oy, crop };
 }
@@ -177,6 +199,9 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
       const poseCal = q.has("pose") ? createPoseProbe() : null;
       // 개발용 ?gate: 게이트가 본 값(선명 · 막힌 조건 · 안정 수 · 각도 · 표정 …) — 폰 시험에서 왜 안 넘어가는지 숫자로 (2026-09-30)
       const gateDbg = q.has("gate") ? recentStats(90) : null;
+      const dots = q.has("dots");
+      // 후보 1(아주 크게 돌렸을 때 먼 쪽 눈 흐리게) — 기본 켬. 개발용 ?fade=0 끄기 · ?fade=50-70 구간 바꾸기
+      const fadeQ = q.get("fade"), fadeR = fadeQ?.match(/^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/);
       if (meter || poseCal || gateDbg) {
         stage.append(readout);
         readout.addEventListener("click", () => {
@@ -200,6 +225,9 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         baseExpr: deps.getBaseExpr?.() ?? null,
         guide: deps.getGuide?.() ?? lookGuide(deps.getLookParts()),
         smooth: stab,
+        // 개발용 ?g=: 먼 쪽 눈 틀 맞추기 다듬기를 하나씩 켜서 비교 (1 눈머리 고정 · 2 눈썹 앞쪽 절반 · 3 높이 제한 · h 눈꼬리를 눈썹으로). 없으면 23h
+        ...(fadeQ === "0" ? { fade: null } : fadeR ? { fade: { ...FAR_FADE, from: Number(fadeR[1]), to: Number(fadeR[2]) } } : {}),
+        ...(q.has("g") ? { farEye: { anchorInner: (q.get("g") ?? "").includes("1"), browHalf: (q.get("g") ?? "").includes("2"), capHeight: (q.get("g") ?? "").includes("3"), outerFromBrow: (q.get("g") ?? "").includes("h") } } : {}),
       });
       // 개발용 ?tune: 테두리 떨림 필터 값을 폰에서 맞춘다 — 2-b 와 같은 슬라이더 (#235 · #244)
       if (run.smoother && q.has("tune")) wrap.append(smoothTuner(run.smoother, LIVE_SMOOTH));
@@ -248,9 +276,9 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         const aspect = view.clientWidth && view.clientHeight ? view.clientWidth / view.clientHeight : 3 / 4;
         if (!follow || Math.abs(aspect - followAspect) > 0.01) { follow = createCropFollow(part!, aspect); followAspect = aspect; }
         const screen = window.matchMedia("(orientation: landscape)").matches ? "landscape" : "portrait";
-        if (lm && (faceRoll(lm) > ROLL_MAX || (screen === "portrait" && wantedOrientation(part!) === "landscape"))) {
-          // 얼굴이 누웠거나(자동 회전 꺼짐, #204) 눈 부위를 세로로 들고 있다(가로에서만 — 팀 협의) — 확대하지 않고 전체를 보여 준다.
-          // 게이트가 "자동 회전을 켜" / "가로로 돌려" 로 막는다
+        if (lm && (faceRoll(lm) > ROLL_MAX || screen !== wantedOrientation(part!))) {
+          // 얼굴이 누웠거나(자동 회전 꺼짐, #204) 부위에 맞지 않는 방향으로 들고 있다(눈 부위 가로 · 나머지 세로 — 팀 협의) — 확대하지 않고 전체를 보여 준다.
+          // 게이트가 "자동 회전을 켜" / "가로로 돌려" / "세로로 돌려" 로 막는다
           crop = null;
           follow.reset();
         } else if (lm) {
@@ -282,7 +310,7 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
           readout.style.whiteSpace = "pre";
           readout.textContent = poseCal.step(lm, res.facialTransformationMatrixes?.[0]?.data ?? null, f.expr?.["jawOpen"] ?? 0);
         }
-        const vm = drawView(view, video, shown, r.outline);
+        const vm = drawView(view, video, shown, r.outline, dots && lm ? EYE_DOTS.map((i) => lm[i]!) : null, r.alpha);
         if (meter && vm && r.outline) {
           // 화면 흔들림: 영상의 고정된 한 점(가운데)이 캔버스에서 어디 찍히나 — 창이 움직이면 사진 전체가 튄다
           meter.view.push([{ x: (sw / 2 - vm.crop.x) * vm.s + vm.ox, y: (sh / 2 - vm.crop.y) * vm.s + vm.oy }]);

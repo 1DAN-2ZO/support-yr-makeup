@@ -17,7 +17,7 @@ import { cropSpec, scaleLm } from "@core/crop";
 import { partCard } from "@core/guide-view";
 import { lookGuide } from "@core/guides";
 import { outlineOf } from "@core/live-run";
-import { ROTATE_TEXT, mustRotate, nowOrientation } from "@core/orientation-lock";
+import { mustRotate, rotateText, nowOrientation } from "@core/orientation-lock";
 import type { Look } from "@core/looks";
 import type { PersonalPlan } from "@core/personalize";
 import type { GuideSource } from "@core/score-part";
@@ -46,8 +46,8 @@ export interface GuideDeps {
    * 없거나 실패·null 이면 마스크 없이 전과 같이 그린다 (docs/research/hair-skin-2026-09-29)
    */
   getHairMask?: (d: Drawable) => Promise<HairMask | null>;
-  /** 지금 화면 방향 — 테스트에서 바꿔 끼운다 (기본 orientation 미디어 쿼리) */
-  orientation?: () => Orientation;
+  /** 지금 화면 방향 — 테스트에서 바꿔 끼운다 (기본 orientation 미디어 쿼리). 모르면 null — 막지 않는다 */
+  orientation?: () => Orientation | null;
   /** Blob → 그림. 테스트에서 바꿔 끼운다 (기본 createImageBitmap) */
   toBitmap?: (b: Blob) => Promise<ImageBitmap>;
   /** 테두리 모양 — 화면 4·5 와 같은 것. 없으면 lookGuide(getLook().parts). ⑥ 개인화 계획이 여기 꽂힌다 */
@@ -111,9 +111,9 @@ export function guideScreen<S>(deps: GuideDeps): Screen<S> {
         else wrap.append(el("p", "muted", GUIDE_TEXT.noPart));
         return;
       }
-      // 눈 부위는 가로에서만 (팀 협의) — 세로면 내용 대신 안내만. 돌리면 껍데기가 다시 그린다
+      // 눈 부위는 가로, 나머지는 세로에서만 (팀 협의) — 방향이 틀리면 내용 대신 안내만. 돌리면 껍데기가 다시 그린다
       if (mustRotate(part, (deps.orientation ?? nowOrientation)())) {
-        wrap.append(el("p", "rotate-lock", ROTATE_TEXT));
+        wrap.append(el("p", "rotate-lock", rotateText(part)));
         return;
       }
       const look = deps.getLook();
