@@ -122,7 +122,8 @@ describe.each(STYLES)("PNG 규격(%s) — 그림을 갈아 끼워도 지켜야 �
       const png = PNG.sync.read(readFileSync(new URL(`../public/lashes/${style}/${t.file}`, import.meta.url)));
       const ppuX = png.width / (m.uMax - m.uMin);
       const ppuY = png.height / (t.vMax - t.vMin);
-      // 실사 참고 사진(natural/deep)은 절차 생성보다 가로로 좀 더 납작할 수 있어 아래쪽 여유를 조금 더 뒀다(2026-10-01)
+      // 0.6 → 0.55: 실사 참고 사진(natural/deep)으로 교체하며 deep/mid 실측 비율이 0.5879 로 옛 문턱(0.6) 밑으로
+      // 내려갔다 — 절차 생성 그림보다 가로로 좀 더 납작해서다. 나머지 7장은 전부 0.58 이상(2026-10-02 실측)
       expect(ppuY / ppuX).toBeGreaterThan(0.55);
       expect(ppuY / ppuX).toBeLessThan(1.6);
       expect(t.vMin).toBeLessThan(0);
