@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { LM } from "@core/landmarks";
 import { frameOf } from "@core/sampling";
-import { browShape, linerBand, linerEnds, linerEndsResult, linerStroke, routeOf, scoreHybrid, shapeFill, tintFill, tintProgress } from "@core/score-shape";
+import { browShape, lidEdge, liftLid, linerBand, linerEnds, linerEndsResult, linerStroke, routeOf, scoreHybrid, shapeFill, tintFill, tintProgress } from "@core/score-shape";
 import { decide } from "@core/score";
 import type { GuideSource } from "@core/score-part";
 import { rgbToLab } from "@core/color";
@@ -393,5 +393,57 @@ describe("라이너 섞기 — 채움·두께는 지금 방식, 꼬리 길이·�
 
   it("M4 맨얼굴끼리는 그린 게 없다", () => {
     expect(mix(() => null).result.present).toBe(false);
+  });
+});
+
+describe("라이너 기준선 — 얼굴 점 선이 아니라 맨얼굴의 어두운 띠(속눈썹 뿌리·접힌 선) 윗경계에서 잰다", () => {
+  // 실제 사진 두 장(2026-10-02): 가이드 띠(얼굴 점 선 → 위로 두께)가 맨얼굴에서 이미 어두운 자리(밝기 13~17, 피부 47)였다.
+  // 어두운 띠 윗경계는 얼굴 점 선보다 눈 폭의 5~8% 위. 기준선을 거기로 옮기면 검정 라이너 49 → 85~90점
+  const INK: [number, number, number] = [30, 25, 28];
+  const LASH: [number, number, number] = [45, 35, 35];
+  const lidR = LM.eyeA.upper.map(P), lidL = LM.eyeB.upper.map(P);
+  const d2seg = (x: number, y: number, a: Pt, b: Pt): number => { const dx = b.x - a.x, dy = b.y - a.y, k = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy || 1))); return Math.hypot(x - a.x - k * dx, y - a.y - k * dy); };
+  const near = (path: Pt[], x: number, y: number, r: number): boolean => path.some((_, i) => i > 0 && d2seg(x, y, path[i - 1]!, path[i]!) <= r);
+  /** 두꺼운 속눈썹 띠: 얼굴 점 선 위아래 4px (눈 폭 90px 의 4.4%) */
+  const lashes: Paint = (x, y) => (near(lidR, x, y, 4) || near(lidL, x, y, 4) ? LASH : null);
+  const upBy = (path: Pt[], d: number): Pt[] => path.map((q) => ({ x: q.x, y: q.y - d }));
+  /** 속눈썹 띠 바로 위 피부에 그린 라이너 (선에서 위로 4~8px) + 꼬리 */
+  const g = geomOf("liner").liner!;
+  const linerAbove: Paint = (x, y) => {
+    const r = [...upBy(lidR, 6).reverse(), { x: g.wing.R[1].x, y: g.wing.R[1].y - 6 }], l = [...upBy(lidL, 6).reverse(), { x: g.wing.L[1].x, y: g.wing.L[1].y - 6 }];
+    return near(r, x, y, 2) || near(l, x, y, 2) ? INK : null;
+  };
+  /** 눈 감은 얼굴 점: 아랫눈꺼풀 점을 윗눈꺼풀 자리로 */
+  const closedLm = LMS.map((q) => ({ ...q }));
+  for (const [u, l] of [[159, 145], [158, 153], [386, 374], [385, 380]] as const) closedLm[l] = { ...closedLm[u]! };
+  const closedFrame = (p: Paint) => frameOf(image(p), closedLm);
+
+  it("L1 맨피부면 옮길 게 없다 (0) · 속눈썹 띠가 있으면 그 윗경계만큼", () => {
+    expect(lidEdge(frame(() => null), "R").every((v) => v === 0)).toBe(true);
+    const e = lidEdge(frame(lashes), "R"), mid = e[4]!;
+    expect(mid).toBeGreaterThan(0.025);
+    expect(mid).toBeLessThan(0.075);
+  });
+
+  it("L2 옮긴 얼굴 점은 윗눈꺼풀 점만 위로 간다", () => {
+    const f = frame(lashes), lifted = liftLid(f, { R: lidEdge(f, "R"), L: lidEdge(f, "L") });
+    expect(lifted.lm[159]!.y).toBeLessThan(f.lm[159]!.y - 2);
+    expect(lifted.lm[61]).toEqual(f.lm[61]);   // 입술 점은 그대로
+  });
+
+  it("L3 속눈썹 띠 위 피부에 그린 라이너 — 기준선을 옮겨야 가이드 자리로 읽힌다", () => {
+    const bare = frame(lashes), cur = frame(over(linerAbove, lashes));
+    const h = scoreHybrid("liner", bare, cur, guide, { templateColor: INK });
+    expect(h.route).toBe("liner_mix");
+    expect(h.result.score).toBeGreaterThanOrEqual(70);
+    expect(h.result.codes.some((c) => c.startsWith("LINER_OUT"))).toBe(false);
+  });
+
+  it("L4 두 사진이 다 눈 감은 장이면 양 끝(눈꼬리 · 앞트임)만, 획 추출로 채점한다", () => {
+    const bare = closedFrame(lashes), cur = closedFrame(over(linerAbove, lashes));
+    const h = scoreHybrid("liner", bare, cur, guide, { templateColor: INK });
+    expect(h.route).toBe("liner_closed");
+    expect(h.result.score).toBeGreaterThanOrEqual(70);
+    expect(scoreHybrid("liner", bare, bare, guide, { templateColor: INK }).result.present).toBe(false);
   });
 });

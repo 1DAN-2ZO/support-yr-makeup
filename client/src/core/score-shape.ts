@@ -261,6 +261,66 @@ export function linerBand(strip: LinerStrip, darkL = 12): LinerBand {
   };
 }
 
+// ---------- 라이너 기준선 (맨얼굴의 어두운 띠 윗경계) ----------
+
+/**
+ * 가정값 (눈 폭 비율). step·reach = 윗눈꺼풀 선에서 위로 훑는 간격·범위, skinFrom 부터 위 = 눈꺼풀 피부, darkTo 까지 = 어두운 띠를 찾는 범위,
+ * minDrop = 피부보다 이만큼(L*) 어두워야 띠로 본다, max = 옮기는 양의 한계, rows = 눈꺼풀을 따라 재는 줄 수
+ */
+export const LID_EDGE = { step: 0.005, reach: 0.2, skinFrom: 0.12, darkTo: 0.08, minDrop: 8, max: 0.12, rows: 40 };
+
+/**
+ * 맨얼굴에서 윗눈꺼풀 점마다 '어두운 띠의 윗경계' 가 점에서 위로 얼마나 떨어져 있나 (눈 폭 비율, eye.upper 순서 = 바깥 → 안쪽).
+ * 얼굴 점의 윗눈꺼풀 선은 속눈썹 뿌리·접힌 선 안쪽(뜬 눈은 눈알 위)에 놓인다 — 그 선에서 위로 두께만큼인 가이드 띠는 맨얼굴에서 이미 어둡다.
+ * 실제 라이너는 그 어두운 띠 **위 피부**에 그리므로, 재는 기준선을 띠의 윗경계(피부와 띠의 중간 밝기 자리)로 옮긴다.
+ * 실제 사진 한 벌(눈 폭 107~117px): 윗경계는 점에서 5~8% 위, 가이드 띠의 맨얼굴 밝기 13~17 (피부 47).
+ */
+export function lidEdge(bare: SampleFrame, side: Side): number[] {
+  const eye = side === "R" ? LM.eyeA : LM.eyeB, ue = bare.unit.eye, box = Math.max(1, Math.round(ue / 60));
+  const lid = eye.upper.map((i) => at(bare.lm, i));
+  const cum = [0];
+  for (let i = 1; i < lid.length; i++) cum.push(cum[i - 1]! + Math.hypot(lid[i]!.x - lid[i - 1]!.x, lid[i]!.y - lid[i - 1]!.y));
+  const total = cum[cum.length - 1]! || 1, nOff = Math.round(LID_EDGE.reach / LID_EDGE.step) + 1;
+  const edges: { u: number; v: number }[] = [];
+  for (let k = 0; k < LID_EDGE.rows; k++) {
+    const u = (k + 0.5) / LID_EDGE.rows, s = u * total;
+    let i = 1;
+    while (i < cum.length - 1 && cum[i]! < s) i++;
+    const a = lid[i - 1]!, b = lid[i]!, w = (s - cum[i - 1]!) / (cum[i]! - cum[i - 1]! || 1), d = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    let n = { x: -(b.y - a.y) / d, y: (b.x - a.x) / d };
+    if (n.y > 0) n = { x: -n.x, y: -n.y };
+    const q = { x: a.x + (b.x - a.x) * w, y: a.y + (b.y - a.y) * w };
+    const L = Array.from({ length: nOff }, (_, j) => labBox(bare.im, q.x + n.x * j * LID_EDGE.step * ue, q.y + n.y * j * LID_EDGE.step * ue, box).L);
+    const skin = medianOf(L.slice(Math.round(LID_EDGE.skinFrom / LID_EDGE.step))), head = L.slice(0, Math.round(LID_EDGE.darkTo / LID_EDGE.step) + 1), dark = Math.min(...head);
+    if (skin - dark < LID_EDGE.minDrop) { edges.push({ u, v: 0 }); continue; }
+    let j = head.indexOf(dark);
+    while (j < nOff - 1 && L[j]! < (skin + dark) / 2) j++;
+    edges.push({ u, v: Math.min(LID_EDGE.max, j * LID_EDGE.step) });
+  }
+  // 점마다: 그 점 둘레(눈꺼풀 길이의 ±12%) 줄들의 중앙값. 양 끝 점(눈꼬리·눈머리)은 선이 모이는 자리라 이웃 점 값을 쓴다
+  const at1 = (u: number): number => { const v = edges.filter((e) => Math.abs(e.u - u) <= 0.12).map((e) => e.v); return v.length ? medianOf(v) : 0; };
+  const out = lid.map((_, i) => at1(cum[i]! / total));
+  out[0] = out[1] ?? 0;
+  out[out.length - 1] = out[out.length - 2] ?? 0;
+  return out;
+}
+
+/** 윗눈꺼풀 점을 lift(눈 폭 비율, lidEdge 의 값)만큼 그 자리의 수직 위쪽으로 옮긴 프레임 — 가이드·띠가 그 선을 따라간다. 다른 점은 그대로 */
+export function liftLid(f: SampleFrame, lift: Record<Side, readonly number[]>): SampleFrame {
+  const lm = f.lm.map((q) => ({ ...q })), ue = f.unit.eye;
+  for (const [side, eye] of [["R", LM.eyeA], ["L", LM.eyeB]] as const) {
+    const pts = eye.upper.map((i) => at(f.lm, i));
+    eye.upper.forEach((id, i) => {
+      const a = pts[Math.max(0, i - 1)]!, b = pts[Math.min(pts.length - 1, i + 1)]!, d = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+      let n = { x: -(b.y - a.y) / d, y: (b.x - a.x) / d };
+      if (n.y > 0) n = { x: -n.x, y: -n.y };
+      const v = (lift[side][i] ?? 0) * ue;
+      lm[id] = { ...lm[id]!, x: pts[i]!.x + n.x * v, y: pts[i]!.y + n.y * v };
+    });
+  }
+  return { ...f, lm };
+}
+
 // ---------- 라이너 양 끝 (눈꼬리 · 앞트임) ----------
 
 /**
@@ -581,8 +641,8 @@ export interface HybridOptions extends ScorePartOptions {
 export interface HybridScore {
   result: PartScore;
   ctx: DecideContext;
-  /** shape = 결과 모양 · compare = 원본 대조(지금 채점 그대로) · mixed = 눈썹(채움은 결과 모양, 넘침은 원본 대조) · liner_mix = 라이너(원본 대조 — 채움·두께는 칸 색 차이, 꼬리 길이·앞쪽 자리는 획 추출) · check_only = 확인만 */
-  route: ShapeRoute | "mixed" | "liner_mix";
+  /** shape = 결과 모양 · compare = 원본 대조(지금 채점 그대로) · mixed = 눈썹(채움은 결과 모양, 넘침은 원본 대조) · liner_mix = 라이너(원본 대조 — 채움·두께는 칸 색 차이, 꼬리 길이·앞쪽 자리는 획 추출) · liner_closed = 라이너(두 사진 다 눈 감은 장 — 양 끝만, 획 추출) · check_only = 확인만 */
+  route: ShapeRoute | "mixed" | "liner_mix" | "liner_closed";
 }
 
 /**
@@ -597,14 +657,21 @@ export function scoreHybrid(partId: PartId, base: SampleFrame, cur: SampleFrame,
   const a = scorePart(partId, base, cur, guide, opts, p);
   if (partId === "contour") return { ...a, route: "compare" };
   if (partId === "liner") {
-    const gb = guide("liner", base).liner, gc = guide("liner", cur).liner;
+    // 기준선을 맨얼굴의 어두운 띠 윗경계로 옮긴다 (lidEdge) — 가이드 띠가 원래 어두운 자리에 놓이지 않게. 두 사진에 같은 양을 쓴다
+    const closed = (f: SampleFrame): boolean => eyeClosed(f.lm, "R") && eyeClosed(f.lm, "L");
+    const bothClosed = closed(base) && closed(cur);
+    const lift = { R: lidEdge(base, "R"), L: lidEdge(base, "L") };
+    const b2 = liftLid(base, lift), c2 = liftLid(cur, lift);
+    const gb = guide("liner", b2).liner, gc = guide("liner", c2).liner;
     if (!gb || !gc) return { ...a, route: "compare" };
     // 조명은 지금 채점처럼 이마 밝기 비율로 맞춘다 (흰자 색 보정 · 미세 정렬은 실험에서 뺐다)
     const fb = sampleForehead(base), fc = sampleForehead(cur), corr = fb && fc ? lightCorr(fb.L, fc.L) : noCorr;
-    const perA = (a.result.metrics as { perEye?: Record<Side, LinerEyeMetrics> }).perEye;
-    if (!perA) return { ...a, route: "compare" };
-    const both = (f: typeof linerStroke): Record<Side, LinerEnds> => ({ R: f(base, cur, "R", gb, gc, corr, p), L: f(base, cur, "L", gb, gc, corr, p) });
-    return { result: linerMixResult(perA, both(linerStroke), both(linerEnds), p), ctx: a.ctx, route: "liner_mix" };
+    const both = (f: typeof linerStroke): Record<Side, LinerEnds> => ({ R: f(b2, c2, "R", gb, gc, corr, p), L: f(b2, c2, "L", gb, gc, corr, p) });
+    // 눈 감은 장끼리: 눈꺼풀이 펴져 꼬리 자리가 밝다(실제 사진: 뜬 눈 15 → 감은 눈 34) → 양 끝만, 획 추출로. 가운데는 점수에 안 넣는다
+    if (bothClosed) return { result: linerEndsResult(both(linerStroke), p), ctx: a.ctx, route: "liner_closed" };
+    const a2 = scorePart(partId, b2, c2, guide, opts, p), perA = (a2.result.metrics as { perEye?: Record<Side, LinerEyeMetrics> }).perEye;
+    if (!perA) return { ...a2, route: "compare" };
+    return { result: linerMixResult(perA, both(linerStroke), both(linerEnds), p), ctx: a2.ctx, route: "liner_mix" };
   }
 
   if (partId === "brow") {
