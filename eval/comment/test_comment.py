@@ -36,13 +36,29 @@ def test_sessions_cover_the_cases(S):
     assert core([{"op": "sessions"}])[0] == S  # 같은 seed → 같은 세션
 
 
-def test_b_is_one_short_numberless_line(S):
+def test_rule_totals_are_short_numberless_and_b2_names_a_product(S):
     meta = core([{"op": "meta"}])[0]
+    looks = {
+        lk["id"]: " ".join(lk["products"])
+        for lk in json.loads((HERE.parent.parent / "rules" / "looks.json").read_text(encoding="utf-8"))[
+            "looks"
+        ]
+    }
     for s in S:
-        assert len(s["B"]) <= meta["maxChars"]
-        assert not any(ch.isdigit() for ch in s["B"])
-        assert s["B"].count(".") == 1  # 한줄평
+        for k in ("B", "B2"):
+            assert len(s[k]) <= meta["maxChars"]
+            assert not any(ch.isdigit() for ch in s[k])
         assert len(s["A"].splitlines()) == 6  # 부위별 한 줄 = 화면 6 맥락
+        if s["kind"] in ("one_big", "many"):  # 고칠 것이 있으면 B′ 는 이 화장 제품으로 할 일을 말한다
+            assert "보세요" in s["B2"]
+            assert any(
+                w in looks[s["lookId"]]
+                for w in ("펜슬", "라이너", "섀도우", "립", "틴트", "블러셔")
+                if w in s["B2"]
+            )
+        assert (
+            "섀도우도 섀도우" not in s["B2"] and "부터, 섀도우를" not in s["B2"]
+        )  # 도구 = 부위 이름이면 되풀이 안 함
 
 
 def _gate(s, comment, praise="none", fix="none"):
@@ -73,7 +89,12 @@ def test_gate_catches_what_the_first_runs_got_wrong(S):
         praise
     ]
     assert _gate(one, f"{pko}는 잘 되셨어요, 다음엔 {ko}부터 다듬어 보세요.", praise=praise, fix=fix)["ok"]
-    assert "한줄평이 아님" in _gate(one, f"좋아요. 정말요. 다음엔 {ko}. 해 봐요.", fix=fix)["reasons"]
+    assert "총평이 너무 김" in _gate(one, f"좋아요. 정말요. 다음엔 {ko}. 해 봐요.", fix=fix)["reasons"]
+    # 제품 목록에 없는 도구 · 부위를 제품 이름으로 말하기
+    kit = next(s for s in S if s["lookId"] == "chic")  # 어른 여자: 펜슬 · 젤 라이너 · 섀도우 · 립 · 블러셔
+    assert any("목록에 없는 도구" in x for x in _gate(kit, "다음엔 면봉으로 정리해 봐요.")["reasons"])
+    if "liner" in kit["schema"]["properties"]["fix_part"]["enum"]:
+        assert _gate(kit, "다음엔 젤 라이너로 눈꼬리를 길게 빼 봐요.", fix="liner")["ok"]
 
 
 def test_sheet_hides_which_is_which_and_ratings_use_ci(tmp_path, monkeypatch, S):
@@ -102,7 +123,7 @@ def test_sheet_hides_which_is_which_and_ratings_use_ci(tmp_path, monkeypatch, S)
     page = report.sheet("fake").read_text(encoding="utf-8")
     # 정답표는 key.json 에만
     assert '"C"' not in page and '"B"' not in page and '"map":' not in page and "c_fallback" not in page
-    key = json.loads((d / "out" / "oneline-fake.key.json").read_text(encoding="utf-8"))
+    key = json.loads((d / "out" / "total-fake.key.json").read_text(encoding="utf-8"))
     assert sum(k["c_fallback"] for k in key) == 15  # C 가 거절된 세션은 평가지에서 빠진다 (B 대 B 가 되므로)
     assert page.count("다시 해 봐요") >= 15 and "1번부터" not in page
     # 평가자 하나: C 가 있는 15문항 중 10번 C, 3번 B, 2번 비슷함
@@ -113,7 +134,7 @@ def test_sheet_hides_which_is_which_and_ratings_use_ci(tmp_path, monkeypatch, S)
         items.append({"id": k["id"], "order": i + 1, "shown": list(k["map"]), "pick": pick})
     f = tmp_path / "r.json"
     f.write_text(
-        json.dumps({"sheet": "oneline-fake", "who": "t", "seed": 1, "items": items}, ensure_ascii=False),
+        json.dumps({"sheet": "total-fake", "who": "t", "seed": 1, "items": items}, ensure_ascii=False),
         encoding="utf-8",
     )
     text = report.ratings([str(f)])

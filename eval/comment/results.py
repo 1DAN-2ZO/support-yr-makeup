@@ -1,11 +1,11 @@
-"""화면 6 한줄평 확인 실험 (#287) — 요약 · 평가지 · 집계.
+"""화면 6 총평 확인 실험 (#287) — 요약 · 평가지 · 집계.
 
     uv run --extra vlm python eval/comment/results.py                         # 모델별 자동 지표
     uv run --extra vlm python eval/comment/results.py --sheet text-gemma4_e4b  # 평가지 (A · B · C 가림)
     uv run --extra vlm python eval/comment/results.py --ratings oneline-rating-*.json
 
 관문은 저장된 응답에 지금 코드(comment.ts gateC)로 다시 건다 — 관문을 고치면 다시 묻지 않아도 된다.
-부위별 한 줄(A)은 화면 6 에 늘 나오므로 비교 대상이 아니라 문항의 맥락이다. 비교는 한줄평 B(규칙) 대 C(LLM).
+부위별 한 줄(A)은 화면 6 에 늘 나오므로 비교 대상이 아니라 문항의 맥락이다. 비교는 총평 B(규칙) 대 C(LLM).
 통과 기준 (미리 정함, #287): C 를 B 보다 고른 비율(비슷함 뺌)의 95% 신뢰구간 하한 > 50%.
 """
 
@@ -63,7 +63,7 @@ def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
 def summary(models: list[str]) -> str:
     S = sessions()
     lines = [
-        f"# 화면 6 한줄평 — 자동 지표 ({date.today()})",
+        f"# 화면 6 총평 — 자동 지표 ({date.today()})",
         "",
         "| 모델 | 관문 통과 | 같은 입력 같은 답 | p50 ms | p95 ms | 글 길이 평균 | 거절 이유 |",
         "|---|---|---|---|---|---|---|",
@@ -83,17 +83,20 @@ def summary(models: list[str]) -> str:
             f"| {m} | {ok}/{len(R)} | {same}/{len(by)} | {pct(ms, 0.5):.0f} | {pct(ms, 0.95):.0f} | "
             f"{sum(ln) / len(ln):.0f}자 | {', '.join(f'{k} {v}' for k, v in why.most_common()) or '—'} |"
         )
-    lines.append(f"| (B 규칙 한줄평) | — | — | — | — | {sum(bl) / len(bl):.0f}자 | — |")
+    lines.append(f"| (B 규칙 총평) | — | — | — | — | {sum(bl) / len(bl):.0f}자 | — |")
+    b2 = [len(s["B2"]) for s in S.values()]
+    lines.append(f"| (B′ 규칙 총평 + 제품으로 할 일) | — | — | — | — | {sum(b2) / len(b2):.0f}자 | — |")
     return "\n".join(lines)
 
 
 # ---------- 평가지 ----------
 
 
-def sheet(model: str) -> Path:
-    """평가지 — 부위별 한 줄(화면 6 에 늘 나옴)은 맥락, 한줄평 B · C 를 비교 (+ 비슷함).
+def sheet(model: str, rule: str = "B") -> Path:
+    """평가지 — 부위별 한 줄(화면 6 에 늘 나옴)은 맥락, 총평 B · C 를 비교 (+ 비슷함).
     C 가 관문에서 거절된 세션은 앱이 B 를 보여 주므로 B 와 B 를 비교하게 된다 —
-    평가지에서 빼고 개수만 적는다"""
+    평가지에서 빼고 개수만 적는다.
+    rule = 비교할 규칙 총평 (B · B2 = 할 일을 붙인 B′). 정답표에는 늘 "B" 로 적는다"""
     S = sessions()
     R = [r for r in regate(model, S) if r["rep"] == 0]
     from_model = {r["session"]: r for r in R}
@@ -111,7 +114,7 @@ def sheet(model: str) -> Path:
             key.append({**row, "map": {}})
             continue
         ids = rnd.sample(range(100, 999), 2)
-        texts = {"B": s["B"], "C": r["gate"]["comment"]}
+        texts = {"B": s[rule], "C": r["gate"]["comment"]}
         cands = [{"id": f"c{i}", "text": texts[k]} for i, k in zip(ids, "BC", strict=True)]
         rnd.shuffle(cands)
         key.append({**row, "map": {f"c{i}": k for i, k in zip(ids, "BC", strict=True)}})
@@ -133,7 +136,7 @@ def sheet(model: str) -> Path:
                 "cands": cands,
             }
         )
-    name = f"oneline-{model}"
+    name = f"total-{model}" if rule == "B" else f"total-{rule.lower()}-{model}"
     data = json.dumps({"sheet": name, "items": items}, ensure_ascii=False).replace("</", r"<\/")
     page = (HERE / "sheet_page.html").read_text(encoding="utf-8")
     page = page.replace("{{COUNT}}", str(len(items))).replace("{{DATA}}", data)
@@ -183,12 +186,10 @@ def ratings(files: list[str]) -> str:
     tot = Counter(p[2] for p in picks)
     k, n = tot["C"], tot["B"] + tot["C"]
     lo, hi = wilson(k, n)
-    verdict = (
-        "통과 — LLM 한줄평을 넣는다" if lo > 0.5 else "못 넘음 — B(규칙 한줄평)를 넣고 LLM 은 MVP 에서 뺀다"
-    )
+    verdict = "통과 — LLM 총평을 넣는다" if lo > 0.5 else "못 넘음 — B(규칙 총평)를 넣고 LLM 은 MVP 에서 뺀다"
     fb = sum(v["c_fallback"] for v in key.values())
     lines = [
-        f"# 화면 6 한줄평 — 사람 평가 ({name}, {date.today()})",
+        f"# 화면 6 총평 — 사람 평가 ({name}, {date.today()})",
         "",
         f"평가자 {len(who_count)}명 ({', '.join(f'{w} {c}' for w, c in who_count.items())}) "
         f"· 답 {len(picks)}",
@@ -215,10 +216,11 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--models", nargs="*", default=["text-gemma4_e4b", "text-qwen3_14b"])
     ap.add_argument("--sheet")
+    ap.add_argument("--rule", default="B", help="평가지에서 C 와 비교할 규칙 총평 (B · B2)")
     ap.add_argument("--ratings", nargs="*")
     a = ap.parse_args()
     if a.sheet:
-        print(f"평가지 → {sheet(a.sheet)}")
+        print(f"평가지 → {sheet(a.sheet, a.rule)}")
     elif a.ratings:
         print(ratings(a.ratings))
     else:

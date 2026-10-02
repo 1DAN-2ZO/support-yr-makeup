@@ -62,7 +62,7 @@ const out = reqs.map((q) => {
   try {
     switch (q.op) {
       case "sessions":
-        return c.makeSessions(q.seed).map((s) => ({ ...s, A: c.commentA(s), B: c.commentB(s), prompt: c.promptC(s), schema: c.schemaC(s) }));
+        return c.makeSessions(q.seed).map((s) => ({ ...s, A: c.commentA(s), B: c.commentB(s), B2: c.commentB2(s), prompt: c.promptC(s), schema: c.schemaC(s) }));
       case "gate": return c.gateC(q.session, q.raw);
       case "meta": return { promptVer: c.PROMPT_VER, maxChars: c.MAX_CHARS };
       default: return { error: `모르는 op: ${q.op}` };

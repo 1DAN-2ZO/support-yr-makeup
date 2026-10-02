@@ -1,6 +1,6 @@
-<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width, initial-scale=1"><title>한줄평 평가</title>
+<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width, initial-scale=1"><title>총평 평가</title>
 <!-- 화면 6 종합 코멘트 실험(#287) 평가지 — results.py --sheet 가 데이터를 채운다. 사진 없음.
-     부위별 한 줄(화면 6 에 늘 나옴)은 맥락으로 보여 주고, 그 위에 놓을 한줄평 두 개(B 규칙 · C LLM)를 비교한다.
+     부위별 한 줄(화면 6 에 늘 나옴)은 맥락으로 보여 주고, 그 위에 놓을 총평 두 개(규칙 · LLM)를 비교한다.
      누가 어느 글인지는 정답표(key.json)에만 있고, 여기엔 뜻 없는 id 만 있다.
      평가자마다 문항 순서와 글 자리를 섞는다 (처음 열 때 정한 seed 를 브라우저에 저장, 결과 파일에 같이 적는다) -->
 <style>
@@ -36,10 +36,10 @@ button.ghost { background:transparent; color:var(--accent); }
 .missing { background:var(--warn-bg); color:var(--warn); border-radius:8px; padding:10px 14px; margin:12px 0; }
 </style>
 <div class=wrap>
-<h1>한줄평 평가</h1>
+<h1>총평 평가</h1>
 <div class=guide>
-  <p>화장 연습 앱의 마지막 화면(리뷰)에는 <b>부위별 결과와 한 줄 평</b>이 나옵니다. 그 맨 위에 놓을 <b>한줄평</b>을 고르는 평가입니다. 문항마다 부위별 결과가 있고, 아래에 한줄평 두 개가 있습니다.</p>
-  <p><b>"부위별 결과 위에 한줄평으로 더 좋은 것은?"</b> — 다음에 무엇을 먼저 고칠지 한눈에 알게 해 주는 쪽. 차이를 모르겠으면 <b>비슷함</b>. 글의 자리는 문항마다 섞여 있습니다. 모두 {{COUNT}}문항, 5~10분.</p>
+  <p>화장 연습 앱의 마지막 화면(리뷰)에는 <b>부위별 결과와 한 줄 평</b>이 나옵니다. 그 맨 위에 놓을 <b>총평</b>을 고르는 평가입니다. 문항마다 부위별 결과가 있고, 아래에 총평 두 개가 있습니다.</p>
+  <p><b>"부위별 결과 위에 총평으로 더 좋은 것은?"</b> — 잘된 점과 다음에 무엇을 먼저 고칠지 한눈에 알게 해 주는 쪽. 차이를 모르겠으면 <b>비슷함</b>. 글의 자리는 문항마다 섞여 있습니다. 모두 {{COUNT}}문항, 5~10분.</p>
   <p>다 하면 맨 아래 <b>결과 파일 받기</b>를 눌러 받은 파일을 보내 주세요. 입력은 이 브라우저에 자동 저장됩니다.</p>
 </div>
 <div class=bar><label>평가자 이름 <input id=who autocomplete=off></label><span id=count>0 / {{COUNT}}</span><span class=prog><i id=progbar></i></span></div>
@@ -66,7 +66,7 @@ const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>'
 const box = document.getElementById('items');
 items.forEach((it, i) => {
   const rows = it.parts.map((p) => `<tr><td class=n>${esc(p.name)}</td><td class=st>${STATUS[p.status] || p.status}</td><td>${p.score == null ? '' : `<span class=meter><i style="width:${p.score}%;background:${color(p.score)}"></i></span>`}</td><td class=say>${esc(p.say)}</td></tr>`).join('');
-  const cands = it.cands.map((c, k) => `<label class=cand><input type=radio name="q${it.id}" value="${c.id}"><span><b>${k + 1}번 한줄평</b><span class=t>${esc(c.text)}</span></span></label>`).join('')
+  const cands = it.cands.map((c, k) => `<label class=cand><input type=radio name="q${it.id}" value="${c.id}"><span><b>${k + 1}번 총평</b><span class=t>${esc(c.text)}</span></span></label>`).join('')
     + `<label class=cand><input type=radio name="q${it.id}" value="same"><span><b>비슷함</b><span class=t>차이를 모르겠어요</span></span></label>`;
   const sec = document.createElement('section');
   sec.dataset.id = it.id;
@@ -101,7 +101,7 @@ document.addEventListener('input', refresh);
 function download(res) {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([JSON.stringify(res, null, 1)], { type: 'application/json' }));
-  a.download = 'oneline-rating-' + (res.who || 'noname') + '.json';
+  a.download = 'total-rating-' + (res.who || 'noname') + '.json';
   document.body.appendChild(a); a.click(); a.remove();
 }
 function trySave(force) {
