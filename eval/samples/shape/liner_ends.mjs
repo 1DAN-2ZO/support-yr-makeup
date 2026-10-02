@@ -2,6 +2,7 @@
 //   SET=ffhq node eval/samples/shape/liner_ends.mjs          (FFHQ 동양인 확인한 30장)
 //   SET=ep LIMIT=60 node eval/samples/shape/liner_ends.mjs   (EasyPortrait)
 //   COVER=0.9 → 합성 라이너를 더 진하게 (기본 0.7)
+// LIFT=0 → 얼굴 점 선 위에 칠한다 (옛 방식: 원래 어두운 자리). 기본은 **맨얼굴의 어두운 띠 윗경계(lidEdge) 위 피부**에 칠한다 — 실제로 그리는 자리
 // 합성 라이너는 **화면 가이드 윤곽 모양**(눈꺼풀은 두께 그대로, 꼬리는 끝으로 가늘어짐)으로 칠한다 — paint_levels 의 라이너는 꼬리까지 같은 두께
 // 단계: 기본 네 단계 + 양 끝 변형(꼬리 길게 · 앞쪽 비움 · 눈머리 넘김 · 가운데 끊김) + 맨얼굴 · 맨얼굴 5% 확대(#261)
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync } from "node:fs";
@@ -22,7 +23,7 @@ const r = await esbuild.build({ stdin: { contents: [
   'export { measureFace } from "./src/core/face-measure";',
   'export { alignedFrame, scorePart } from "./src/core/score-part";',
   'export { decide } from "./src/core/score";',
-  'export { scoreHybrid, linerEnds, linerEndsResult } from "./src/core/score-shape";',
+  'export { scoreHybrid, linerEnds, linerEndsResult, lidEdge, liftLid } from "./src/core/score-shape";',
   'export { LOOKS } from "./src/core/looks";',
   'export { LM } from "./src/core/landmarks";',
 ].join("\n"), resolveDir: CLIENT, loader: "ts" }, bundle: true, format: "esm", platform: "node", write: false, logLevel: "silent" });
@@ -72,26 +73,28 @@ function zoom(im, lm, k) {
 const fold = (s) => (s >= 80 ? "ok" : s >= 50 ? "slight" : "off");
 let ids = readdirSync(W).filter((f) => f.endsWith(".lm.json")).map((f) => f.slice(0, -8)).filter((id) => existsSync(join(W, `${id}.png`))).sort();
 if (LIMIT) ids = ids.slice(0, LIMIT);
-const rows = [], eyeW = [];
+const rows = [], eyeW = [], liftPx = [];
 for (const id of ids) {
   const p = PNG.sync.read(readFileSync(join(W, `${id}.png`))), im = { data: p.data, w: p.width, h: p.height };
   const lm = JSON.parse(readFileSync(join(W, `${id}.lm.json`), "utf8"));
   const base = core.frameOf(im, lm), plan = core.resolvePlan(core.measureFace(lm)), e = base.unit.eye;
   eyeW.push(e);
   const z = zoom(im, lm, 1.05);
+  const LIFT = process.env.LIFT !== "0", lift = LIFT ? { R: core.lidEdge(base, "R"), L: core.lidEdge(base, "L") } : { R: [], L: [] }, lifted = core.liftLid(base, lift);
+  liftPx.push(...lift.R, ...lift.L);
   for (const look of core.LOOKS) {
-    const guide = core.planGuide(look.parts, plan), g = guide("liner", base).liner, color = look.parts.liner.color;
+    const guide = core.planGuide(look.parts, plan), g = guide("liner", lifted).liner, color = look.parts.liner.color;
     const judge = (level, curIm, curLm) => {
       const { frame, fit } = core.alignedFrame(base, curIm, curLm), o = { templateColor: color, alignResidual: fit.residual };
       const a = core.scorePart("liner", base, frame, guide, o), h = core.scoreHybrid("liner", base, frame, guide, o);
-      const gc = guide("liner", frame).liner, e = core.linerEndsResult({ R: core.linerEnds(base, frame, "R", g, gc), L: core.linerEnds(base, frame, "L", g, gc) });
+      const f2 = core.liftLid(frame, lift), gc = guide("liner", f2).liner, e = core.linerEndsResult({ R: core.linerEnds(lifted, f2, "R", g, gc), L: core.linerEnds(lifted, f2, "L", g, gc) });
       const da = core.decide("liner", a.result, a.ctx), dh = core.decide("liner", h.result, h.ctx), de = core.decide("liner", e, a.ctx);
       rows.push({ id, look: look.id, level, guideThick: g.thick, A: da, E: de, S: dh, codesA: a.result.codes, codesE: [...h.result.codes, ...(h.result.metrics?.endCodes ?? [])], ends: h.result.metrics?.perEye ?? null });
     };
     judge("bare", im, lm);
     judge("zoom", z.im, z.lm);
     for (const [level, [, make]] of Object.entries(LEVELS)) {
-      const shapes = ["R", "L"].flatMap((s) => make((s === "R" ? core.LM.eyeA : core.LM.eyeB).upper.map((i) => lm[i]).reverse(), g.wing[s], g.thick * e, e));
+      const shapes = ["R", "L"].flatMap((s) => make((s === "R" ? core.LM.eyeA : core.LM.eyeB).upper.map((i) => lifted.lm[i]).reverse(), g.wing[s], g.thick * e, e));
       judge(level, paint(im, shapes, color, COVER).im, lm);
     }
   }
@@ -100,7 +103,7 @@ for (const id of ids) {
 writeFileSync(join(OUT, `liner-ends-${SET}.json`), JSON.stringify(rows));
 const q = (v, p) => (v.length ? v.slice().sort((a, b) => a - b)[Math.min(v.length - 1, Math.floor(v.length * p))] : NaN);
 const pc = (n, d) => String(Math.round((n / (d || 1)) * 100)).padStart(3) + "%";
-console.log(`# 라이너 — 지금 방식 vs 양 끝(칸 색 차이) vs 섞기 · ${SET === "ep" ? "EasyPortrait" : "FFHQ 동양인"} ${ids.length}명 × 화장 10종 · 눈 폭 중앙 ${q(eyeW, 0.5).toFixed(0)}px · 덮는 비율 ${COVER}`);
+console.log(`# 라이너 — 지금 방식 vs 양 끝(칸 색 차이) vs 섞기 · ${SET === "ep" ? "EasyPortrait" : "FFHQ 동양인"} ${ids.length}명 × 화장 10종 · 눈 폭 중앙 ${q(eyeW, 0.5).toFixed(0)}px · 덮는 비율 ${COVER} · 기준선 옮김 중앙 ${(q(liftPx, 0.5) * 100).toFixed(1)}% (상위 10% ${(q(liftPx, 0.9) * 100).toFixed(1)}%)`);
 console.log("\n분포 = 전체 중 맞음·조금·많이·확인만 비율, 일치 = 기대 판정과 같은 비율, 점수 = 중앙");
 console.log("단계 (기대)            | 지금 방식: 분포 | 일치 | 점수 || 양 끝·칸 색 차이: 일치 | 점수 || 섞기: 분포 | 일치 | 점수");
 for (const lv of ["bare", "zoom", ...Object.keys(LEVELS)]) {

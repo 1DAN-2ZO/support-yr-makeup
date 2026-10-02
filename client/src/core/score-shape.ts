@@ -515,7 +515,7 @@ export function linerStroke(base: SampleFrame, cur: SampleFrame, side: Side, gb:
 const ENDS_UNIT = 0.037;
 
 /**
- * 양 끝으로 낸 라이너 점수. 식은 지금 채점(scoreForm: 채움 · 번짐 · 꼬리 길이 · 두께) 그대로에 **앞쪽 시작 자리**만 더했다 (같은 자, 최대 20점).
+ * 양 끝으로 낸 라이너 점수. 식은 지금 채점(scoreForm: 채움 · 번짐 · 꼬리 길이 · 두께) 그대로에 **눈머리를 넘긴 만큼**만 더했다 (같은 자, 최대 20점).
  * 채움 = 눈꼬리 구간과 앞트임 구간의 평균. 가운데는 안 넣는다. 새 지적(꼬리가 길다 · 앞쪽이 비었다 · 눈머리를 넘겼다)은 metrics.endCodes 에.
  */
 export function linerEndsResult(per: Record<Side, LinerEnds>, p: ScoreParams = PARAMS): PartScore {
@@ -544,7 +544,8 @@ export function linerEndsResult(per: Record<Side, LinerEnds>, p: ScoreParams = P
     wingDelta: avg((e) => e.wingDrawn - e.wingGuide),
     thickDelta: thickness - guideThick,
   });
-  const innerPen = Math.min(20, (avg((e) => Math.abs(e.innerStart)) / ENDS_UNIT) * 8);
+  // 앞쪽을 비운 것은 앞트임 채움에 이미 들어간다 (두 번 깎지 않는다) — 시작 자리 감점은 눈머리를 넘긴 만큼만
+  const innerPen = Math.min(20, (avg((e) => Math.max(0, -e.innerStart - LINER_ENDS.innerOver)) / ENDS_UNIT) * 8);
   return { present, score: Math.round(Math.max(0, form - innerPen)), codes, lrIndex: null, metrics: { ends: per, endCodes, thickness } };
 }
 
@@ -553,14 +554,15 @@ export function linerEndsResult(per: Record<Side, LinerEnds>, p: ScoreParams = P
  *   채움·두께·번짐 = 지금 방식(띠 전체, 칸 색 차이) — 선이 이어졌는지·두께를 맞혔다. 획 추출은 맨얼굴 속눈썹 선을 빼다가 그 위의 선도 지운다
  *   꼬리 길이 = 둘 중 긴 쪽 — 지금 방식은 가이드 끝까지만 본다. 꼬리 높이 = 획 추출이 꼬리를 봤으면 그쪽
  *   앞쪽 시작 자리 = 두 방법(획 추출 · 칸 색 차이) 중 더 앞에서 잡은 쪽 — 한쪽만 믿으면 그렸는데 '비었다' 가 된다. 눈머리 넘김 = 획 추출
- * 점수 식은 지금 채점(scoreForm) 그대로 + 앞쪽 시작 자리가 허용 폭을 넘은 만큼 (같은 자, 최대 20점). a = 지금 방식, s = 획 추출, e = 양 끝·칸 색 차이
+ * 점수 식은 지금 채점(scoreForm) 그대로 + 눈머리를 넘긴 만큼 (같은 자, 최대 20점). a = 지금 방식, s = 획 추출, e = 양 끝·칸 색 차이
  */
 export function linerMixResult(a: Record<Side, LinerEyeMetrics>, s: Record<Side, LinerEnds>, e: Record<Side, LinerEnds>, p: ScoreParams = PARAMS): PartScore {
   const codes: PartScore["codes"] = [], endCodes: string[] = [];
   const mixed = (k: Side) => {
     const sawWing = s[k].wingDrawn > 0;
     return {
-      present: a[k].present || s[k].present,
+      // 그렸는지는 획 추출이 정한다 — 칸 색 차이는 두 사진의 선명도가 다르면 어두운 띠 가장자리가 움직인 것을 그린 선으로 읽는다 (맨얼굴 5% 확대: 83%)
+      present: s[k].present,
       coverage: a[k].coverage, overflow: a[k].overflow, thickness: a[k].thickness, guideThick: a[k].guideThick, gapRatio: a[k].gapRatio,
       wingGuide: a[k].wingGuide, wingDrawn: Math.max(a[k].wingDrawn, s[k].wingDrawn),
       wingDev: sawWing ? s[k].wingDev : a[k].wingDev,
@@ -572,7 +574,8 @@ export function linerMixResult(a: Record<Side, LinerEyeMetrics>, s: Record<Side,
   const present = per.R.present || per.L.present;
   if (!present) return { present, score: null, codes, lrIndex: null, metrics: { perEye: per, endCodes } };
   /** 앞쪽 시작 자리가 허용 폭을 넘은 만큼 (눈 폭 비율) */
-  const innerExcess = (v: number): number => (v >= 0 ? Math.max(0, v - LINER_ENDS.innerShort) : Math.max(0, -v - LINER_ENDS.innerOver));
+  // 앞쪽을 비운 것은 채움에 이미 들어간다 (두 번 깎지 않는다) — 눈머리를 넘긴 만큼만
+  const innerExcess = (v: number): number => Math.max(0, -v - LINER_ENDS.innerOver);
   for (const k of ["R", "L"] as const) {
     const m = per[k];
     if (!m.present) { codes.push(`LINER_GAP_${k}`); continue; }
@@ -715,3 +718,20 @@ export function scoreHybrid(partId: PartId, base: SampleFrame, cur: SampleFrame,
   return { result: { present, score: present ? scoreForm({ coverage, overflow }) : null, codes, lrIndex: null, metrics: { shape: { coverage, overflow } } }, ctx, route: "shape" };
 }
 
+/** 맨얼굴과 확인 사진 한 쌍 (같은 눈 상태끼리) */
+export interface LinerFramePair { base: SampleFrame; cur: SampleFrame }
+
+/**
+ * 라이너를 **두 장**으로 채점한다 (실험) — 눈 뜬 쌍과 눈 감은 쌍. 맨얼굴은 화면 1 이 둘 다 찍는다 (front_open · front_closed).
+ * 실제 사진 한 벌(2026-10-02): 감은 눈은 눈꺼풀이 펴져 꼬리 자리가 밝고(맨얼굴 밝기 15 → 34) 틀린 지적이 없었다. 번짐은 뜬 눈에서 더 잘 잡혔다.
+ *   꼬리 길이 · 앞쪽 자리 · 양 끝 채움 · 두께 = 감은 눈 (꼬리는 뜬 눈이 더 길게 보면 그 값)
+ *   번짐 = 두 사진 중 큰 쪽
+ * 둘째 쌍이 눈 감은 장이 아니면 뜬 눈 채점(liner_mix) 그대로 돌려준다.
+ */
+export function scoreLinerPair(open: LinerFramePair, closed: LinerFramePair, guide: GuideSource, opts: HybridOptions = {}, p: ScoreParams = PARAMS): Omit<HybridScore, "route"> & { route: HybridScore["route"] | "liner_pair" } {
+  const o = scoreHybrid("liner", open.base, open.cur, guide, opts, p), c = scoreHybrid("liner", closed.base, closed.cur, guide, opts, p);
+  const ends = (c.result.metrics as { ends?: Record<Side, LinerEnds> }).ends, perO = (o.result.metrics as { perEye?: Record<Side, { overflow: number; wingDrawn: number }> }).perEye;
+  if (c.route !== "liner_closed" || !ends) return o;
+  const merged = (k: Side): LinerEnds => ({ ...ends[k], overflow: Math.max(ends[k].overflow, perO?.[k].overflow ?? 0), wingDrawn: Math.max(ends[k].wingDrawn, perO?.[k].wingDrawn ?? 0), present: ends[k].present || (o.result.present && !!perO) });
+  return { result: linerEndsResult({ R: merged("R"), L: merged("L") }, p), ctx: c.ctx, route: "liner_pair" };
+}

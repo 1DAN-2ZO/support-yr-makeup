@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { LM } from "@core/landmarks";
 import { frameOf } from "@core/sampling";
-import { browShape, lidEdge, liftLid, linerBand, linerEnds, linerEndsResult, linerStroke, routeOf, scoreHybrid, shapeFill, tintFill, tintProgress } from "@core/score-shape";
+import { browShape, lidEdge, liftLid, linerBand, linerEnds, linerEndsResult, linerStroke, routeOf, scoreHybrid, scoreLinerPair, shapeFill, tintFill, tintProgress } from "@core/score-shape";
 import { decide } from "@core/score";
 import type { GuideSource } from "@core/score-part";
 import { rgbToLab } from "@core/color";
@@ -445,5 +445,48 @@ describe("라이너 기준선 — 얼굴 점 선이 아니라 맨얼굴의 어�
     expect(h.route).toBe("liner_closed");
     expect(h.result.score).toBeGreaterThanOrEqual(70);
     expect(scoreHybrid("liner", bare, bare, guide, { templateColor: INK }).result.present).toBe(false);
+  });
+
+  // ---- 두 장(눈 뜸 + 눈 감음)을 합쳐 채점 ----
+  /** 속눈썹 띠 위 피부의 라이너 — from: 눈머리 쪽에서 건너뛸 점 수, r: 반 두께(px), wingK: 꼬리 길이 배수 */
+  const liner = (o: { from?: number; r?: number; wingK?: number } = {}): Paint => {
+    const k = o.wingK ?? 1, tip = (w: readonly [Pt, Pt]): Pt => ({ x: w[0].x + (w[1].x - w[0].x) * k, y: w[0].y + (w[1].y - w[0].y) * k - 6 });
+    const r = [...upBy(lidR, 6).reverse().slice(o.from ?? 0), ...(k > 0 ? [tip(g.wing.R)] : [])], l = [...upBy(lidL, 6).reverse().slice(o.from ?? 0), ...(k > 0 ? [tip(g.wing.L)] : [])];
+    return (x, y) => (near(r, x, y, o.r ?? 2) || near(l, x, y, o.r ?? 2) ? INK : null);
+  };
+  const pair = (p: Paint | null) => scoreLinerPair(
+    { base: frame(lashes), cur: frame(p ? over(p, lashes) : lashes) },
+    { base: closedFrame(lashes), cur: closedFrame(p ? over(p, lashes) : lashes) },
+    guide, { templateColor: INK });
+  const extra = (h: ReturnType<typeof pair>): string[] => (h.result.metrics as { endCodes?: string[] }).endCodes ?? [];
+
+  it("P1 두 장 다 가이드대로면 높은 점수 · 지적 없음, 아무것도 안 그렸으면 그린 게 없다", () => {
+    const h = pair(liner());
+    expect(h.route).toBe("liner_pair");
+    expect(h.result.score).toBeGreaterThanOrEqual(75);
+    expect(extra(h)).toEqual([]);
+    expect(pair(null).result.present).toBe(false);
+  });
+
+  it("P2 앞쪽을 비우면 '앞쪽이 비었다' — 감점은 한 번만 (채움으로), '많이' 까지 떨어지지 않는다", () => {
+    const ok = pair(liner()), h = pair(liner({ from: 3 }));
+    expect(extra(h)).toEqual(expect.arrayContaining(["LINER_INNER_SHORT_R", "LINER_INNER_SHORT_L"]));
+    expect(h.result.score!).toBeLessThan(ok.result.score!);
+    expect(h.result.score!).toBeGreaterThanOrEqual(50);
+  });
+
+  it("P3 꼬리를 안 그리면 '꼬리가 짧아요'", () => {
+    const h = pair(liner({ wingK: 0 }));
+    expect(h.result.codes).toEqual(expect.arrayContaining(["LINER_WING_SHORT_R", "LINER_WING_SHORT_L"]));
+  });
+
+  it("P4 두껍게 번지면 번짐으로 크게 깎인다", () => {
+    const ok = pair(liner()), h = pair(liner({ r: 9, wingK: 1.8 }));
+    expect(h.result.score!).toBeLessThan(ok.result.score! - 25);
+  });
+
+  it("P5 눈 감은 장이 없으면(둘째 쌍도 뜬 눈) 뜬 눈 채점 그대로", () => {
+    const open = { base: frame(lashes), cur: frame(over(liner(), lashes)) };
+    expect(scoreLinerPair(open, open, guide, { templateColor: INK }).route).toBe("liner_mix");
   });
 });

@@ -2,7 +2,7 @@
 //   PAIR_DIR=$DHE_DATA_DIR/work/liner-test OPEN=me_open CLOSED=me_closed node eval/samples/shape/liner_pair.mjs
 //   (<이름>.png · <이름>.lm.json — 얼굴 점 478개 px. 사진은 저장소 밖에만 둔다)   COVER=0.9 → 더 진하게 (기본 0.7)
 // 라이너는 **맨얼굴의 어두운 띠 윗경계(lidEdge) 위 피부**에 화면 가이드 윤곽 모양으로 칠한다 — 실제로 그리는 자리.
-// 눈 뜬 장끼리는 섞기(liner_mix), 눈 감은 장끼리는 양 끝·획 추출(liner_closed)로 채점된다. '지금' = 앱의 지금 채점(기준선 안 옮김)
+// 눈 뜬 장끼리는 섞기(liner_mix), 눈 감은 장끼리는 양 끝·획 추출(liner_closed), 두 장을 합치면 scoreLinerPair(liner_pair). '지금' = 앱의 지금 채점(기준선 안 옮김)
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
@@ -20,7 +20,7 @@ const r = await esbuild.build({ stdin: { contents: [
   'export { measureFace } from "./src/core/face-measure";',
   'export { scorePart } from "./src/core/score-part";',
   'export { decide } from "./src/core/score";',
-  'export { scoreHybrid, lidEdge, liftLid } from "./src/core/score-shape";',
+  'export { scoreHybrid, scoreLinerPair, lidEdge, liftLid } from "./src/core/score-shape";',
   'export { LOOKS } from "./src/core/looks";',
   'export { LM } from "./src/core/landmarks";',
 ].join("\n"), resolveDir: CLIENT, loader: "ts" }, bundle: true, format: "esm", platform: "node", write: false, logLevel: "silent" });
@@ -61,27 +61,30 @@ const load = (n) => ({ im: png(join(DIR, `${n}.png`)), lm: JSON.parse(readFileSy
 const open = load(process.env.OPEN ?? "open"), closed = load(process.env.CLOSED ?? "closed");
 const plan = core.resolvePlan(core.measureFace(open.lm));   // 개인화 계획은 눈 뜬 얼굴로
 const short = (c) => c.replace("LINER_", "").replace(/_([RL])$/, "·$1");
-const tally = { open: [0, 0], closed: [0, 0], now: [0, 0] };
-for (const [key, name, ph] of [["open", "눈 뜸", open], ["closed", "눈 감음", closed]]) {
-  const base = core.frameOf(ph.im, ph.lm), e = base.unit.eye;
-  const lift = { R: core.lidEdge(base, "R"), L: core.lidEdge(base, "L") }, lifted = core.liftLid(base, lift);
-  console.log(`\n===== ${name} (눈 폭 ${e.toFixed(0)}px) — 기준선 옮김: R ${lift.R.map((v) => (v * e).toFixed(0)).join(" ")}px · L ${lift.L.map((v) => (v * e).toFixed(0)).join(" ")}px (바깥 → 안쪽)`);
-  for (const lookId of LOOK_IDS) {
-    const look = core.LOOKS.find((l) => l.id === lookId), guide = core.planGuide(look.parts, plan), g = guide("liner", lifted).liner, color = look.parts.liner.color, o = { templateColor: color };
-    console.log(`\n[${lookId}] 가이드 두께 ${(g.thick * e).toFixed(0)}px · 색 ${color}`);
-    console.log("단계 (기대)          | 조합: 판정 점수 · 지적                                   | 지금: 판정 점수");
-    for (const level of ["bare", ...Object.keys(LEVELS)]) {
-      const shapes = level === "bare" ? [] : ["R", "L"].flatMap((s) => LEVELS[level][1]((s === "R" ? core.LM.eyeA : core.LM.eyeB).upper.map((i) => lifted.lm[i]).reverse(), g.wing[s], g.thick * e, e));
-      const cur = core.frameOf(level === "bare" ? ph.im : paint(ph.im, shapes, color, COVER).im, ph.lm);
-      const h = core.scoreHybrid("liner", base, cur, guide, o), dh = core.decide("liner", h.result, h.ctx);
-      const a = core.scorePart("liner", base, cur, guide, o), da = core.decide("liner", a.result, a.ctx);
-      const exp = LEVELS[level]?.[0], say = (d) => (d.status === "scored" ? `${fold(d.score)} ${String(d.score).padStart(3)}` : `확인만(${d.reason})`);
-      const hit = (d) => (level === "bare" ? d.status !== "scored" : d.status === "scored" && fold(d.score) === EK[exp]);
-      tally[key][1]++; if (hit(dh)) tally[key][0]++;
-      tally.now[1]++; if (hit(da)) tally.now[0]++;
-      const codes = [...h.result.codes, ...(h.result.metrics?.endCodes ?? [])].map(short).join(" ");
-      console.log(`${(KO[level] + (exp ? ` (${EK[exp]})` : " (점수 없음)")).padEnd(16)} | ${hit(dh) ? "O" : "X"} ${say(dh).padEnd(14)} ${codes.padEnd(46)} | ${hit(da) ? "O" : "X"} ${say(da)}`);
-    }
+const prep = (ph) => { const base = core.frameOf(ph.im, ph.lm), lift = { R: core.lidEdge(base, "R"), L: core.lidEdge(base, "L") }; return { ph, base, e: base.unit.eye, lift, lifted: core.liftLid(base, lift) }; };
+const O = prep(open), C = prep(closed);
+for (const [name, x] of [["눈 뜸", O], ["눈 감음", C]]) console.log(`${name} 눈 폭 ${x.e.toFixed(0)}px — 기준선 옮김(바깥 → 안쪽): R ${x.lift.R.map((v) => (v * x.e).toFixed(0)).join(" ")}px · L ${x.lift.L.map((v) => (v * x.e).toFixed(0)).join(" ")}px`);
+const COLS = ["두 장", "눈 감음만", "눈 뜸만", "지금 채점"], tally = Object.fromEntries(COLS.map((c) => [c, 0]));
+let cells = 0;
+for (const lookId of LOOK_IDS) {
+  const look = core.LOOKS.find((l) => l.id === lookId), guide = core.planGuide(look.parts, plan), color = look.parts.liner.color, o = { templateColor: color };
+  console.log(`\n[${lookId}] 가이드 두께 ${(guide("liner", C.lifted).liner.thick * 100).toFixed(1)}% · 색 ${color}`);
+  console.log("단계 (기대)        | 두 장: 판정 점수 · 지적                                  | 눈 감음만     | 눈 뜸만       | 지금 채점");
+  for (const level of ["bare", ...Object.keys(LEVELS)]) {
+    const curOf = (x) => { const g = guide("liner", x.lifted).liner; if (level === "bare") return core.frameOf(x.ph.im, x.ph.lm); const shapes = ["R", "L"].flatMap((sd) => LEVELS[level][1]((sd === "R" ? core.LM.eyeA : core.LM.eyeB).upper.map((i) => x.lifted.lm[i]).reverse(), g.wing[sd], g.thick * x.e, x.e)); return core.frameOf(paint(x.ph.im, shapes, color, COVER).im, x.ph.lm); };
+    const co = curOf(O), cc = curOf(C);
+    const res = {
+      "두 장": core.scoreLinerPair({ base: O.base, cur: co }, { base: C.base, cur: cc }, guide, o),
+      "눈 감음만": core.scoreHybrid("liner", C.base, cc, guide, o),
+      "눈 뜸만": core.scoreHybrid("liner", O.base, co, guide, o),
+      "지금 채점": core.scorePart("liner", O.base, co, guide, o),
+    };
+    const exp = LEVELS[level]?.[0], dec = Object.fromEntries(COLS.map((c) => [c, core.decide("liner", res[c].result, res[c].ctx)]));
+    const say = (d) => (d.status === "scored" ? `${fold(d.score)} ${String(d.score).padStart(3)}` : `확인만`);
+    const hit = (d) => (level === "bare" ? d.status !== "scored" : d.status === "scored" && fold(d.score) === EK[exp]);
+    cells++; for (const c of COLS) if (hit(dec[c])) tally[c]++;
+    const pr = res["두 장"].result, codes = [...pr.codes, ...(pr.metrics?.endCodes ?? [])].map(short).join(" ");
+    console.log(`${(KO[level] + (exp ? ` (${EK[exp]})` : "")).padEnd(15)} | ${hit(dec["두 장"]) ? "O" : "X"} ${say(dec["두 장"]).padEnd(8)} ${codes.padEnd(44)} | ${COLS.slice(1).map((c) => `${hit(dec[c]) ? "O" : "X"} ${say(dec[c]).padEnd(8)}`).join(" | ")}`);
   }
 }
-console.log(`\n기대와 같은 칸: 눈 뜸·조합 ${tally.open[0]}/${tally.open[1]} · 눈 감음·조합 ${tally.closed[0]}/${tally.closed[1]} · 지금 채점(두 눈 상태 합) ${tally.now[0]}/${tally.now[1]}`);
+console.log(`\n기대와 같은 칸 (${cells}칸 중): ` + COLS.map((c) => `${c} ${tally[c]}`).join(" · "));
