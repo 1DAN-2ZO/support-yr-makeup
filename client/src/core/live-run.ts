@@ -122,11 +122,11 @@ export function outlineOf(partId: PartId, lm: readonly Pt[], guide: GuideSource)
 const optExpr = (d: number | undefined): { exprDiff?: number } => (d === undefined ? {} : { exprDiff: d });
 
 /**
- * 후보 1 — 아주 크게 돌리면 먼 쪽 눈 테두리를 흐리게 (2026-10-02 PC). 먼 쪽 눈 틀 맞추기(C · F · G · H)로 각도 차 40~59 에서도
- * 붙는 걸 봤으니 그 너머, 그것으로도 못 잡는 각도에서만 — 틀린 선을 믿고 따라 그리지 않게.
- * 각도 차(rigidPoseDiff 눈금, 화면 4 한계 12 와 같은 눈금) from 까지 그대로 → to 부터 min. 가정값 — 화면 4 ?fade=from-to 로 바꿔 본다
+ * 후보 1 — 크게 돌리면 먼 쪽 눈 테두리를 흐리게 (2026-10-02 PC) — 틀린 선을 믿고 따라 그리지 않게.
+ * 각도 차(rigidPoseDiff 눈금, 화면 4 한계 12 와 같은 눈금) from 까지 그대로 → to 부터 min.
+ * PC 에서 화면 4 ?fade=from-to 로 맞춰 보고 30 → 45 를 골랐다 (먼 쪽 눈 틀 맞추기 C · F · G · H 를 켠 채). 폰 확인 전 — 가정값
  */
-export const FAR_FADE: FadeRange = { from: 55, to: 75, min: 0.3 };
+export const FAR_FADE: FadeRange = { from: 30, to: 45, min: 0.3 };
 
 export interface FadeRange { from: number; to: number; min: number }
 

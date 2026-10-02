@@ -474,8 +474,8 @@ describe("live run", () => {
   });
 
   it("L36 후보 1 — 아주 크게 돌린 각도(눈 틀 맞추기로도 못 잡는 곳)에서만 먼 쪽 눈 테두리를 흐리게. 가까운 쪽 · 덜 돌렸을 때 · 눈 아닌 부위는 그대로", () => {
-    // C·F·G·H 로 각도 차 40~59 에서도 붙는 걸 PC 로 봤다 (2026-10-02) → 그 너머에서만
-    expect(FAR_FADE).toEqual({ from: 55, to: 75, min: 0.3 });
+    // PC 에서 ?fade= 로 맞춰 보고 30 → 45 를 골랐다 (2026-10-02)
+    expect(FAR_FADE).toEqual({ from: 30, to: 45, min: 0.3 });
     const alphaOf = (part: "liner" | "lip", f: number, fade?: { from: number; to: number; min: number } | null) =>
       createLiveRun<string>({ partId: part, baseline: { lm: FACE, foreheadL: SKIN.L }, guide: lookGuide({}), smooth: false, ...(fade !== undefined ? { fade } : {}) }).step(frame({ lm: turnedFace(f) }));
     // 코끝이 이미지 오른쪽으로 크게(각도 차 약 87) → 먼 쪽 = 이미지 오른쪽 눈
@@ -488,8 +488,8 @@ describe("live run", () => {
     const other = alphaOf("liner", -0.7);
     expect(other.alpha![rightIdx]).toBe(1);
     expect(other.alpha![1 - rightIdx]).toBeCloseTo(FAR_FADE.min, 6);
-    // 각도 차 약 31 (잘 붙는 범위) · 눈 아닌 부위는 흐리게 하지 않는다
-    expect(alphaOf("liner", 0.25).alpha).toEqual([1, 1]);
+    // 각도 차 약 25 · 눈 아닌 부위는 흐리게 하지 않는다
+    expect(alphaOf("liner", 0.2).alpha).toEqual([1, 1]);
     expect(alphaOf("lip", 0.7).alpha).toBeNull();
     // 화면이 구간을 바꾸거나(?fade=15-30) 끌 수 있다(?fade=0)
     expect(alphaOf("liner", 0.25, { from: 15, to: 30, min: 0.25 }).alpha![rightIdx]).toBeCloseTo(0.25, 6);
