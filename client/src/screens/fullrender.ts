@@ -17,14 +17,18 @@ import { measureFace } from "../core/face-measure";
 import { lookById } from "../core/looks";
 import { lookDetail } from "../core/look-view";
 import { resolvePlan, type PersonalPlan } from "../core/personalize";
+import { SMOOTH } from "../core/smooth-params";
 import { LandmarkSmoother } from "../core/smoothing";
 import type { Pt } from "../core/types";
 import type { HairMask } from "../core/sampling";
+import { releaseCameraLocks } from "./camera-locks";
+import { startFrameLoop } from "./camera-loop";
 import { createHairTicker, type HairMasker } from "./hair-segmenter";
 import { createLandmarker } from "./landmarker";
 import { MakeupGl } from "./makeup-gl";
 import { LASHES } from "./lash-assets";
 import { paintLookOf, paintMakeup } from "./makeup-paint";
+import { smoothTuner } from "./smooth-tune";
 import type { Screen, ScreenContext } from "./shell";
 
 export interface FullRenderDeps {
@@ -118,8 +122,7 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
       drawFallback();
 
       // ── AR ───────────────────────────────────────────
-      let raf = 0;
-      /** 지금 AR 장면을 저장한다 — AR 이 화장을 입혀 보여 줄 때만 채워진다 */
+      let stopLoop = (): void => {};
       let stream: MediaStream | null = null;
       let closeLandmarker: (() => void) | null = null;
       let disposeGl: (() => void) | null = null;
@@ -129,12 +132,17 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
         try {
           stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
           if (!alive) return stopStream();
+          // 앞 세션·다른 화면이 남긴 카메라 잠금부터 푼다 (#267: PC 웹캠이 하얗게·파랗게 고정된 채 남음). 2-b 는 아무것도 잠그지 않는다
+          const track = stream.getVideoTracks()[0];
+          if (track) await releaseCameraLocks(track as unknown as Parameters<typeof releaseCameraLocks>[0]);
+          if (!alive) return stopStream();
           const video = document.createElement("video");
           video.muted = true;
           video.playsInline = true;
           video.srcObject = stream;
           await video.play();
-          const lmk = await createLandmarker("VIDEO");
+          // blendshapes: false — 표정 계수·변환행렬은 여기서 안 읽는다(쉐딩 등 모양은 랜드마크만으로 충분, #173)
+          const lmk = await createLandmarker("VIDEO", { blendshapes: false });
           closeLandmarker = () => lmk.close();
           if (!alive) return cleanup();
 
@@ -148,7 +156,8 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
           let ref: Pt[] | null = null;
           const q = new URLSearchParams(location.search);
           const smoother = q.has("nosmooth") ? null : new LandmarkSmoother(Array.from({ length: 478 }, (_, i) => i), { minCutoff: SMOOTH.minCutoff, beta: SMOOTH.beta, dCutoff: SMOOTH.dCutoff });
-          if (smoother && q.has("tune")) wrap.insertBefore(tuner(smoother), stage.nextSibling);
+          // 떨림 필터 값(SMOOTH)·?tune 슬라이더는 화면 4 와 같이 쓴다 (#244)
+          if (smoother && q.has("tune")) wrap.insertBefore(smoothTuner(smoother), stage.nextSibling);
           // 머리카락: 간격마다 줄인 영상으로 분할 → 셰이더가 그 위엔 보정·화장을 안 한다 (#173)
           const hairOn = !!deps.hairMask && !q.has("nohair");
           const ticker = createHairTicker(HAIR_AR.intervalMs);
@@ -173,25 +182,12 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
               .finally(() => ticker.done());
           };
 
-          const tick = (): void => {
+          // now = 공용 루프가 주는 늘어나기만 하는 시각 — 얼굴 찾기 · 떨림 필터 · 머리카락 분할 간격이 같이 쓴다
+          const frame = (now: number): void => {
             if (!alive) return;
-            try {
-              frame();
-            } catch (e) {
-              // 루프 안 오류는 바깥 try 가 못 잡는다 — 기록하고 서버 그림으로 돌아간다 (#172 리뷰)
-              ctx.log.log({ name: "error", where: "ar", msg: e instanceof Error ? e.message : String(e) });
-              cleanup(false);
-              live = false;
-              drawFallback();
-              return;
-            }
-            raf = requestAnimationFrame(tick);
-          };
-          const frame = (): void => {
             const w = video.videoWidth, hh = video.videoHeight;
             if (w && hh) {
-              const face = lmk.detectForVideo(video, performance.now()).faceLandmarks[0];
-              const now = performance.now();
+              const face = lmk.detectForVideo(video, now).faceLandmarks[0];
               const raw = face && face.length >= 478 ? face.map((p) => ({ x: p.x * w, y: p.y * hh })) : null;
               const lm = smoother ? smoother.smooth(raw, now) : raw;
               if (lm && !ref && goodRef(raw!, w, hh)) {
@@ -210,7 +206,16 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
               }
             }
           };
-          raf = requestAnimationFrame(tick);
+          // 카메라 새 장면에만 얼굴을 찾는다 (#245 — 전에는 화면 그리기마다라 같은 장면을 두세 번, #173 느림의 원인 후보)
+          stopLoop = startFrameLoop(video, frame, {
+            onError: (e) => {
+              // 루프 안 오류는 바깥 try 가 못 잡는다 — 기록하고 서버 그림으로 돌아간다 (#172 리뷰)
+              ctx.log.log({ name: "error", where: "ar", msg: e instanceof Error ? e.message : String(e) });
+              cleanup(false);
+              live = false;
+              drawFallback();
+            },
+          });
         } catch (e) {
           // 카메라 거부·WebGL 없음 — 서버 그림으로 둔다
           ctx.log.log({ name: "error", where: "ar", msg: e instanceof Error ? e.message : String(e) });
@@ -219,12 +224,13 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
       }
 
       function stopStream(): void {
-        stream?.getTracks().forEach((t) => t.stop());
+        // 잠금을 풀고 끈다 — PC 웹캠은 잠금을 기기에 저장해서 다음에 열 때 남는다 (#267)
+        for (const t of stream?.getTracks() ?? []) void releaseCameraLocks(t as unknown as Parameters<typeof releaseCameraLocks>[0]).finally(() => t.stop());
         stream = null;
       }
 
       function cleanup(all = true): void {
-        cancelAnimationFrame(raf);
+        stopLoop();
         stopStream();
         closeLandmarker?.();
         closeLandmarker = null;
@@ -252,40 +258,6 @@ export function goodRef(lm: readonly Pt[], w: number, h: number): boolean {
   if (!a || !b || !n) return false;
   const eye = Math.hypot(b.x - a.x, b.y - a.y) || 1;
   return Math.abs(n.x - (a.x + b.x) / 2) / eye < 0.12;
-}
-
-/**
- * One-Euro 값. ④ 기본값(2.5 / 0.08)은 움직이기 시작할 때 뒤처졌다 (2026-09-29 폰: "트래킹이 느려졌다").
- * 기준(minCutoff)↑ = 가만히 있을 때도 덜 부드럽게(더 딱 붙음), 반응성(beta)↑ = 움직일 때 더 빨리 따라감.
- * dCutoff↑ = 속도 추정(edx)이 더 빨리 반응 → beta가 더 일찍 켜짐 (#173, 기존 1.0 고정이 원인 후보).
- * 폰에서 ?tune 으로 맞춰 보고 여기 값을 정한다
- */
-export const SMOOTH = { minCutoff: 4, beta: 0.3, dCutoff: 1 };
-
-/** [개발용 ?tune] 슬라이더 세 개 — POC(look-tryon) 와 같은 방식 */
-function tuner(sm: LandmarkSmoother): HTMLElement {
-  const box = document.createElement("div");
-  box.className = "ar-tune";
-  const v = { ...SMOOTH };
-  const out = document.createElement("p");
-  const show = (): void => { out.textContent = `기준 ${v.minCutoff.toFixed(1)} · 반응성 ${v.beta.toFixed(2)} · dCutoff ${v.dCutoff.toFixed(1)}`; };
-  const slider = (label: string, key: keyof typeof v, min: number, max: number, step: number): HTMLLabelElement => {
-    const l = document.createElement("label");
-    l.textContent = label;
-    const r = document.createElement("input");
-    Object.assign(r, { type: "range", min: String(min), max: String(max), step: String(step), value: String(v[key]) });
-    r.addEventListener("input", () => { v[key] = Number(r.value); sm.setParams(v.minCutoff, v.beta, v.dCutoff); show(); });
-    l.append(r);
-    return l;
-  };
-  box.append(
-    slider("기준 (높을수록 딱 붙음)", "minCutoff", 0.5, 10, 0.1),
-    slider("반응성 (높을수록 빨리 따라감)", "beta", 0.01, 1, 0.01),
-    slider("dCutoff (높을수록 반응성이 빨리 켜짐)", "dCutoff", 0.5, 5, 0.1),
-    out,
-  );
-  show();
-  return box;
 }
 
 /** 쓰는 제품 — 접기 없이 전부 (F-04). 룩 화면에서 옮겨 왔다 */

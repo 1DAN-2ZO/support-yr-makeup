@@ -11,14 +11,20 @@ const WASM_BASE = import.meta.env.DEV ? "/node_modules/@mediapipe/tasks-vision/w
 const LOCAL_MODEL = "/models/face_landmarker.task";
 const CDN_MODEL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
 
-export async function createLandmarker(mode: "VIDEO" | "IMAGE"): Promise<FaceLandmarker> {
+/**
+ * blendshapes: 표정 계수·3D 변환행렬까지 뽑을지. 기본 true(기존 동작 그대로) — 화면 1·4·복원처럼 표정 게이트·자세
+ * 보정에 실제로 쓰는 곳은 그대로 둔다. false로 부르면 랜드마크만 뽑아 추론이 가벼워진다 — 2-b AR(fullrender.ts)처럼
+ * 둘 다 안 읽는 곳에서만 꺼서 쓴다(#173: 고개를 크게 움직이면 느리게 따라오던 문제, 안 쓰는 출력을 매 프레임 계산하던 게 원인 후보).
+ */
+export async function createLandmarker(mode: "VIDEO" | "IMAGE", opt?: { blendshapes?: boolean }): Promise<FaceLandmarker> {
+  const blendshapes = opt?.blendshapes ?? true;
   const files = await FilesetResolver.forVisionTasks(WASM_BASE);
   const modelPath = await fetch(LOCAL_MODEL, { method: "HEAD" })
     .then((r) => (r.ok && !(r.headers.get("content-type") ?? "").includes("text/html") ? LOCAL_MODEL : CDN_MODEL))
     .catch(() => CDN_MODEL);
   const opts = (delegate: "GPU" | "CPU") => ({
     baseOptions: { modelAssetPath: modelPath, delegate },
-    runningMode: mode, numFaces: 1, outputFaceBlendshapes: true, outputFacialTransformationMatrixes: true,
+    runningMode: mode, numFaces: 1, outputFaceBlendshapes: blendshapes, outputFacialTransformationMatrixes: blendshapes,
   });
   return FaceLandmarker.createFromOptions(files, opts("GPU")).catch(() => FaceLandmarker.createFromOptions(files, opts("CPU")));
 }

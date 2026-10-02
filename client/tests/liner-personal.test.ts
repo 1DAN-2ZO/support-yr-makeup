@@ -7,14 +7,14 @@ import { lookGuide } from "@core/guides";
 import { PERSONAL_LINER, linerOutline, styledGuide } from "@core/personal-guide";
 import { LM, dist } from "@core/landmarks";
 import { lookById } from "@core/looks";
-import { DROOP_MARGIN_DEG, planLiner, resolveLiner } from "@core/personalize";
+import { DROOP_TILT_DEG, planLiner, resolveLiner } from "@core/personalize";
 import type { Pt } from "@core/types";
 import { BARE, LMS } from "./helpers/synth-face";
 
-/** α − β 만 바꾼 측정값. 나머지는 개인화 규칙이 보지 않는 값이다 */
-function measure(abR: number, abL: number = abR): FaceMeasure {
-  const eye = (ab: number): EyeMeasure => ({ tiltDeg: 8, alphaDeg: 30 + ab / 2, betaDeg: 30 - ab / 2, outerCornerDown: ab > 0, aspect: 3, heightRatio: 1 / 3, lidGapRatio: 0.55 });
-  return { rollDeg: 0, eye: { R: eye(abR), L: eye(abL) }, brow: { R: { curvature: 0.1 }, L: { curvature: 0.1 } }, lip: { upperLowerRatio: 0.8, heightWidthRatio: 0.4 }, faceAspect: 0.85, mmPerPx: 0.5 };
+/** 눈꼬리 기울기만 바꾼 측정값. α·β 는 처진 눈 판정에 더 쓰지 않는다 — 일부러 "처진" 값(α > β)으로 둔다 */
+function measure(tiltR: number, tiltL: number = tiltR): FaceMeasure {
+  const eye = (tilt: number): EyeMeasure => ({ tiltDeg: tilt, alphaDeg: 36, betaDeg: 24, outerCornerDown: true, aspect: 3, heightRatio: 1 / 3, lidGapRatio: 0.55 });
+  return { rollDeg: 0, eye: { R: eye(tiltR), L: eye(tiltL) }, brow: { R: { curvature: 0.1 }, L: { curvature: 0.1 } }, lip: { upperLowerRatio: 0.8, heightWidthRatio: 0.4 }, faceAspect: 0.85, mmPerPx: 0.5 };
 }
 
 const deg = (a: Pt, b: Pt): number => (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
@@ -24,50 +24,52 @@ const angleBetween = (o: Pt, a: Pt, b: Pt): number => {
 };
 
 describe("라이너 개인화 — 규칙", () => {
-  it("처진 눈이 아니면 Winged — 실측값(α−β = −4.6° / −5.1°)", () => {
-    expect(planLiner(measure(-4.6, -5.1))).toEqual({ style: "winged", reason: "not_down" });
+  it("눈꼬리가 올라간 눈은 처진 눈이 아니다 — α > β 여도 (FFHQ 동양인 30장 모두 기울기 +, ILoveEye α>β 로는 21장이 처진 눈이었다)", () => {
+    expect(planLiner(measure(7.0, 8.1))).toEqual({ style: "winged", reason: "not_down" });
   });
 
   it("처진 눈 + 룩이 '따라감' 이면 Drop", () => {
-    expect(planLiner(measure(5), "follow")).toEqual({ style: "drop", reason: "down_follow" });
+    expect(planLiner(measure(-3), "follow")).toEqual({ style: "drop", reason: "down_follow" });
   });
 
   it("처진 눈 + 룩이 '보정'(기본) 이면 Extend", () => {
-    expect(planLiner(measure(5))).toEqual({ style: "extend", reason: "down_correct" });
+    expect(planLiner(measure(-3))).toEqual({ style: "extend", reason: "down_correct" });
   });
 
-  it("여유 구간 안(α−β 가 조금만 양수)이면 처진 눈으로 보지 않는다 — 흔들림으로 스타일이 뒤집히지 않게", () => {
-    expect(DROOP_MARGIN_DEG).toBe(2);
-    expect(planLiner(measure(1.5)).style).toBe("winged");
-    expect(planLiner(measure(2.5)).style).toBe("extend");
+  it("처진 눈 = 눈꼬리 기울기가 기준(5°)보다 작은 눈 — Lee 2020 class I(0~5°) 경계 (평균보다 덜 올라간 눈)", () => {
+    expect(DROOP_TILT_DEG).toBe(5);
+    expect(planLiner(measure(5.5)).style).toBe("winged");
+    expect(planLiner(measure(5)).style).toBe("winged");
+    expect(planLiner(measure(4.5)).style).toBe("extend");
+    expect(planLiner(measure(2.3)).style).toBe("extend");   // ea_021189 — 사람이 처진 눈으로 표시
   });
 
   it("두 눈을 평균해 한 스타일을 정한다 — 좌우가 다르게 그려지지 않게", () => {
-    expect(planLiner(measure(4, -4)).style).toBe("winged");
-    expect(planLiner(measure(6, 2)).style).toBe("extend");
+    expect(planLiner(measure(12, -1)).style).toBe("winged");   // 평균 5.5°
+    expect(planLiner(measure(8, 0)).style).toBe("extend");     // 평균 4°
   });
 });
 
 describe("라이너 개인화 — 검증 관문 (VLM 제안도 여기를 지난다)", () => {
   it("제안이 없으면 규칙값", () => {
-    expect(resolveLiner(measure(-5))).toEqual({ plan: { style: "winged", reason: "not_down" }, source: "rule" });
+    expect(resolveLiner(measure(8))).toEqual({ plan: { style: "winged", reason: "not_down" }, source: "rule" });
   });
 
   it("처진 눈이 아닌데 Drop 을 제안하면 거절하고 규칙값으로", () => {
-    const r = resolveLiner(measure(-5), "correct", { style: "drop" });
+    const r = resolveLiner(measure(8), "correct", { style: "drop" });
     expect(r.source).toBe("rule");
     expect(r.plan.style).toBe("winged");
     expect(r.rejected).toMatch(/처진 눈이 아닌데/);
   });
 
   it("모르는 스타일은 거절", () => {
-    const r = resolveLiner(measure(-5), "correct", { style: "cat-eye" });
+    const r = resolveLiner(measure(8), "correct", { style: "cat-eye" });
     expect(r.source).toBe("rule");
     expect(r.rejected).toMatch(/모르는 스타일/);
   });
 
   it("측정과 모순되지 않는 제안은 받는다", () => {
-    const r = resolveLiner(measure(5), "correct", { style: "drop" });
+    const r = resolveLiner(measure(-3), "correct", { style: "drop" });
     expect(r.source).toBe("vlm");
     expect(r.plan.style).toBe("drop");
     expect(r.rejected).toBeUndefined();

@@ -13,6 +13,8 @@ import { eyeWidthPxOf, eyesClosed, faceCropOf, faceInsetOf, faceRatioOf, yawFrom
 import type { ShotMeasure } from "@core/flow";
 import type { Logger } from "@core/log";
 import type { Pt } from "@core/types";
+import { releaseCameraLocks } from "./camera-locks";
+import { startFrameLoop } from "./camera-loop";
 import { foreheadLabOf, grabFrame, sharpnessOf } from "./frame-measure";
 import { encodeForStore } from "./image-encode";
 import { createLandmarker } from "./landmarker";
@@ -25,7 +27,7 @@ export interface ReviewShot {
 /** host 에 카메라를 띄우고 정면 1장이 찍히면 done. 돌려주는 함수로 끈다 (done 은 안 부른다) */
 export function startReviewShot(host: HTMLElement, done: (r: ReviewShot | null) => void, log: Logger): () => void {
   let alive = true;
-  let raf = 0;
+  let stopLoop = (): void => {};
   let stream: MediaStream | null = null;
   let lmk: FaceLandmarker | null = null;
 
@@ -44,10 +46,15 @@ export function startReviewShot(host: HTMLElement, done: (r: ReviewShot | null) 
   line.textContent = "카메라를 켜고 있어요…";
   host.append(cam, line);
 
+  /** 잠금을 풀고 끈다 — PC 웹캠은 잠금을 기기에 저장해서 다음에 열 때 남는다 (#267) */
+  const stopTracks = (st: MediaStream | null): void => {
+    for (const t of st?.getTracks() ?? []) void releaseCameraLocks(t as unknown as Parameters<typeof releaseCameraLocks>[0]).finally(() => t.stop());
+  };
+
   const stop = (): void => {
     alive = false;
-    cancelAnimationFrame(raf);
-    stream?.getTracks().forEach((t) => t.stop());
+    stopLoop();
+    stopTracks(stream);
     stream = null;
     lmk?.close();
     lmk = null;
@@ -56,19 +63,22 @@ export function startReviewShot(host: HTMLElement, done: (r: ReviewShot | null) 
   void (async () => {
     try {
       const st = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
-      if (!alive) { st.getTracks().forEach((t) => t.stop()); return; }
+      if (!alive) { stopTracks(st); return; }
       stream = st;
+      // 앞 세션·다른 화면이 남긴 카메라 잠금부터 푼다 (#267). 여기서는 아무것도 잠그지 않는다
+      const track = st.getVideoTracks()[0];
+      if (track) await releaseCameraLocks(track as unknown as Parameters<typeof releaseCameraLocks>[0]);
+      if (!alive) return;
       video.srcObject = st;
       await video.play();
       const m = await createLandmarker("VIDEO");
       if (!alive) { m.close(); return; }
       lmk = m;
       let run: RunState = startRun({}, performance.now());
-      const frame = (): void => {
+      // now = 공용 루프가 주는 늘어나기만 하는 시각 — 얼굴 찾기와 촬영 대기 시간이 같이 쓴다
+      const frame = (now: number): void => {
         if (!alive || !lmk) return;
-        raf = requestAnimationFrame(frame);
         if (video.readyState < 2) return;
-        const now = performance.now();
         const sw = video.videoWidth, sh = video.videoHeight;
         const res: FaceLandmarkerResult = lmk.detectForVideo(video, now);
         const raw = res.faceLandmarks[0];
@@ -100,7 +110,14 @@ export function startReviewShot(host: HTMLElement, done: (r: ReviewShot | null) 
         );
       };
       line.textContent = "";
-      raf = requestAnimationFrame(frame);
+      // 카메라 새 장면에만 얼굴을 찾는다 (#245). 루프 안 오류는 바깥 try 가 못 잡는다 — 기록하고 사진 없이 리뷰를 보여 준다
+      stopLoop = startFrameLoop(video, frame, {
+        onError: (e) => {
+          log.log({ name: "error", where: "review_shot", msg: e instanceof Error ? e.message : String(e) });
+          stop();
+          done(null);
+        },
+      });
     } catch (e) {
       if (!alive) return;
       // 카메라 거부 등 — 사진 없이 리뷰를 보여 준다

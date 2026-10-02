@@ -69,6 +69,50 @@ if (!ctx2d || !offCtx) throw new Error("캔버스 2D 를 쓸 수 없음");
 const g: CanvasRenderingContext2D = ctx2d;
 const o: CanvasRenderingContext2D = offCtx;
 
+/**
+ * 일부 WebKit(Safari 27 확인, 2026-09-30 실측: `getContext("2d").filter`가 `undefined`)은
+ * CanvasRenderingContext2D.filter 자체가 없다 — `o.filter = "blur(...)"` 가 조용히 무시돼
+ * 블러 없이 도형만 그려졌다. UA 문자열 대신 기능 자체를 한 번 감지해서 분기한다.
+ */
+const SUPPORTS_CANVAS_FILTER = typeof o.filter === "string";
+/** 번짐(px) → 절반으로 줄이는 단계 수. screens/makeup-paint.ts softenLevels와 같다(#271) */
+function softenLevels(blurPx: number): number {
+  return Math.max(1, Math.min(6, Math.round(Math.log2(Math.max(1, blurPx))) + 1));
+}
+const blurTmps: HTMLCanvasElement[] = [];
+/**
+ * filter 없는 환경의 블러 대체 — screens/makeup-paint.ts softenByResize와 같은 방식(#271):
+ * 절반씩 여러 번 줄였다가 두 배씩 다시 키운다. 한 번에 크게 줄이면(이전 버전) 중간 픽셀을 건너뛰어
+ * 블러 반경이 큰 부위(볼·쉐딩)가 계단 모양으로 나왔다 — 절반씩이면 매 단계 이웃 네 픽셀이 고르게 섞인다.
+ * 정확한 가우시안은 아니지만 근사로는 충분하다.
+ */
+function blurByResize(blurPx: number): void {
+  const n = softenLevels(blurPx);
+  const ctxs: CanvasRenderingContext2D[] = [];
+  let src: HTMLCanvasElement = off;
+  for (let i = 0; i < n; i++) {
+    const c = (blurTmps[i] ??= document.createElement("canvas"));
+    c.width = Math.max(1, Math.round(off.width / 2 ** (i + 1)));
+    c.height = Math.max(1, Math.round(off.height / 2 ** (i + 1)));
+    const t = c.getContext("2d");
+    if (!t) return;   // 못 번지면 그린 그대로 둔다
+    t.imageSmoothingEnabled = true;
+    t.clearRect(0, 0, c.width, c.height);
+    t.drawImage(src, 0, 0, c.width, c.height);
+    ctxs.push(t);
+    src = c;
+  }
+  // 가장 작은 것부터 한 단계씩 키워 올라간다
+  for (let i = n - 1; i >= 1; i--) {
+    const up = blurTmps[i - 1]!, t = ctxs[i - 1]!;
+    t.clearRect(0, 0, up.width, up.height);
+    t.drawImage(blurTmps[i]!, 0, 0, up.width, up.height);
+  }
+  o.clearRect(0, 0, off.width, off.height);
+  o.imageSmoothingEnabled = true;
+  o.drawImage(blurTmps[0]!, 0, 0, off.width, off.height);
+}
+
 type Part = "brow" | "shadow" | "liner" | "cheek" | "lip" | "contour" | "highlight" | "under" | "aegyo" | "lash";
 /** blur 는 얼굴 폭 대비 번짐 — 섀도·볼은 넓게, 라이너는 거의 없이. lash(마스카라)는 낱개 선이라 블러 안 먹임(0 이지만 미사용) */
 const PARTS: { id: Part; name: string; blur: number }[] = [
@@ -122,19 +166,26 @@ function mulberry32(seed: number): () => number {
 }
 
 /**
- * 글리터: bbox 안에 아주 작은 점을 촘촘히 흩뿌려 "펄 가루" 느낌을 낸다. 클립이 이미 걸려 있어서 bbox
- * 밖으로 나가도 안 보인다. 실측 참고 사진(2026-09-29, 사용자 제공 아이섀도 글리터 사진) 기준으로
- * 큼직한 점 몇 개가 아니라 반경 1px 안팎의 점을 빽빽하게 — 듬성듬성한 스팽글이 아니라 파우더 펄이다.
+ * 글리터: 다각형들 안에만 아주 작은 점을 촘촘히 흩뿌려 "펄 가루" 느낌을 낸다 — 자기 클립을 직접 거니
+ * 어떤 패스 상태에서 불러도 안전하다(번짐이 끝난 뒤로 미뤄 불러도 됨, screens/makeup-paint.ts glitterIn과 같다).
+ * 실측 참고 사진(2026-09-29, 사용자 제공 아이섀도 글리터 사진) 기준으로 큼직한 점 몇 개가 아니라 반경 1px
+ * 안팎의 점을 빽빽하게 — 듬성듬성한 스팽글이 아니라 파우더 펄이다.
  * darken=false(기본, 애교살 — screen 블렌드): 점마다 흰 하이라이트를 얹어 반짝이는 입체감(단색 점보다 실감남).
  * darken=true(섀도우 — multiply 블렌드): 흰색은 곱하기에서 그대로 통과해(1을 곱하면 변화 없음) 안 보이므로,
  * 대신 검은 반점을 얹어 입자감을 낸다 — multiply 층에서는 밝게 반짝일 수 없어 "진한 펄 가루" 로 대체(실측 확인).
  */
-function fillGlitter(ctx: CanvasRenderingContext2D, bbox: { x0: number; y0: number; x1: number; y1: number }, color: string, darken = false): void {
+function fillGlitter(ctx: CanvasRenderingContext2D, polys: readonly (readonly Pt[])[], color: string, darken = false): void {
+  const pts = polys.flat();
+  const xs = pts.map((q) => q.x), ys = pts.map((q) => q.y);
+  const x0 = Math.min(...xs), y0 = Math.min(...ys), w = Math.max(...xs) - x0, h = Math.max(...ys) - y0;
+  ctx.save();
+  ctx.beginPath();
+  for (const poly of polys) path(ctx, poly);
+  ctx.clip();
   const rnd = mulberry32(0x9e3779b9);
-  const w = bbox.x1 - bbox.x0, h = bbox.y1 - bbox.y0;
   const n = Math.max(40, Math.round(w * h * 0.02));
   for (let i = 0; i < n; i++) {
-    const x = bbox.x0 + rnd() * w, y = bbox.y0 + rnd() * h;
+    const x = x0 + rnd() * w, y = y0 + rnd() * h;
     const r = 0.45 + rnd() * 0.85;
     ctx.beginPath();
     ctx.fillStyle = rgba(color, (darken ? 0.7 : 0.55) + rnd() * 0.4);
@@ -145,6 +196,7 @@ function fillGlitter(ctx: CanvasRenderingContext2D, bbox: { x0: number; y0: numb
     ctx.arc(x, y, r * 0.45, 0, Math.PI * 2);
     ctx.fill();
   }
+  ctx.restore();
 }
 
 /** span(안쪽→바깥 순 점 목록) 위에서 비율 t(0~1)에 해당하는 자리를 선형보간으로 구한다 */
@@ -444,11 +496,18 @@ const rgba = (hex: string, a: number): string => {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
 };
 
-function paint(blurPx: number, alpha: number, draw: (ctx: CanvasRenderingContext2D) => void, blends: GlobalCompositeOperation[] = ["source-over"]): void {
-  o.filter = "none";
+/** crisp: 번짐이 끝난 뒤 또렷하게 그릴 것(글리터 점) — screens/makeup-paint.ts와 같은 순서(#271) */
+function paint(blurPx: number, alpha: number, draw: (ctx: CanvasRenderingContext2D) => void, blends: GlobalCompositeOperation[] = ["source-over"], crisp: readonly (() => void)[] = []): void {
   o.clearRect(0, 0, off.width, off.height);
-  o.filter = `blur(${Math.max(0.5, blurPx)}px)`;
-  draw(o);
+  if (SUPPORTS_CANVAS_FILTER) {
+    o.filter = `blur(${Math.max(0.5, blurPx)}px)`;
+    draw(o);
+    o.filter = "none";
+  } else {
+    draw(o);
+    blurByResize(Math.max(0.5, blurPx));
+  }
+  for (const fn of crisp) fn();
   if (meshMode()) {
     // 무늬에는 색과 세기만 담는다 — 섞는 건 셰이더가 한다
     if (blends.includes("screen")) { aLight.globalAlpha = alpha; aLight.drawImage(off, 0, 0); return; }
@@ -507,6 +566,7 @@ function drawMakeup(lm: readonly Pt[], style: LinerStyle): void {
     const alpha = Math.min(1, Number(s.input.value) *
       (p.id === "contour" || p.id === "highlight" || p.id === "under" || p.id === "aegyo" || p.id === "lash" ? 1 : (plan?.intensity[p.id] ?? 1)));
     const soft = natural();
+    const crisp: (() => void)[] = [];
     paint(p.blur * faceW * (soft ? 1.6 : 1), alpha, (ctx) => {
       ctx.fillStyle = color;
       ctx.beginPath();
@@ -554,15 +614,8 @@ function drawMakeup(lm: readonly Pt[], style: LinerStyle): void {
             ctx.beginPath();
             path(ctx, bandPts);
             ctx.fill();
-            // 글리터 룩(아이돌·러블리·키치): 그라데이션 베이스 위에 같은 밴드 안쪽으로만 점을 흩뿌린다
-            if (t.finish?.shadow === "glitter") {
-              ctx.save();
-              ctx.filter = "none"; // paint()가 건 블러를 점에는 적용 안 함(아래 aegyo와 같은 이유)
-              ctx.clip(); // fill 에 쓴 bandPts 경로가 아직 현재 경로라 그대로 클립에 쓴다
-              const xs = bandPts.map((q) => q.x), ys = bandPts.map((q) => q.y);
-              fillGlitter(ctx, { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) }, color, true);
-              ctx.restore();
-            }
+            // 글리터 룩(아이돌·러블리·키치): 그라데이션 베이스 위에 같은 밴드 안쪽으로만 점을 흩뿌린다 — 번짐 끝난 뒤(crisp)
+            if (t.finish?.shadow === "glitter") crisp.push(() => fillGlitter(ctx, [bandPts], color, true));
             continue;
           }
           path(ctx, bandPts);
@@ -633,20 +686,16 @@ function drawMakeup(lm: readonly Pt[], style: LinerStyle): void {
       } else if (p.id === "under" || p.id === "aegyo") {
         // 언더라인·애교살: 아랫속눈썹 라인 → 볼 점 사이를 보간한 밴드(섀도와 같은 방식). 비율은 눈대중 시작값
         const [lo, hi] = p.id === "under" ? [0, 0.1] : [0.1, 0.35];
-        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+        const bands: Pt[][] = [];
         for (const { eye, cheek } of SIDES) {
           const lash = eye.lower.map(P), cPt = P(cheek);
           const band = [...lash.map((q) => mix(q, cPt, lo)), ...lash.map((q) => mix(q, cPt, hi)).reverse()];
           path(ctx, band);
-          for (const q of band) { x0 = Math.min(x0, q.x); y0 = Math.min(y0, q.y); x1 = Math.max(x1, q.x); y1 = Math.max(y1, q.y); }
+          bands.push(band);
         }
-        // 글리터 룩(아이돌·러블리·키치): 단색 채우기 대신 이 bbox(=클립된 영역) 안에 밝은 점을 흩뿌린다
+        // 글리터 룩(아이돌·러블리·키치): 단색 채우기 대신 이 밴드들 안에 밝은 점을 흩뿌린다 — 번짐 끝난 뒤(crisp)
         if (p.id === "aegyo" && t.finish?.aegyo === "glitter") {
-          ctx.save();
-          ctx.filter = "none"; // paint()가 걸어 둔 블러를 점에는 적용 안 함 — 블러 먹으면 점이 아니라 흐린 빛 얼룩이 된다(실측 확인)
-          ctx.clip();
-          fillGlitter(ctx, { x0, y0, x1, y1 }, color);
-          ctx.restore();
+          crisp.push(() => fillGlitter(ctx, bands, color));
           return;
         }
       } else {
@@ -655,7 +704,7 @@ function drawMakeup(lm: readonly Pt[], style: LinerStyle): void {
         for (const b of p.id === "contour" ? bands.shading : bands.highlight) path(ctx, b);
       }
       ctx.fill();
-    }, soft ? FILTER_BLEND[p.id] : undefined);
+    }, soft ? FILTER_BLEND[p.id] : undefined, crisp);
   }
 }
 

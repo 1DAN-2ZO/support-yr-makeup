@@ -42,13 +42,19 @@ export function camSnapshot(track: TrackLike): Record<string, unknown> {
   return Object.fromEntries(keep.filter((k) => s[k] !== undefined).map((k) => [k, s[k]]));
 }
 
+type LockKey = "whiteBalanceMode" | "exposureMode" | "focusMode";
+
 /**
- * 기본으로 잠그는 항목 — **노출은 잠그지 않는다** (2026-09-30 결정).
- * S26 Ultra 는 자동일 때 실제와 상관없는 고정값(노출 33ms·ISO 250, 색온도·초점 0)을 알려 줘서, 그 값으로 노출을 잠그면
- * 오히려 흔들렸다: 창가·불 끔 A/B 각 2회 — 노출 잠금 켬 정면 두 장 밝기 차 +7.5·+4.8 / 끔 0.0·+0.3.
- * 정의서도 웹은 exposureLocked=false, 이마·흰자로 보정. 색·초점은 기기가 실제 값(0 이 아닌 값)을 알려 줄 때만 잠근다
+ * 기본으로 잠그는 항목 — **아무것도 잠그지 않는다** (2026-10-01 #267). 카메라는 자동 그대로, 조명 차이는 이마·흰자 기준과 촬영 조건이 막는다.
+ * 기기가 알려 주는 "지금 값" 을 믿을 수 없는 경우가 계속 나왔다:
+ *  - S26 Ultra: 자동일 때 늘 노출 33ms·ISO 250·색온도 0·초점 0 (가짜) → 노출 잠금이 오히려 흔들림 (9/30 A/B, 정면 L* 차 켬 +7.5·+4.8 / 끔 0.0·+0.3)
+ *  - Windows 크롬 웹캠: 색온도를 실제와 다르게 알려 줘서 색 고정을 걸면 화면이 파래짐 (② 웹캠·팀원 웹캠, #267)
+ * 잠그지 않아도 색 흔들림은 기준 안 (S26 B 회차 dAB ≤ 3.2, 정면 기준 6). iPhone 은 원래 잠금이 안 되는데도 잘 찍혔다. 정의서도 웹은 exposureLocked=false.
+ * 비교용으로 ALL_LOCKS 나 항목을 직접 넘길 수 있다 (주소 ?lock=all|wb|wbfocus).
  */
-export const DEFAULT_LOCKS = ["whiteBalanceMode", "focusMode"] as const;
+export const DEFAULT_LOCKS: readonly LockKey[] = [];
+/** 비교 시험용 — 전부 잠금 (?lock=all) */
+export const ALL_LOCKS: readonly LockKey[] = ["whiteBalanceMode", "exposureMode", "focusMode"];
 
 /**
  * 'manual' 로 바꿀 때 **지금 값을 같이 넘기는** 칸. 'manual' 만 보내면 Android Chrome 은 기본 노출 시간·색온도로 바꿔
@@ -65,12 +71,12 @@ const LOCK_VALUE: Record<"whiteBalanceMode" | "exposureMode" | "focusMode", read
  * 순서: 1) 'continuous' 로 두고 안정될 시간을 준 뒤(호출 쪽) 2) 이 함수로 'manual' 전환 — **그 순간의 값(getSettings)을 그대로 고정**.
  * manual 이 지원 목록에 없거나, 지금 값을 못 읽으면(노출 시간·색온도) 건너뛴다. applyConstraints 가 throw 하면 failed.
  */
-export async function applyCameraLocks(track: TrackLike, only?: readonly ("whiteBalanceMode" | "exposureMode" | "focusMode")[]): Promise<LockReport> {
+export async function applyCameraLocks(track: TrackLike, only: readonly LockKey[] = DEFAULT_LOCKS): Promise<LockReport> {
   const caps: CameraCaps = track.getCapabilities ? track.getCapabilities() : {};
   const capsSupported = !!track.getCapabilities;
   const errors: NonNullable<LockReport["errors"]> = {};
   const tryLock = async (key: "whiteBalanceMode" | "exposureMode" | "focusMode"): Promise<LockReport["whiteBalance"]> => {
-    if (only && !only.includes(key)) return "unsupported";
+    if (!only.includes(key)) return "unsupported";
     const modes = caps[key];
     if (!modes || !modes.includes("manual")) return "unsupported";
     const now = track.getSettings ? track.getSettings() : {};
@@ -101,7 +107,10 @@ export async function applyCameraLocks(track: TrackLike, only?: readonly ("white
   };
 }
 
-/** 잠금을 다시 자동으로 (촬영이 끝나면) */
+/**
+ * 잠금을 다시 자동으로. **카메라를 켤 때(앞 세션·다른 화면이 남긴 잠금 풀기)와 끌 때 둘 다** 부른다 (#267).
+ * PC 웹캠은 설정을 기기에 저장해서, 안 풀면 다음에 열어도 잠긴 채(하얗게·파랗게) 시작한다
+ */
 export async function releaseCameraLocks(track: TrackLike): Promise<void> {
   const caps: CameraCaps = track.getCapabilities ? track.getCapabilities() : {};
   const adv: Record<string, string>[] = [];
