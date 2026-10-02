@@ -205,17 +205,12 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
       const fadeQ = q.get("fade"), fadeR = fadeQ?.match(/^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/);
       // 개발용 ?jump: 브러시·손이 얼굴 앞에 있을 때 눈 점이 얼마나 튀나 (머리 움직임 뺀 눈 점 이동, 눈 폭 %) — 관찰 2026-10-02
       const jump = q.has("jump") ? createJumpProbe() : null;
-      // 같은 눈금으로 '그린 테두리 점' 도 — I안(모양 변화만 천천히) 효과를 MediaPipe 점과 나란히 본다
-      const jumpDrawn = q.has("jump") ? createJumpProbe() : null;
-      // 개발용 ?eyesm=0 끄기 · ?eyesm=1.5-0.05 (기준-반응성) — I안 떨림 필터
-      const eyesmQ = q.get("eyesm"), eyesmR = eyesmQ?.match(/^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/);
       if (meter || poseCal || gateDbg || jump) {
         stage.append(readout);
         readout.addEventListener("click", () => {
           meter?.view.reset(); meter?.line.reset();
           poseCal?.reset();
           jump?.reset();
-          jumpDrawn?.reset();
         });
       }
       const line = el("p", "cam-gate", LIVE_TEXT.loading);
@@ -235,7 +230,6 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         guide: deps.getGuide?.() ?? lookGuide(deps.getLookParts()),
         smooth: stab,
         // 개발용 ?g=: 먼 쪽 눈 틀 맞추기 다듬기를 하나씩 켜서 비교 (1 눈머리 고정 · 2 눈썹 앞쪽 절반 · 3 높이 제한 · h 눈꼬리를 눈썹으로). 없으면 23h
-        ...(eyesmQ === "0" ? { eyeSmooth: null } : eyesmR ? { eyeSmooth: { minCutoff: Number(eyesmR[1]), beta: Number(eyesmR[2]), dCutoff: 1 } } : {}),
         ...(fadeQ === "0" ? { fade: null } : fadeR ? { fade: { ...FAR_FADE, from: Number(fadeR[1]), to: Number(fadeR[2]) } } : {}),
         ...(q.has("g") ? { farEye: { anchorInner: (q.get("g") ?? "").includes("1"), browHalf: (q.get("g") ?? "").includes("2"), capHeight: (q.get("g") ?? "").includes("3"), outerFromBrow: (q.get("g") ?? "").includes("h") } } : {}),
       });
@@ -322,9 +316,10 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         }
         if (jump) {
           // 다른 개발용 표시가 있으면 그 아래 줄로
-          const j = `점  ${jump.step(lm, now)}\n선  ${jumpDrawn!.step(r.drawn, now)}`;
+          const j = jump.step(lm, now);
           readout.style.whiteSpace = "pre";
-          readout.textContent = gateDbg || poseCal ? `${readout.textContent}\n${j}` : j;
+          readout.textContent = gateDbg || poseCal ? `${readout.textContent}
+${j}` : j;
         }
         const vm = drawView(view, video, shown, r.outline, dots && lm ? EYE_DOTS.map((i) => lm[i]!) : null, r.alpha);
         if (meter && vm && r.outline) {
