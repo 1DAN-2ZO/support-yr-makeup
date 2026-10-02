@@ -114,8 +114,8 @@ class Server:
             *exe,
             "-m",
             self.cfg["gguf"],
-            "--mmproj",
-            self.cfg["mmproj"],
+            # 텍스트 전용 모델(화면 6 코멘트 실험 eval/comment)은 mmproj 가 없다
+            *(["--mmproj", self.cfg["mmproj"]] if self.cfg.get("mmproj") else []),
             "-ngl",
             "99",
             "-np",
