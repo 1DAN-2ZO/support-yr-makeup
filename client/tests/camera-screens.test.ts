@@ -180,12 +180,12 @@ describe("화면 4 확인받기", () => {
   const TURNED = FACE.map((p, i) => (i === 1 || i === 4 ? { x: p.x + D * 0.11, y: p.y } : p));
   const seen = (lm: Pt[]): Res => ({ ...NO_FACE, faceLandmarks: [lm.map((p) => ({ x: p.x / 600, y: p.y / 600 }))] });
 
-  async function open(): Promise<{ root: HTMLElement; off: () => void }> {
+  async function open(part: "liner" | "lip" = "liner"): Promise<{ root: HTMLElement; off: () => void }> {
     vi.spyOn(HTMLVideoElement.prototype, "videoWidth", "get").mockReturnValue(600);
     vi.spyOn(HTMLVideoElement.prototype, "videoHeight", "get").mockReturnValue(600);
     const ctx = ctxOf("live");
     const baseline = { lm: FACE, unit: { eye: 60, lip: 100, face: 300 }, foreheadL: 62, w: 600, h: 600, expression: null } as unknown as Baseline;
-    const deps: LiveDeps = { getPart: () => "liner", getBaseline: () => baseline, getBaseAb: () => null, getLookParts: () => ({}), setCapture: vi.fn(), next: "result" };
+    const deps: LiveDeps = { getPart: () => part, getBaseline: () => baseline, getBaseAb: () => null, getLookParts: () => ({}), setCapture: vi.fn(), next: "result" };
     const off = liveScreen<null>(deps).mount(ctx) as () => void;
     await vi.advanceTimersByTimeAsync(100);
     return { root: ctx.root, off };
@@ -228,6 +228,27 @@ describe("화면 4 확인받기", () => {
       const rs = Array.from(root.querySelectorAll<HTMLInputElement>(".ar-tune input[type=range]"));
       expect(rs.map((r) => Number(r.value))).toEqual([LIVE_SMOOTH.minCutoff, LIVE_SMOOTH.beta, LIVE_SMOOTH.dCutoff]);
       off();
+    } finally {
+      window.history.pushState({}, "", "/");
+    }
+  });
+
+  it("LP4 입술을 가로 창에서 — 평소엔 '세로로 돌려 주세요' 로 막고, 주소에 ?norotate 면 안 막는다 (개발용 · PC 창은 늘 가로, #284 리뷰)", async () => {
+    // 이 묶음의 미디어 쿼리는 늘 가로 (matches: true)
+    const run = async (): Promise<{ text: string | null; disabled: boolean }> => {
+      const { root, off } = await open("lip");
+      detect.mockImplementation(() => seen(FACE));
+      for (let t = 1000; t < 1100; t += 33) cam.fire(t);
+      const r = { text: root.querySelector(".cam-gate")!.textContent, disabled: root.querySelector<HTMLButtonElement>("button.live-btn")!.disabled };
+      off();
+      return r;
+    };
+    expect(await run()).toEqual({ text: GATE_TEXT.toPortrait, disabled: true });
+    window.history.pushState({}, "", "/?norotate");
+    try {
+      const r = await run();
+      expect(r.text).not.toBe(GATE_TEXT.toPortrait);
+      expect(r.disabled).toBe(false);
     } finally {
       window.history.pushState({}, "", "/");
     }
