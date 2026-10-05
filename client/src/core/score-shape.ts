@@ -738,3 +738,304 @@ export function scoreLinerPair(open: LinerFramePair, closed: LinerFramePair, gui
   const merged = (k: Side): LinerEnds => ({ ...ends[k], overflow: Math.max(ends[k].overflow, perO?.[k].overflow ?? 0), wingDrawn: Math.max(ends[k].wingDrawn, perO?.[k].wingDrawn ?? 0), present: ends[k].present || (o.result.present && !!perO) });
   return { result: linerEndsResult({ R: merged("R"), L: merged("L") }, p), ctx: c.ctx, route: "liner_pair" };
 }
+
+// ---------- 라이너 꼬리 — 눈꼬리 부채꼴 훑기 ----------
+
+/**
+ * 부채꼴 격자 · 칸 값 · 덩어리 뽑기 — 파이썬 원형(2026-10-05 조사, $DHE_DATA_DIR/work/liner-methods/wing-fan-sweep/ common.py · 02_probe.py)의 값 그대로.
+ *   degLo~degHi·degStep = 각도(도, 눈머리→눈꼬리 축 기준 · 위가 +), rMax·rStep = 중심에서 거리(눈 폭 비율) — 61 × 46칸. 0.45 는 개인화 가이드 꼬리(12%)의 3배 넘게
+ *   boxDiv = 칸 평균 창 = 눈 폭 / boxDiv (LINER_STROKE 와 같다 — 가는 선이 묻히지 않게 작게)
+ *   far    = 이 거리 밖 칸의 중앙값 차로 두 사진의 밝기 · 색 차이를 맞춘다 (꼬리가 닿아도 그 칸의 일부다)
+ *   hatArc = 톱햇 창(한쪽, 호 길이 · 눈 폭 비율) — 이보다 가는 어두운 것만 '선'. nearR = 호 길이를 각도 칸 수로 바꿀 때 거리의 하한
+ *   tolArc·tolRow = 맨얼굴의 선이 이만큼(호 길이 · 거리 줄 수) 어긋나 있어도 같은 선으로 보고 뺀다 (linerStroke 의 tolOff · tolRow 와 같은 생각)
+ *   th     = '바뀐 칸' 기준 — hat 7 = LINER_STROKE.minL, dE 14 = rules/score.json dEThresh.liner, dark 10 = 가정값
+ *   rMin   = 이 안쪽은 안 본다(중심 점 바로 옆), startMax = 덩어리가 이 안에서 시작해야 꼬리(눈꼬리에 이어진 선), minExt = 이만큼은 뻗어야 꼬리
+ */
+export const LINER_FAN = { degLo: -40, degHi: 80, degStep: 2, rMax: 0.45, rStep: 0.01, boxDiv: 60, far: 0.2, hatArc: 0.08, nearR: 0.03, tolArc: 0.016, tolRow: 2, th: { hat: 7, dE: 14, dark: 10 }, rMin: 0.03, startMax: 0.2, minExt: 0.03 };
+const FAN_DEG: readonly number[] = Array.from({ length: Math.round((LINER_FAN.degHi - LINER_FAN.degLo) / LINER_FAN.degStep) + 1 }, (_, j) => LINER_FAN.degLo + j * LINER_FAN.degStep);
+const FAN_RR: readonly number[] = Array.from({ length: Math.round(LINER_FAN.rMax / LINER_FAN.rStep) + 1 }, (_, i) => +(i * LINER_FAN.rStep).toFixed(4));
+
+/**
+ * 칸 값 — 원형이 견준 세 가지.
+ *   hat  = 각도 방향 블랙 톱햇: 두 사진에서 각각 '가는 어두운 선' 을 뽑아 확인 사진에만 있는 것 (linerStroke 를 부채꼴 위에서)
+ *   dE   = 칸 색 차이 · dark = 어두워진 양(L*)
+ * 기본은 hat — 맨얼굴끼리 대조에서 가장 안전했다. 눈 폭 3% 어긋남에 가짜 꼬리 hat 10~19% · dE 35~41% · dark 47~52% (liner_wing.mjs, 22눈 × 8방향.
+ * 원형은 142눈에서 8~33% · 25~33% · 34~67%). 크기 5% · 흐림 · 해상도 차만으로는 셋 다 거의 없다. 눈꼬리에서 떨어진 넓은 그늘도 '가는 선' 이 아니라 안 읽는다.
+ * 대신 눈 뜬 장의 짧은 꼬리는 못 본다 — 꼬리 뿌리 자리가 원래 어두워 가는 선으로 안 보인다 (가이드 길이에서 자르면 12눈 중 4눈) → 짧은 꼬리는 눈 감은 장으로 (scoreLinerWing)
+ */
+export type FanValue = "hat" | "dE" | "dark";
+
+export interface FanTip {
+  /** 중심(눈꼬리 · 눈머리)에서 이어진 새 선을 찾았나 */
+  found: boolean;
+  /** 선 끝의 거리 (눈 폭 비율). 못 찾으면 0 */
+  r: number;
+  /** 선 끝의 각도 (도, 눈머리→눈꼬리 축 기준 · 위가 +. 눈머리 쪽은 눈꼬리→눈머리 축). 끝의 '자리' 각이고 획의 방향이 아니다. 못 찾으면 0 */
+  deg: number;
+  /** 선이 보이기 시작하는 거리 (눈 폭 비율) */
+  from: number;
+  /** 선 끝의 자리 (확인 사진 px). 못 찾으면 null */
+  at: Pt | null;
+  /** 이 값을 잴 때 쓴 미세 맞춤 (scoreLinerWing 이 채운다) */
+  reg?: EyeShift;
+}
+
+export interface FanOptions {
+  /** 부채꼴 중심 — outer = 눈꼬리(꼬리), inner = 눈머리(눈머리 넘김). 안 주면 outer */
+  end?: "outer" | "inner";
+  value?: FanValue;
+  /** 확인 사진 쪽 눈 틀을 옮길 양 (px) — eyeShift 가 준 값 */
+  shift?: { x: number; y: number };
+}
+
+/** 부채꼴 · 맞춤 자리를 놓는 틀 — c = 중심, a = 눈 반대쪽 끝에서 중심으로 가는 방향(바깥), n = 그 수직(화면 위쪽), ue = 눈 폭(px) */
+interface EyeAxes { c: Pt; a: Pt; n: Pt; ue: number }
+
+function eyeAxes(f: SampleFrame, side: Side, end: "outer" | "inner", ue: number, shift?: { x: number; y: number }): EyeAxes {
+  const eye = side === "R" ? LM.eyeA : LM.eyeB, c = at(f.lm, end === "inner" ? eye.inner : eye.outer), o = at(f.lm, end === "inner" ? eye.outer : eye.inner);
+  const d = Math.hypot(c.x - o.x, c.y - o.y) || 1, a = { x: (c.x - o.x) / d, y: (c.y - o.y) / d };
+  let n = { x: -a.y, y: a.x };
+  if (n.y > 0) n = { x: -n.x, y: -n.y };
+  return { c: { x: c.x + (shift?.x ?? 0), y: c.y + (shift?.y ?? 0) }, a, n, ue };
+}
+
+/**
+ * 두 사진의 눈 틀. 눈 폭은 맨얼굴의 것(두 눈 평균)에, 확인 사진은 **그 눈이** 맞춤에서 커진 배율을 곱한다 —
+ * 눈마다 따로 맞추므로(refineParts) 두 눈 평균(unit.eye)을 쓰면 한쪽 눈의 칸이 어긋난다
+ */
+function eyeAxesPair(base: SampleFrame, cur: SampleFrame, side: Side, end: "outer" | "inner", shift?: { x: number; y: number }): [EyeAxes, EyeAxes] {
+  const eye = side === "R" ? LM.eyeA : LM.eyeB, span = (f: SampleFrame): number => Math.hypot(at(f.lm, eye.outer).x - at(f.lm, eye.inner).x, at(f.lm, eye.outer).y - at(f.lm, eye.inner).y);
+  return [eyeAxes(base, side, end, base.unit.eye), eyeAxes(cur, side, end, (base.unit.eye * span(cur)) / (span(base) || 1), shift)];
+}
+
+/** 호 길이(눈 폭 비율)를 거리 r 줄의 각도 칸 수로 */
+const arcCells = (arc: number, r: number): number => arc / Math.max(r, LINER_FAN.nearR) / ((LINER_FAN.degStep * Math.PI) / 180);
+
+/** 부채꼴 표본 [거리][각도] */
+function fanLab(f: SampleFrame, x: EyeAxes, degs: readonly number[] = FAN_DEG, rrs: readonly number[] = FAN_RR): Lab[][] {
+  const box = Math.max(1, Math.round(x.ue / LINER_FAN.boxDiv));
+  return rrs.map((r) => degs.map((deg) => {
+    const t = (deg * Math.PI) / 180, k = r * x.ue, c = Math.cos(t), s = Math.sin(t);
+    return labBox(f.im, x.c.x + k * (c * x.a.x + s * x.n.x), x.c.y + k * (c * x.a.y + s * x.n.y), box);
+  }));
+}
+
+/** 칸 값 지도 [거리][각도] — B = 맨얼굴, C = 확인 사진의 부채꼴 표본 */
+function fanMap(B: readonly (readonly Lab[])[], C: readonly (readonly Lab[])[], value: FanValue): number[][] {
+  if (value === "hat") {
+    // 꼬리는 중심에서 바깥으로 뻗으니 가로지르는 쪽(각도)으로 가는 것이 선이다. 창은 호 길이로 같게 — 가까운 줄일수록 칸 수가 많다
+    const hat = (S: readonly (readonly Lab[])[]): number[][] => S.map((row, i) => topHat(row.map((c) => c.L), 0, Math.round(Math.min(Math.floor(FAN_DEG.length / 2), arcCells(LINER_FAN.hatArc, FAN_RR[i]!)))));
+    const hb = hat(B), hc = hat(C);
+    return hc.map((row, i) => {
+      const dj = Math.max(1, Math.round(arcCells(LINER_FAN.tolArc, FAN_RR[i]!)));
+      return row.map((v, j) => {
+        let was = 0;
+        for (let a = Math.max(0, i - LINER_FAN.tolRow); a <= Math.min(hb.length - 1, i + LINER_FAN.tolRow); a++) for (let b = Math.max(0, j - dj); b <= Math.min(row.length - 1, j + dj); b++) was = Math.max(was, hb[a]![b]!);
+        return Math.max(0, v - was);
+      });
+    });
+  }
+  const far = (k: keyof Lab): number => medianOf(B.flatMap((row, i) => (FAN_RR[i]! >= LINER_FAN.far ? row.map((c, j) => c[k] - C[i]![j]![k]) : [])));
+  const off = { L: far("L"), a: far("a"), b: far("b") };
+  return B.map((row, i) => row.map((c, j) => { const m = C[i]![j]!; return value === "dark" ? c.L - (m.L + off.L) : Math.hypot(c.L - m.L - off.L, c.a - m.a - off.a, c.b - m.b - off.b); }));
+}
+
+/**
+ * 지도에서 꼬리를 뽑는다 — 기준 넘는 칸을 3×3 닫기로 잇고, 이어 붙인 덩어리(8방향) 중 중심 가까이에서 시작해 **가장 멀리 간 것**.
+ * 끝 = 그 덩어리의 가장 먼 줄, 끝 각도 = 가장 먼 두 줄 칸의 값 가중 평균. 가이드는 보지 않는다 (재고 난 뒤 견준다)
+ */
+function fanTip(V: readonly (readonly number[])[], th: number): { from: number; r: number; deg: number } | null {
+  const nt = FAN_DEG.length, cells = (v: number): number => Math.round(v / LINER_FAN.rStep);
+  const hit = V.map((row, i) => row.map((v) => i >= cells(LINER_FAN.rMin) && v >= th));
+  /** 3×3 이웃이 (all ? 전부 : 하나라도) 켜져 있나. 격자 밖 칸은 없는 셈 친다 */
+  const near = (m: readonly (readonly boolean[])[], i: number, j: number, all: boolean): boolean => {
+    for (let a = i - 1; a <= i + 1; a++) for (let b = j - 1; b <= j + 1; b++) { const v = m[a]?.[b]; if (v !== undefined && v !== all) return !all; }
+    return all;
+  };
+  const dil = hit.map((row, i) => row.map((_, j) => near(hit, i, j, false))), on = dil.map((row, i) => row.map((_, j) => near(dil, i, j, true)));
+  let best: { lo: number; hi: number; at: number[] } | null = null;
+  for (let i0 = 0; i0 < on.length; i0++) {
+    for (let j0 = 0; j0 < nt; j0++) {
+      if (!on[i0]![j0]) continue;
+      const blob: number[] = [], todo = [i0 * nt + j0];
+      on[i0]![j0] = false;
+      let lo = i0, hi = i0;
+      while (todo.length) {
+        const k = todo.pop()!, i = Math.floor(k / nt), j = k % nt;
+        blob.push(k); lo = Math.min(lo, i); hi = Math.max(hi, i);
+        for (let a = i - 1; a <= i + 1; a++) for (let b = j - 1; b <= j + 1; b++) if (on[a]?.[b]) { on[a]![b] = false; todo.push(a * nt + b); }
+      }
+      if (lo <= cells(LINER_FAN.startMax) && hi - lo >= cells(LINER_FAN.minExt) && (!best || hi > best.hi)) best = { lo, hi, at: blob };
+    }
+  }
+  if (!best) return null;
+  let sw = 0, sd = 0;
+  for (const k of best.at) { const i = Math.floor(k / nt), j = k % nt; if (i >= best.hi - 1) { const w = Math.max(V[i]![j]!, 1e-6); sw += w; sd += w * FAN_DEG[j]!; } }
+  return { from: FAN_RR[best.lo]!, r: FAN_RR[best.hi]!, deg: sd / sw };
+}
+
+/**
+ * 부채꼴 꼬리 찾기 — 눈꼬리(또는 눈머리) 점을 중심으로 각도 × 거리 부채꼴을 두 사진에 놓고, 확인 사진에만 있는 선의 끝(거리 · 각도)을 낸다.
+ * base · cur = 같은 눈 상태끼리(눈 뜬 장끼리 · 눈 감은 장끼리)의 맨얼굴 · 확인 프레임. 확인 프레임의 얼굴 점은 앱처럼 맨얼굴 점을 옮긴 것(alignedFrame).
+ * 지금까지(linerEnds · linerStroke)는 가이드 꼬리 선 둘레 띠에서만 재서, 가이드와 다른 각도로 그린 꼬리는 길이가 가이드 길이쯤에서 끊겼다 (liner_real).
+ * 한계: 눈꼬리 점이 어긋난 만큼 거리 · 각도가 틀어진다 — 꼬리를 그리면 얼굴 점의 눈꼬리가 꼬리 쪽으로 밀린다(감은 눈 2~4%) → eyeShift 로 되돌려서 부른다
+ */
+export function linerFan(base: SampleFrame, cur: SampleFrame, side: Side, o: FanOptions = {}): FanTip {
+  const value = o.value ?? "hat", [xb, xc] = eyeAxesPair(base, cur, side, o.end ?? "outer", o.shift);
+  const t = fanTip(fanMap(fanLab(base, xb), fanLab(cur, xc), value), LINER_FAN.th[value]);
+  if (!t) return { found: false, r: 0, deg: 0, from: 0, at: null };
+  const rad = (t.deg * Math.PI) / 180, k = t.r * xc.ue, c = Math.cos(rad), s = Math.sin(rad);
+  return { found: true, ...t, at: { x: xc.c.x + k * (c * xc.a.x + s * xc.n.x), y: xc.c.y + k * (c * xc.a.y + s * xc.n.y) } };
+}
+
+/**
+ * 미세 맞춤 (가정값 — 골든 세트로 맞춘다). range = 옮겨 볼 범위(눈 폭 비율, 가로·세로 각각),
+ * degLo~degHi · rLo~rHi = 맞춤에 쓰는 자리: 중심(눈꼬리 · 눈머리)의 **아래쪽** 부채꼴 (각도 · 거리는 LINER_FAN 과 같은 틀) — 꼬리를 찾는 부채꼴(-40도 위)과 겹치지 않는다.
+ * degStep · rStep = 표본 간격, hp = 무늬를 뽑을 때 빼는 둘레 평균의 창(칸, 한쪽),
+ * minFit = 맞춘 자리에서 두 사진 무늬의 상관이 이만큼은 돼야, minGain = 안 옮긴 자리보다 상관이 이만큼은 올라야 옮긴다 (무늬가 없거나 안 맞으면 잡음을 따라가지 않게)
+ */
+export const EYE_SHIFT = { range: 0.03, degLo: -130, degHi: -50, degStep: 4, rLo: 0.1, rHi: 0.45, rStep: 0.02, hp: 3, minFit: 0.3, minGain: 0.02 };
+
+export interface EyeShift {
+  /** 확인 사진 쪽 눈 틀을 옮길 양 (px) */
+  x: number;
+  y: number;
+  /** 그 자리에서 두 사진 무늬의 상관 (-1~1). 낮으면 두 사진의 그 자리가 서로 다르게 보인다 — 맞춤을 믿기 어렵다 */
+  fit: number;
+  /** 옮겨서 오른 상관. 0 이면 안 옮겼다 */
+  gain: number;
+  /** 범위 끝에서 멈췄나 — 실제 어긋남이 범위보다 클 수 있다 */
+  edge: boolean;
+}
+
+/**
+ * 미세 맞춤 — 두 사진의 눈 둘레 어긋남(평행 이동)을 **라이너가 닿지 않는 자리**의 화소로 찾는다: 눈꼬리(end = inner 면 눈머리) 아래쪽의 아랫눈꺼풀 끝 · 피부.
+ * 얼굴 점만 믿으면 안 된다: 꼬리를 그리면 얼굴 점의 눈꼬리가 꼬리 쪽으로 2~4% 밀리고(특히 감은 눈), 눈 폭 3% 어긋남이면 맨얼굴의 25~33% 에서 가짜 꼬리가 나왔다 (조사 2026-10-05).
+ * 꼬리를 찾는 부채꼴 안의 화소로 맞추면 그린 선에 끌려간다 — 그래서 그 아래쪽만 쓴다. 눈꼬리와 눈머리는 따로 맞춘다 (두 사진의 눈 폭이 다르게 잡히면 한쪽을 맞출 때 다른 쪽이 어긋난다).
+ * 견주는 것은 밝기가 아니라 **무늬**(둘레 평균을 뺀 밝기)의 상관 — 밝기 차로 맞추면, 따로 찍은 두 장에서는 조명의 완만한 기울기를 따라 범위 끝까지 끌려갔다 (다시 찍은 맨얼굴 8눈 중 7눈).
+ * 화소 단위로 옮겨 상관이 가장 높은 자리 (같으면 덜 옮긴 쪽)
+ */
+export function eyeShift(base: SampleFrame, cur: SampleFrame, side: Side, end: "outer" | "inner" = "outer"): EyeShift {
+  const [xb, xc] = eyeAxesPair(base, cur, side, end), E = EYE_SHIFT, steps = (lo: number, hi: number, d: number): number[] => Array.from({ length: Math.round((hi - lo) / d) + 1 }, (_, i) => lo + i * d);
+  const degs = steps(E.degLo, E.degHi, E.degStep), rrs = steps(E.rLo, E.rHi, E.rStep);
+  /** 그 자리의 무늬 — 밝기에서 둘레(±hp 칸) 평균을 뺀 것. 조명의 밝기 · 완만한 기울기가 빠진다 */
+  const texture = (f: SampleFrame, x: EyeAxes): number[] => {
+    const L = fanLab(f, x, degs, rrs).map((row) => row.map((c) => c.L));
+    return L.flatMap((row, i) => row.map((v, j) => {
+      let s = 0, n = 0;
+      for (let a = Math.max(0, i - E.hp); a <= Math.min(L.length - 1, i + E.hp); a++) for (let b = Math.max(0, j - E.hp); b <= Math.min(row.length - 1, j + E.hp); b++) { s += L[a]![b]!; n++; }
+      return v - s / n;
+    }));
+  };
+  const tb = texture(base, xb), sb = tb.reduce((s, v) => s + v * v, 0);
+  const fitAt = (dx: number, dy: number): number => {
+    const tc = texture(cur, { ...xc, c: { x: xc.c.x + dx, y: xc.c.y + dy } });
+    let sc = 0, dot = 0;
+    tc.forEach((v, k) => { sc += v * v; dot += v * tb[k]!; });
+    return sb * sc > 0 ? dot / Math.sqrt(sb * sc) : 0;
+  };
+  const r = Math.ceil(xc.ue * E.range), f0 = fitAt(0, 0);
+  let best = { x: 0, y: 0 }, bestF = f0, bestD = 0;
+  for (let dy = -r; dy <= r; dy++) {
+    for (let dx = -r; dx <= r; dx++) {
+      if (!dx && !dy) continue;
+      const f = fitAt(dx, dy), d = Math.hypot(dx, dy);
+      if (f > bestF + 1e-9 || (Math.abs(f - bestF) <= 1e-9 && d < bestD)) { best = { x: dx, y: dy }; bestF = f; bestD = d; }
+    }
+  }
+  if (bestF < E.minFit || bestF - f0 < E.minGain) return { x: 0, y: 0, fit: f0, gain: 0, edge: false };
+  return { ...best, fit: bestF, gain: bestF - f0, edge: Math.abs(best.x) === r || Math.abs(best.y) === r };
+}
+
+/**
+ * 꼬리 판정 (가정값 — 골든 세트로 맞춘다).
+ *   closedRatio = 같은 꼬리가 눈 감은 장에서는 눈 뜬 장의 몇 배 길이로 재지나. 눈 감은 장의 길이를 이 값으로 나눠 가이드(눈 뜬 눈 기준)와 견준다.
+ *     생성 사진 4명 8눈(같은 꼬리의 뜬 눈 · 감은 눈, liner_wing.mjs)에서 잰 비율 0.63~0.92 의 중앙값 (눈으로 읽은 끝으로는 0.68~1.03 · 중앙 0.77).
+ *     눈마다 크게 달라 이 값 하나로 환산하면 길이가 ±20% 쯤 틀릴 수 있고, 생성 사진이라 두 장이 정말 같은 꼬리라는 보장도 없다
+ */
+export const LINER_WING = { closedRatio: 0.73 };
+
+export type WingLength = "long" | "ok" | "short" | "none";
+
+export interface LinerWingEye {
+  /** 눈 뜬 장 · 눈 감은 장에서 잰 꼬리 (눈 감은 쌍이 없으면 closed 는 null) */
+  open: FanTip;
+  closed: FanTip | null;
+  /** 가이드 꼬리 길이 (눈 폭 비율, 눈 뜬 맨얼굴 기준) */
+  guide: number;
+  /** 길다 · 맞다 · 짧다 · 없음. 판정하지 않았으면 null (눈 감은 쌍이 없고 '길다' 가 아닐 때) */
+  length: WingLength | null;
+  /** 판정에 쓴 꼬리 길이 — 눈 뜬 눈 기준 (눈 감은 장에서 잰 값은 closedRatio 로 나눈 것). 판정하지 않았으면 null */
+  drawn: number | null;
+  /** 눈머리 쪽에서 잰 선 */
+  innerOpen: FanTip;
+  innerClosed: FanTip | null;
+  /** 눈머리 너머로 나간 길이 (눈 폭 비율, 눈 감은 장). 안 넘겼으면 0, 판정하지 않았으면 null */
+  innerOver: number | null;
+}
+
+export interface LinerWingOptions {
+  value?: FanValue;
+  /** false 면 미세 맞춤(eyeShift)을 건너뛴다 — 비교 실험용 */
+  register?: boolean;
+}
+
+/**
+ * 라이너 꼬리 채점 (실험) — **꼬리 길이 · 좌우 꼬리 길이 차 · 눈머리 넘김**만 본다 (결정 2026-10-05). 눈꺼풀 위의 선(두께 · 끊김 · 시작 자리)은 채점하지 않는다.
+ * 두 장의 역할 (조사 2026-10-05 · liner_wing.mjs, 그린 사진 20눈):
+ *   '길다'              = 눈 뜬 장 — 가이드보다 긴 꼬리는 눈 뜬 장에서도 잡히고, 가이드가 눈 뜬 눈 기준이라 길이를 그대로 견준다
+ *   '맞다 · 짧다 · 없음' = 눈 감은 장 — 가이드 길이 이하의 꼬리는 눈 뜬 장에서 자주 놓친다(꼬리 뿌리 자리가 맨얼굴에서 원래 어둡다). 감은 눈은 그 자리가 밝다.
+ *                         다만 같은 꼬리도 감은 눈에서는 가파르고 짧게 재져서(뜬 눈 -11~10도 · 22~34%, 감은 눈 39~51도 · 18~25%) closedRatio 로 환산해 견준다
+ *   좌우 길이 차         = 두 눈 다 찾은 장으로 — 눈 뜬 장 먼저, 아니면 눈 감은 장(환산)
+ *   눈머리 넘김          = 눈 감은 장 (짧은 선이라 꼬리의 '맞다 · 짧다' 와 같은 처지로 본 가정 — 넘긴 사진이 없어 어느 장이 나은지 모른다)
+ * 눈 감은 쌍이 없으면(null · 둘째 쌍이 눈 감은 장이 아님) '길다' 와 좌우 차만 판정한다.
+ * 진단 코드는 꼬리가 짧다 · 없다(LINER_WING_SHORT_R/L)만 codes 에, 새 지적(LINER_WING_LONG_R/L · LINER_INNER_OVER_R/L · LINER_WING_LR_LEN)은 metrics.endCodes 에.
+ * 점수는 지금 채점과 같은 자(scoreForm)의 꼬리 길이 감점 + 눈머리를 넘긴 만큼(linerEndsResult 와 같은 식). 허용 폭 안('맞다')은 깎지 않는다.
+ *   꼬리 감점의 상한이 20점이라 꼬리가 아무리 길어도 80점이다 — 채점 범위가 꼬리로 좁아진 데 맞춘 점수 식은 아직 정하지 않았다.
+ * 아무 선도 못 찾으면 present = false — 꼬리 없이 눈꺼풀에만 그린 것과 안 그린 것을 여기서는 못 가른다 (눈꺼풀 위는 안 본다).
+ * 한계: 따로 찍은 맨얼굴 쌍에서는 그린 것이 없는데도 꼬리를 읽는다 (같은 자리에서 다시 찍은 4눈 중 1눈 · 다른 날 8눈 중 4눈).
+ *   같은 자리 쌍의 가짜는 미세 맞춤이 범위 끝에 걸린 눈(FanTip.reg.edge)에서만 났다 — 얼굴 점 맞춤이 범위(±3%)보다 크게 어긋난 눈이다. eval/samples/shape/README.md
+ */
+export function scoreLinerWing(open: LinerFramePair, closed: LinerFramePair | null, guide: GuideSource, opts: LinerWingOptions = {}, p: ScoreParams = PARAMS): PartScore {
+  const g = guide("liner", open.base).liner, codes: PartScore["codes"] = [], endCodes: string[] = [];
+  if (!g) return { present: false, score: null, codes, lrIndex: null, metrics: { endCodes } };
+  const sides = ["R", "L"] as const;
+  const shut = closed && sides.every((k) => eyeClosed(closed.base.lm, k) && eyeClosed(closed.cur.lm, k)) ? closed : null;
+  // 부채꼴마다 그 중심(눈꼬리 · 눈머리) 아래 자리로 미세 맞춤을 하고 잰다
+  const fan = (q: LinerFramePair, k: Side, end: "outer" | "inner"): FanTip => {
+    const reg = opts.register === false ? null : eyeShift(q.base, q.cur, k, end);
+    return { ...linerFan(q.base, q.cur, k, { end, ...(opts.value ? { value: opts.value } : {}), ...(reg ? { shift: reg } : {}) }), ...(reg ? { reg } : {}) };
+  };
+  const fans = (q: LinerFramePair, k: Side): { wing: FanTip; inner: FanTip } => ({ wing: fan(q, k, "outer"), inner: fan(q, k, "inner") });
+  const eye = (k: Side): LinerWingEye => {
+    const o = fans(open, k), c = shut ? fans(shut, k) : null, guideLen = wingLenOf(open.base, g.wing[k]);
+    const seen = c?.wing.found ? c.wing.r / LINER_WING.closedRatio : 0;
+    const long = o.wing.found && o.wing.r > guideLen + p.tol.wingShort;
+    const length: WingLength | null = long ? "long" : !c ? null : !c.wing.found ? "none" : seen < guideLen - p.tol.wingShort ? "short" : "ok";
+    return {
+      open: o.wing, closed: c?.wing ?? null, guide: guideLen, length, drawn: long ? o.wing.r : c ? seen : null,
+      innerOpen: o.inner, innerClosed: c?.inner ?? null, innerOver: c ? (c.inner.found ? c.inner.r : 0) : null,
+    };
+  };
+  const per = { R: eye("R"), L: eye("L") };
+  // 좌우 길이 차 (R − L, 눈 뜬 눈 기준): 두 눈 다 찾은 장에서만 — 한쪽만 찾은 것은 '없음' 지적이 맡는다
+  const lrLen = per.R.open.found && per.L.open.found ? per.R.open.r - per.L.open.r
+    : per.R.closed?.found && per.L.closed?.found ? (per.R.closed.r - per.L.closed.r) / LINER_WING.closedRatio : null;
+  const present = sides.some((k) => per[k].open.found || !!per[k].closed?.found || (per[k].innerOver ?? 0) > 0);
+  if (!present) return { present, score: null, codes, lrIndex: null, metrics: { wing: per, lrLen, endCodes } };
+  for (const k of sides) {
+    const e = per[k];
+    if (e.length === "short" || e.length === "none") codes.push(`LINER_WING_SHORT_${k}`);
+    else if (e.length === "long") endCodes.push(`LINER_WING_LONG_${k}`);
+    if ((e.innerOver ?? 0) > LINER_ENDS.innerOver) endCodes.push(`LINER_INNER_OVER_${k}`);
+  }
+  // 허용 폭은 꼬리 높이 차용 값(tol.lrDiff)을 길이 차에 그대로 쓴다 — 가정값, 골든 세트로 맞춘다
+  if (lrLen !== null && Math.abs(lrLen) > p.tol.lrDiff) endCodes.push("LINER_WING_LR_LEN");
+  const avg = (f: (e: LinerWingEye) => number): number => (f(per.R) + f(per.L)) / 2;
+  // 길이 차는 눈마다 크기로 — 부호째 평균하면 한쪽은 길고 한쪽은 없을 때 서로 지워진다
+  const form = scoreForm({ coverage: 1, overflow: 0, wingDelta: avg((e) => (e.length === null || e.length === "ok" ? 0 : Math.abs((e.drawn ?? 0) - e.guide))) });
+  const innerPen = Math.min(20, (avg((e) => Math.max(0, (e.innerOver ?? 0) - LINER_ENDS.innerOver)) / ENDS_UNIT) * 8);
+  // 길이를 판정한 눈이 없으면(눈 감은 쌍이 없고 '길다' 도 아님) 점수를 내지 않는다 — 안 본 것을 '맞다' 로 치지 않는다
+  const judged = sides.some((k) => per[k].length !== null);
+  return { present, score: judged ? Math.round(Math.max(0, form - innerPen)) : null, codes, lrIndex: null, metrics: { wing: per, lrLen, endCodes } };
+}

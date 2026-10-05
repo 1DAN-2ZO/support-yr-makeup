@@ -3,13 +3,13 @@
 import { describe, expect, it } from "vitest";
 import { LM } from "@core/landmarks";
 import { frameOf } from "@core/sampling";
-import { browShape, lidEdge, liftLid, linerBand, linerEnds, linerEndsResult, linerStroke, routeOf, scoreHybrid, scoreLinerPair, shapeFill, tintFill, tintProgress } from "@core/score-shape";
-import { decide } from "@core/score";
+import { LINER_WING, browShape, eyeShift, lidEdge, liftLid, linerBand, linerEnds, linerEndsResult, linerFan, linerStroke, routeOf, scoreHybrid, scoreLinerPair, scoreLinerWing, shapeFill, tintFill, tintProgress, type LinerWingEye } from "@core/score-shape";
+import { PARAMS, decide, type PartScore, type Side } from "@core/score";
 import type { GuideSource } from "@core/score-part";
 import { rgbToLab } from "@core/color";
 import { sampleLiner } from "@core/sampling";
 import type { Pt } from "@core/types";
-import { BROWN, LMS, NATURAL, P, RED, SKIN, browPaint, geomOf, guide, image, linerPaint, lipPaint, naturalPaint, over, regionPaint, shifted, type Paint } from "./helpers/synth-face";
+import { BARE, BROWN, LMS, NATURAL, P, RED, SKIN, W, browPaint, eyeOf, geomOf, guide, image, linerPaint, lipPaint, naturalPaint, over, regionPaint, shifted, type Paint, type Rgb } from "./helpers/synth-face";
 
 const outline: Pt[] = [...LM.browA.upper.map(P), ...LM.browA.lower.map(P).reverse()];
 const frame = (p: Paint) => frameOf(image(p), LMS);
@@ -496,5 +496,220 @@ describe("라이너 기준선 — 얼굴 점 선이 아니라 맨얼굴의 어�
   it("P5 눈 감은 장이 없으면(둘째 쌍도 뜬 눈) 뜬 눈 채점 그대로", () => {
     const open = { base: frame(lashes), cur: frame(over(liner(), lashes)) };
     expect(scoreLinerPair(open, open, guide, { templateColor: INK }).route).toBe("liner_mix");
+  });
+});
+
+describe("라이너 꼬리 — 눈꼬리 부채꼴 훑기 (linerFan · eyeShift · scoreLinerWing)", () => {
+  // 조사(2026-10-05): 가이드 선 둘레 띠에서만 재면 가이드와 다른 각도로 그린 꼬리의 길이를 못 잰다 (liner_real: 가이드의 2배 꼬리 8눈 중 '길다' 한 번).
+  // 눈꼬리 점을 중심으로 각도 × 거리 부채꼴을 훑어 확인 사진에만 있는 가는 어두운 선의 끝을 꼬리 끝으로 본다 — 가이드는 재고 난 뒤 견주기만 한다
+  const INK: Rgb = [30, 25, 28], CREASE: Rgb = [150, 105, 90], MOLE: Rgb = [125, 90, 75];
+  const eyeW = NATURAL.unit.eye;
+  /**
+   * 눈꼬리(end = inner 면 눈머리)에서 바깥으로 뻗는 곧은 선 — 각도 deg(눈 축 기준, 위가 +), 거리 from~len(눈 폭 비율), 반 두께 half(px).
+   * 끝은 각지게 자른다 (둥글리면 반 두께만큼 길어져 길이를 그대로 못 견준다). 합성 얼굴의 눈 축은 수평이라 '위' 는 화면 위
+   */
+  const ray = (s: Side, deg: number, len: number, o: { end?: "outer" | "inner"; from?: number; half?: number; color?: Rgb } = {}): Paint => {
+    const c = P(o.end === "inner" ? eyeOf(s).inner : eyeOf(s).outer), far = P(o.end === "inner" ? eyeOf(s).outer : eyeOf(s).inner);
+    const t = (deg * Math.PI) / 180, d = { x: Math.sign(c.x - far.x) * Math.cos(t), y: -Math.sin(t) };
+    return (x, y) => {
+      const u = (x - c.x) * d.x + (y - c.y) * d.y, v = Math.abs((y - c.y) * d.x - (x - c.x) * d.y);
+      return u >= (o.from ?? 0) * eyeW && u <= len * eyeW && v <= (o.half ?? 2) ? o.color ?? INK : null;
+    };
+  };
+  const both = (f: (s: Side) => Paint): Paint => over(f("R"), f("L"));
+  /** 눈꼬리 아래 · 눈머리 아래의 점 — 라이너가 닿지 않는 자리의 무늬 (미세 맞춤이 이걸로 맞춘다). 왼쪽 눈은 거울상 */
+  const DOTS: readonly (readonly [number, number, number])[] = [[172, 268, 2], [160, 277, 2.5], [184, 281, 2], [166, 289, 2.5], [178, 262, 1.5], [258, 268, 2], [270, 277, 2.5], [246, 281, 2], [264, 289, 2.5]];
+  const underEye: Paint = (x, y) => { const mx = x > W / 2 ? W - x : x; return DOTS.some(([cx, cy, r]) => Math.hypot(mx - cx, y - cy) <= r) ? MOLE : null; };
+  /** 맨얼굴: 속눈썹 · 눈알 + 눈꼬리 주름(어긋나면 '새 선' 으로 읽힐 것) + 눈 밑 점. 한 번 그려 두고 화소를 꺼내 쓴다 (프레임을 수십 장 만든다) */
+  const skinIm = image(over(both((s) => ray(s, -25, 0.26, { from: 0.06, half: 1, color: CREASE })), over(underEye, naturalPaint)));
+  const skin: Paint = (x, y) => { if (x < 0 || y < 0 || x >= W || y >= skinIm.h) return null; const i = (y * W + x) * 4; return [skinIm.data[i]!, skinIm.data[i + 1]!, skinIm.data[i + 2]!]; };
+  const NAT = frame(skin);
+  const drawn = (p: Paint | null): Paint => (p ? over(p, skin) : skin);
+  /** 눈 감은 얼굴 점: 아랫눈꺼풀 점을 윗눈꺼풀 자리로 */
+  const closedLm = LMS.map((q) => ({ ...q }));
+  for (const [u, l] of [[159, 145], [158, 153], [386, 374], [385, 380]] as const) closedLm[l] = { ...closedLm[u]! };
+  const shut = (p: Paint) => frameOf(image(p), closedLm);
+
+  it("F1 가이드(30도 · 눈 폭 15%)와 다른 각도 · 길이의 꼬리를 그대로 잰다 — 가이드 띠 밖이어도", () => {
+    for (const [deg, len] of [[5, 0.3], [45, 0.2], [-15, 0.25]] as const) {
+      const t = linerFan(NAT, frame(drawn(ray("R", deg, len))), "R");
+      expect(t.found).toBe(true);
+      expect(Math.abs(t.r - len)).toBeLessThan(0.025);
+      expect(Math.abs(t.deg - deg)).toBeLessThan(4);
+    }
+    // 왼쪽 눈도 같은 부호 (위가 +, 바깥이 0도)
+    const l = linerFan(NAT, frame(drawn(ray("L", 20, 0.28))), "L");
+    expect(Math.abs(l.r - 0.28)).toBeLessThan(0.025);
+    expect(Math.abs(l.deg - 20)).toBeLessThan(4);
+  });
+
+  it("F2 맨얼굴끼리는 꼬리도 눈머리 넘김도 없다 (속눈썹 · 눈꼬리 주름이 있어도)", () => {
+    for (const s of ["R", "L"] as const) for (const end of ["outer", "inner"] as const) expect(linerFan(NAT, NAT, s, { end }).found).toBe(false);
+    expect(linerFan(BARE, BARE, "R").found).toBe(false);
+  });
+
+  it("F3 사진이 2~3px 어긋나면 눈꼬리 주름이 가짜 꼬리가 된다 — 미세 맞춤(eyeShift)으로 되돌리면 없다", () => {
+    // 얼굴 점은 그대로 두고 사진만 옮긴다 = 눈 틀이 그만큼 어긋난 것. 주름을 가로질러 2.5px 넘게 옮긴 경우들
+    for (const [dx, dy] of [[2, 3], [-3, -2], [0, 3]] as const) {
+      const cur = frame(shifted(skin, dx, dy));
+      expect(linerFan(NAT, cur, "R").found).toBe(true);
+      const sh = eyeShift(NAT, cur, "R");
+      expect([sh.x, sh.y]).toEqual([dx, dy]);
+      expect(linerFan(NAT, cur, "R", { shift: sh }).found).toBe(false);
+      expect(linerFan(NAT, cur, "R", { shift: sh, end: "inner" }).found).toBe(false);
+    }
+  });
+
+  it("F4 미세 맞춤은 그린 선에 끌려가지 않는다 — 라이너가 닿지 않는 눈꼬리 아래 자리로 맞춘다", () => {
+    const liner = over(ray("R", 8, 0.3), linerPaint());   // 눈꺼풀 선 + 가이드 꼬리 + 가이드보다 낮고 긴 꼬리
+    const cur = frame(shifted(drawn(liner), 2, -2));
+    const sh = eyeShift(NAT, cur, "R");
+    expect([sh.x, sh.y]).toEqual([2, -2]);
+    expect(sh.fit).toBeGreaterThan(0.95);   // 그 자리의 무늬가 그대로 겹친다
+    const t = linerFan(NAT, cur, "R", { shift: sh });
+    expect(Math.abs(t.r - 0.3)).toBeLessThan(0.025);
+    expect(Math.abs(t.deg - 8)).toBeLessThan(4);
+    // 눈머리 쪽은 눈머리 아래 자리로 따로 맞춘다
+    const inner = eyeShift(NAT, cur, "R", "inner");
+    expect([inner.x, inner.y]).toEqual([2, -2]);
+    // 맞출 무늬가 없으면(살색 판) 옮기지 않는다
+    const flat = eyeShift(BARE, frame(shifted(liner, 2, -2)), "R");
+    expect([flat.x, flat.y]).toEqual([0, 0]);
+  });
+
+  it("F7 두 사진의 밝기가 달라도(전체가 어둡고 한쪽으로 기울게) 미세 맞춤은 무늬를 따라간다", () => {
+    // 견주는 것이 밝기가 아니라 무늬(둘레 평균을 뺀 밝기)의 상관이라 밝기 · 대비 · 완만한 기울기가 달라도 같은 자리를 찾는다
+    const lit = image(shifted(skin, -2, 1));
+    for (let y = 0; y < lit.h; y++) for (let x = 0; x < lit.w; x++) { const i = (y * lit.w + x) * 4, k = 0.6 + (0.3 * x) / lit.w; for (let c = 0; c < 3; c++) lit.data[i + c] = lit.data[i + c]! * k; }
+    const sh = eyeShift(NAT, frameOf(lit, LMS), "R");
+    expect([sh.x, sh.y]).toEqual([-2, 1]);
+  });
+
+  it("F5 눈머리 너머로 뺀 선은 눈머리 쪽 부채꼴이 잰다 — 눈꼬리 쪽 부채꼴에는 안 걸린다", () => {
+    const cur = frame(drawn(ray("R", -10, 0.1, { end: "inner" })));
+    const t = linerFan(NAT, cur, "R", { end: "inner" });
+    expect(t.found).toBe(true);
+    expect(Math.abs(t.r - 0.1)).toBeLessThan(0.025);
+    expect(linerFan(NAT, cur, "R").found).toBe(false);
+  });
+
+  it("F6 눈꼬리 바깥의 넓은 그늘은 꼬리가 아니다 — 기본 칸 값(각도 방향 톱햇)은 가는 선만 본다. 색 차이로 보면 꼬리로 읽는다", () => {
+    const corner = P(LM.eyeA.outer);
+    // 눈꼬리 바깥 아래쪽, 눈 폭 15% 밖 전부. (그보다 안쪽까지 닿는 그늘은 톱햇도 가는 것으로 읽는다 — 가까운 줄은 각도 창이 넓다)
+    const shade: Paint = (x, y) => (x < corner.x && y > corner.y && Math.hypot(x - corner.x, y - corner.y) >= 0.15 * eyeW ? [150, 108, 86] : null);
+    const cur = frame(drawn(shade));
+    expect(linerFan(NAT, cur, "R").found).toBe(false);
+    expect(linerFan(NAT, cur, "R", { value: "dE" }).found).toBe(true);
+    // 그늘 위에 그린 꼬리는 잡는다
+    const t = linerFan(NAT, frame(over(ray("R", -10, 0.3), drawn(shade))), "R");
+    expect(Math.abs(t.r - 0.3)).toBeLessThan(0.025);
+  });
+
+  // ---- 판정 (scoreLinerWing): 꼬리 길이 · 좌우 꼬리 길이 차 · 눈머리 넘김 ----
+  /** open · closed = 눈 뜬 장 · 눈 감은 장에 그린 것 (null = 안 그림 · 안 보임). closed 를 안 주면 눈 감은 쌍이 없다 */
+  const wing = (open: Paint | null, closed?: Paint | null, gs: GuideSource = guide): PartScore => scoreLinerWing(
+    { base: NAT, cur: frame(drawn(open)) },
+    closed === undefined ? null : { base: shut(skin), cur: shut(drawn(closed)) },
+    gs);
+  const extra = (r: PartScore): string[] => (r.metrics as { endCodes?: string[] }).endCodes ?? [];
+  const eyes = (r: PartScore): Record<Side, LinerWingEye> => (r.metrics as { wing: Record<Side, LinerWingEye> }).wing;
+  /** 같은 꼬리가 눈 감은 장에서는 더 가파르고 짧게 재진다 (조사: 뜬 눈 -11~8도 · 23~34%, 감은 눈 36~51도 · 19~25%) — 눈 뜬 눈 기준 길이 len 의 꼬리를 눈 감은 장에 그린 것 */
+  const shutTail = (len: number, sides: readonly Side[] = ["R", "L"]): Paint => (x, y) => sides.map((s) => ray(s, 40, len * LINER_WING.closedRatio)(x, y)).find((c) => c) ?? null;
+  const innerOver = both((s) => ray(s, -10, 0.1, { end: "inner" }));
+  const GUIDE_LEN = 0.15;   // 시험용 가이드의 꼬리 길이 (synth-face guide)
+
+  it("W1 가이드보다 긴 꼬리는 눈 뜬 장으로 '길다'", () => {
+    const r = wing(both((s) => ray(s, 5, 0.32)), shutTail(0.32));
+    expect(r.present).toBe(true);
+    expect(extra(r)).toEqual(expect.arrayContaining(["LINER_WING_LONG_R", "LINER_WING_LONG_L"]));
+    expect(r.codes).toEqual([]);
+    expect(eyes(r).R.length).toBe("long");
+    expect(Math.abs(eyes(r).R.drawn! - 0.32)).toBeLessThan(0.025);
+    expect(Math.abs(eyes(r).R.guide - GUIDE_LEN)).toBeLessThan(0.005);
+  });
+
+  it("W2 가이드 길이 꼬리는 눈 뜬 장에서 놓쳐도 눈 감은 장에서 잡히면 '맞다' — 지적 없음", () => {
+    const r = wing(null, shutTail(GUIDE_LEN));   // 눈 뜬 장에서는 안 보였다 (꼬리 뿌리 자리가 원래 어둡다)
+    expect(r.present).toBe(true);
+    expect(eyes(r).R.length).toBe("ok");
+    expect(eyes(r).L.length).toBe("ok");
+    expect(Math.abs(eyes(r).R.drawn! - GUIDE_LEN)).toBeLessThan(0.04);
+    expect(r.codes).toEqual([]);
+    expect(extra(r)).toEqual([]);
+    // 눈 뜬 장에서도 보이면 그대로 '맞다'
+    expect(eyes(wing(both((s) => ray(s, 30, GUIDE_LEN)), shutTail(GUIDE_LEN))).R.length).toBe("ok");
+  });
+
+  it("W3 눈 감은 장에서도 꼬리가 없으면 '짧다 · 없음' — 그쪽 눈에 '꼬리가 짧아요'", () => {
+    const r = wing(null, shutTail(GUIDE_LEN, ["R"]));
+    expect(r.codes).toEqual(["LINER_WING_SHORT_L"]);
+    expect(eyes(r).L.length).toBe("none");
+    expect(eyes(r).R.length).toBe("ok");
+    // 가이드 꼬리가 길 때: 찾았지만 가이드보다 허용 폭 넘게 짧으면 '짧다'
+    const longGuide: GuideSource = (partId, f) => {
+      const g0 = guide(partId, f), ext = (w: readonly [Pt, Pt]): readonly [Pt, Pt] => [w[0], { x: w[0].x + (w[1].x - w[0].x) * 2, y: w[0].y + (w[1].y - w[0].y) * 2 }];
+      return g0.liner ? { liner: { ...g0.liner, wing: { R: ext(g0.liner.wing.R), L: ext(g0.liner.wing.L) } } } : g0;
+    };
+    const s = wing(null, shutTail(GUIDE_LEN), longGuide);
+    expect(eyes(s).R.length).toBe("short");
+    expect(s.codes).toEqual(expect.arrayContaining(["LINER_WING_SHORT_R", "LINER_WING_SHORT_L"]));
+  });
+
+  it("W4 눈 감은 쌍이 없으면(null) '길다' 와 좌우 차만 판정한다 — '맞다 · 짧다 · 없음' 과 눈머리 넘김은 판정하지 않는다", () => {
+    const long = wing(ray("R", 5, 0.32));
+    expect(extra(long)).toEqual(["LINER_WING_LONG_R"]);
+    expect(long.codes).toEqual([]);   // 왼쪽 꼬리가 안 보여도 '짧아요' 를 붙이지 않는다 — 눈 뜬 장은 짧은 꼬리를 자주 놓친다
+    expect(eyes(long).L.length).toBeNull();
+    expect(eyes(long).L.closed).toBeNull();
+    const over1 = wing(innerOver);
+    expect(extra(over1)).toEqual([]);
+    expect(eyes(over1).R.innerOver).toBeNull();
+    // 눈 뜬 장에서 가이드 길이 꼬리가 보여도 '맞다' 로 치지 않는다 — 판정한 것이 없으니 점수도 없다
+    const seen = wing(both((s) => ray(s, 30, GUIDE_LEN)));
+    expect(seen.present).toBe(true);
+    expect(eyes(seen).R.open.found).toBe(true);
+    expect(eyes(seen).R.length).toBeNull();
+    expect(seen.score).toBeNull();
+    expect(seen.codes).toEqual([]);
+    // 둘째 쌍이 눈 감은 장이 아니면 없는 것으로 본다
+    const open = { base: NAT, cur: frame(drawn(ray("R", 5, 0.32))) };
+    expect(eyes(scoreLinerWing(open, open, guide)).L.length).toBeNull();
+  });
+
+  it("W5 좌우 꼬리 길이가 허용 폭 넘게 다르면 알린다", () => {
+    const r = wing(over(ray("R", 5, 0.32), ray("L", 5, 0.24)));
+    const lr = (r.metrics as { lrLen: number | null }).lrLen!;
+    expect(Math.abs(lr - 0.08)).toBeLessThan(0.03);   // R − L
+    expect(lr).toBeGreaterThan(PARAMS.tol.lrDiff);
+    expect(extra(r)).toContain("LINER_WING_LR_LEN");
+    expect(extra(wing(both((s) => ray(s, 5, 0.32))))).not.toContain("LINER_WING_LR_LEN");
+    // 눈 뜬 장에서 안 보인 꼬리는 눈 감은 장의 길이로 견준다
+    const c = wing(null, over(shutTail(0.3, ["R"]), shutTail(0.16, ["L"])));
+    expect(extra(c)).toContain("LINER_WING_LR_LEN");
+    expect((c.metrics as { lrLen: number | null }).lrLen!).toBeGreaterThan(0.08);
+  });
+
+  it("W6 눈머리 너머로 뺀 선은 '눈머리를 넘겼다'", () => {
+    const r = wing(null, over(innerOver, shutTail(GUIDE_LEN)));
+    expect(extra(r)).toEqual(expect.arrayContaining(["LINER_INNER_OVER_R", "LINER_INNER_OVER_L"]));
+    expect(Math.abs(eyes(r).R.innerOver! - 0.1)).toBeLessThan(0.025);
+    expect(eyes(wing(null, shutTail(GUIDE_LEN))).R.innerOver).toBe(0);
+  });
+
+  it("W7 맨얼굴끼리는 그린 게 없다 — 점수도 지적도 없다", () => {
+    for (const r of [wing(null, null), wing(null)]) {
+      expect(r.present).toBe(false);
+      expect(r.score).toBeNull();
+      expect(r.codes).toEqual([]);
+      expect(extra(r)).toEqual([]);
+    }
+  });
+
+  it("W8 점수 — 맞게 그린 꼬리 > 길게 뺀 꼬리 · 눈머리를 넘긴 것 · 한쪽 꼬리가 없는 것", () => {
+    const ok = wing(null, shutTail(GUIDE_LEN)).score!;
+    expect(ok).toBeGreaterThanOrEqual(90);
+    expect(wing(both((s) => ray(s, 5, 0.32)), shutTail(0.32)).score!).toBeLessThan(ok - 10);
+    expect(wing(null, over(innerOver, shutTail(GUIDE_LEN))).score!).toBeLessThan(ok - 5);
+    expect(wing(null, shutTail(GUIDE_LEN, ["R"])).score!).toBeLessThan(ok - 5);
   });
 });
