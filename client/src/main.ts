@@ -31,6 +31,7 @@ import { LIGHTING_NOTE, lightingDiffers } from "./core/review";
 import { VlmFailure, createVlmClient, type VlmClient } from "./core/vlm-client";
 import { PROMPT_VER, planWithVlm, vlmSchema } from "./core/vlm-flow";
 import { measureFace } from "./core/face-measure";
+import { nowOrientation } from "./core/orientation-lock";
 import { resolvePlan, type PersonalPlan } from "./core/personalize";
 import { createPlanQueue } from "./core/plan-queue";
 import type { CaptureBundle } from "./core/types";
@@ -170,8 +171,8 @@ async function boot(): Promise<void> {
     setPart: (p) => {
       set(setCurrentPart(session, p));
     },
-    orientation: () =>
-      window.matchMedia("(orientation: landscape)").matches ? "landscape" : "portrait",
+    // 화면 3·4·5 와 같은 것 — 주소 ?norotate(개발용)면 방향 안내도 안 띄운다
+    orientation: nowOrientation,
   });
 
   // 카메라가 열릴 수 있는 곳인지 먼저 알려 준다. 안 그러면 "왜 안 되지"로 한참 헤맨다

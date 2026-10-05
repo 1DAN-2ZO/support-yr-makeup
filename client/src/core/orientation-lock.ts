@@ -20,8 +20,12 @@ export function rotateText(part: PartId): string {
   return wantedOrientation(part) === "landscape" ? GATE_TEXT.toLandscape : GATE_TEXT.toPortrait;
 }
 
-/** 지금 화면 방향. 알 수 없으면(테스트·옛 브라우저) null — 막지 않는다 */
+/**
+ * 지금 화면 방향. 알 수 없으면(테스트·옛 브라우저) null — 막지 않는다.
+ * 개발용: 주소에 ?norotate 면 늘 null — PC 창은 늘 가로라 입술·볼·쉐딩이 안 넘어가서 (#284 리뷰). 폰 기본 동작은 그대로
+ */
 export function nowOrientation(): Orientation | null {
+  if (typeof window !== "undefined" && new URLSearchParams(window.location?.search ?? "").has("norotate")) return null;
   const mq = typeof window !== "undefined" ? window.matchMedia?.("(orientation: landscape)") : undefined;
   if (!mq) return null;
   return mq.matches ? "landscape" : "portrait";

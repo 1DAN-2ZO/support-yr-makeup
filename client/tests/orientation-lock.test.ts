@@ -1,7 +1,7 @@
 // 부위마다 화면 방향을 지킨다 — 눈 부위(눈썹·라이너·섀도우)는 가로, 입술·볼·쉐딩은 세로 (팀 협의 2026-09-30 · 2026-10-01, 정의서 3-2)
 // 화면 4 는 게이트가 막고, 화면 3·5 는 방향이 틀리면 내용 대신 "가로로 / 세로로 돌려 주세요" 만
-import { describe, expect, it } from "vitest";
-import { mustRotate, rotateText } from "@core/orientation-lock";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { mustRotate, nowOrientation, rotateText } from "@core/orientation-lock";
 import { GATE_TEXT } from "@core/gate";
 
 describe("mustRotate", () => {
@@ -26,5 +26,25 @@ describe("mustRotate", () => {
     for (const p of ["brow", "liner", "shadow"] as const) expect(rotateText(p)).toBe(GATE_TEXT.toLandscape);
     for (const p of ["lip", "cheek", "contour"] as const) expect(rotateText(p)).toBe(GATE_TEXT.toPortrait);
     expect(GATE_TEXT.toPortrait).toBe("폰을 세로로 돌려 주세요");
+  });
+});
+
+describe("nowOrientation", () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+  const at = (search: string, landscape: boolean) =>
+    vi.stubGlobal("window", { matchMedia: () => ({ matches: landscape }), location: { search } });
+
+  it("O5 화면 방향을 미디어 쿼리로 읽는다", () => {
+    at("", true);
+    expect(nowOrientation()).toBe("landscape");
+    at("?gate", false);
+    expect(nowOrientation()).toBe("portrait");
+  });
+  it("O6 주소에 ?norotate 면 방향을 모르는 것으로(null) — 화면 3·4·5 와 위 안내 줄이 막지 않는다 (개발용 · PC 창은 늘 가로, #284 리뷰)", () => {
+    at("?norotate", true);
+    expect(nowOrientation()).toBeNull();
+    at("?gate&norotate", false);
+    expect(nowOrientation()).toBeNull();
+    expect(mustRotate("lip", nowOrientation())).toBe(false);
   });
 });
