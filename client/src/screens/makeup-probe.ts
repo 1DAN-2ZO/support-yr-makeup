@@ -851,13 +851,13 @@ const PICK_SUBREGIONS: Partial<Record<PickPart, { id: string; name: string; side
     { id: "underNostril", name: "콧볼 아래", side: false },
   ],
   highlight: [
-    { id: "foreheadCenter", name: "이마 가운데", side: true },
-    { id: "noseBridge", name: "콧대", side: true },
-    { id: "noseTip", name: "코끝", side: true },
+    { id: "foreheadCenter", name: "이마 가운데", side: false },
+    { id: "noseBridge", name: "콧대", side: false },
+    { id: "noseTip", name: "코끝", side: false },
     { id: "cheekTop", name: "광대 위 (눈꼬리 아래 바깥)", side: true },
     { id: "browBone", name: "눈썹 뼈", side: true },
     { id: "underAegyo", name: "애교살 아래", side: true },
-    { id: "chinTip", name: "턱끝", side: true },
+    { id: "chinTip", name: "턱끝", side: false },
   ],
 };
 /** 좌우를 따로 찍어야 하는 부위(regions 모드는 하위 영역마다 달라서 여기 안 두고 pickNeedsSide 에서 따로 본다) */
