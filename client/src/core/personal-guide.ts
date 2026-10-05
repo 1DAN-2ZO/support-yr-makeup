@@ -123,7 +123,6 @@ export function linerOutline(f: GuideFrame, thick: number, style?: LinerStyle): 
   });
 }
 
-/** 섀도 영역: 윗눈꺼풀 → 눈썹 아랫선 쪽으로 ratio 만큼 (② lookGuide 와 같은 계산). 눈꺼풀 점들 → 위 테두리(거꾸로) */
 /** 섀도우 눈꼬리 연장 길이 (눈 폭 비율) — ④ 실험 화면(makeup-probe.ts)과 같은 값. 블러보다 확실히 크게 잡은 눈대중값 */
 export const SHADOW_TAIL_RATIO = 0.35;
 
@@ -143,6 +142,7 @@ export function shadowTail(f: GuideFrame, regions: Record<Side, readonly Pt[]>, 
   });
 }
 
+/** 섀도 영역: 윗눈꺼풀 → 눈썹 아랫선 쪽으로 ratio 만큼 (② lookGuide 와 같은 계산). 눈꺼풀 점들 → 위 테두리(거꾸로) */
 export function shadowRegions(f: GuideFrame, ratio: number): Record<Side, Pt[]> {
   const P = (i: number): Pt => at(f.lm, i);
   return both(({ eye, brow }) => {
