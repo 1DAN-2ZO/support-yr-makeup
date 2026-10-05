@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <title>머리선 확인 — 당화응</title>
+    <!--
+      [dev 전용] 머리선 점(core/hairline.ts)을 실제 웹캠에서 확인한다 (2026-10-05).
+      MediaPipe 얼굴 점은 이마 중간(10번)까지라, 머리카락 분할로 이마 위 끝을 찾는다. 앞머리가 덮은 칸은 MediaPipe 선으로 되돌아간다.
+      앱 흐름과 상관없는 독립 페이지다. 사진은 저장하지 않는다.
+    -->
+    <style>
+      :root { color-scheme: light dark; --line: #8884; }
+      body { margin: 0; padding: 16px; font: 14px/1.5 system-ui, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; background: Canvas; color: CanvasText; }
+      h1 { font-size: 18px; margin: 0 0 4px; }
+      .note { margin: 0 0 12px; opacity: .75; font-size: 13px; }
+      .stage { max-width: 960px; }
+      /* 거울처럼 보이게 뒤집는다 — 점도 같이 뒤집혀 얼굴에 맞는다 */
+      canvas { width: 100%; height: auto; transform: scaleX(-1); border-radius: 8px; background: #000; }
+      .buttons { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
+      button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line); background: ButtonFace; color: ButtonText; cursor: pointer; }
+      #status { font-size: 13px; margin: 6px 0; font-variant-numeric: tabular-nums; }
+      .warn { color: #d9480f; font-weight: 600; }
+      .legend span { display: inline-block; margin-right: 12px; font-size: 12px; }
+      .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: middle; margin-right: 4px; }
+    </style>
+  </head>
+  <body>
+    <h1>머리선 확인</h1>
+    <p class="note">정면을 보고, 앞머리를 넘겼을 때와 내렸을 때를 비교해 보세요. 화면은 거울처럼 보여요.</p>
+    <div class="buttons">
+      <button id="start" type="button">카메라 시작</button>
+      <label><input id="showLm" type="checkbox" checked /> 랜드마크 478개</label>
+      <label><input id="showMask" type="checkbox" /> 머리카락 마스크</label>
+      <label><input id="raw" type="checkbox" /> 섞지 않기 (고치기 전 비교)</label>
+    </div>
+    <div id="status">카메라 시작을 눌러 주세요.</div>
+    <div class="stage">
+      <canvas id="cv" width="1280" height="720"></canvas>
+      <div class="legend">
+        <span><i style="background:#e5e7eb"></i>랜드마크</span>
+        <span><i style="background:#22d3ee"></i>MediaPipe 이마 위 선</span>
+        <span><i style="background:#4ade80"></i>머리선 (찾음)</span>
+        <span><i style="background:#fb923c"></i>앞머리 → MediaPipe 선</span>
+        <span><i style="background:#9ca3af"></i>못 찾음 → MediaPipe 선</span>
+      </div>
+      <video id="v" autoplay playsinline muted hidden></video>
+    </div>
+    <script type="module" src="/src/screens/hairline-probe.ts"></script>
+  </body>
+</html>
