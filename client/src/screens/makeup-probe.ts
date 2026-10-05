@@ -840,29 +840,39 @@ const PICK_MODE: Record<PickPart, PickMode> = {
   contour: "regions", highlight: "regions",
   liner: "line",
 };
-/** 쉐딩·하이라이트: 하위 영역을 전부 같이 찍어서 합친다(동시에 쓰는 효과) — 블러셔와 달리 "하나만 골라 쓰는" 게 아님 */
-const PICK_SUBREGIONS: Partial<Record<PickPart, { id: string; name: string }[]>> = {
+/** 쉐딩·하이라이트: 하위 영역을 전부 같이 찍어서 합친다(동시에 쓰는 효과) — 블러셔와 달리 "하나만 골라 쓰는" 게 아님
+ *  side: 얼굴 양쪽에 따로 있는 영역(광대·눈썹뼈 등)만 true — 중앙선에 걸친 영역(이마 가운데·코끝 등)은 하나만 찍는다 */
+const PICK_SUBREGIONS: Partial<Record<PickPart, { id: string; name: string; side: boolean }[]>> = {
   contour: [
-    { id: "faceEdge", name: "얼굴 외곽 (관자→볼 옆→턱)" },
-    { id: "jawline", name: "턱선 (안쪽 살짝 걸치게)" },
-    { id: "noseSide", name: "코 옆" },
-    { id: "hairline", name: "이마 헤어라인" },
-    { id: "underNostril", name: "콧볼 아래" },
+    { id: "faceEdge", name: "얼굴 외곽 (관자→볼 옆→턱)", side: true },
+    { id: "jawline", name: "턱선 (안쪽 살짝 걸치게)", side: true },
+    { id: "noseSide", name: "코 옆", side: true },
+    { id: "hairline", name: "이마 헤어라인", side: false },
+    { id: "underNostril", name: "콧볼 아래", side: false },
   ],
   highlight: [
-    { id: "foreheadCenter", name: "이마 가운데" },
-    { id: "noseBridge", name: "콧대" },
-    { id: "noseTip", name: "코끝" },
-    { id: "cheekTop", name: "광대 위 (눈꼬리 아래 바깥)" },
-    { id: "browBone", name: "눈썹 뼈" },
-    { id: "underAegyo", name: "애교살 아래" },
-    { id: "chinTip", name: "턱끝" },
+    { id: "foreheadCenter", name: "이마 가운데", side: false },
+    { id: "noseBridge", name: "콧대", side: false },
+    { id: "noseTip", name: "코끝", side: false },
+    { id: "cheekTop", name: "광대 위 (눈꼬리 아래 바깥)", side: true },
+    { id: "browBone", name: "눈썹 뼈", side: true },
+    { id: "underAegyo", name: "애교살 아래", side: true },
+    { id: "chinTip", name: "턱끝", side: false },
   ],
 };
-/** 좌우를 따로 찍어야 하는 부위 */
+/** 좌우를 따로 찍어야 하는 부위(regions 모드는 하위 영역마다 달라서 여기 안 두고 pickNeedsSide 에서 따로 본다) */
 const PICK_HAS_SIDE: Record<PickPart, boolean> = {
   brow: true, cheek: true, liner: true, shadow: true, lip: false, contour: false, highlight: false,
 };
+
+/** regions 모드는 지금 고른 하위 영역이 좌우 구분이 필요한지로, 그 외는 부위 고정값으로 판단한다 */
+function pickNeedsSide(part: PickPart): boolean {
+  if (PICK_MODE[part] === "regions") {
+    const subs = PICK_SUBREGIONS[part] ?? [];
+    return subs.find((s) => s.id === pickRegionSel.value)?.side ?? false;
+  }
+  return PICK_HAS_SIDE[part];
+}
 
 const pickcv = $<HTMLCanvasElement>("pickcv");
 const pickCtx = pickcv.getContext("2d")!;
@@ -886,8 +896,8 @@ const pickResults: Record<string, number[]> = {}; // 완료된 구간들 — key
 function pickKey(): string {
   const part = pickPartSel.value as PickPart;
   const keyParts: string[] = [part];
-  if (PICK_HAS_SIDE[part]) keyParts.push(pickSideSel.value);
   if (PICK_MODE[part] === "regions") keyParts.push(pickRegionSel.value);
+  if (pickNeedsSide(part)) keyParts.push(pickSideSel.value);
   if (PICK_MODE[part] === "band") keyParts.push(pickEdgeSel.value);
   return keyParts.join("-");
 }
@@ -907,7 +917,6 @@ function pickFit(): void {
 function refreshPickControls(): void {
   const part = pickPartSel.value as PickPart;
   const mode = PICK_MODE[part];
-  pickSideWrap.hidden = !PICK_HAS_SIDE[part];
   pickRegionWrap.hidden = mode !== "regions";
   pickEdgeWrap.hidden = mode !== "band";
   if (mode === "regions") {
@@ -917,6 +926,7 @@ function refreshPickControls(): void {
     for (const s of subs) pickRegionSel.add(new Option(s.name, s.id));
     if (subs.some((s) => s.id === keep)) pickRegionSel.value = keep;
   }
+  pickSideWrap.hidden = !pickNeedsSide(part);   // regions 모드는 하위 영역 목록을 다시 채운 뒤 판단해야 한다
   pickCurrent = pickResults[pickKey()] ? [...pickResults[pickKey()]!] : [];
   drawPicker();
   updatePickOut();
@@ -961,6 +971,7 @@ $("pickDone").addEventListener("click", () => {
     const i = subs.findIndex((s) => s.id === pickRegionSel.value);
     if (i >= 0 && i + 1 < subs.length) pickRegionSel.value = subs[i + 1]!.id;
   }
+  pickSideWrap.hidden = !pickNeedsSide(part);   // 자동 이동한 다음 하위 영역이 좌우 필요 여부가 다를 수 있다
   pickCurrent = pickResults[pickKey()] ? [...pickResults[pickKey()]!] : [];
   pickStatusEl.textContent = "구간 저장함.";
   drawPicker();
