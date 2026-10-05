@@ -131,7 +131,7 @@ export const SHADOW_TAIL_RATIO = 0.35;
  * 섀도우 눈꼬리 연장 (화장 shadow.tailExtend, #250) — 섀도 영역(shadowRegions: 눈꺼풀 → 위 테두리 거꾸로) 끝에 이어 붙이면
  * 꼬리까지 한 모양이 되는 두 점 [위 테두리 끝(눈꼬리 위)과 꼬리 끝의 가운데, 꼬리 끝].
  * 꼬리 끝 = 눈꼬리에서 라이너 꼬리 "방향"으로 눈 폭 × SHADOW_TAIL_RATIO (라이너 자체 길이는 번짐에 뭉개져서).
- * 칠하기(makeup-paint)와 화면 3·4 테두리(#30)가 같이 쓴다 — 완성본에 칠한 꼬리와 테두리가 같은 모양
+ * 칠하기(makeup-paint)와 화면 3·4 테두리(#30) · 채점 영역(#284)이 같이 쓴다 — 완성본에 칠한 꼬리와 테두리 · 채점이 같은 모양
  */
 export function shadowTail(f: GuideFrame, regions: Record<Side, readonly Pt[]>, linerThick: number, style?: LinerStyle): Record<Side, [Pt, Pt]> {
   const liner = linerOutline(f, linerThick, style);
@@ -228,10 +228,13 @@ export function browOnFace(f: GuideFrame, adj?: BrowAdjust): Record<Side, BrowPl
 export function planGuide(lookParts: Partial<Record<LookPartId, LookPart>> = {}, plan?: PersonalPlan | null): GuideSource {
   const style = plan?.liner.plan.style;
   const base = styledGuide(lookParts, style);
-  // 섀도 눈꼬리 연장이 있는 화장은 꼬리 두 점을 더한다 — 테두리 전용, 채점 영역(regions)은 그대로 (#30)
+  // 섀도 눈꼬리 연장이 있는 화장은 영역 끝에 꼬리 두 점을 이어 붙인다 — 화면 3·4 테두리와 채점이 같은 모양 (#30 · #284 ⑥ 결정)
   const linerThick = (lookParts.liner?.thick ?? GUIDE_PARAMS.liner.thick) * (plan?.linerThick.scale ?? 1);
-  const withTail = (g: PartGeometry, f: GuideFrame): PartGeometry =>
-    lookParts.shadow?.tailExtend && g.regions ? { ...g, shadowTail: shadowTail(f, g.regions, linerThick, style) } : g;
+  const withTail = (g: PartGeometry, f: GuideFrame): PartGeometry => {
+    if (!lookParts.shadow?.tailExtend || !g.regions) return g;
+    const t = shadowTail(f, g.regions, linerThick, style);
+    return { ...g, regions: { R: [...g.regions.R, ...t.R], L: [...g.regions.L, ...t.L] } };
+  };
   if (!plan) return (partId, f) => (partId === "shadow" ? withTail(base(partId, f), f) : base(partId, f));
   return (partId, f): PartGeometry => {
     const P = (i: number): Pt => at(f.lm, i);

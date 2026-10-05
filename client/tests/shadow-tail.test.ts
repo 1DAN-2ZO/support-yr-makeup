@@ -1,5 +1,5 @@
-// 섀도 눈꼬리 연장 테두리 (#30) — 꼬리 있는 화장(시크·아이돌·스트릿·키치)은 화면 3·4 테두리에도 꼬리를 그린다.
-// 꼬리는 칠하기(2-b · 화면 3 완성본, makeup-paint)와 같은 계산(shadowTail). 채점 영역(regions)은 그대로 — 그리기 전용 (#30 ⑥ 답 오면 정함)
+// 섀도 눈꼬리 연장 (#30) — 꼬리 있는 화장(시크·아이돌·스트릿·키치)은 화면 3·4 테두리에도 꼬리를 그린다.
+// 꼬리는 칠하기(2-b · 화면 3 완성본, makeup-paint)와 같은 계산(shadowTail). 채점 영역(regions)도 꼬리까지 — 테두리와 같은 모양 (#284 ⑥ 결정)
 import { describe, expect, it } from "vitest";
 import type { EyeMeasure, FaceMeasure } from "@core/face-measure";
 import { LM, dist } from "@core/landmarks";
@@ -10,7 +10,10 @@ import { SHADOW_TAIL_RATIO, planGuide } from "@core/personal-guide";
 import { resolvePlan, type PersonalPlan } from "@core/personalize";
 import type { Pt } from "@core/types";
 import { paintLookOf, paintMakeup, type Layers } from "@screens/makeup-paint";
-import { BARE, LMS } from "./helpers/synth-face";
+import { pointInPoly } from "@core/color";
+import { frameOf } from "@core/sampling";
+import { scorePart } from "@core/score-part";
+import { BARE, LMS, SHADE, image } from "./helpers/synth-face";
 
 function measure(): FaceMeasure {
   const eye = (): EyeMeasure => ({ tiltDeg: 8, alphaDeg: 28, betaDeg: 32, outerCornerDown: false, aspect: 3, heightRatio: 1 / 3, lidGapRatio: 0.55 });
@@ -20,19 +23,17 @@ const plan = (proposal: unknown = {}): PersonalPlan => resolvePlan(measure(), {}
 const noTail = (look: Look): Look => ({ ...look, parts: { ...look.parts, shadow: { ...look.parts.shadow!, tailExtend: false } } });
 
 describe("섀도 꼬리 테두리 (#30)", () => {
-  it("T1 꼬리 있는 화장만 섀도 모양에 꼬리(두 점)가 붙는다 — 채점 영역(regions)은 꼬리가 있어도 그대로", () => {
+  it("T1 꼬리 있는 화장만 섀도 채점 영역(regions) 끝에 꼬리 두 점이 붙는다 — 앞부분은 꼬리 없는 영역 그대로", () => {
     const p = plan();
     const tails = LOOKS.filter((l) => l.parts.shadow?.tailExtend).map((l) => l.id);
     expect(tails).toEqual(expect.arrayContaining(["chic", "idol", "street", "kitsch"]));
     for (const l of LOOKS) {
-      const g = planGuide(l.parts, p)("shadow", BARE);
-      expect(!!g.shadowTail, l.id).toBe(!!l.parts.shadow?.tailExtend);
+      const g = planGuide(l.parts, p)("shadow", BARE), plain = planGuide(noTail(l).parts, p)("shadow", BARE);
+      for (const s of ["R", "L"] as const) {
+        expect(g.regions![s].length - plain.regions![s].length, `${l.id} ${s}`).toBe(l.parts.shadow?.tailExtend ? 2 : 0);
+        expect(g.regions![s].slice(0, plain.regions![s].length)).toEqual(plain.regions![s]);
+      }
     }
-    const chic = lookById("chic");
-    const withT = planGuide(chic.parts, p)("shadow", BARE), without = planGuide(noTail(chic).parts, p)("shadow", BARE);
-    expect(withT.shadowTail!.R).toHaveLength(2);
-    expect(withT.shadowTail!.L).toHaveLength(2);
-    expect(withT.regions).toEqual(without.regions);
   });
 
   it("T2 꼬리 끝은 눈꼬리에서 바깥으로 눈 폭 × 0.35 — 계획이 없어도 붙는다", () => {
@@ -40,17 +41,17 @@ describe("섀도 꼬리 테두리 (#30)", () => {
     for (const p of [plan(), null]) {
       const g = planGuide(chic.parts, p)("shadow", BARE);
       for (const [s, eye] of [["R", LM.eyeA], ["L", LM.eyeB]] as const) {
-        const outer = LMS[eye.outer]!, inner = LMS[eye.inner]!, tip = g.shadowTail![s][1];
+        const outer = LMS[eye.outer]!, inner = LMS[eye.inner]!, tip = g.regions![s].at(-1)!;
         expect(dist(outer, tip)).toBeCloseTo(SHADOW_TAIL_RATIO * BARE.unit.eye, 6);
         expect(dist(inner, tip)).toBeGreaterThan(dist(inner, outer));
       }
     }
   });
 
-  it("T3 화면 3·4 테두리는 섀도 영역 끝에 꼬리를 이어 붙인 한 모양", () => {
+  it("T3 화면 3·4 테두리 = 채점 영역 그대로 (꼬리까지 한 모양) — 테두리대로 칠한 곳을 채점이 본다", () => {
     const g = planGuide(lookById("idol").parts, plan());
     const geo = g("shadow", BARE);
-    const want = [[...geo.regions!.R, ...geo.shadowTail!.R], [...geo.regions!.L, ...geo.shadowTail!.L]];
+    const want = [[...geo.regions!.R], [...geo.regions!.L]];
     expect(guideOutline("shadow", LMS, geo).polys).toEqual(want);
     expect(outlineOf("shadow", LMS, g).polys).toEqual(want);
     // 꼬리 없는 화장은 전과 같다
@@ -68,6 +69,22 @@ describe("섀도 꼬리 테두리 (#30)", () => {
         const hit = painted.find((q) => q.length === poly.length && q.every((pt, i) => Math.abs(pt.x - poly[i]!.x) < 1e-9 && Math.abs(pt.y - poly[i]!.y) < 1e-9));
         expect(hit, `${id} 칠한 띠 중에 테두리와 같은 것`).toBeDefined();
       }
+    }
+  });
+});
+
+describe("섀도 꼬리 채점 (#284 ⑥ 결정)", () => {
+  it("T5 꼬리 자리만 칠하면 꼬리 있는 화장은 채점이 그 색을 본다 — 꼬리를 뺀 영역으로 재면 둘레 맨살 띠에 들어가 거의 안 보인다", () => {
+    const p = plan(), chic = lookById("chic");
+    const tailed = planGuide(chic.parts, p), plain = planGuide(noTail(chic).parts, p);
+    const t = tailed("shadow", BARE).regions!, o = plain("shadow", BARE).regions!;
+    // 꼬리 영역 = 꼬리까지 한 모양 안이면서 꼬리 없는 모양 밖
+    const im = image((x, y) => (["R", "L"] as const).some((s) => pointInPoly(x, y, t[s]) && !pointInPoly(x, y, o[s])) ? SHADE : null);
+    const delta = (g: typeof tailed) => scorePart("shadow", BARE, frameOf(im, LMS), g).result.metrics.deltas as Record<"R" | "L", number>;
+    const withTail = delta(tailed), without = delta(plain);
+    for (const s of ["R", "L"] as const) {
+      expect(withTail[s], s).toBeGreaterThan(1);
+      expect(withTail[s], s).toBeGreaterThan(without[s]! + 1);
     }
   });
 });
