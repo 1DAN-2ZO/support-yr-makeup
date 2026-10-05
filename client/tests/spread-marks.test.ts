@@ -38,22 +38,34 @@ describe("퍼지는 방향 표시 (spreadMarks)", () => {
     }
   });
 
-  it("S2 섀도우: 눈마다 속눈썹 선 가운데에 점 하나 + 눈썹 쪽으로 퍼지는 화살표 셋 (완성본 그러데이션 방향) — 꼬리 있는 화장도", () => {
+  it("S2 섀도우: 눈마다 속눈썹 선을 따라 점 셋(눈머리 쪽 · 가운데 · 눈꼬리 쪽) + 점마다 눈썹 쪽으로 곧게 올라가는 화살표 (완성본 그러데이션 방향) — 꼬리 있는 화장도", () => {
     for (const guide of [G, planGuide(lookById("chic").parts, null)]) {
       const polys = outlineOf("shadow", LMS, guide).polys, m = spreadMarks("shadow", polys);
-      expect(m.dots).toHaveLength(2);
+      expect(m.dots).toHaveLength(6);
       expect(m.arrows).toHaveLength(6);
       for (const [poly, eye] of [[polys[0]!, LM.eyeA], [polys[1]!, LM.eyeB]] as const) {
-        const n = eye.upper.length, lidMid = poly[Math.floor(n / 2)]!, topMid = poly[2 * n - 1 - Math.floor(n / 2)]!;
-        const dot = m.dots.find((p) => pointInPoly(p.x, p.y, poly))!;
-        expect(dot).toBeDefined();
-        expect(d(dot, lidMid), "점은 속눈썹 쪽").toBeLessThan(d(dot, topMid));
+        const n = eye.upper.length, lid = poly.slice(0, n), top = poly.slice(n, 2 * n).reverse();
+        const dots = m.dots.filter((p) => pointInPoly(p.x, p.y, poly));
+        expect(dots, "점 셋").toHaveLength(3);
         const mine = m.arrows.filter(([a]) => owner(polys, a!) === poly);
         expect(mine).toHaveLength(3);
+        // 점 셋은 속눈썹 선을 따라 퍼져 있다 (서로 떨어져 있고, 각자 속눈썹 쪽)
+        const xs = dots.map((p) => p.x).sort((a, b) => a - b);
+        expect(xs[2]! - xs[0]!, "속눈썹 선을 따라 퍼짐").toBeGreaterThan(0.4 * Math.abs(lid[n - 1]!.x - lid[0]!.x));
+        for (const dot of dots) {
+          const k = lid.reduce((b, p, i) => (d(p, dot) < d(lid[b]!, dot) ? i : b), 0);
+          expect(d(dot, lid[k]!), "점은 속눈썹 쪽").toBeLessThan(d(dot, top[k]!));
+        }
         for (const [a, b] of mine) {
           expect(pointInPoly(b!.x, b!.y, poly), "화살표 끝이 테두리 안").toBe(true);
           expect(b!.y, "위(눈썹 쪽)로").toBeLessThan(a!.y);
+          // 화살표마다 바로 아래에 자기 점 — 한 점에서 부채꼴로 퍼지지 않는다
+          const own = dots.reduce((q, p) => (d(p, a!) < d(q, a!) ? p : q));
+          expect(d(own, a!), "자기 점에서 시작").toBeLessThan(0.5 * d(a!, b!));
         }
+        // 세 화살표가 한 점에서 나오지 않는다
+        const starts = mine.map(([a]) => a!);
+        expect(d(starts[0]!, starts[2]!)).toBeGreaterThan(0.4 * Math.abs(lid[n - 1]!.x - lid[0]!.x));
       }
     }
   });

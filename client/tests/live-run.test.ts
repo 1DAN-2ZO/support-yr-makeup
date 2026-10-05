@@ -459,7 +459,8 @@ describe("live run", () => {
       const at = (lm: Pt[]) => createLiveRun<string>({ partId: part, baseline: { lm: FACE, foreheadL: SKIN.L }, guide: lookGuide({}), smooth: false } as Parameters<typeof createLiveRun<string>>[0]).step(frame({ lm })).outline!;
       const moved = FACE.map((p) => ({ x: p.x + 12, y: p.y - 5 }));
       const a = at(FACE), b = at(moved);
-      expect(a.dots!.length, part).toBe(2);
+      expect(a.dots!.length, part).toBeGreaterThan(0);
+      expect(b.dots!.length, part).toBe(a.dots!.length);
       b.dots!.forEach((p, i) => { expect(p.x - a.dots![i]!.x).toBeCloseTo(12, 6); expect(p.y - a.dots![i]!.y).toBeCloseTo(-5, 6); });
       expect(b.arrows!.length, part).toBe(a.arrows!.length);
       // 크게 돌려 먼 쪽 눈 보정이 걸려도 표시는 그대로 붙어 있다

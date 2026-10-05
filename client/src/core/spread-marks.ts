@@ -5,7 +5,8 @@
  *
  * 방향은 완성본(makeup-paint)이 칠한 그러데이션을 따른다 —
  *  - 블러셔: 가운데가 가장 진하고 사방으로 옅어짐 (방사형) → 타원 가운데 점 + 긴 축 · 짧은 축 네 방향
- *  - 섀도우: 속눈썹 선이 가장 진하고 눈썹 쪽으로 옅어짐 → 속눈썹 선 가운데 점 + 눈썹 쪽 부채꼴 셋
+ *  - 섀도우: 속눈썹 선이 가장 진하고 눈썹 쪽으로 옅어짐 → 속눈썹 선을 따라 점 셋(눈머리 쪽 · 가운데 · 눈꼬리 쪽) + 점마다 위로 화살표
+ *    (한 점에서 부채꼴은 PC 에서 '한 곳에서 퍼지는' 것처럼 보여 바꿈 — 2026-10-05 사용자)
  *  - 쉐딩 · 하이라이트: 띠를 칠하고 번짐 → 띠 가운데 점 + 긴 쪽 양 끝 (둥근 띠면 짧은 쪽도)
  * 화살표 길이 · 위치 비율은 눈대중 시작값 — PC · 폰에서 보고 맞춘다.
  */
@@ -73,16 +74,17 @@ function radial(poly: readonly Pt[], minorRatio: number): SpreadMarks {
   return { dots: [c], arrows };
 }
 
-/** 섀도 영역 = 눈꺼풀 n 점 + 위 테두리 n 점(거꾸로) (+ 꼬리 두 점) — 속눈썹 선 가운데에서 위 테두리 쪽 부채꼴 */
-function shadowFan(poly: readonly Pt[], n: number): SpreadMarks {
+/** 섀도 영역 = 눈꺼풀 n 점 + 위 테두리 n 점(거꾸로) (+ 꼬리 두 점) — 속눈썹 선 위 점 셋에서 각자 위 테두리 쪽으로 */
+function shadowRise(poly: readonly Pt[], n: number): SpreadMarks {
   if (poly.length < 2 * n) return NONE;
   const lid = poly.slice(0, n), top = poly.slice(n, 2 * n).reverse();
-  const mid = Math.floor(n / 2), dot = mix(lid[mid]!, top[mid]!, SPREAD.shadowDot);
-  const arrows = [Math.round((n - 1) * 0.2), mid, Math.round((n - 1) * 0.8)].map((k) => {
-    const to = mix(lid[k]!, top[k]!, SPREAD.shadowEnd);
-    return [mix(dot, to, SPREAD.start), mix(dot, to, SPREAD.end + 0.2)];
-  });
-  return { dots: [dot], arrows };
+  const dots: Pt[] = [], arrows: Pt[][] = [];
+  for (const k of [Math.round((n - 1) * 0.2), Math.floor(n / 2), Math.round((n - 1) * 0.8)]) {
+    const dot = mix(lid[k]!, top[k]!, SPREAD.shadowDot), to = mix(lid[k]!, top[k]!, SPREAD.shadowEnd);
+    dots.push(dot);
+    arrows.push([mix(dot, to, SPREAD.start), mix(dot, to, SPREAD.end + 0.2)]);
+  }
+  return { dots, arrows };
 }
 
 export function spreadMarks(partId: PartId, polys: readonly (readonly Pt[])[]): SpreadMarks {
@@ -92,6 +94,6 @@ export function spreadMarks(partId: PartId, polys: readonly (readonly Pt[])[]): 
   };
   if (partId === "cheek") return each((p) => radial(p, 0));
   if (partId === "contour") return each((p) => radial(p, SPREAD.roundBand));
-  if (partId === "shadow") return each((p) => shadowFan(p, LM.eyeA.upper.length));
+  if (partId === "shadow") return each((p) => shadowRise(p, LM.eyeA.upper.length));
   return { dots: [], arrows: [] };
 }
