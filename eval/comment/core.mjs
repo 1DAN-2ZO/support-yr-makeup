@@ -25,7 +25,7 @@ const require = createRequire(pathToFileURL(join(CLIENT, "package.json")));
 /** 캐시 열쇠: comment.ts + 앱 core 전부 + 규칙 파일 — 하나라도 바뀌면 다시 묶는다 */
 function stamp() {
   const h = createHash("sha1");
-  for (const f of ["entry.ts", "comment.ts", "partline.ts"]) h.update(readFileSync(join(HERE, f)));
+  for (const f of ["entry.ts", "comment.ts", "partline.ts", "rawline.ts"]) h.update(readFileSync(join(HERE, f)));
   const core = join(CLIENT, "src", "core");
   for (const f of readdirSync(core).filter((f) => f.endsWith(".ts")).sort()) h.update(readFileSync(join(core, f)));
   for (const f of ["looks.json", "score.json"]) h.update(readFileSync(join(ROOT, "rules", f)));
@@ -75,11 +75,25 @@ const out = reqs.map((q) => {
           };
         });
       }
+      case "partsRaw": {
+        // 수치 전부 넣은 부위별 한 줄 — parts 와 같은 수치 (같은 seed)
+        return c.makeSessions(q.seed).map((s, i) => {
+          c.fillMetrics(s, 9000 + i);
+          const any = c.lineParts(s).length > 0;
+          return {
+            id: s.id, kind: s.kind, lookId: s.lookId, lookName: s.lookName, session: s,
+            prompts: any ? { raw: c.rawPrompt(s, true), nocode: c.rawPrompt(s, false) } : null,
+            schema: any ? c.rawSchema(s) : null,
+            rule: Object.fromEntries(c.targets(s).map((p) => [p.partId, c.ruleLine(s, p)])),
+          };
+        });
+      }
+      case "scoreRaw": return c.scoreRaw(q.session, q.raw);
       case "gateLine": {
         const p = q.session.parts.find((x) => x.partId === q.part);
         return c.gateLine(q.session, p, q.line);
       }
-      case "meta": return { promptVer: c.PROMPT_VER, maxChars: c.MAX_CHARS, partPromptVer: c.PART_PROMPT_VER, lineMax: c.LINE_MAX };
+      case "meta": return { promptVer: c.PROMPT_VER, maxChars: c.MAX_CHARS, partPromptVer: c.PART_PROMPT_VER, rawPromptVer: c.RAW_PROMPT_VER, lineMax: c.LINE_MAX };
       default: return { error: `모르는 op: ${q.op}` };
     }
   } catch (e) {

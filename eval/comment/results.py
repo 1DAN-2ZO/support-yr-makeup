@@ -311,6 +311,51 @@ def part_sheet(model: str) -> Path:
     return out / f"{name}.html"
 
 
+# ---------- 수치 전부 넣은 부위별 한 줄 (4차) ----------
+
+
+def raw_rows(model: str, task: str) -> tuple[dict, list[dict]]:
+    """(세션 id → parts_raw.json 항목, [{session, rep, ms, reasoning_chars, score: scoreRaw 결과}])"""
+    P = {s["id"]: s for s in json.loads((out_dir() / "parts_raw.json").read_text(encoding="utf-8"))}
+    lines = (out_dir() / "runs" / f"{model}.{task}.jsonl").read_text(encoding="utf-8").splitlines()
+    R = [json.loads(x) for x in lines if x.strip()]
+    reqs = [{"op": "scoreRaw", "session": P[r["session"]]["session"], "raw": r.get("content", "")} for r in R]
+    for r, sc in zip(R, core(reqs), strict=True):
+        r["score"] = sc
+    return P, R
+
+
+def raw_summary(model: str, task: str) -> str:
+    P, R = raw_rows(model, task)
+    parts = [(r, p) for r in R for p in r["score"]["parts"]]
+    tp = sum(p["tp"] for _, p in parts)
+    fp = sum(p["fp"] for _, p in parts)
+    fn = sum(p["fn"] for _, p in parts)
+    exact = sum(set(p["said"]) == set(p["truth"]) for _, p in parts)
+    bad = [p for _, p in parts if not p["truth"]]
+    iss = [p for _, p in parts if p["truth"]]
+    by: dict[str, set] = defaultdict(set)
+    for r in R:
+        by[r["session"]].add(r.get("content"))
+    ms = [r["ms"] for r in R]
+    why = Counter(x.split(":")[0] for _, p in parts for x in p["reasons"])
+    think = sum(r.get("reasoning_chars", 0) for r in R) / len(R)
+    same = sum(len(v) == 1 for v in by.values())
+    return "\n".join(
+        [
+            f"## {model} · {task} ({date.today()})",
+            f"- 답 읽힘 {sum(r['score']['parsed'] for r in R)}/{len(R)} · 같은 입력 같은 답 {same}/{len(by)}",
+            f"- 세션당 p50 {pct(ms, 0.5) / 1000:.1f}초 · p95 {pct(ms, 0.95) / 1000:.1f}초 "
+            f"· 생각 글 평균 {think:.0f}자",
+            f"- **문제 찾기** (진짜 = 채점 진단): 정밀도 {tp / max(1, tp + fp):.0%} · "
+            f"재현율 {tp / max(1, tp + fn):.0%} · 부위 정확히 맞춤 {exact}/{len(parts)}",
+            f"- **한 줄 관문**: 문제 부위 {sum(p['ok'] for p in iss)}/{len(iss)} · "
+            f"잘된 부위 {sum(p['ok'] for p in bad)}/{len(bad)}",
+            f"- 거절 이유: {', '.join(f'{k} {v}' for k, v in why.most_common()) or '—'}",
+        ]
+    )
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--models", nargs="*", default=["text-gemma4_e4b", "text-qwen3_14b"])
@@ -318,8 +363,13 @@ def main() -> None:
     ap.add_argument("--rule", default="B", help="평가지에서 C 와 비교할 규칙 총평 (B · B2)")
     ap.add_argument("--ratings", nargs="*")
     ap.add_argument("--parts", help="부위별 한 줄: 모델 이름 — 자동 지표 + 평가지")
+    ap.add_argument(
+        "--raw", nargs=2, metavar=("MODEL", "TASK"), help="수치 전부 넣은 한 줄: 모델 · raw|nocode"
+    )
     a = ap.parse_args()
-    if a.parts:
+    if a.raw:
+        print(raw_summary(*a.raw))
+    elif a.parts:
         print(part_summary(a.parts))
         print(f"평가지 → {part_sheet(a.parts)}")
     elif a.sheet:

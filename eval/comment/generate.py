@@ -24,22 +24,23 @@ from bridge import core, out_dir  # noqa: E402
 from run import SEED, Server  # noqa: E402  (eval/vlm/run.py)
 
 
-def ask(url: str, text: str, schema: dict, extra: dict, max_tokens: int) -> dict:
+def ask(url: str, text: str, schema: dict | None, extra: dict, max_tokens: int) -> dict:
     body = {
         "messages": [{"role": "user", "content": text}],
         "temperature": 0,
         "seed": SEED,
         "max_tokens": max_tokens,
         "cache_prompt": False,
-        "response_format": {
-            "type": "json_schema",
-            "json_schema": {"name": "comment", "schema": schema, "strict": True},
-        },
         **extra,
     }
+    if schema is not None:  # 생각 모드 모델은 형식 강제를 끈다 (생각 글까지 JSON 문법에 묶인다)
+        body["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {"name": "comment", "schema": schema, "strict": True},
+        }
     t0 = time.perf_counter()
     try:
-        r = httpx.post(url + "/v1/chat/completions", json=body, timeout=180)
+        r = httpx.post(url + "/v1/chat/completions", json=body, timeout=600)
         ms = (time.perf_counter() - t0) * 1000
         if r.status_code != 200:
             return {"ms": ms, "error": f"HTTP {r.status_code}: {r.text[:300]}"}
@@ -62,12 +63,12 @@ def main() -> None:
     ap.add_argument("--port", type=int, default=8092)
     ap.add_argument(
         "--task",
-        choices=["total", "parts"],
+        choices=["total", "parts", "raw", "nocode"],
         default="total",
-        help="total = 총평, parts = 부위별 한 줄 (수치 넣음)",
+        help="total 총평 · parts 부위 한 줄(요약 사실) · raw 수치 전부 + 진단 · nocode 수치 전부, 진단 없음",
     )
     a = ap.parse_args()
-    if a.task == "parts":
+    if a.task in ("parts", "raw", "nocode"):
         return parts(a)
 
     conf = json.loads((HERE.parent / "vlm" / "models.json").read_text(encoding="utf-8"))
@@ -114,10 +115,13 @@ def parts(a) -> None:
     """부위별 한 줄 — 세션마다 한 번 요청, 고칠 말이 있는 완료 부위의 줄을 한꺼번에 받는다"""
     conf = json.loads((HERE.parent / "vlm" / "models.json").read_text(encoding="utf-8"))
     cfg = conf["models"][a.model]
-    S = core([{"op": "parts"}])[0]
+    raw = a.task in ("raw", "nocode")
+    S = core([{"op": "partsRaw" if raw else "parts"}])[0]
     out = out_dir() / "runs"
     out.mkdir(parents=True, exist_ok=True)
-    (out_dir() / "parts.json").write_text(json.dumps(S, ensure_ascii=False), encoding="utf-8")
+    (out_dir() / ("parts_raw.json" if raw else "parts.json")).write_text(
+        json.dumps(S, ensure_ascii=False), encoding="utf-8"
+    )
     meta = core([{"op": "meta"}])[0]
     srv = Server(cfg, conf["llama_server"], a.port, out / a.model)
     srv.start()
@@ -125,15 +129,18 @@ def parts(a) -> None:
     try:
         for rep in range(a.reps):
             for s in S:
-                if not s["prompt"]:
+                prompt = (s["prompts"] or {}).get(a.task) if raw else s["prompt"]
+                if not prompt:
                     continue
-                r = ask(srv.url, s["prompt"], s["schema"], cfg.get("request_extra", {}), a.max_tokens)
+                schema = None if cfg.get("no_schema") else s["schema"]
+                r = ask(srv.url, prompt, schema, cfg.get("request_extra", {}), a.max_tokens)
                 rows.append(
                     {
                         "model": a.model,
                         "session": s["id"],
                         "rep": rep,
-                        "prompt_ver": meta["partPromptVer"],
+                        "task": a.task,
+                        "prompt_ver": meta["rawPromptVer"] if raw else meta["partPromptVer"],
                         **r,
                     }
                 )
@@ -142,10 +149,11 @@ def parts(a) -> None:
                 )
     finally:
         srv.stop()
-    with (out / f"{a.model}.parts.jsonl").open("w", encoding="utf-8") as f:
+    fname = f"{a.model}.{a.task}.jsonl" if raw else f"{a.model}.parts.jsonl"
+    with (out / fname).open("w", encoding="utf-8") as f:
         for row in rows:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
-    print(f"끝 → {out / (a.model + '.parts.jsonl')}")
+    print(f"끝 → {out / fname}")
 
 
 if __name__ == "__main__":

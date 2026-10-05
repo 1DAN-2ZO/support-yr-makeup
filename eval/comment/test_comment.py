@@ -136,3 +136,29 @@ def test_sheet_hides_which_is_which_and_ratings_use_ci(tmp_path, monkeypatch, S)
     text = report.ratings([str(f)])
     assert "C 10/13" in text  # 비슷함은 뺀다
     assert "못 넘음" in text  # 10/13 의 95% 하한은 50% 아래
+
+
+def test_raw_scoring_counts_found_issues_and_reads_loose_json():
+    # 수치 전부 넣은 한 줄 (rawline.ts): 답의 issues 를 채점 진단과 견줘 정밀도 · 재현율을 센다
+    S = core([{"op": "partsRaw"}])[0]
+    s = next(x for x in S if x["kind"] == "one_big")
+    sess = s["session"]
+    target = next(
+        p
+        for p in sess["parts"]
+        if p["status"] == "passed" and [c for c in p["diagnosisCodes"] if c != "TONE_OK"]
+    )
+    truth = [c for c in target["diagnosisCodes"] if c != "TONE_OK"]
+    ans = {target["partId"]: {"issues": truth, "line": s["rule"][target["partId"]]}}
+    sc = core(
+        [{"op": "scoreRaw", "session": sess, "raw": "생각 글…\n" + json.dumps(ans, ensure_ascii=False)}]
+    )[0]
+    assert sc["parsed"]  # 앞에 생각 글이 붙어도 JSON 을 찾는다
+    got = next(p for p in sc["parts"] if p["part"] == target["partId"])
+    assert (got["tp"], got["fp"], got["fn"]) == (len(truth), 0, 0)
+    assert got["ok"]  # 규칙 한 줄은 관문을 통과한다
+    missing = next(p for p in sc["parts"] if p["part"] != target["partId"])
+    assert missing["line"] == "" and not missing["ok"]  # 답에 없는 부위는 빈 줄 → 거절
+    # 수치 · 기준이 프롬프트에 들어가고, nocode 에는 진단이 없다
+    assert "채점 기준" in s["prompts"]["raw"] and "- 진단:" in s["prompts"]["raw"]
+    assert "- 진단:" not in s["prompts"]["nocode"]
