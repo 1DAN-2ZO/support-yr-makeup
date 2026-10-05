@@ -454,6 +454,19 @@ describe("live run", () => {
   const partAt = (part: "brow" | "shadow", lm: Pt[]) => createLiveRun<string>({ partId: part, baseline: { lm: FACE, foreheadL: SKIN.L }, guide: lookGuide({}), smooth: false, screen: undefined } as Parameters<typeof createLiveRun<string>>[0]).step(frame({ lm })).outline!;
   const meshOnly = (part: "brow" | "shadow", lm: Pt[]) => placeOutline(pinOutline(outlineOf(part, FACE, lookGuide({})), FACE), lm);
 
+  it("L46 섀도우 · 블러셔의 퍼지는 방향 표시(점 · 화살표)도 지금 얼굴로 옮겨 그린다 — 먼 쪽 눈 보정을 거쳐도 남는다", () => {
+    for (const part of ["shadow", "cheek"] as const) {
+      const at = (lm: Pt[]) => createLiveRun<string>({ partId: part, baseline: { lm: FACE, foreheadL: SKIN.L }, guide: lookGuide({}), smooth: false } as Parameters<typeof createLiveRun<string>>[0]).step(frame({ lm })).outline!;
+      const moved = FACE.map((p) => ({ x: p.x + 12, y: p.y - 5 }));
+      const a = at(FACE), b = at(moved);
+      expect(a.dots!.length, part).toBe(2);
+      b.dots!.forEach((p, i) => { expect(p.x - a.dots![i]!.x).toBeCloseTo(12, 6); expect(p.y - a.dots![i]!.y).toBeCloseTo(-5, 6); });
+      expect(b.arrows!.length, part).toBe(a.arrows!.length);
+      // 크게 돌려 먼 쪽 눈 보정이 걸려도 표시는 그대로 붙어 있다
+      expect(at(collapsedFar()).arrows!.length, part).toBe(a.arrows!.length);
+    }
+  });
+
   it("L44 눈썹 테두리에는 먼 쪽 눈 보정을 안 한다 — 눈썹은 그물 붙이기만으로 잘 따라온다", () => {
     for (const lm of [shiftedFar(), collapsedFar()]) samePolys(partAt("brow", lm).polys, meshOnly("brow", lm).polys);
   });

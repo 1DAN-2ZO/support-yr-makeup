@@ -23,6 +23,7 @@ import { LM } from "./landmarks";
 import type { Side } from "./score";
 import { FAR_EYE_DEFAULT, type FarEyeOptions, computeFarEyeFix, eyeCenter, farSide } from "./eye-fit";
 import { foreheadStep, startForeheadTrack, type ForeheadTrack } from "./occlusion";
+import { spreadMarks } from "./spread-marks";
 import { guideOutline, type Outline } from "./overlay";
 import type { GuideSource } from "./score-part";
 import { LIVE_SMOOTH } from "./smooth-params";
@@ -102,7 +103,10 @@ export function outlineOf(partId: PartId, lm: readonly Pt[], guide: GuideSource)
     const o = linerOutline(f, g.liner?.thick ?? GUIDE_PARAMS.liner.thick, g.liner?.wing);
     return { polys: [o.R, o.L], lines: [] };
   }
-  return guideOutline(partId, lm, g);
+  const o = guideOutline(partId, lm, g);
+  // 블러셔 · 섀도우 · 쉐딩: 진한 곳(점)에서 퍼지는 방향(화살표) — 화면 3·4 만 (화면 5 는 guideOutline 그대로)
+  const m = spreadMarks(partId, o.polys);
+  return m.dots.length ? { ...o, dots: m.dots, arrows: m.arrows } : o;
 }
 
 const optExpr = (d: number | undefined): { exprDiff?: number } => (d === undefined ? {} : { exprDiff: d });
@@ -160,6 +164,8 @@ function farEyeFit(o: Outline, base: readonly (readonly Pt[])[], sides: readonly
       return { x: p.x + (q.x - p.x) * k, y: p.y + (q.y - p.y) * k };
     }))),
     lines: o.lines,
+    ...(o.dots ? { dots: o.dots } : {}),
+    ...(o.arrows ? { arrows: o.arrows } : {}),
   };
 }
 
