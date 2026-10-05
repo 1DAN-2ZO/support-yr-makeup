@@ -197,6 +197,37 @@ const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object
 const inRange = (v: unknown, [lo, hi]: readonly [number, number]): v is number => typeof v === "number" && Number.isFinite(v) && v >= lo && v <= hi;
 
 /**
+ * 표준 계획 — 모두에게 같은 계획. **앱은 지금 이것만 쓴다** (2026-10-05 결정).
+ *
+ * 얼굴에 맞추는 일(자리 · 크기)은 얼굴 점이 이미 한다 — 같은 화장 모양을 그 사람 얼굴 점 위에 놓으면 눈이 길면 라이너도 길고,
+ * 눈두덩이 넓으면 섀도도 넓다. 그 위에 얼굴을 재서 모양까지 바꾸던 규칙(resolvePlan: 처진 눈이면 꼬리를 곧게 · 눈두덩으로 섀도 높이 ·
+ * 얇은 윗입술이면 오버라인)은 더하는 것이 작고 근거가 약해(처진 눈 5° = 평가자 1명 · 27장, VLM 은 규칙과 구별 안 됨 — docs/reports/vlm-personalization-retrospective.md)
+ * 뺐다. 화면의 "개인화" 단계와 문구도 같이 뺐다.
+ *
+ * 값은 resolvePlan 이 "바꿀 것 없음" 으로 본 얼굴(처진 눈 아님 · 눈두덩 표준 · 윗입술 충분)이 받던 계획 그대로 — 대부분의 얼굴은
+ * 테두리 · 채점 기준이 전과 같다 (standard-plan.test SP2). 달라지는 것은 그 세 규칙에 걸리던 얼굴뿐.
+ * 얼굴형은 화장 모양 규칙이 아니라 쉐딩 · 하이라이트 자리(F-04)라 그대로 둔다 — ⑤ 모델이 확신할 때만 (resolvePlan 과 같은 판단).
+ * resolvePlan · VLM 흐름(vlm-flow)은 지우지 않았다 — 실험(eval/vlm)이 쓰고, 다시 붙일 때 쓴다.
+ */
+export function standardPlan(faceShape?: FaceShape | null): PersonalPlan {
+  const shape = faceShape && faceShape.method === "model" && faceShape.confidence >= FACESHAPE_TRUST ? faceShape.label : null;
+  const adj = shape ? JKSC_BROW_ADJUST_MM[shape] : { height: 0, glabella: 0 };
+  return {
+    faceShape: shape,
+    liner: { plan: { style: "winged", reason: "not_down" }, source: "rule" },
+    linerThick: { scale: 1, source: "rule" },
+    brow: { faceShape: shape, source: "rule", heightMm: adj.height * BROW_ADJUST_SCALE + 0, glabellaMm: adj.glabella * BROW_ADJUST_SCALE + 0, arch: archOf(shape) },
+    lip: { overline: 0, source: "rule" },
+    blush: { position: "standard", size: 1, source: "rule" },
+    highlight: { tZone: true, source: "rule" },
+    shadow: { range: 1, source: "rule" },
+    intensity: {},
+    rationale: {},
+    rejected: [],
+  };
+}
+
+/**
  * 개인화 계획. 규칙값을 먼저 세우고, VLM 제안(믿지 않는 JSON)은 항목별로 측정·규칙과 대조해 받거나 거절한다.
  * 한 항목이 틀려도 나머지는 살린다. 제안이 JSON 객체가 아니면 통째로 규칙값.
  */
