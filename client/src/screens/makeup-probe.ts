@@ -878,6 +878,7 @@ const pickStatusEl = $("pickStatus");
 const pickOutEl = $<HTMLTextAreaElement>("pickOut");
 
 let pickZoom = 1;                 // still 원본 px → pickcv px 절대 배율
+let pickFitZoom = 1;              // pickFit() 이 처음 맞춘 배율 — 점 반지름을 "그때보다 몇 배 확대했는지"로 키우는 기준
 let pickPanX = 0, pickPanY = 0;   // pickcv px 기준 이동
 let pickCurrent: number[] = [];   // 지금 구간에서 찍고 있는 랜드마크 인덱스 순서(점 순서 = 배열 순서)
 const pickResults: Record<string, number[]> = {}; // 완료된 구간들 — key는 pickKey() 참고
@@ -894,7 +895,7 @@ function pickKey(): string {
 /** 찍은 사진 크기에 맞춰 보기를 가운데로 꽉 채운다 — 사진 새로 찍을 때마다 다시 불린다 */
 function pickFit(): void {
   if (!stillLm) return;
-  pickZoom = Math.min(pickcv.width / still.width, pickcv.height / still.height);
+  pickZoom = pickFitZoom = Math.min(pickcv.width / still.width, pickcv.height / still.height);
   pickPanX = (pickcv.width - still.width * pickZoom) / 2;
   pickPanY = (pickcv.height - still.height * pickZoom) / 2;
   pickZoomIn.min = (pickZoom * 0.3).toFixed(3);
@@ -972,8 +973,10 @@ function updatePickOut(): void {
   pickOutEl.value = lines.length ? `{\n${lines.join("\n")}\n}` : "(아직 없음)";
 }
 
-const pickToImage = (px: number, py: number): Pt => ({ x: (px - pickPanX) / pickZoom, y: (py - pickPanY) / pickZoom });
-const pickToCanvas = (p: Pt): Pt => ({ x: p.x * pickZoom + pickPanX, y: p.y * pickZoom + pickPanY });
+// 다른 캔버스들(#cv 등)은 CSS 로 거울 반전(scaleX(-1))이 걸려 있는데, 여기는 숫자 라벨이 같이 그려져서
+// CSS 반전을 쓰면 숫자까지 뒤집힌다 — 그래서 좌표 변환 자체를 좌우 반전해서 "그림만" 거울처럼 보이게 한다(실측 피드백: 반전 안 하니 헷갈림)
+const pickToImage = (px: number, py: number): Pt => ({ x: still.width - (px - pickPanX) / pickZoom, y: (py - pickPanY) / pickZoom });
+const pickToCanvas = (p: Pt): Pt => ({ x: (still.width - p.x) * pickZoom + pickPanX, y: p.y * pickZoom + pickPanY });
 
 function drawPicker(): void {
   pickCtx.clearRect(0, 0, pickcv.width, pickcv.height);
@@ -984,17 +987,25 @@ function drawPicker(): void {
     pickCtx.fillText("먼저 '사진 찍기'로 기준 사진을 잡아 주세요.", 12, 24);
     return;
   }
-  pickCtx.drawImage(still, pickPanX, pickPanY, still.width * pickZoom, still.height * pickZoom);
-  pickCtx.fillStyle = "#38bdf866";   // 전체 478점 — 옅게
+  pickCtx.save();   // 사진 자체도 좌우 반전해서 그려야 위 좌표 변환이랑 자리가 맞는다
+  pickCtx.translate(pickPanX + still.width * pickZoom, pickPanY);
+  pickCtx.scale(-1, 1);
+  pickCtx.drawImage(still, 0, 0, still.width * pickZoom, still.height * pickZoom);
+  pickCtx.restore();
+  // 점 반지름은 화면 배율 고정이 아니라 "처음 맞춘 배율보다 몇 배 더 확대했는지"로 키운다 —
+  // 고정이면 확대할수록 점은 그대로라 오히려 더 안 보였다(실측 확인)
+  const zoomed = Math.max(1, pickZoom / pickFitZoom);
+  const dotR = Math.min(7, 2 * zoomed), pickR = Math.min(10, 4 * zoomed), font = Math.min(18, Math.round(10 * zoomed));
+  pickCtx.fillStyle = "#38bdf699";   // 전체 478점 — 옅게 (확대 시 더 잘 보이게 투명도도 살짝 올림)
   for (const p of lm) {
     const q = pickToCanvas(p);
     pickCtx.beginPath();
-    pickCtx.arc(q.x, q.y, 2, 0, Math.PI * 2);
+    pickCtx.arc(q.x, q.y, dotR, 0, Math.PI * 2);
     pickCtx.fill();
   }
   if (pickCurrent.length) {   // 지금 찍은 점들 — 순서·번호·선
     pickCtx.strokeStyle = "#f59e0b";
-    pickCtx.lineWidth = 2;
+    pickCtx.lineWidth = Math.min(4, 2 * zoomed);
     pickCtx.beginPath();
     pickCurrent.forEach((idx, i) => {
       const q = pickToCanvas(at(lm, idx));
@@ -1005,11 +1016,11 @@ function drawPicker(): void {
       const q = pickToCanvas(at(lm, idx));
       pickCtx.fillStyle = "#f59e0b";
       pickCtx.beginPath();
-      pickCtx.arc(q.x, q.y, 4, 0, Math.PI * 2);
+      pickCtx.arc(q.x, q.y, pickR, 0, Math.PI * 2);
       pickCtx.fill();
       pickCtx.fillStyle = "#fff";
-      pickCtx.font = "10px system-ui";
-      pickCtx.fillText(String(i + 1), q.x + 5, q.y - 5);
+      pickCtx.font = `${font}px system-ui`;
+      pickCtx.fillText(String(i + 1), q.x + pickR + 1, q.y - pickR - 1);
     });
   }
 }
