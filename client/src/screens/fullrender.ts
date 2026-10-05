@@ -13,6 +13,7 @@
  * 사진은 저장하지 않는다 — 카메라 영상은 이 화면 안에서만 쓴다.
  */
 
+import { EYE_CONTOUR, computeFarEyeFix } from "../core/eye-fit";
 import { measureFace } from "../core/face-measure";
 import { lookById } from "../core/looks";
 import { lookDetail } from "../core/look-view";
@@ -44,6 +45,24 @@ export interface FullRenderDeps {
  * 가정값 — 폰에서 ?tune 의 "머리카락 분할 ms" 를 보고 정한다. ?nohair 면 끄고 비교
  */
 export const HAIR_AR = { intervalMs: 200, width: 320 };   // 폰(2026-09-30 Android): 분할 24~34ms → 500 에서 200 으로
+
+/**
+ * 고개를 크게 돌리면 먼 쪽 눈 랜드마크가 틀어지는 문제 보정 (eye-fit.ts, 2026-10-02 PC 실측 #277) — 화면 4
+ * (live-run.ts)에서 먼저 검증된 computeFarEyeFix를 그대로 가져다 쓴다(중복 구현 금지 — #291 리뷰, 변환
+ * 공식 자체는 eye-fit.ts 하나뿐). 화면 4는 테두리 다각형에, 여기는 랜드마크 배열 자체에 적용하는 차이뿐이다.
+ * 메시 워프(makeup-gl)가 이 배열을 그대로 꼭짓점으로 쓰므로, 여기서 고치면 그 눈 위의 모든 화장(섀도우·라이너
+ * 등)이 같이 고쳐진다. yaw 12° 안쪽이면(computeFarEyeFix가 null) 그대로 cur 를 돌려준다 — 보정 없음.
+ */
+function correctFarEye(baseLm: readonly Pt[], cur: readonly Pt[]): Pt[] {
+  const r = computeFarEyeFix(baseLm, cur);
+  if (!r) return [...cur];
+  const out = [...cur];
+  for (const i of EYE_CONTOUR[r.far]) {
+    const p = cur[i]!, q = r.place(baseLm[i]!);
+    out[i] = { x: p.x + (q.x - p.x) * r.weight, y: p.y + (q.y - p.y) * r.weight };
+  }
+  return out;
+}
 
 export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
   return {
@@ -198,7 +217,9 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
                 paintMakeup({ mul: atlas.mul.getContext("2d")!, col: atlas.col.getContext("2d")!, light: atlas.light.getContext("2d")! }, off, ref, paintLook, p, p.liner.plan.style, LASHES);
               }
               if (hairOn && lm && ref && ticker.due(now)) segment(now, w, hh);
-              gl.render(video, w, hh, atlas.mul, atlas.col, atlas.light, lm && ref ? { lm, ref, beauty: 0.3, radius: w * 0.004, hair } : null);
+              // 먼 쪽 눈 보정(#277) — 메시 워프 꼭짓점으로 그대로 들어가니 그 눈 위 화장 전부가 같이 고쳐진다
+              const fixedLm = lm && ref ? correctFarEye(ref, lm) : lm;
+              gl.render(video, w, hh, atlas.mul, atlas.col, atlas.light, fixedLm && ref ? { lm: fixedLm, ref, beauty: 0.3, radius: w * 0.004, hair } : null);
               if (!live) {
                 live = true;
                 stage.replaceChildren(canvas);
