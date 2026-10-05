@@ -17,9 +17,8 @@ import { createBundleCollector, type BundleState } from "./capture-bundle";
 import { exprDiff } from "./expression";
 import { gateStep, rigidPoseDiff, softFail, type LiveLimits, LIVE_LIMITS, livePose, type LiveMeasure } from "./gate";
 import { linerOutline, GUIDE_PARAMS } from "./guides";
-import { partInRect } from "./landmarks";
+import { LM, partInRect } from "./landmarks";
 import { pinOutline, placeOutline } from "./mesh-pin";
-import { LM } from "./landmarks";
 import type { Side } from "./score";
 import { FAR_EYE_DEFAULT, type FarEyeOptions, computeFarEyeFix, eyeCenter, farSide } from "./eye-fit";
 import { foreheadStep, startForeheadTrack, type ForeheadTrack } from "./occlusion";
@@ -171,7 +170,6 @@ function farEyeAlpha(sides: readonly Side[], baseLm: readonly Pt[], cur: readonl
   const far = farSide(d, cur);
   return sides.map((s) => (s === far ? a : 1));
 }
-
 
 export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): LiveStep<I>; press(): boolean; readonly smoother: LandmarkSmoother | null } {
   const limits = opt.limits ?? LIVE_LIMITS;
