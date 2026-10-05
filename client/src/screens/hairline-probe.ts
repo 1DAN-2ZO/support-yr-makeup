@@ -5,7 +5,7 @@
  */
 
 import type { FaceLandmarker } from "@mediapipe/tasks-vision";
-import { FOREHEAD_ARC, findHairline, type HairlinePoint } from "@core/hairline";
+import { FOREHEAD_ARC, createHairlineTrack, type HairlinePoint } from "@core/hairline";
 import type { HairMask } from "@core/sampling";
 import type { Pt } from "@core/types";
 import { startFrameLoop } from "./camera-loop";
@@ -36,6 +36,10 @@ let landmarker: FaceLandmarker | null = null;
 let segmenter: HairSegmenter | null = null;
 let mask: HairMask | null = null;
 let lastSeg = -Infinity, segMs = 0;
+/** 새 마스크가 이 장면에 왔나 — 그때만 머리선을 다시 찾고(섞고), 다른 장면은 지금 랜드마크로 다시 놓기만 */
+let fresh = false;
+const track = createHairlineTrack();
+const raw = $<HTMLInputElement>("raw");
 const small = document.createElement("canvas");
 const maskCv = document.createElement("canvas");
 let frames = 0, fps = 0, fpsT0 = performance.now();
@@ -49,8 +53,9 @@ function segment(now: number, w: number, h: number): void {
   if (!sg) return;
   sg.drawImage(video, 0, 0, small.width, small.height);
   const px = sg.getImageData(0, 0, small.width, small.height), t0 = performance.now();
-  mask = segmenter.segment({ data: px.data, w: small.width, h: small.height }) ?? mask;
+  const m = segmenter.segment({ data: px.data, w: small.width, h: small.height });
   segMs = Math.round(performance.now() - t0);
+  if (m) { mask = m; fresh = true; }
 }
 
 function drawMask(w: number, h: number): void {
@@ -113,8 +118,10 @@ function frame(now: number): void {
   let info = "얼굴을 찾지 못했어요";
   if (face && face.length >= 478) {
     const lm: Pt[] = face.map((p) => ({ x: p.x * w, y: p.y * h }));
-    if (mask) {
-      const hl = findHairline(lm, mask, { w, h });
+    // 비교용 '섞지 않기' 체크: 마스크가 올 때마다 섞지 않고 그 값 그대로
+    if (mask && fresh) { if (raw.checked) track.reset(); track.update(lm, mask, { w, h }); fresh = false; }
+    const hl = track.place(lm);
+    if (hl) {
       drawOverlay(lm, hl, w);
       const n = (k: HairlinePoint["kind"]) => hl.filter((p) => p.kind === k).length;
       info = `머리선 ${n("hair")}칸 · 앞머리 ${n("bangs")}칸 · 못 찾음 ${n("none")}칸`;

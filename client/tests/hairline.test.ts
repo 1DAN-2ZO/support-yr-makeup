@@ -1,7 +1,7 @@
 // 머리선 점 (2026-10-05 사용자) — MediaPipe 얼굴 점은 이마 중간(10번)까지라, 머리카락 분할로 이마 위 끝(머리선)을 찾는다.
 // 478점은 그대로 두고 점을 따로 더한다. 앞머리가 이마를 덮은 칸은 MediaPipe 이마 위 선으로 되돌아간다
 import { describe, expect, it } from "vitest";
-import { FOREHEAD_ARC, HAIRLINE, findHairline } from "@core/hairline";
+import { FOREHEAD_ARC, HAIRLINE, HAIRLINE_TRACK, createHairlineTrack, findHairline } from "@core/hairline";
 import type { HairMask } from "@core/sampling";
 import type { Pt } from "@core/types";
 import { H, LMS, W } from "./helpers/synth-face";
@@ -76,5 +76,49 @@ describe("머리선 (findHairline)", () => {
       // 출발점에서 얼굴 위쪽으로 곧장 — 얼굴 기준 가로 자리가 그대로 (화면 위쪽으로 찾으면 옆으로 밀린다)
       expect(Math.abs(back(p.at).x - back(p.base).x), `x ${back(p.base).x.toFixed(0)}`).toBeLessThan(1);
     }
+  });
+});
+
+describe("머리선 따라가기 (createHairlineTrack)", () => {
+  const hairAt = (y0: number) => mask((_x, y) => y < y0);
+  const midY = (pts: readonly { at: Pt }[]) => pts[Math.floor(pts.length / 2)]!.at.y;
+
+  it("T1 마스크가 없는 장면에서도 지금 랜드마크로 바로 다시 놓는다 — 얼굴이 옮겨지고 커지면 머리선도 그만큼", () => {
+    const t = createHairlineTrack();
+    expect(t.place(LMS)).toBeNull();   // 마스크가 오기 전엔 없음
+    t.update(LMS, hairAt(60), IMG);
+    const a = t.place(LMS)!;
+    const move = (p: Pt): Pt => ({ x: 40 + 1.2 * p.x, y: 30 + 1.2 * p.y });
+    const b = t.place(LMS.map(move))!;
+    b.forEach((p, i) => {
+      expect(Math.abs(p.at.x - move(a[i]!.at).x)).toBeLessThan(1e-6);
+      expect(Math.abs(p.at.y - move(a[i]!.at).y)).toBeLessThan(1e-6);
+    });
+  });
+
+  it("T2 분할 경계가 매번 몇 px 씩 흔들려도 머리선은 덜 흔들린다", () => {
+    const t = createHairlineTrack();
+    const ys: number[] = [];
+    for (let k = 0; k < 20; k++) { t.update(LMS, hairAt(k % 2 ? 56 : 64), IMG); ys.push(midY(t.place(LMS)!)); }
+    const late = ys.slice(10), swing = Math.max(...late) - Math.min(...late);
+    expect(swing, "흔들림 폭").toBeLessThan(0.5 * 8);   // 원래 8px 흔들림의 절반 아래
+    expect(Math.abs(late.reduce((a, b) => a + b, 0) / late.length - 60)).toBeLessThan(1.5);
+  });
+
+  it("T3 머리선이 정말 바뀌면(머리를 넘김) 몇 번 안에 따라간다", () => {
+    const t = createHairlineTrack();
+    for (let k = 0; k < 5; k++) t.update(LMS, hairAt(60), IMG);
+    let n = 0;
+    while (Math.abs(midY(t.place(LMS)!) - 40) > 1 && n < 30) { t.update(LMS, hairAt(40), IMG); n++; }
+    expect(n, "바뀐 머리선까지 걸린 분할 횟수").toBeLessThanOrEqual(HAIRLINE_TRACK.settle);
+  });
+
+  it("T4 앞머리로 바뀌면 기다리지 않고 바로 MediaPipe 선으로 (그 반대도)", () => {
+    const t = createHairlineTrack();
+    for (let k = 0; k < 5; k++) t.update(LMS, hairAt(60), IMG);
+    t.update(LMS, mask((_x, y) => y < 180), IMG);   // 앞머리가 눈썹 근처까지
+    for (const p of t.place(LMS)!) { expect(p.kind).toBe("bangs"); expect(p.at).toEqual(p.base); }
+    t.update(LMS, hairAt(60), IMG);   // 다시 넘김
+    for (const p of t.place(LMS)!) { expect(p.kind).toBe("hair"); expect(Math.abs(p.at.y - 60)).toBeLessThan(2); }
   });
 });

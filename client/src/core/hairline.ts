@@ -48,12 +48,17 @@ function alongArc(pts: readonly Pt[], n: number): Pt[] {
   });
 }
 
+/** 이 얼굴의 칸 출발점 · 얼굴 위쪽(미간 168 → 이마 위 10) · 그 거리(눈금) */
+function foreheadFrame(lm: readonly Pt[], columns: number): { bases: Pt[]; up: Pt; unit: number } {
+  const top = lm[10]!, mid = lm[168]!, unit = Math.hypot(top.x - mid.x, top.y - mid.y);
+  const up = unit > 0 ? { x: (top.x - mid.x) / unit, y: (top.y - mid.y) / unit } : { x: 0, y: -1 };
+  return { bases: alongArc(FOREHEAD_ARC.map((i) => lm[i]!), columns), up, unit };
+}
+
 /** lm: 얼굴 점(사진 px) · mask: 머리카락 확률(사진과 같은 구도, 크기는 달라도 됨) · img: 사진 크기 */
 export function findHairline(lm: readonly Pt[], mask: HairMask, img: { w: number; h: number }, opts: typeof HAIRLINE = HAIRLINE): HairlinePoint[] {
-  const top = lm[10]!, mid = lm[168]!, unit = Math.hypot(top.x - mid.x, top.y - mid.y);
-  const bases = alongArc(FOREHEAD_ARC.map((i) => lm[i]!), opts.columns);
+  const { bases, up, unit } = foreheadFrame(lm, opts.columns);
   if (!(unit > 0)) return bases.map((b) => ({ at: b, base: b, kind: "none" }));
-  const up = { x: (top.x - mid.x) / unit, y: (top.y - mid.y) / unit };
   const hairAt = (x: number, y: number): boolean => {
     if (x < 0 || y < 0 || x >= img.w || y >= img.h) return false;
     const mx = Math.min(mask.w - 1, Math.floor((x * mask.w) / img.w)), my = Math.min(mask.h - 1, Math.floor((y * mask.h) / img.h));
@@ -73,4 +78,42 @@ export function findHairline(lm: readonly Pt[], mask: HairMask, img: { w: number
     }
     return { at: base, base, kind: "none" };
   });
+}
+
+/**
+ * 영상에서 따라가기 (웹캠 2026-10-05: 마스크마다 새로 찾으면 랜드마크보다 늦고 많이 흔들렸다).
+ * 머리선을 사진 자리가 아니라 **얼굴 기준**(칸마다 출발점에서 얼굴 위쪽으로 이마 위 ↔ 미간 거리의 몇 배)으로 들고 있다가
+ * 매 장면 지금 랜드마크로 다시 놓는다 — 랜드마크만큼 빨리 따라간다. 분할은 가끔(간격마다)이라 새 마스크가 오면 그 값만
+ * alpha 만큼 섞는다 (머리선은 얼굴에 붙어 있어 천천히 섞어도 된다). 칸 종류(찾음 · 앞머리 · 못 찾음)가 바뀌면 기다리지 않고 바로.
+ * settle: 머리선이 정말 바뀌었을 때 1px 안으로 따라가는 데 드는 분할 횟수 (alpha 에서 나온 값 — 시험 T3)
+ * 화면 4 에 넣을 때도 같다 — 맨얼굴에서 한 번 찾고(update) 매 장면 place.
+ */
+export const HAIRLINE_TRACK = { alpha: 0.35, settle: 7 } as const;
+
+export function createHairlineTrack(opts: typeof HAIRLINE = HAIRLINE, alpha: number = HAIRLINE_TRACK.alpha): {
+  update(lm: readonly Pt[], mask: HairMask, img: { w: number; h: number }): void;
+  place(lm: readonly Pt[]): HairlinePoint[] | null;
+  reset(): void;
+} {
+  let cols: { kind: HairlineKind; s: number }[] | null = null;
+  return {
+    update(lm, mask, img) {
+      const { unit } = foreheadFrame(lm, opts.columns);
+      if (!(unit > 0)) return;
+      const next = findHairline(lm, mask, img, opts).map((p) => ({ kind: p.kind, s: p.kind === "hair" ? Math.hypot(p.at.x - p.base.x, p.at.y - p.base.y) / unit : 0 }));
+      const prev = cols;
+      cols = prev && prev.length === next.length
+        ? next.map((n, i) => (n.kind === "hair" && prev[i]!.kind === "hair" ? { kind: n.kind, s: prev[i]!.s + alpha * (n.s - prev[i]!.s) } : n))
+        : next;
+    },
+    place(lm) {
+      if (!cols) return null;
+      const { bases, up, unit } = foreheadFrame(lm, opts.columns), c = cols;
+      return bases.map((base, i): HairlinePoint => {
+        const col = c[i]!;
+        return col.kind === "hair" ? { at: { x: base.x + up.x * col.s * unit, y: base.y + up.y * col.s * unit }, base, kind: "hair" } : { at: base, base, kind: col.kind };
+      });
+    },
+    reset() { cols = null; },
+  };
 }
