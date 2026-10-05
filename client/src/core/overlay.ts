@@ -41,8 +41,8 @@ export function guideOutline(partId: PartId, lm: readonly Pt[], g: PartGeometry)
       break;
     case "shadow":
     case "cheek":
-      // 섀도 눈꼬리 연장(#30)은 영역 끝에 이어 붙여 한 모양으로 — 완성본에 칠한 꼬리와 같은 테두리
-      if (g.regions) polys.push([...g.regions.R, ...(g.shadowTail?.R ?? [])], [...g.regions.L, ...(g.shadowTail?.L ?? [])]);
+      // 섀도 눈꼬리 연장(#30)은 영역(regions)에 이미 이어 붙어 있다 — 채점과 같은 모양 (personal-guide planGuide)
+      if (g.regions) polys.push([...g.regions.R], [...g.regions.L]);
       break;
     case "contour":
       if (g.contour) for (const band of [...g.contour.shading, ...g.contour.highlight]) polys.push([...band]);
