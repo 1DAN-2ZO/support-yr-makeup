@@ -38,7 +38,7 @@ const sub = (a: Pt, b: Pt): Pt => ({ x: a.x - b.x, y: a.y - b.y });
 const dot = (a: Pt, b: Pt): number => a.x * b.x + a.y * b.y;
 
 /** 얼굴 좌표: 원점 = 두 눈꼬리 가운데, u = 사진 왼쪽 눈꼬리 → 오른쪽 눈꼬리, v = u 에 수직(아래) */
-function faceFrame(lm: readonly Pt[]) {
+export function faceFrame(lm: readonly Pt[]) {
   const a = lm[LM.eyeA.outer]!, b = lm[LM.eyeB.outer]!, d = sub(b, a), len = Math.hypot(d.x, d.y) || 1;
   const u = { x: d.x / len, y: d.y / len }, v = { x: -u.y, y: u.x }, o = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
   return {
@@ -49,7 +49,7 @@ function faceFrame(lm: readonly Pt[]) {
 }
 
 /** 볼 찾을 자리 (얼굴 좌표 범위) — 그쪽 눈 아래 ~ 입꼬리 높이, 눈머리 ~ 얼굴 옆선 조금 안쪽 */
-function cheekZone(lm: readonly Pt[], side: Side) {
+export function cheekZone(lm: readonly Pt[], side: Side) {
   const f = faceFrame(lm), eye = side === "R" ? LM.eyeA : LM.eyeB;
   const lowLid = Math.max(...eye.lower.map((i) => f.to(lm[i]!).b));
   const mouth = (f.to(lm[LM.lipsOuter[0]!]!).b + f.to(lm[LM.lipsOuter[Math.floor(LM.lipsOuter.length / 2)]!]!).b) / 2;
@@ -291,23 +291,44 @@ function zones(lm: readonly Pt[]): { list: Zone[]; exclude: Pt[][] } {
   return { list, exclude };
 }
 
-/** 모든 부위 떼기 — 겹치는 자리는 앞 부위가 먼저 가져간다. 눈알은 늘 뺀다 */
-export function extractAll(bare0: RgbaImage, made0: RgbaImage, lm: readonly Pt[], opts: ExtractOptions = EXTRACT): { w: number; h: number; parts: PartMask[] } {
+/** 한 픽셀의 색 차 — d: 거르기 적용한 차(색 위주면 밝기를 줄여 잰 것) · dL: 밝기 차 · L: 화장 사진 밝기(톤 뺀) · bL · mL: 맨얼굴 · 화장 사진 밝기 그대로 */
+export interface DiffPx { d: number; dL: number; L: number; bL: number; mL: number }
+
+/**
+ * 맨얼굴 ↔ 화장 사진 색 차 — 떼기(extractAll)와 모양 숫자 재기(makeup-fit)가 같은 기준을 쓴다.
+ * 스위치(blur · skinMap · adaptive)를 여기서 다 적용하고, floor 는 adaptive 의 '피부 변화 윗선'(꺼져 있으면 0).
+ */
+export interface DiffField {
+  w: number;
+  h: number;
+  /** 눈 폭 (두 눈 평균, px) */
+  eyeW: number;
+  floor: number;
+  /** 색 위주(colorZone)면 밝기 차를 chromaL 배로 줄여 잰다. AI 사진이 닿지 않은 빈칸이면 null */
+  at(x: number, y: number, colorZone?: boolean): DiffPx | null;
+}
+
+export function diffField(bare0: RgbaImage, made0: RgbaImage, lm: readonly Pt[], opts: ExtractOptions = EXTRACT): DiffField {
   const eyeW = (Math.hypot(lm[LM.eyeA.outer]!.x - lm[LM.eyeA.inner]!.x, lm[LM.eyeA.outer]!.y - lm[LM.eyeA.inner]!.y) + Math.hypot(lm[LM.eyeB.outer]!.x - lm[LM.eyeB.inner]!.x, lm[LM.eyeB.outer]!.y - lm[LM.eyeB.inner]!.y)) / 2;
   const br = Math.max(1, Math.round(opts.blurRatio * eyeW));
   const bare = opts.blur ? boxBlur(bare0, br) : bare0, made = opts.blur ? boxBlur(made0, br) : made0;
-  const { w, h } = bare, flat = toneShift(bare, made, lm);
+  const flat = toneShift(bare, made, lm);
   const map = opts.skinMap ? skinShiftMap(bare, made, lm, eyeW) : null;
   const shiftAt = (x: number, y: number): Lab => (map ? map(x, y) : flat);
+  const at = (x: number, y: number, colorZone = false): DiffPx | null => {
+    if ((made.data[(y * made.w + x) * 4 + 3] ?? 255) < 250) return null;
+    const sh = shiftAt(x, y), b = labAt(bare, x, y), m0 = labAt(made, x, y), m = { L: m0.L - sh.L, a: m0.a - sh.a, b: m0.b - sh.b };
+    const dL = m.L - b.L, d = colorZone ? Math.hypot(opts.chromaL * dL, m.a - b.a, m.b - b.b) : deltaE(b, m);
+    return { d, dL, L: m.L, bL: b.L, mL: m0.L };
+  };
   // adaptive: 얼굴 상자 안 색 차 분포 — 대부분이 화장 아닌 피부라 중앙값 + K × 퍼짐(MAD × 1.4826) 이 '피부 변화' 의 윗선
   let floor = 0;
   if (opts.adaptive) {
     const xs = lm.map((p) => p.x), ys = lm.map((p) => p.y), st = Math.max(1, Math.round(eyeW / 20)), v: number[] = [];
     for (let y = Math.max(0, Math.floor(Math.min(...ys))); y <= Math.min(bare.h - 1, Math.ceil(Math.max(...ys))); y += st) {
       for (let x = Math.max(0, Math.floor(Math.min(...xs))); x <= Math.min(bare.w - 1, Math.ceil(Math.max(...xs))); x += st) {
-        if ((made.data[(y * made.w + x) * 4 + 3] ?? 255) < 250) continue;
-        const sh = shiftAt(x, y), m = labAt(made, x, y);
-        v.push(deltaE(labAt(bare, x, y), { L: m.L - sh.L, a: m.a - sh.a, b: m.b - sh.b }));
+        const q = at(x, y);
+        if (q) v.push(q.d);
       }
     }
     if (v.length) {
@@ -316,6 +337,12 @@ export function extractAll(bare0: RgbaImage, made0: RgbaImage, lm: readonly Pt[]
       floor = m + opts.adaptiveK * mad;
     }
   }
+  return { w: bare.w, h: bare.h, eyeW, floor, at };
+}
+
+/** 모든 부위 떼기 — 겹치는 자리는 앞 부위가 먼저 가져간다. 눈알은 늘 뺀다 */
+export function extractAll(bare0: RgbaImage, made0: RgbaImage, lm: readonly Pt[], opts: ExtractOptions = EXTRACT): { w: number; h: number; parts: PartMask[] } {
+  const field = diffField(bare0, made0, lm, opts), { w, h, floor } = field;
   const taken = new Uint8Array(w * h), parts: PartMask[] = [];
   const { list, exclude } = zones(lm);
   const inside = (x: number, y: number, polys: readonly Pt[][]) => polys.some((q) => pointInPoly(x, y, q));
@@ -327,12 +354,12 @@ export function extractAll(bare0: RgbaImage, made0: RgbaImage, lm: readonly Pt[]
     for (let y = Math.max(0, Math.floor(Math.min(...ys))); y <= Math.min(h - 1, Math.ceil(Math.max(...ys))); y++) {
       for (let x = Math.max(0, Math.floor(Math.min(...xs))); x <= Math.min(w - 1, Math.ceil(Math.max(...xs))); x++) {
         const i = y * w + x;
-        if (taken[i] || (made.data[i * 4 + 3] ?? 255) < 250 || !pointInPoly(x, y, z.poly) || inside(x, y, exclude)) continue;
-        const sh = shiftAt(x, y), b = labAt(bare, x, y), m0 = labAt(made, x, y), m = { L: m0.L - sh.L, a: m0.a - sh.a, b: m0.b - sh.b };
+        if (taken[i] || !pointInPoly(x, y, z.poly) || inside(x, y, exclude)) continue;
+        const q = field.at(x, y, colorZone);
+        if (!q) continue;
         // 얼굴 나머지(쉐딩 · 하이라이트)에서 아주 어두운 픽셀은 머리카락 · 그늘 — 화장으로 안 본다
-        if (z.part === "contour" && Math.min(b.L, m0.L) < 25) continue;
-        const dL = m.L - b.L, d = colorZone ? Math.hypot(opts.chromaL * dL, m.a - b.a, m.b - b.b) : deltaE(b, m);
-        px.push({ i, d, dL, L: m.L });
+        if (z.part === "contour" && Math.min(q.bL, q.mL) < 25) continue;
+        px.push({ i, d: q.d, dL: q.dL, L: q.L });
       }
     }
     if (!px.length) continue;

@@ -36,7 +36,7 @@
       figure { margin: 0; flex: 1 1 340px; max-width: 520px; }
       .big figure { max-width: none; }
       figcaption { font-size: 13px; opacity: .8; margin-bottom: 4px; }
-      #cvOnly, #cvBare, #cvMade { width: 100%; height: auto; border-radius: 8px; background: #000; display: block; }
+      #cvOnly, #cvBare, #cvMade, #cvFitBare, #cvFitMade { width: 100%; height: auto; border-radius: 8px; background: #000; display: block; }
     </style>
   </head>
   <body>
@@ -88,6 +88,14 @@
     </div>
     <div id="status">맨얼굴과 AI 결과가 있으면 자동으로 떼요.</div>
     <div id="parts"></div>
+    <h2>⑤ 가이드 (모양 숫자로) — 블러셔 · 섀도 · 라이너</h2>
+    <p class="note">구역(틀)은 고정하고 크기 · 위치 숫자만 AI 사진에서 읽어요. 실선 = 사진에서 읽음, 점선 = 못 읽어서 기본 틀.</p>
+    <div class="row">
+      <figure><figcaption>맨얼굴 위 가이드</figcaption><canvas id="cvFitBare"></canvas></figure>
+      <figure><figcaption>AI 사진 위 같은 가이드</figcaption><canvas id="cvFitMade"></canvas></figure>
+    </div>
+    <div id="fitInfo" class="msg" style="white-space:pre-line;font-size:13px;margin-top:6px"></div>
+    <h2>떼어낸 픽셀 (참고)</h2>
     <div class="big"><figure><figcaption>뗀 화장만 (회색 바탕 위에 AI 색 그대로, 테두리 색 = 부위)</figcaption><canvas id="cvOnly"></canvas></figure></div>
     <div class="row">
       <figure><figcaption>맨얼굴 + 뗀 자리</figcaption><canvas id="cvBare"></canvas></figure>

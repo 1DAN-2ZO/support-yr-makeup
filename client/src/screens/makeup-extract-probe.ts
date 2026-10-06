@@ -12,7 +12,9 @@
 import type { FaceLandmarker } from "@mediapipe/tasks-vision";
 import { deltaE, foreheadLab, labAt, type RgbaImage } from "@core/color";
 import { applyAffine, robustAffine, type Affine } from "@core/eye-fit";
+import { lookGuide } from "@core/guides";
 import { EXTRACT, extractAll, type ExtractPart, type PartMask } from "@core/makeup-extract";
+import { fitMakeup, type FitPart } from "@core/makeup-fit";
 import { createSnapshotCollector } from "@core/snapshot";
 import type { Pt } from "@core/types";
 import { startFrameLoop } from "./camera-loop";
@@ -39,6 +41,7 @@ const heat = $<HTMLInputElement>("heat");
 const optBlur = $<HTMLInputElement>("optBlur"), optMap = $<HTMLInputElement>("optMap"), optChroma = $<HTMLInputElement>("optChroma"), optAdaptive = $<HTMLInputElement>("optAdaptive");
 const cvOnly = $<HTMLCanvasElement>("cvOnly"), cvBare = $<HTMLCanvasElement>("cvBare"), cvMade = $<HTMLCanvasElement>("cvMade");
 const statusEl = $("status"), partsEl = $("parts");
+const cvFitBare = $<HTMLCanvasElement>("cvFitBare"), cvFitMade = $<HTMLCanvasElement>("cvFitMade"), fitInfo = $("fitInfo");
 
 const PARTS: { id: ExtractPart; name: string; color: [number, number, number] }[] = [
   { id: "lip", name: "입술", color: [255, 59, 92] },
@@ -55,7 +58,7 @@ const on = new Set<ExtractPart>(PARTS.map((p) => p.id));
 /** 원본 크기 그림 (저장 · AI 보내기 · 떼기에 쓴다) */
 let bareCv: HTMLCanvasElement | null = null, refCv: HTMLCanvasElement | null = null, madeCv: HTMLCanvasElement | null = null;
 let imageLm: Promise<FaceLandmarker> | null = null;
-let last: { bare: RgbaImage; made: RgbaImage; lm: Pt[]; parts: PartMask[]; crop: { x: number; y: number; w: number; h: number }; info: string } | null = null;
+let last: { bare: RgbaImage; made: RgbaImage; lm: Pt[]; parts: PartMask[]; fit: FitPart[]; crop: { x: number; y: number; w: number; h: number }; info: string } | null = null;
 
 const setStatus = (text: string, warn = false): void => { statusEl.innerHTML = warn ? `<span class="warn">${text}</span>` : text; };
 const setMsg = (el: HTMLElement, text: string, warn = false): void => { el.innerHTML = warn ? `<span class="warn">${text}</span>` : text; };
@@ -388,7 +391,7 @@ async function maybeExtract(): Promise<void> {
   const x0 = Math.max(0, Math.floor(Math.min(...xs) - mx)), y0 = Math.max(0, Math.floor(Math.min(...ys) - my));
   const crop = { x: x0, y: y0, w: Math.min(bare.w, Math.ceil(Math.max(...xs) + mx)) - x0, h: Math.min(bare.h, Math.ceil(Math.max(...ys) + my)) - y0 };
   const eyeW = Math.hypot(bl[33]!.x - bl[133]!.x, bl[33]!.y - bl[133]!.y);
-  last = { bare, made, lm: bl, parts: [], crop, info: `겹치기 오차 평균 ${resid.toFixed(1)}px (눈 폭의 ${((resid / eyeW) * 100).toFixed(1)}%)` };
+  last = { bare, made, lm: bl, parts: [], fit: [], crop, info: `겹치기 오차 평균 ${resid.toFixed(1)}px (눈 폭의 ${((resid / eyeW) * 100).toFixed(1)}%)` };
   await extract();
 }
 
@@ -400,10 +403,52 @@ async function extract(): Promise<void> {
   const opts = { ...EXTRACT, blur: optBlur.checked, skinMap: optMap.checked, chroma: optChroma.checked, adaptive: optAdaptive.checked };
   const t0 = performance.now(), res = extractAll(last.bare, last.made, last.lm, opts), ms = Math.round(performance.now() - t0);
   last.parts = res.parts;
+  // 모양 숫자 재기 — 못 읽은 부위는 기본 틀(앱의 템플릿 가이드와 같은 계산)로
+  last.fit = fitMakeup(last.bare, last.made, last.lm, lookGuide({}), opts);
   drawPartList(res.parts);
   render();
+  renderFit();
   const sw = [optBlur.checked && "①", optMap.checked && "②", optChroma.checked && "③", optAdaptive.checked && "④"].filter(Boolean).join(" ") || "없음";
   setStatus(`${last.info} · 떼기 ${ms}ms · 켠 거르기: ${sw} · 부위를 눌러 켜고 끄기`);
+}
+
+/** 가이드 그리기 — 사진(자른 자리) 위에 부위 색 테두리. 사진에서 읽음 = 실선, 기본 틀 = 점선 */
+function drawFit(cv: HTMLCanvasElement, im: RgbaImage, crop: NonNullable<typeof last>["crop"], fit: readonly FitPart[]): void {
+  cv.width = crop.w; cv.height = crop.h;
+  const g = cv.getContext("2d")!, id = g.createImageData(crop.w, crop.h);
+  for (let y = 0; y < crop.h; y++) for (let x = 0; x < crop.w; x++) {
+    const i = ((crop.y + y) * im.w + (crop.x + x)) * 4, o = (y * crop.w + x) * 4;
+    id.data[o] = im.data[i]!; id.data[o + 1] = im.data[i + 1]!; id.data[o + 2] = im.data[i + 2]!; id.data[o + 3] = 255;
+  }
+  g.putImageData(id, 0, 0);
+  const lw = Math.max(2, crop.w / 300);
+  for (const f of fit) {
+    if (f.poly.length < 2) continue;
+    const c = PARTS.find((p) => p.id === f.part)!.color;
+    g.strokeStyle = `rgb(${c.join(",")})`;
+    g.lineWidth = lw;
+    g.setLineDash(f.fromPhoto ? [] : [lw * 3, lw * 2]);
+    g.beginPath();
+    g.moveTo(f.poly[0]!.x - crop.x, f.poly[0]!.y - crop.y);
+    for (const p of f.poly.slice(1)) g.lineTo(p.x - crop.x, p.y - crop.y);
+    g.closePath();
+    g.stroke();
+  }
+}
+
+function renderFit(): void {
+  if (!last) return;
+  drawFit(cvFitBare, last.bare, last.crop, last.fit);
+  drawFit(cvFitMade, last.made, last.crop, last.fit);
+  const side = (s: "R" | "L") => (s === "R" ? "사진 왼쪽" : "사진 오른쪽");
+  const n = (v: number | undefined, k = 1) => (v === undefined ? "-" : (v * k).toFixed(0));
+  fitInfo.textContent = last.fit.map((f) => {
+    const name = PARTS.find((p) => p.id === f.part)!.name;
+    if (!f.fromPhoto) return `${name} ${side(f.side)}: 못 읽음 → 기본 틀`;
+    if (f.part === "cheek") return `${name} ${side(f.side)}: 크기 ${n(f.params.rx)}×${n(f.params.ry)}px · 기울기 ${n(f.params.angle)}°`;
+    if (f.part === "shadow") return `${name} ${side(f.side)}: 눈꺼풀 → 눈썹 ${n(f.params.height, 100)}% 까지`;
+    return `${name} ${side(f.side)}: 두께 눈 폭의 ${n(f.params.thickness, 100)}% · 꼬리 ${n(f.params.wingLen, 100)}% · 각도 ${n(f.params.wingAngle)}°`;
+  }).join("\n");
 }
 
 heat.addEventListener("change", render);
