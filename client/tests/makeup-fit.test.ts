@@ -255,6 +255,28 @@ describe("모양 숫자 재기 — 아이라이너", () => {
     }
   });
 
+  it("F18 눈꺼풀 라이너는 가늘게 재져도 굵은 꼬리는 읽는다 — 실사진: AI 가 눈을 키워 그려 두께가 1px 로 재졌고, 꼬리는 아래 속눈썹과 붙어 8px", () => {
+    // 눈꺼풀: 반지름 1 (두께 약 2px) · 꼬리: 눈꼬리 → 꼬리 끝 반지름 4 (8px)
+    const paths = (["R", "L"] as const).map((s) => eyeOf(s).upper.map(P));
+    const thinLid: Paint = (x, y) => {
+      for (const s of ["R", "L"] as const) {
+        const o = P(eyeOf(s).outer);
+        if (nearSeg(x, y, { x: o.x, y: o.y - 3 }, { x: tips[s].x, y: tips[s].y - 3 }) <= 4) return INK;
+      }
+      for (const path of paths) for (let i = 1; i < path.length; i++) {
+        if (nearSeg(x, y, { x: path[i - 1]!.x, y: path[i - 1]!.y - 2 }, { x: path[i]!.x, y: path[i]!.y - 2 }) <= 1) return INK;
+      }
+      return null;
+    };
+    const r = fitMakeup(bare, nat(thinLid), LMS, G);
+    for (const s of ["R", "L"] as const) {
+      const f = get(r, "liner", s);
+      expect(f.params.thickness! * 90, `${s} 두께는 가늘게 재진다 (전제)`).toBeLessThan(3);
+      // 굵은 꼬리 끝의 둥근 마무리(반지름 4)만큼 여유
+      expect(Math.hypot(f.params.tipX! - tips[s].x, f.params.tipY! - (tips[s].y - 3)), `${s} 꼬리 끝 (${f.params.tipX?.toFixed(0)}, ${f.params.tipY?.toFixed(0)})`).toBeLessThan(6);
+    }
+  });
+
   it("F7 라이너가 없으면 기본 틀 (가이드 꼬리)", () => {
     const r = fitMakeup(bare, nat(), LMS, G);
     for (const s of ["R", "L"] as const) {

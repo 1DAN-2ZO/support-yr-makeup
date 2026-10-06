@@ -180,7 +180,8 @@ function fitLiner(f: DiffField, lm: readonly Pt[], side: Side, opts: ExtractOpti
   const t = hasLine ? median(thick) : 0.03 * ew;
   // 꼬리: 눈꼬리에서 바깥으로 0.5px 씩 '선을 따라' 간다 — 바로 앞 칸 높이 위아래 wingNear(px) 안의 어두운 줄만 잇는다.
   // 넓게 훑었더니 꼬리 위로 뻗은 바깥 속눈썹 · 섀도 끝까지 꼬리로 붙어 실제보다 길었다 (실사진, 시험 F14).
-  // 그 줄이 선이 아니라 넓은 덩어리(라이너 두께 × 2 + 2px 넘게)면 섀도라 꼬리가 아니다 (시험 F15). 3px 끊기면 끝
+  // 그 줄이 지금까지 따라온 줄 굵기(중앙값) × 2 + 2px 보다 넓으면 섀도 덩어리라 꼬리가 아니다 (시험 F15). 3px 끊기면 끝.
+  // 처음엔 눈꺼풀 라이너 두께와 비교했는데, AI 가 눈을 키워 그린 사진에서 두께가 1px 로 재져 굵은 꼬리를 통째로 버렸다 (실사진, 시험 F18)
   const at = (s: number, v: number) => dark(add(add(o, out, s), up, v));
   const runAt = (s: number, v0: number): { lo: number; hi: number } | null => {
     let seed: number | null = null;
@@ -193,9 +194,10 @@ function fitLiner(f: DiffField, lm: readonly Pt[], side: Side, opts: ExtractOpti
     return { lo, hi };
   };
   let lastS = 0, lastV = t / 2, gap = 0;
+  const widths: number[] = [];
   for (let s = 0; s <= FIT.wingMax * ew; s += 0.5) {
-    const r = runAt(s, lastV);
-    if (r && r.hi - r.lo <= 2 * t + 2) { lastS = s; lastV = (r.lo + r.hi) / 2; gap = 0; } else if (++gap > 6) break;
+    const r = runAt(s, lastV), wd = r ? r.hi - r.lo : 0;
+    if (r && (!widths.length || wd <= 2 * median(widths) + 2)) { lastS = s; lastV = (r.lo + r.hi) / 2; widths.push(wd); gap = 0; } else if (++gap > 6) break;
   }
   const hasWing = lastS >= 0.04 * ew;
   if (!hasLine && !hasWing) return null;
