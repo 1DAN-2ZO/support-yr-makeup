@@ -49,6 +49,7 @@ import { loadLashes } from "./screens/lash-assets";
 import { reviewScreen, type ReviewDeps } from "./screens/review";
 import { startReviewShot } from "./screens/review-shot";
 import { createShell } from "./screens/shell";
+import { attemptScreen, type AttemptShots } from "./screens/attempt";
 import { partGuideSlot, saveSlot, slotScreen, type PartGuideSlotDeps, type SaveSlotDeps } from "./screens/flow-slots";
 import { inNewFlow } from "./core/screens";
 
@@ -153,8 +154,14 @@ async function boot(): Promise<void> {
     return r;
   };
 
+  // 5 시도사진 (⑥) — 화장을 다 한 뒤 정면 눈 뜬 장 · 감은 장. 6 피드백(③)이 getAttempt 로 받아 쓴다.
+  // 메모리에만 둔다 — 앱을 다시 켜면 다시 찍는다 (저장소 사진 키는 ① 의 session-store 라 아직 안 늘렸다)
+  let attempt: AttemptShots | null = null;
+  const getAttempt = (): AttemptShots | null => attempt;
+  shell.register("attempt", attemptScreen<Session>({ setAttempt: (shots) => { attempt = shots; }, next: "feedback" }));
+
   // 새 흐름 뼈대 (2026-10-06) — 담당이 진짜 화면을 올리면 여기 등록만 바꾼다 (screens/flow-slots.ts)
-  registerFlowSlots(shell, { getPart: () => session.currentPart, clearAll });
+  registerFlowSlots(shell, { getPart: () => session.currentPart, clearAll, getAttempt });
 
   registerAll(
     shell,
@@ -273,6 +280,7 @@ async function boot(): Promise<void> {
       // 세션을 통째로 새로 만든다 — 앞 세션 값이 하나도 안 남게
       restart: () => {
         logStore.reopen();
+        attempt = null;
         set(createSession());
         clearRemaining = 0;
         shell.render();
@@ -332,7 +340,7 @@ function registerAll(
  * 새 흐름(2026-10-06)의 빈 자리 — 순서는 core/screens.ts SCREEN_ORDER.
  * 옛 흐름 화면(looks · fullrender · guide · live · result · review)은 registerAll 에 그대로 등록돼 있지만 흐름이 가지 않는다
  */
-function registerFlowSlots(shell: ReturnType<typeof createShell<Session>>, deps: PartGuideSlotDeps & SaveSlotDeps): void {
+function registerFlowSlots(shell: ReturnType<typeof createShell<Session>>, deps: PartGuideSlotDeps & SaveSlotDeps & { getAttempt: () => AttemptShots | null }): void {
   shell.register("answer", slotScreen<Session>({
     title: "2 · 3 참고 사진 · 정답사진",
     owner: "① · ② · ④",
@@ -344,16 +352,14 @@ function registerFlowSlots(shell: ReturnType<typeof createShell<Session>>, deps:
     next: "partguide",
   }));
   shell.register("partguide", partGuideSlot<Session>(deps));
-  shell.register("attempt", slotScreen<Session>({
-    title: "5 시도사진",
-    owner: "⑥",
-    todo: ["화장을 다 한 뒤 정면 눈 뜬 사진 · 눈 감은 사진, 자동 촬영"],
-    next: "feedback",
-  }));
   shell.register("feedback", slotScreen<Session>({
     title: "6 피드백",
     owner: "③",
-    todo: ["정답사진 대 시도사진 — 부위별로 어느 부분이 어떻게 됐나 (잘함 / 덜 그림 / 넘침). 점수 없음"],
+    todo: [
+      "정답사진 대 시도사진 — 부위별로 어느 부분이 어떻게 됐나 (잘함 / 덜 그림 / 넘침). 점수 없음",
+      "시도사진은 main.ts 의 getAttempt() — 눈 뜬 장 · 감은 장, 사진 · 얼굴 점 · 크기 (screens/attempt.ts AttemptShots)",
+    ],
+    status: () => (deps.getAttempt() ? "시도사진 2장 받음" : "시도사진 없음 — 앱을 다시 켰으면 다시 찍어야 해요"),
     next: "save",
   }));
   shell.register("save", saveSlot<Session>(deps));

@@ -12,6 +12,7 @@ import { captureScreen, type CaptureDeps } from "@screens/capture";
 import { fullRenderScreen } from "@screens/fullrender";
 import { LIVE_TEXT, liveScreen, type LiveDeps } from "@screens/live";
 import { startReviewShot } from "@screens/review-shot";
+import { ATTEMPT_TEXT, attemptScreen } from "@screens/attempt";
 import type { ScreenContext } from "@screens/shell";
 import { LMS } from "./helpers/synth-face";
 
@@ -74,7 +75,7 @@ afterEach(() => {
   delete (HTMLVideoElement.prototype as { cancelVideoFrameCallback?: unknown }).cancelVideoFrameCallback;
 });
 
-function ctxOf(screen: "capture" | "live" | "fullrender" | "review"): ScreenContext<null> {
+function ctxOf(screen: "capture" | "live" | "fullrender" | "review" | "attempt"): ScreenContext<null> {
   document.body.innerHTML = `<div id="root"></div>`;
   const root = document.getElementById("root") as HTMLElement;
   return { root, session: null, go: vi.fn(), goPart: vi.fn(), log: createLogger({ sid: "s1", screen, part: null, ver }, memorySink().sink) };
@@ -120,8 +121,18 @@ async function mountReviewShot(wait = 2000): Promise<() => void> {
   return off;
 }
 
+/** 화면 5 시도사진 (⑥, 2026-10-06 새 흐름) — "찍기 시작" 을 눌러야 카메라를 켠다 */
+async function mountAttempt(wait = 2000): Promise<() => void> {
+  const ctx = ctxOf("attempt");
+  const off = attemptScreen<null>({ setAttempt: vi.fn(), next: "feedback" }).mount(ctx) as () => void;
+  Array.from(ctx.root.querySelectorAll("button")).find((b) => b.textContent === ATTEMPT_TEXT.start)!.click();
+  await vi.advanceTimersByTimeAsync(wait);
+  return off;
+}
+
 describe.each([
   ["촬영(화면 1)", mountCapture],
+  ["시도사진(화면 5)", mountAttempt],
   ["화면 4", mountLive],
   ["2-b AR", mountFullRender],
   ["리뷰 정면 1장(화면 6)", mountReviewShot],

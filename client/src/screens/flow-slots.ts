@@ -19,6 +19,8 @@ export interface SlotSpec {
   todo: readonly string[];
   /** "다음" 이 가는 화면 */
   next: ScreenId;
+  /** 지금 받아 둔 것 한 줄 (들어올 때마다 새로 읽는다) — 다음 담당이 무엇을 받아 쓰는지 보이게 */
+  status?: () => string;
 }
 
 function frame(ctx: ScreenContext<unknown>, title: string, owner: string, todo: readonly string[]): HTMLElement {
@@ -54,6 +56,12 @@ export function slotScreen<S>(spec: SlotSpec): Screen<S> {
   return {
     mount(ctx: ScreenContext<S>) {
       const box = frame(ctx as ScreenContext<unknown>, spec.title, spec.owner, spec.todo);
+      if (spec.status) {
+        const p = document.createElement("p");
+        p.className = "muted slot-status";
+        p.textContent = spec.status();
+        box.append(p);
+      }
       box.append(nextButton("다음", () => {
         ctx.log.log({ name: "button", button: `slot_next:${spec.next}` });
         // 부위 가이드로 갈 때는 첫 부위부터 — 진행 칩과 같은 goPart 라 지금 부위가 정해진다
