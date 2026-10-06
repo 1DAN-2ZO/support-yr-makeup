@@ -18,9 +18,10 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
-from scipy.ndimage import gaussian_filter, label
+from scipy.ndimage import binary_dilation, gaussian_filter, label
 from skimage import color
 
+SPAN, INK = 0.2, 15.0   # 굵기를 재는 구간(꼬리 끝에서 안쪽으로, 눈 폭 비율) · 잉크로 보는 어두워진 정도(L)
 SIDE, MIN, DARK, REACH, FAR = (0.025,), 6.0, 8.0, 0.22, 0.5   # 양옆 폭(눈 폭 비율) · 선 값(L) · 맨얼굴보다 어두워진 정도(L) · 눈꼬리에서 이어졌다고 보는 거리 · 보는 범위
 EYE = {"R": (33, 133, [33, 246, 161, 160, 159, 158]), "L": (263, 362, [263, 466, 388, 387, 386, 385])}
 
@@ -56,17 +57,22 @@ def tail(L, LB, lm, side):
     new = (ridge_map(L, ue) - np.maximum(ridge_map(LB, ue), 0) >= MIN) & (L - LB <= -DARK) & win
     lab_, k = label(new, structure=np.ones((3, 3)))
     if not k:
-        return 0.0, 0.0
+        return 0.0, 0.0, 0.0
     sizes = np.bincount(lab_.ravel())
     near = np.unique(lab_[new & (np.hypot(u, v) < REACH)])
     keep = np.isin(lab_, [i for i in near if i > 0 and sizes[i] >= max(6, (0.03 * ue) ** 2)])
     if not keep.any():
-        return 0.0, 0.0
+        return 0.0, 0.0, 0.0
     j = np.unravel_index(np.argmax(np.where(keep, u, -9)), u.shape)
-    return float(u[j]), float(np.degrees(np.arctan2(v[j], u[j])))
+    # 굵기 (실험 35): 꼬리 끝에서 안쪽으로 SPAN 까지의 구간에서, 새 선 둘레의 '맨얼굴보다 어두워진 칸' 넓이 ÷ 구간 길이 = 평균 굵기 (눈 폭 비율)
+    tip, root = float(u[j]), float(u[keep].min())
+    seg = (u <= tip) & (u >= max(root, tip - SPAN))
+    ink = (L - LB <= -INK) & win & seg & binary_dilation(keep, iterations=max(2, round(0.05 * ue)))
+    span = max(tip - max(root, tip - SPAN), 1e-6)
+    return tip, float(np.degrees(np.arctan2(v[j], u[j]))), float(ink.sum() / (span * ue) / ue)
 
 
-def draw(img, lm, sides, length, deg=15.0):
+def draw(img, lm, sides, length, deg=15.0, w0=0.022):
     """맨얼굴에 꼬리를 그려 넣는다 (눈꼬리에서 눈 축 기준 deg 도, 눈 폭의 length 배, 끝으로 갈수록 가늘게) + 윗눈꺼풀 선"""
     K, (W, H) = 4, img.size
     m = Image.new("L", (W * K, H * K), 0)
@@ -76,7 +82,7 @@ def draw(img, lm, sides, length, deg=15.0):
         r = math.radians(deg)
         dv = a * math.cos(r) + n * math.sin(r)
         pv = np.array([-dv[1], dv[0]])
-        w0 = 0.022 * ue
+        w0 = w0 * ue if w0 < 1 else w0
         if length > 0:
             tip = c + dv * length * ue
             d.polygon([tuple((c + pv * w0) * K), tuple((c - pv * w0) * K), tuple(tip * K)], fill=255)
@@ -94,8 +100,8 @@ def lightness(im):
 def show(name, L, LB, lm):
     out = []
     for s in "RL":
-        r, deg = tail(L, LB, lm, s)
-        out.append("   없음     " if r < 0.04 else "%3.0f%% %4.0f도 " % (r * 100, deg))
+        r, deg, wd = tail(L, LB, lm, s)
+        out.append("   없음            " if r < 0.04 else "%3.0f%% %4.0f도 굵기 %3.1f%%" % (r * 100, deg, wd * 100))
     print("%-26s R %s | L %s" % (name, out[0], out[1]))
 
 
@@ -111,5 +117,8 @@ if __name__ == "__main__":
         for length, deg in ((0, 15), (0.05, 15), (0.08, 15), (0.15, 15), (0.3, 15), (0.15, 40), (0.3, -5)):
             show("그려 넣음 %2.0f%% · %d도" % (length * 100, deg), lightness(draw(bare, lm, "RL", length, deg)), LB, lm)
         show("한쪽(R)만 30%", lightness(draw(bare, lm, "R", 0.3)), LB, lm)
+        for w0, nm in ((0.012, "얇게"), (0.022, "보통"), (0.04, "두껍게")):   # 굵기: 꼬리 뿌리의 반폭 (눈 폭 비율)
+            show("굵기 %s (%.1f%%) · 30%%" % (nm, w0 * 100), lightness(draw(bare, lm, "RL", 0.3, 15, w0)), LB, lm)
+            show("굵기 %s (%.1f%%) · 20%%" % (nm, w0 * 100), lightness(draw(bare, lm, "RL", 0.2, 15, w0)), LB, lm)
     for n in NAMES:
         show(n, lightness(Image.open(DIR / f"{n}.png")), LB, lm)
