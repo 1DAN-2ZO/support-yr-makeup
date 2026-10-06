@@ -8,8 +8,8 @@
  * 업로드가 붙으면 이 파일은 지운다.
  */
 
-import { nearestFamily } from "@core/color-family";
 import type { PalettePart } from "@core/color-family";
+import { describeColor } from "@core/color-name";
 import type { RefColors } from "@core/ref-colors";
 import { hexToRgb } from "@core/color-family";
 
@@ -25,6 +25,6 @@ const MEASURED: Record<PalettePart, { hex: string; n: number }> = {
 export const DEMO_REF_COLORS: RefColors = Object.fromEntries(
   Object.entries(MEASURED).map(([part, { hex, n }]) => {
     const rgb = hexToRgb(hex);
-    return [part, { hex, rgb, match: nearestFamily(rgb, part as PalettePart), n }];
+    return [part, { hex, rgb, name: describeColor(rgb, part as PalettePart), n }];
   }),
 ) as RefColors;

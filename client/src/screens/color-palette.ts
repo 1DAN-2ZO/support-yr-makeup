@@ -193,7 +193,7 @@ export function colorPalette(colors: RefColors, opt: PaletteOptions = {}): HTMLE
           : `<path d="M22 32h52" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity=".35" fill="none"/>`}</svg>
       </span>
       <span class="palette-text">
-        <strong>${c ? c.match.family : "확인할 수 없어요"}</strong>
+        <strong>${c ? c.name.text : "확인할 수 없어요"}</strong>
         <em>${PART_LABEL[part]}</em>
       </span>
     `;

@@ -12,8 +12,10 @@
 
 import { labAt, pointInPoly, rgbToLab } from "./color";
 import type { RgbaImage } from "./color";
-import { nearestFamily, rgbToHex } from "./color-family";
-import type { FamilyMatch, PalettePart } from "./color-family";
+import { rgbToHex } from "./color-family";
+import type { PalettePart } from "./color-family";
+import { describeColor } from "./color-name";
+import type { ColorName } from "./color-name";
 import { BROW, EYES } from "./regions";
 import type { Pt } from "./types";
 
@@ -21,8 +23,8 @@ export interface RefColor {
   /** 사진에서 뽑은 색 — 화면에 **이 색** 을 보여 준다 */
   hex: string;
   rgb: [number, number, number];
-  /** 이름을 붙이려고 찾은 가장 가까운 팔레트 색 */
-  match: FamilyMatch;
+  /** 규칙으로 지은 이름 — 48색에 없는 색이 와도 나온다 */
+  name: ColorName;
   /** 색을 고른 픽셀 수. 적으면 믿을 수 없다 */
   n: number;
 }
@@ -114,7 +116,7 @@ export function refPartColor(im: RgbaImage, lm: readonly Pt[], part: PalettePart
     use.reduce((s, p) => s + p.g, 0) / n,
     use.reduce((s, p) => s + p.b, 0) / n,
   ];
-  return { hex: rgbToHex(rgb[0], rgb[1], rgb[2]), rgb, match: nearestFamily(rgb, part), n };
+  return { hex: rgbToHex(rgb[0], rgb[1], rgb[2]), rgb, name: describeColor(rgb, part), n };
 }
 
 export const REF_PARTS: readonly PalettePart[] = ["brow", "liner", "shadow", "lip", "cheek"];

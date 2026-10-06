@@ -146,7 +146,7 @@ function guideMock(part: PartId): HTMLElement {
   // 없는 부위(쉐딩)나 사진에서 못 읽은 부위는 견본 값으로 둔다
   const read = part === "contour" ? undefined : DEMO_REF_COLORS[part];
   const hex = read?.hex ?? sample.hex;
-  const name = read ? `${read.match.family} 계열` : sample.name;
+  const name = read ? `${read.name.text} 계열` : sample.name;
   const card = document.createElement("div");
   card.className = "slot-guide-card";
   card.style.setProperty("--slot-color", hex);
