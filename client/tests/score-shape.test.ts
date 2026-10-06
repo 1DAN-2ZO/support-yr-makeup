@@ -3,13 +3,13 @@
 import { describe, expect, it } from "vitest";
 import { LM } from "@core/landmarks";
 import { frameOf } from "@core/sampling";
-import { EYE_SHIFT, LINER_WING, browShape, eyeShift, lidEdge, liftLid, linerBand, linerEnds, linerEndsResult, linerFan, linerStroke, routeOf, scoreHybrid, scoreLinerPair, scoreLinerWing, shapeFill, tintFill, tintProgress, type LinerWingEye, type WingMatch } from "@core/score-shape";
+import { EYE_SHIFT, LINER_WING, browShape, eyeShift, lidEdge, liftLid, linerBand, linerEnds, linerEndsResult, linerFan, linerStroke, routeOf, scoreHybrid, scoreLinerPair, scoreLinerWing, scoreWhole, WHOLE, type WholeRegions, shapeFill, tintFill, tintProgress, type LinerWingEye, type WingMatch } from "@core/score-shape";
 import { PARAMS, decide, type PartScore, type Side } from "@core/score";
 import type { GuideSource } from "@core/score-part";
-import { rgbToLab } from "@core/color";
+import { pointInPoly, rgbToLab } from "@core/color";
 import { sampleLiner } from "@core/sampling";
 import type { Pt } from "@core/types";
-import { BARE, BROWN, LMS, NATURAL, P, RED, SKIN, W, browPaint, eyeOf, geomOf, guide, image, linerPaint, lipPaint, naturalPaint, over, regionPaint, shifted, type Paint, type Rgb } from "./helpers/synth-face";
+import { BARE, BROWN, INK, LMS, NATURAL, P, RED, SKIN, W, browPaint, eyeOf, geomOf, guide, image, linerPaint, lipPaint, naturalPaint, over, regionPaint, shifted, type Paint, type Rgb } from "./helpers/synth-face";
 
 const outline: Pt[] = [...LM.browA.upper.map(P), ...LM.browA.lower.map(P).reverse()];
 const frame = (p: Paint) => frameOf(image(p), LMS);
@@ -786,5 +786,57 @@ describe("라이너 꼬리 — 눈꼬리 부채꼴 훑기 (linerFan · eyeShift 
     expect((r.metrics as { edge: boolean }).edge).toBe(true);
     expect(match(r)).toBe("far");
     expect(r.score).not.toBeNull();
+  });
+});
+
+// 마지막 전체 사진 한 장을 '정답 그림'(맨얼굴에 화장을 입힌 그림)과 부위별로 견준다 — 부위마다 바로 주변 피부 대비 색이 얼마나 바뀌었나
+describe("마지막 전체 사진 — 정답 그림과 비교 (scoreWhole)", () => {
+  const regions: WholeRegions = (f) => { const g = guide("shadow", f).regions!; return { polys: [g.R, g.L] }; };
+  const POLYS = regions(frameOf(image(), LMS)).polys;
+  const inRegion = (x: number, y: number) => POLYS.some((p) => pointInPoly(x, y, p));
+  const tint = (c: Rgb, k: number): Paint => (x, y) => (inRegion(x, y) ? (SKIN.map((s, i) => Math.round(s + (c[i]! - s) * k)) as unknown as Rgb) : null);
+  const bare = frame(() => null), target = frame(tint(RED, 0.5));
+  const run = (p: Paint, gain = 1) => scoreWhole(bare, target, frameOf(image(p, gain), LMS), regions);
+
+  it("X1 정답 그림과 같게 칠하면 '비슷' · 양 1", () => {
+    const r = run(tint(RED, 0.5));
+    expect(r.verdict).toBe("similar");
+    expect(r.amount!).toBeCloseTo(1, 1);
+  });
+
+  it("X2 아무것도 안 칠하면 '안 그림' · 양 0", () => {
+    const r = run(() => null);
+    expect(r.verdict).toBe("none");
+    expect(Math.abs(r.amount!)).toBeLessThan(0.05);
+  });
+
+  it("X3 조명이 달라도 판정이 같다 — 기준이 그 사진의 주변 피부라서", () => {
+    expect(run(() => null, 0.8).verdict).toBe("none");
+    expect(run(tint(RED, 0.5), 0.8).verdict).toBe("similar");
+  });
+
+  it("X4 옅게 칠하면 '옅음' · 진하게 칠하면 '진함'", () => {
+    expect(run(tint(RED, 0.22)).verdict).toBe("weak");
+    expect(run(tint(RED, 0.95)).verdict).toBe("strong");
+  });
+
+  it("X5 다른 색으로 칠하면 '색 다름'", () => {
+    expect(run(tint([70, 110, 190], 0.5)).verdict).toBe("color");
+  });
+
+  it("X6 정답 그림에서 그 부위가 거의 안 바뀌었으면 채점하지 않는다 (확인만)", () => {
+    const r = scoreWhole(bare, frame(tint(RED, 0.05)), frame(tint(RED, 0.5)), regions);
+    expect(r.verdict).toBe("check_only");
+    expect(r.target).toBeLessThan(WHOLE.minTarget);
+  });
+
+  it("X7 둘레에서 빼라고 한 자리가 달라져도 값이 안 변한다", () => {
+    // 영역 바깥쪽 옆(둘레 띠가 지나는 자리)을 빼라고 한다 — 실제로는 눈 · 눈썹처럼 사진마다 달라지는 곳
+    const eyes: WholeRegions = (f) => { const r = regions(f); return { ...r, avoid: r.polys.map((p) => { const xs = p.map((q) => q.x), ys = p.map((q) => q.y), x0 = Math.min(...xs) - f.unit.eye, x1 = Math.max(...xs) + f.unit.eye, y0 = Math.min(...ys) - f.unit.eye, y1 = Math.min(...ys) + 2; return [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }]; }) }; };
+    const AVOID = eyes(bare).avoid!;
+    const dark: Paint = (x, y) => (AVOID.some((p) => pointInPoly(x, y, p)) && !inRegion(x, y) ? INK : tint(RED, 0.5)(x, y));
+    const a = scoreWhole(bare, target, frame(tint(RED, 0.5)), eyes), b = scoreWhole(bare, target, frame(dark), eyes);
+    expect(b.amount!).toBeCloseTo(a.amount!, 2);
+    expect(scoreWhole(bare, target, frame(dark), regions).amount!).not.toBeCloseTo(a.amount!, 2);   // 안 빼면 변한다
   });
 });

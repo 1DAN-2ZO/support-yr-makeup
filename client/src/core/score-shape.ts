@@ -1086,3 +1086,69 @@ export function scoreLinerWing(open: LinerFramePair, closed: LinerFramePair | nu
   const worst = rank[Math.max(...judged.map((e) => rank.indexOf(e.match!)))]!, match: WingMatch = worst === "similar" && lrOver ? "slight" : worst;
   return { present, score: wingScore(off, match, near), codes, lrIndex: null, metrics: { wing: per, lrLen, endCodes, off, match, edge } };
 }
+
+// ---------- 마지막 전체 사진 한 장을 정답 그림과 비교 (실험 21, 2026-10-06) ----------
+// 흐름을 바꾸는 논의에서 나온 것 (확정 전): 맨얼굴에 화장을 입힌 그림이 정답값이고, 부위별 중간 확인 없이 마지막 사진을 그 그림과 견준다.
+// 부위마다 '바로 주변 피부 대비 색'이 맨얼굴에서 얼마나 바뀌었나를 잰다 — 이마 한 곳으로 사진 전체를 보정하면 따로 찍은 맨얼굴끼리 입술이 정답의 -0.7배로 읽혔다
+// (eval/samples/shape/final_whole.py, README 실험 19). 볼은 채점하지 않는다 (사용자 결정 2026-10-06)
+
+/** minTarget: 정답 변화가 이보다 작으면 채점 안 함 (따로 찍은 사진 사이의 잡음이 5~7). none · weak · strong: 양의 경계. minCos: 색 방향 */
+export const WHOLE = { minTarget: 8, none: 0.3, weak: 0.6, strong: 1.6, minCos: 0.8, ring: [1.3, 1.8] as const };
+
+export type WholeVerdict = "similar" | "none" | "weak" | "strong" | "color" | "check_only";
+
+/** 한 부위의 다각형들(좌우 등)과, 둘레 피부에서 뺄 자리(눈 · 눈썹처럼 사진마다 달라지는 곳). 받은 프레임의 얼굴 점으로 만든다 */
+export type WholeRegions = (f: SampleFrame) => { polys: readonly (readonly Pt[])[]; avoid?: readonly (readonly Pt[])[] };
+
+export interface WholePart {
+  verdict: WholeVerdict;
+  /** 정답 방향으로 바뀐 크기 / 정답 크기 (0 안 그림 · 1 같음). 잴 수 없으면 null */
+  amount: number | null;
+  /** 바뀐 방향과 정답 방향의 코사인 */
+  cos: number | null;
+  /** 정답 변화의 크기 (Lab 거리) */
+  target: number;
+}
+
+type V3 = readonly [number, number, number];
+const growPoly = (poly: readonly Pt[], k: number): Pt[] => {
+  const cx = poly.reduce((s, p) => s + p.x, 0) / poly.length, cy = poly.reduce((s, p) => s + p.y, 0) / poly.length;
+  return poly.map((p) => ({ x: cx + (p.x - cx) * k, y: cy + (p.y - cy) * k }));
+};
+
+/** 부위 평균 − 둘레 피부 평균 (Lab). 둘레는 다각형을 1.3~1.8배 키운 띠에서 다른 다각형 · avoid 를 뺀 것. 픽셀이 없으면 null */
+export function wholeContrast(f: SampleFrame, regions: WholeRegions, o = WHOLE): V3 | null {
+  const { polys, avoid = [] } = regions(f), step = Math.max(1, Math.round(f.unit.eye / 40));
+  const sum = (list: readonly (readonly Pt[])[], keep: (x: number, y: number) => boolean): Lab | null => {
+    let L = 0, a = 0, b = 0, n = 0;
+    for (const poly of list) {
+      const xs = poly.map((p) => p.x), ys = poly.map((p) => p.y);
+      for (let y = Math.max(0, Math.floor(Math.min(...ys))); y <= Math.min(f.im.h - 1, Math.max(...ys)); y += step) {
+        for (let x = Math.max(0, Math.floor(Math.min(...xs))); x <= Math.min(f.im.w - 1, Math.max(...xs)); x += step) {
+          if (!pointInPoly(x, y, poly) || isHair(f, x, y) || !keep(x, y)) continue;
+          const i = (y * f.im.w + x) * 4, lab = rgbToLab(f.im.data[i] ?? 0, f.im.data[i + 1] ?? 0, f.im.data[i + 2] ?? 0);
+          L += lab.L; a += lab.a; b += lab.b; n++;
+        }
+      }
+    }
+    return n ? { L: L / n, a: a / n, b: b / n } : null;
+  };
+  const holes = [...polys.map((p) => growPoly(p, o.ring[0])), ...avoid];
+  const part = sum(polys, () => true), ring = sum(polys.map((p) => growPoly(p, o.ring[1])), (x, y) => !holes.some((h) => pointInPoly(x, y, h)));
+  return part && ring ? [part.L - ring.L, part.a - ring.a, part.b - ring.b] : null;
+}
+
+/**
+ * 한 부위: 맨얼굴 → 정답 그림의 변화(t)와 맨얼굴 → 마지막 사진의 변화(o)를 견준다.
+ * target 은 맨얼굴과 겹치는 그림이라 맨얼굴의 얼굴 점을 그대로 쓴 프레임을 넘긴다. cur 는 alignedFrame 으로 맞춘 프레임
+ */
+export function scoreWhole(bare: SampleFrame, target: SampleFrame, cur: SampleFrame, regions: WholeRegions, o = WHOLE): WholePart {
+  const b = wholeContrast(bare, regions, o), tg = wholeContrast(target, regions, o), c = wholeContrast(cur, regions, o);
+  if (!b || !tg) return { verdict: "check_only", amount: null, cos: null, target: 0 };
+  const t = [tg[0] - b[0], tg[1] - b[1], tg[2] - b[2]] as const, tn = Math.hypot(...t);
+  if (tn < o.minTarget || !c) return { verdict: "check_only", amount: null, cos: null, target: tn };
+  const d = [c[0] - b[0], c[1] - b[1], c[2] - b[2]] as const, dot = d[0] * t[0] + d[1] * t[1] + d[2] * t[2];
+  const amount = dot / (tn * tn), cos = dot / (Math.hypot(...d) * tn || 1);
+  const verdict: WholeVerdict = amount < o.none ? "none" : cos < o.minCos ? "color" : amount < o.weak ? "weak" : amount > o.strong ? "strong" : "similar";
+  return { verdict, amount, cos, target: tn };
+}

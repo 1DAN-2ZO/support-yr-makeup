@@ -8,6 +8,7 @@
 확인    확인 사진을 얼굴 점으로 맨얼굴 자리에 편 뒤 같은 변화를 잰다
 숫자    양 = 정답 방향으로 바뀐 크기 / 정답 크기 (0 안 그림 · 1 같음), 색 = 방향 코사인, 범위 = 칠한 칸 IoU
 """
+import json
 import os
 import sys
 from pathlib import Path
@@ -59,7 +60,13 @@ def face_crop(img, pts, name):
     c = img.crop((x0, y0, x1, y1))
     c = c.resize((round(c.width * s), round(c.height * s)), Image.LANCZOS)
     c.save(WORK / f"{name}.png")
+    dump(name, (pts - [x0, y0]) * s)
     return np.asarray(c).astype(float) / 255, (pts - [x0, y0]) * s
+
+
+def dump(name, pts):
+    """얼굴 점을 whole_score.mjs 가 읽는 모양으로 (저장소 밖)"""
+    (WORK / f"{name}.lm.json").write_text(json.dumps([{"x": round(float(x), 2), "y": round(float(y), 2)} for x, y in pts]), encoding="utf-8")
 
 
 # ── 맨얼굴 · 생성 그림 (맨얼굴 자리 = 기준 틀) ──
@@ -74,6 +81,7 @@ PM = (pm - [ox, oy]) * S
 H, W = A.shape[:2]
 M = np.asarray(made.crop((ox, oy, ox + round(W / S), oy + round(H / S))).resize((W, H), Image.LANCZOS)).astype(float) / 255
 labA = color.rgb2lab(A)
+Image.fromarray((M * 255).astype(np.uint8)).save(WORK / "_made.png")
 eye = abs(PA[33, 0] - PA[133, 0])
 
 
@@ -218,6 +226,7 @@ for n in ("4", "2", "1"):
             f = WORK / f"c{n}_{i}.png"
             Image.fromarray((img * 255).astype(np.uint8)).save(f)
             P = points(f)
+            dump(f.stem, P)
             if n == "4" and not mod:
                 sheet = [C, img]
         show(f"사진{n} {name}", score(to_A(img, P)))
