@@ -148,9 +148,8 @@ interface Tpl {
   finish?: Partial<Record<Part, "matte" | "glitter">>;
   /**
    * 마스카라 세기 — natural(연한) | deep(진한), 생략하면 미적용(속눈썹 체크박스가 꺼진 채 비활성화).
-   * 지금은 켜짐/꺼짐만 가른다 — natural·deep 별도 그림(reference/eyelash)은 아직 없어서 둘 다
-   * 같은 텍스처(anime-spike)를 쓴다. 그림이 생기면 lashMode="texture" 쪽에서 이 값으로 텍스처
-   * 세트를 고른다(마스카라 각도 재연구, 2026-09-30).
+   * 각각 참고 사진 기반 텍스처 세트(client/public/lashes/{natural,deep}/, scripts/gen_photo_lash.py)를
+   * 쓴다 — front 각도·눈뜸 3단계만 있고, 세로(v) 값은 1차 추정치라 실기기로 다시 맞춰야 한다(2026-10-01).
    */
   lashIntensity?: "natural" | "deep";
 }
@@ -710,13 +709,14 @@ function drawMakeup(lm: readonly Pt[], style: LinerStyle): void {
 
 // ── 마스카라 PNG 텍스처 (Ulike·SODA 방식, 2026-09-30) ─────────────
 // 눈꺼풀 선을 따라 띠를 만들고 PNG 를 삼각형 단위로 휘어 붙인다. 눈 뜬 정도로 위·중간·아래 그림을 뚝 끊어 바꾼다(섞지 않음).
-// 그림·규격: client/public/lashes/ (scripts/gen_lash_textures.py). 계산: core/lash.ts
+// 그림·규격: client/public/lashes/{natural,deep}/ (scripts/gen_photo_lash.py, 참고 사진 기반). 계산: core/lash.ts
 const lashModeSel = $<HTMLSelectElement>("lashMode");
 const lashMode = (): "texture" | "code" => (lashModeSel.value === "code" ? "code" : "texture");
 const lashcv = $<HTMLCanvasElement>("lashcv");
 const lg = lashcv.getContext("2d")!;
-const lashes = new LashTextures("/lashes/");
-void lashes.load().catch((e) => { console.warn("속눈썹 텍스처를 못 불러왔어요", e); });
+const lashesNatural = new LashTextures("/lashes/natural/");
+const lashesDeep = new LashTextures("/lashes/deep/");
+for (const lt of [lashesNatural, lashesDeep]) void lt.load().catch((e) => { console.warn("속눈썹 텍스처를 못 불러왔어요", e); });
 const lashPrev: [LashState | null, LashState | null] = [null, null];
 
 /** 지금 얼굴(lm)로 속눈썹 층을 그린다. 끄거나 텍스처가 없으면 비운다. 반환: 상태 글 (예 "R up · L mid") */
@@ -727,9 +727,10 @@ function drawLashLayer(lm: readonly Pt[] | null, w: number, h: number): string {
   lashcv.style.width = `${(glcv.hidden ? cv : glcv).clientWidth}px`;
   lashcv.style.transform = "scaleX(-1)";
   lashcv.style.mixBlendMode = natural() ? "multiply" : "normal";
-  const s = sliders.get("lash")!, color = currentTpl().color.lash;
-  if (!lm || bare || lashMode() !== "texture" || !lashes.ready || !color || !s.on.checked) { lashPrev[0] = lashPrev[1] = null; return ""; }
-  const states = drawLashes(lg, lashes, lm, color, Math.min(1, Number(s.input.value)), lashPrev);
+  const s = sliders.get("lash")!, t = currentTpl(), color = t.color.lash;
+  const tex = t.lashIntensity === "deep" ? lashesDeep : lashesNatural;
+  if (!lm || bare || lashMode() !== "texture" || !tex.ready || !color || !s.on.checked) { lashPrev[0] = lashPrev[1] = null; return ""; }
+  const states = drawLashes(lg, tex, lm, color, Math.min(1, Number(s.input.value)), lashPrev);
   lashPrev[0] = states[0]; lashPrev[1] = states[1];
   return `R ${states[0]} · L ${states[1]}`;
 }
@@ -787,6 +788,7 @@ shotBtn.addEventListener("click", () => {
     stillLm = null;
     shotBtn.textContent = "사진 찍기";
     sendBtn.disabled = true;
+    drawPicker();
     return;
   }
   if (!lastLm) return;
@@ -796,6 +798,8 @@ shotBtn.addEventListener("click", () => {
   stillLm = lastLm;
   shotBtn.textContent = "다시 찍기";
   sendBtn.disabled = false;
+  pickFit();
+  drawPicker();
 });
 
 const promptFor = (lm: readonly Pt[]): string => {
@@ -820,6 +824,259 @@ sendBtn.addEventListener("click", () => {
     .catch(() => { planEl.textContent = planShown = "VLM 중계에 닿지 못했어요. 중계(server.mjs)가 켜져 있는지 확인해 주세요."; })
     .finally(() => { sendBtn.disabled = false; });
 });
+
+// ── 점 찍기 (랜드마크로 영역 만들기) ─────────────────
+// 가이드 선이 "네모네모하다·해외 느낌"이라는 실측 피드백(2026-10-01) — 참고 사진 번역 대신, 기준 사진
+// 위에서 478개 랜드마크 중 원하는 점을 직접 순서대로 찍어 영역을 만드는 방법으로 감. 결과는 코드에
+// 바로 붙여 넣을 인덱스 배열 텍스트. 좌우는 자동 대칭 안 함(MediaPipe 인덱스가 단순 대칭이 아니라
+// 잘못 매핑될 위험) — 양쪽 다 따로 찍는다.
+type PickPart = "brow" | "liner" | "shadow" | "lip" | "cheek" | "contour" | "highlight";
+type PickMode = "outline" | "band" | "regions" | "line";
+
+/** 부위별 찍기 방식: outline=닫힌 외곽선 하나, band=경계 2개(속눈썹 쪽·눈썹 쪽), regions=하위 영역 여러 개를 같이, line=기준선 하나(두께·꼬리는 숫자로 따로) */
+const PICK_MODE: Record<PickPart, PickMode> = {
+  brow: "outline", lip: "outline", cheek: "outline",
+  shadow: "band",
+  contour: "regions", highlight: "regions",
+  liner: "line",
+};
+/** 쉐딩·하이라이트: 하위 영역을 전부 같이 찍어서 합친다(동시에 쓰는 효과) — 블러셔와 달리 "하나만 골라 쓰는" 게 아님
+ *  side: 얼굴 양쪽에 따로 있는 영역(광대·눈썹뼈 등)만 true — 중앙선에 걸친 영역(이마 가운데·코끝 등)은 하나만 찍는다 */
+const PICK_SUBREGIONS: Partial<Record<PickPart, { id: string; name: string; side: boolean }[]>> = {
+  contour: [
+    { id: "faceEdge", name: "얼굴 외곽 (관자→볼 옆→턱)", side: true },
+    { id: "jawline", name: "턱선 (안쪽 살짝 걸치게)", side: true },
+    { id: "noseSide", name: "코 옆", side: true },
+    { id: "hairline", name: "이마 헤어라인", side: false },
+    { id: "underNostril", name: "콧볼 아래", side: false },
+  ],
+  highlight: [
+    { id: "foreheadCenter", name: "이마 가운데", side: false },
+    { id: "noseBridge", name: "콧대", side: false },
+    { id: "noseTip", name: "코끝", side: false },
+    { id: "cheekTop", name: "광대 위 (눈꼬리 아래 바깥)", side: true },
+    { id: "browBone", name: "눈썹 뼈", side: true },
+    { id: "underAegyo", name: "애교살 아래", side: true },
+    { id: "chinTip", name: "턱끝", side: false },
+  ],
+};
+/** 좌우를 따로 찍어야 하는 부위(regions 모드는 하위 영역마다 달라서 여기 안 두고 pickNeedsSide 에서 따로 본다) */
+const PICK_HAS_SIDE: Record<PickPart, boolean> = {
+  brow: true, cheek: true, liner: true, shadow: true, lip: false, contour: false, highlight: false,
+};
+
+/** regions 모드는 지금 고른 하위 영역이 좌우 구분이 필요한지로, 그 외는 부위 고정값으로 판단한다 */
+function pickNeedsSide(part: PickPart): boolean {
+  if (PICK_MODE[part] === "regions") {
+    const subs = PICK_SUBREGIONS[part] ?? [];
+    return subs.find((s) => s.id === pickRegionSel.value)?.side ?? false;
+  }
+  return PICK_HAS_SIDE[part];
+}
+
+const pickcv = $<HTMLCanvasElement>("pickcv");
+const pickCtx = pickcv.getContext("2d")!;
+const pickPartSel = $<HTMLSelectElement>("pickPart");
+const pickSideSel = $<HTMLSelectElement>("pickSide");
+const pickSideWrap = $("pickSideWrap");
+const pickRegionSel = $<HTMLSelectElement>("pickRegion");
+const pickRegionWrap = $("pickRegionWrap");
+const pickEdgeSel = $<HTMLSelectElement>("pickEdge");
+const pickEdgeWrap = $("pickEdgeWrap");
+const pickZoomIn = $<HTMLInputElement>("pickZoom");
+const pickStatusEl = $("pickStatus");
+const pickOutEl = $<HTMLTextAreaElement>("pickOut");
+
+let pickZoom = 1;                 // still 원본 px → pickcv px 절대 배율
+let pickFitZoom = 1;              // pickFit() 이 처음 맞춘 배율 — 점 반지름을 "그때보다 몇 배 확대했는지"로 키우는 기준
+let pickPanX = 0, pickPanY = 0;   // pickcv px 기준 이동
+let pickCurrent: number[] = [];   // 지금 구간에서 찍고 있는 랜드마크 인덱스 순서(점 순서 = 배열 순서)
+const pickResults: Record<string, number[]> = {}; // 완료된 구간들 — key는 pickKey() 참고
+
+function pickKey(): string {
+  const part = pickPartSel.value as PickPart;
+  const keyParts: string[] = [part];
+  if (PICK_MODE[part] === "regions") keyParts.push(pickRegionSel.value);
+  if (pickNeedsSide(part)) keyParts.push(pickSideSel.value);
+  if (PICK_MODE[part] === "band") keyParts.push(pickEdgeSel.value);
+  return keyParts.join("-");
+}
+
+/** 찍은 사진 크기에 맞춰 보기를 가운데로 꽉 채운다 — 사진 새로 찍을 때마다 다시 불린다 */
+function pickFit(): void {
+  if (!stillLm) return;
+  pickZoom = pickFitZoom = Math.min(pickcv.width / still.width, pickcv.height / still.height);
+  pickPanX = (pickcv.width - still.width * pickZoom) / 2;
+  pickPanY = (pickcv.height - still.height * pickZoom) / 2;
+  pickZoomIn.min = (pickZoom * 0.3).toFixed(3);
+  pickZoomIn.max = (pickZoom * 8).toFixed(3);
+  pickZoomIn.step = "0.01";
+  pickZoomIn.value = String(pickZoom);
+}
+
+function refreshPickControls(): void {
+  const part = pickPartSel.value as PickPart;
+  const mode = PICK_MODE[part];
+  pickRegionWrap.hidden = mode !== "regions";
+  pickEdgeWrap.hidden = mode !== "band";
+  if (mode === "regions") {
+    const subs = PICK_SUBREGIONS[part] ?? [];
+    const keep = pickRegionSel.value;
+    pickRegionSel.innerHTML = "";
+    for (const s of subs) pickRegionSel.add(new Option(s.name, s.id));
+    if (subs.some((s) => s.id === keep)) pickRegionSel.value = keep;
+  }
+  pickSideWrap.hidden = !pickNeedsSide(part);   // regions 모드는 하위 영역 목록을 다시 채운 뒤 판단해야 한다
+  pickCurrent = pickResults[pickKey()] ? [...pickResults[pickKey()]!] : [];
+  drawPicker();
+  updatePickOut();
+}
+[pickPartSel, pickSideSel, pickRegionSel, pickEdgeSel].forEach((el) => el.addEventListener("change", refreshPickControls));
+
+/** 캔버스 중심을 고정한 채 배율만 바꾼다 — 슬라이더·휠 공용 */
+function pickZoomTo(z: number): void {
+  const cx = pickcv.width / 2, cy = pickcv.height / 2;
+  const imgCx = (cx - pickPanX) / pickZoom, imgCy = (cy - pickPanY) / pickZoom;
+  pickZoom = Math.max(Number(pickZoomIn.min || "0.1"), Math.min(Number(pickZoomIn.max || "10"), z));
+  pickPanX = cx - imgCx * pickZoom;
+  pickPanY = cy - imgCy * pickZoom;
+  pickZoomIn.value = String(pickZoom);
+  drawPicker();
+}
+pickZoomIn.addEventListener("input", () => pickZoomTo(Number(pickZoomIn.value)));
+pickcv.addEventListener("wheel", (e) => {
+  if (!stillLm) return;
+  e.preventDefault();
+  pickZoomTo(pickZoom * (e.deltaY < 0 ? 1.1 : 0.9));
+}, { passive: false });
+$("pickReset").addEventListener("click", () => { pickFit(); drawPicker(); });
+$("pickUndo").addEventListener("click", () => { pickCurrent.pop(); drawPicker(); });
+$("pickClearAll").addEventListener("click", () => {
+  if (!confirm("찍은 점을 전부 지울까요?")) return;
+  for (const k of Object.keys(pickResults)) delete pickResults[k];
+  pickCurrent = [];
+  drawPicker();
+  updatePickOut();
+});
+$("pickDone").addEventListener("click", () => {
+  if (pickCurrent.length < 2) { pickStatusEl.textContent = "점을 2개 이상 찍어야 구간이 됩니다."; return; }
+  pickResults[pickKey()] = [...pickCurrent];
+  updatePickOut();
+  const part = pickPartSel.value as PickPart;
+  // band(섀도우): 속눈썹 쪽 끝나면 눈썹 쪽으로 자동 이동. regions(쉐딩·하이라이트): 다음 하위 영역으로 자동 이동
+  if (PICK_MODE[part] === "band" && pickEdgeSel.value === "lo") {
+    pickEdgeSel.value = "hi";
+  } else if (PICK_MODE[part] === "regions") {
+    const subs = PICK_SUBREGIONS[part] ?? [];
+    const i = subs.findIndex((s) => s.id === pickRegionSel.value);
+    if (i >= 0 && i + 1 < subs.length) pickRegionSel.value = subs[i + 1]!.id;
+  }
+  pickSideWrap.hidden = !pickNeedsSide(part);   // 자동 이동한 다음 하위 영역이 좌우 필요 여부가 다를 수 있다
+  pickCurrent = pickResults[pickKey()] ? [...pickResults[pickKey()]!] : [];
+  pickStatusEl.textContent = "구간 저장함.";
+  drawPicker();
+});
+
+function updatePickOut(): void {
+  const lines = Object.entries(pickResults)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, idx]) => `  "${k}": [${idx.join(", ")}],`);
+  pickOutEl.value = lines.length ? `{\n${lines.join("\n")}\n}` : "(아직 없음)";
+}
+
+// 다른 캔버스들(#cv 등)은 CSS 로 거울 반전(scaleX(-1))이 걸려 있는데, 여기는 숫자 라벨이 같이 그려져서
+// CSS 반전을 쓰면 숫자까지 뒤집힌다 — 그래서 좌표 변환 자체를 좌우 반전해서 "그림만" 거울처럼 보이게 한다(실측 피드백: 반전 안 하니 헷갈림)
+const pickToImage = (px: number, py: number): Pt => ({ x: still.width - (px - pickPanX) / pickZoom, y: (py - pickPanY) / pickZoom });
+const pickToCanvas = (p: Pt): Pt => ({ x: (still.width - p.x) * pickZoom + pickPanX, y: p.y * pickZoom + pickPanY });
+
+function drawPicker(): void {
+  pickCtx.clearRect(0, 0, pickcv.width, pickcv.height);
+  const lm = stillLm;
+  if (!lm) {
+    pickCtx.fillStyle = "#fff8";
+    pickCtx.font = "14px system-ui";
+    pickCtx.fillText("먼저 '사진 찍기'로 기준 사진을 잡아 주세요.", 12, 24);
+    return;
+  }
+  pickCtx.save();   // 사진 자체도 좌우 반전해서 그려야 위 좌표 변환이랑 자리가 맞는다
+  pickCtx.translate(pickPanX + still.width * pickZoom, pickPanY);
+  pickCtx.scale(-1, 1);
+  pickCtx.drawImage(still, 0, 0, still.width * pickZoom, still.height * pickZoom);
+  pickCtx.restore();
+  // 점 반지름은 화면 배율 고정이 아니라 "처음 맞춘 배율보다 몇 배 더 확대했는지"로 키운다 —
+  // 고정이면 확대할수록 점은 그대로라 오히려 더 안 보였다(실측 확인)
+  const zoomed = Math.max(1, pickZoom / pickFitZoom);
+  const dotR = Math.min(7, 2 * zoomed), pickR = Math.min(10, 4 * zoomed), font = Math.min(18, Math.round(10 * zoomed));
+  pickCtx.fillStyle = "#38bdf699";   // 전체 478점 — 옅게 (확대 시 더 잘 보이게 투명도도 살짝 올림)
+  for (const p of lm) {
+    const q = pickToCanvas(p);
+    pickCtx.beginPath();
+    pickCtx.arc(q.x, q.y, dotR, 0, Math.PI * 2);
+    pickCtx.fill();
+  }
+  if (pickCurrent.length) {   // 지금 찍은 점들 — 순서·번호·선
+    pickCtx.strokeStyle = "#f59e0b";
+    pickCtx.lineWidth = Math.min(4, 2 * zoomed);
+    pickCtx.beginPath();
+    pickCurrent.forEach((idx, i) => {
+      const q = pickToCanvas(at(lm, idx));
+      if (i === 0) pickCtx.moveTo(q.x, q.y); else pickCtx.lineTo(q.x, q.y);
+    });
+    pickCtx.stroke();
+    pickCurrent.forEach((idx, i) => {
+      const q = pickToCanvas(at(lm, idx));
+      pickCtx.fillStyle = "#f59e0b";
+      pickCtx.beginPath();
+      pickCtx.arc(q.x, q.y, pickR, 0, Math.PI * 2);
+      pickCtx.fill();
+      pickCtx.fillStyle = "#fff";
+      pickCtx.font = `${font}px system-ui`;
+      pickCtx.fillText(String(i + 1), q.x + pickR + 1, q.y - pickR - 1);
+    });
+  }
+}
+
+let pickDragging = false, pickDragMoved = false, pickDragStart = { x: 0, y: 0 };
+pickcv.addEventListener("pointerdown", (e) => {
+  if (!stillLm) return;
+  pickDragging = true;
+  pickDragMoved = false;
+  pickDragStart = { x: e.clientX, y: e.clientY };
+  pickcv.setPointerCapture(e.pointerId);
+});
+pickcv.addEventListener("pointermove", (e) => {
+  if (!pickDragging) return;
+  const dx = e.clientX - pickDragStart.x, dy = e.clientY - pickDragStart.y;
+  if (pickDragMoved || Math.hypot(dx, dy) > 4) {
+    pickDragMoved = true;
+    const scale = pickcv.width / pickcv.clientWidth;   // 표시 크기 ↔ 캔버스 내부 해상도 보정
+    pickPanX += dx * scale;
+    pickPanY += dy * scale;
+    pickDragStart = { x: e.clientX, y: e.clientY };
+    drawPicker();
+  }
+});
+pickcv.addEventListener("pointerup", (e) => {
+  pickDragging = false;
+  pickcv.releasePointerCapture(e.pointerId);
+  if (pickDragMoved || !stillLm) return;
+  const r = pickcv.getBoundingClientRect();
+  const scale = pickcv.width / r.width;
+  const clickImg = pickToImage((e.clientX - r.left) * scale, (e.clientY - r.top) * scale);
+  let best = -1, bestD = Infinity;
+  stillLm.forEach((p, i) => {
+    const d = dist(p, clickImg);
+    if (d < bestD) { bestD = d; best = i; }
+  });
+  const tolImg = 14 / pickZoom;   // 화면 14px 반경을 이미지 좌표로 환산 — 확대할수록 더 정밀하게 찍힘
+  if (best < 0 || bestD > tolImg) return;
+  if (pickCurrent.length && pickCurrent[pickCurrent.length - 1] === best) pickCurrent.pop();   // 같은 점 다시 클릭 = 취소
+  else pickCurrent.push(best);
+  pickStatusEl.textContent = `${pickCurrent.length}점 찍음 — 방금 ${best}번`;
+  drawPicker();
+});
+
+refreshPickControls();
 
 function tick(): void {
   if (!landmarker || video.readyState < 2) { requestAnimationFrame(tick); return; }

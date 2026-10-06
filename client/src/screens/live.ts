@@ -30,13 +30,15 @@ import { LM } from "@core/landmarks";
 import { createLiveEvents } from "@core/live-events";
 import { LIVE_LIMITS } from "@core/gate";
 import { gateReadout, recentStats } from "@core/gate-readout";
+import { createJumpProbe } from "@core/landmark-jump";
 import { FAR_FADE, createLiveRun, type LiveFrame } from "@core/live-run";
 import { LIVE_SMOOTH } from "@core/smooth-params";
 import type { Logger } from "@core/log";
 import type { LookPart, LookPartId } from "@core/looks";
 import type { GuideSource } from "@core/score-part";
 import type { Outline } from "@core/overlay";
-import { wantedOrientation, type ScreenId } from "@core/screens";
+import { mustRotate, nowOrientation } from "@core/orientation-lock";
+import type { ScreenId } from "@core/screens";
 import type { Baseline, CaptureBundle, PartId, Pt } from "@core/types";
 import { faceCropOf } from "@core/capture-measure";
 import { DEFAULT_LOCKS, applyCameraLocks, applyUltraWideZoom, bindVisibility, releaseCameraLocks, requestWakeLock, type WakeLockSentinelLike } from "./camera-locks";
@@ -109,7 +111,7 @@ function drawView(cv: HTMLCanvasElement, video: HTMLVideoElement, crop: Rect, o:
   if (o) {
     const lw = Math.max(2, W / 400) / s;
     // 고개를 많이 돌리면 먼 쪽 눈 테두리는 흐리게 (live-run alpha, FAR_FADE)
-    strokeOutline(g, alpha ? { polys: o.polys.filter((_, i) => (alpha[i] ?? 1) >= 1), lines: o.lines } : o, lw);
+    strokeOutline(g, alpha ? { ...o, polys: o.polys.filter((_, i) => (alpha[i] ?? 1) >= 1) } : o, lw);
     if (alpha) {
       o.polys.forEach((poly, i) => {
         const a = alpha[i] ?? 1;
@@ -202,11 +204,14 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
       const dots = q.has("dots");
       // 후보 1(아주 크게 돌렸을 때 먼 쪽 눈 흐리게) — 기본 켬. 개발용 ?fade=0 끄기 · ?fade=50-70 구간 바꾸기
       const fadeQ = q.get("fade"), fadeR = fadeQ?.match(/^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/);
-      if (meter || poseCal || gateDbg) {
+      // 개발용 ?jump: 브러시·손이 얼굴 앞에 있을 때 눈 점이 얼마나 튀나 (머리 움직임 뺀 눈 점 이동, 눈 폭 %) — 관찰 2026-10-02
+      const jump = q.has("jump") ? createJumpProbe() : null;
+      if (meter || poseCal || gateDbg || jump) {
         stage.append(readout);
         readout.addEventListener("click", () => {
           meter?.view.reset(); meter?.line.reset();
           poseCal?.reset();
+          jump?.reset();
         });
       }
       const line = el("p", "cam-gate", LIVE_TEXT.loading);
@@ -275,8 +280,9 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         // 확대 창: 칸 비율이 바뀌면(방향 전환) 새로 잡는다. 얼굴을 3초 넘게 잃으면 옛 자리에서 미끄러져 오지 않게 새로 (3-9 자리 비움)
         const aspect = view.clientWidth && view.clientHeight ? view.clientWidth / view.clientHeight : 3 / 4;
         if (!follow || Math.abs(aspect - followAspect) > 0.01) { follow = createCropFollow(part!, aspect); followAspect = aspect; }
-        const screen = window.matchMedia("(orientation: landscape)").matches ? "landscape" : "portrait";
-        if (lm && (faceRoll(lm) > ROLL_MAX || screen !== wantedOrientation(part!))) {
+        // 방향을 모르면(주소 ?norotate — 개발용) null: 게이트도 확대 창도 방향으로 막지 않는다
+        const screen = nowOrientation();
+        if (lm && (faceRoll(lm) > ROLL_MAX || mustRotate(part, screen))) {
           // 얼굴이 누웠거나(자동 회전 꺼짐, #204) 부위에 맞지 않는 방향으로 들고 있다(눈 부위 가로 · 나머지 세로 — 팀 협의) — 확대하지 않고 전체를 보여 준다.
           // 게이트가 "자동 회전을 켜" / "가로로 돌려" / "세로로 돌려" 로 막는다
           crop = null;
@@ -290,7 +296,7 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         }
         const shown = crop ?? { x: 0, y: 0, w: sw, h: sh };
         // 부위 가시성은 사용자에게 보이는 창 안에서 본다
-        const f: LiveFrame<HTMLCanvasElement> = { t: now, lm, w: sw, h: sh, screen, image: () => grabFrame(video), view: shown };
+        const f: LiveFrame<HTMLCanvasElement> = { t: now, lm, w: sw, h: sh, ...(screen ? { screen } : {}), image: () => grabFrame(video), view: shown };
         if (lm) {
           const bs = res.faceBlendshapes[0]?.categories;
           if (bs?.length) f.expr = Object.fromEntries(bs.map((c) => [c.categoryName, c.score]));
@@ -309,6 +315,13 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         if (poseCal && lm) {
           readout.style.whiteSpace = "pre";
           readout.textContent = poseCal.step(lm, res.facialTransformationMatrixes?.[0]?.data ?? null, f.expr?.["jawOpen"] ?? 0);
+        }
+        if (jump) {
+          // 다른 개발용 표시가 있으면 그 아래 줄로
+          const j = jump.step(lm, now);
+          readout.style.whiteSpace = "pre";
+          readout.textContent = gateDbg || poseCal ? `${readout.textContent}
+${j}` : j;
         }
         const vm = drawView(view, video, shown, r.outline, dots && lm ? EYE_DOTS.map((i) => lm[i]!) : null, r.alpha);
         if (meter && vm && r.outline) {

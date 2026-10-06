@@ -19,9 +19,9 @@ describe("마스카라 텍스처 불러 두기", () => {
     expect(load).toHaveBeenCalledTimes(2);
   });
 
-  it("A3 앱 주소 기준 lashes/ 에서 받는다 (배포 경로가 / 가 아니어도)", async () => {
+  it("A3 앱 주소 기준 lashes/natural/ 에서 받는다 (배포 경로가 / 가 아니어도)", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("x"));
     await expect(loadLashes()).rejects.toThrow();
-    expect(String(fetchMock.mock.calls[0]![0])).toBe(`${import.meta.env.BASE_URL}lashes/lashes.json`);
+    expect(String(fetchMock.mock.calls[0]![0])).toBe(`${import.meta.env.BASE_URL}lashes/natural/lashes.json`);
   });
 });

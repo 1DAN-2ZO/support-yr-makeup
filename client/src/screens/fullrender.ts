@@ -1,22 +1,23 @@
 /**
- * 화면 2-b — AR 완성 예상 (F-04). 모듈 ⑥. (2026-09-28 흐름: 룩을 누름 → 개인화 → 여기)
+ * 화면 2-b — AR 완성 예상 (F-04). 모듈 ⑥. (흐름: 화장을 누름 → 여기)
  *
- * 전면 카메라에 고른 룩을 **이 얼굴에 맞게 개인화해서** 입혀 보여 준다.
- *  - 모양: 개인화 계획(personalize.ts) — 가이드·채점과 같은 계획이다
+ * 전면 카메라에 고른 화장을 이 얼굴 위에 입혀 보여 준다.
+ *  - 모양: 표준 계획(personalize.standardPlan) — 가이드·채점과 같은 계획이다. 자리 · 크기는 얼굴 점이 맞춘다
  *  - 그리기: 기준 얼굴(카메라에서 처음 잡힌 얼굴)에 화장 층을 한 번 그리고(makeup-paint.ts),
  *    매 프레임 얼굴 그물(삼각형 852개)로 지금 얼굴에 휘어 피부와 섞는다(makeup-gl.ts, WebGL2)
  *  - 떨림: 얼굴 점에 One-Euro 필터(④ smoothing.ts). 가만히 있으면 많이, 움직이면 덜 부드럽게 — 고정 스무딩처럼
  *    눈머리가 뒤처지지 않는다. 비교용으로 ?nosmooth 면 끈다 (2026-09-29 폰: "떨림이 심해")
  *  - 카메라·WebGL 을 못 쓰면 안내만 하고 흐름은 막지 않는다 (2026-09-29: Stable-Makeup 을 빼서 대신 보여 줄 그림이 없다)
  *
- * 근거 한 줄(개인화 계획의 rationale)과 쓰는 제품을 같이 보여 주고, "화장하러 가기" 로 부위 반복을 시작한다.
+ * 쓰는 제품을 같이 보여 주고, "화장하러 가기" 로 부위 반복을 시작한다.
+ * (근거 한 줄 칸은 뺐다 — 2026-10-05: 얼굴을 재서 화장을 바꾸는 것이 없어 말할 근거가 없다)
  * 사진은 저장하지 않는다 — 카메라 영상은 이 화면 안에서만 쓴다.
  */
 
-import { measureFace } from "../core/face-measure";
+import { EYE_CONTOUR, computeFarEyeFix } from "../core/eye-fit";
 import { lookById } from "../core/looks";
 import { lookDetail } from "../core/look-view";
-import { resolvePlan, type PersonalPlan } from "../core/personalize";
+import { standardPlan, type PersonalPlan } from "../core/personalize";
 import { SMOOTH } from "../core/smooth-params";
 import { LandmarkSmoother } from "../core/smoothing";
 import type { Pt } from "../core/types";
@@ -33,7 +34,7 @@ import type { Screen, ScreenContext } from "./shell";
 
 export interface FullRenderDeps {
   getLookId: () => string | null;
-  /** 룩 화면에서 만든 이 룩의 개인화 계획 (core/plan-queue.ts). 없으면 카메라 얼굴로 규칙 계획을 만든다 */
+  /** 이 화장을 그릴 계획. 안 주거나 null 이면 표준 계획 (personalize.standardPlan) */
   getPlan?: (lookId: string) => PersonalPlan | null;
   /** 머리카락 분할 (screens/hair-segmenter) — 주면 앞머리 위엔 보정·화장을 안 한다. 없으면 전과 같다 (#173) */
   hairMask?: HairMasker;
@@ -45,12 +46,31 @@ export interface FullRenderDeps {
  */
 export const HAIR_AR = { intervalMs: 200, width: 320 };   // 폰(2026-09-30 Android): 분할 24~34ms → 500 에서 200 으로
 
+/**
+ * 고개를 크게 돌리면 먼 쪽 눈 랜드마크가 틀어지는 문제 보정 (eye-fit.ts, 2026-10-02 PC 실측 #277) — 화면 4
+ * (live-run.ts)에서 먼저 검증된 computeFarEyeFix를 그대로 가져다 쓴다(중복 구현 금지 — #291 리뷰, 변환
+ * 공식 자체는 eye-fit.ts 하나뿐). 화면 4는 테두리 다각형에, 여기는 랜드마크 배열 자체에 적용하는 차이뿐이다.
+ * 메시 워프(makeup-gl)가 이 배열을 그대로 꼭짓점으로 쓰므로, 여기서 고치면 그 눈 위의 모든 화장(섀도우·라이너
+ * 등)이 같이 고쳐진다. yaw 12° 안쪽이면(computeFarEyeFix가 null) 그대로 cur 를 돌려준다 — 보정 없음.
+ */
+function correctFarEye(baseLm: readonly Pt[], cur: readonly Pt[]): Pt[] {
+  const r = computeFarEyeFix(baseLm, cur);
+  if (!r) return [...cur];
+  const out = [...cur];
+  for (const i of EYE_CONTOUR[r.far]) {
+    const p = cur[i]!, q = r.place(baseLm[i]!);
+    out[i] = { x: p.x + (q.x - p.x) * r.weight, y: p.y + (q.y - p.y) * r.weight };
+  }
+  return out;
+}
+
 export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
   return {
     mount(ctx: ScreenContext<S>) {
       const lookId = deps.getLookId();
       const look = lookById(lookId);
-      const plan = lookId && deps.getPlan ? deps.getPlan(lookId) : null;
+      // 계획을 안 넘기면 표준 계획 — 카메라 얼굴을 재서 모양을 바꾸지 않는다 (2026-10-05)
+      const plan = (lookId && deps.getPlan ? deps.getPlan(lookId) : null) ?? standardPlan();
       let alive = true;
       let live = false;
 
@@ -75,17 +95,6 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
       note.className = "muted";
       wrap.append(top, h, stage, note);
 
-      const why = Object.values(plan?.rationale ?? {}).filter((t): t is string => !!t);
-      if (why.length) {
-        const ul = document.createElement("ul");
-        ul.className = "ar-why";
-        for (const t of why) {
-          const li = document.createElement("li");
-          li.textContent = t;
-          ul.append(li);
-        }
-        wrap.append(ul);
-      }
       if (lookId) wrap.append(products(lookId));
 
       const row = document.createElement("div");
@@ -194,11 +203,12 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
                 // 기준 얼굴: 정면으로 다 보이는 첫 얼굴(goodRef). 화장 층은 여기에 한 번만 그린다 (계획은 정해져 있다)
                 ref = lm;
                 for (const c of [atlas.mul, atlas.col, atlas.light, off]) { c.width = w; c.height = hh; }
-                const p = plan ?? resolvePlan(measureFace(ref));
-                paintMakeup({ mul: atlas.mul.getContext("2d")!, col: atlas.col.getContext("2d")!, light: atlas.light.getContext("2d")! }, off, ref, paintLook, p, p.liner.plan.style, LASHES);
+                paintMakeup({ mul: atlas.mul.getContext("2d")!, col: atlas.col.getContext("2d")!, light: atlas.light.getContext("2d")! }, off, ref, paintLook, plan, plan.liner.plan.style, LASHES);
               }
               if (hairOn && lm && ref && ticker.due(now)) segment(now, w, hh);
-              gl.render(video, w, hh, atlas.mul, atlas.col, atlas.light, lm && ref ? { lm, ref, beauty: 0.3, radius: w * 0.004, hair } : null);
+              // 먼 쪽 눈 보정(#277) — 메시 워프 꼭짓점으로 그대로 들어가니 그 눈 위 화장 전부가 같이 고쳐진다
+              const fixedLm = lm && ref ? correctFarEye(ref, lm) : lm;
+              gl.render(video, w, hh, atlas.mul, atlas.col, atlas.light, fixedLm && ref ? { lm: fixedLm, ref, beauty: 0.3, radius: w * 0.004, hair } : null);
               if (!live) {
                 live = true;
                 stage.replaceChildren(canvas);

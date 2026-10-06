@@ -60,6 +60,16 @@ describe("mesh pin", () => {
     close(p.lines[0]!, o.lines[0]!);
   });
 
+  it("M8 퍼지는 방향 표시(점 · 화살표)도 테두리처럼 붙였다 옮긴다 — 화면 4 에서 얼굴을 따라간다", () => {
+    const t = (p: Pt): Pt => ({ x: 30 + 1.2 * p.x, y: -10 + 1.2 * p.y });
+    const o = { polys: [SAMPLE.slice(0, 3)], lines: [], dots: [SAMPLE[0]!], arrows: [[SAMPLE[1]!, SAMPLE[2]!]] };
+    const p = placeOutline(pinOutline(o, LMS), LMS.map(t));
+    close(p.dots!, o.dots.map(t));
+    close(p.arrows![0]!, o.arrows[0]!.map(t));
+    // 표시가 없는 테두리는 그대로 없다
+    expect(placeOutline(pinOutline({ polys: [], lines: [] }, LMS), LMS)).toEqual({ polys: [], lines: [] });
+  });
+
   it("M7 얼굴 점과 같은 자리의 점은 그 얼굴 점에 붙는다 — 이웃 삼각형 변 위에 걸쳐 있어도 (라이너 아래 선 = 눈꺼풀 점 그대로)", () => {
     const ids = [362, 133, 33, 263];
     const pins = pinPoints(LMS, ids.map((i) => LMS[i]!));

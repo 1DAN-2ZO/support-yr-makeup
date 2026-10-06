@@ -1,9 +1,10 @@
 // 화면 4 진행 (2-1 넷째 조각, #21) 검증 — 카메라 없이 프레임 측정값만 넣는다
 // 프레임마다: 게이트 한 줄 · 가이드 테두리 · (확인받기 뒤) 묶음 모으기
 import { describe, expect, it } from "vitest";
-import { FAR_EYE_DEFAULT, FAR_FADE, createLiveRun, outlineOf, type LiveFrame } from "@core/live-run";
+import { FAR_FADE, createLiveRun, outlineOf, type LiveFrame } from "@core/live-run";
+import { FAR_EYE_DEFAULT } from "@core/eye-fit";
 import { pinOutline, placeOutline } from "@core/mesh-pin";
-import { GATE_TEXT, LIVE_LIMITS, RIGID_POSE, poseOf } from "@core/gate";
+import { GATE_TEXT, LIVE_LIMITS, RIGID_POSE, poseOf, rigidPoseDiff } from "@core/gate";
 import { linerOutline, lookGuide } from "@core/guides";
 import type { GuideSource } from "@core/score-part";
 import { unitScale } from "@core/baseline";
@@ -453,6 +454,20 @@ describe("live run", () => {
   const partAt = (part: "brow" | "shadow", lm: Pt[]) => createLiveRun<string>({ partId: part, baseline: { lm: FACE, foreheadL: SKIN.L }, guide: lookGuide({}), smooth: false, screen: undefined } as Parameters<typeof createLiveRun<string>>[0]).step(frame({ lm })).outline!;
   const meshOnly = (part: "brow" | "shadow", lm: Pt[]) => placeOutline(pinOutline(outlineOf(part, FACE, lookGuide({})), FACE), lm);
 
+  it("L46 섀도우 · 블러셔의 퍼지는 방향 표시(점 · 화살표)도 지금 얼굴로 옮겨 그린다 — 먼 쪽 눈 보정을 거쳐도 남는다", () => {
+    for (const part of ["shadow", "cheek"] as const) {
+      const at = (lm: Pt[]) => createLiveRun<string>({ partId: part, baseline: { lm: FACE, foreheadL: SKIN.L }, guide: lookGuide({}), smooth: false } as Parameters<typeof createLiveRun<string>>[0]).step(frame({ lm })).outline!;
+      const moved = FACE.map((p) => ({ x: p.x + 12, y: p.y - 5 }));
+      const a = at(FACE), b = at(moved);
+      expect(a.dots!.length, part).toBeGreaterThan(0);
+      expect(b.dots!.length, part).toBe(a.dots!.length);
+      b.dots!.forEach((p, i) => { expect(p.x - a.dots![i]!.x).toBeCloseTo(12, 6); expect(p.y - a.dots![i]!.y).toBeCloseTo(-5, 6); });
+      expect(b.arrows!.length, part).toBe(a.arrows!.length);
+      // 크게 돌려 먼 쪽 눈 보정이 걸려도 표시는 그대로 붙어 있다
+      expect(at(collapsedFar()).arrows!.length, part).toBe(a.arrows!.length);
+    }
+  });
+
   it("L44 눈썹 테두리에는 먼 쪽 눈 보정을 안 한다 — 눈썹은 그물 붙이기만으로 잘 따라온다", () => {
     for (const lm of [shiftedFar(), collapsedFar()]) samePolys(partAt("brow", lm).polys, meshOnly("brow", lm).polys);
   });
@@ -474,8 +489,8 @@ describe("live run", () => {
   });
 
   it("L36 후보 1 — 아주 크게 돌린 각도(눈 틀 맞추기로도 못 잡는 곳)에서만 먼 쪽 눈 테두리를 흐리게. 가까운 쪽 · 덜 돌렸을 때 · 눈 아닌 부위는 그대로", () => {
-    // PC 에서 ?fade= 로 맞춰 보고 30 → 45 를 골랐다 (2026-10-02)
-    expect(FAR_FADE).toEqual({ from: 30, to: 45, min: 0.3 });
+    // PC 에서 ?fade= 로 맞춰 보고 30 → 45 를 골랐다가 (2026-10-02) 5° 씩 일찍 25 → 40 (2026-10-05 사용자)
+    expect(FAR_FADE).toEqual({ from: 25, to: 40, min: 0.3 });
     const alphaOf = (part: "liner" | "lip", f: number, fade?: { from: number; to: number; min: number } | null) =>
       createLiveRun<string>({ partId: part, baseline: { lm: FACE, foreheadL: SKIN.L }, guide: lookGuide({}), smooth: false, ...(fade !== undefined ? { fade } : {}) }).step(frame({ lm: turnedFace(f) }));
     // 코끝이 이미지 오른쪽으로 크게(각도 차 약 87) → 먼 쪽 = 이미지 오른쪽 눈
@@ -488,8 +503,17 @@ describe("live run", () => {
     const other = alphaOf("liner", -0.7);
     expect(other.alpha![rightIdx]).toBe(1);
     expect(other.alpha![1 - rightIdx]).toBeCloseTo(FAR_FADE.min, 6);
-    // 각도 차 약 25 · 눈 아닌 부위는 흐리게 하지 않는다
-    expect(alphaOf("liner", 0.2).alpha).toEqual([1, 1]);
+    // 각도 차가 25 아래면 그대로, 25 ~ 40 사이는 차츰, 40 넘으면 가장 옅게 — 각도는 화면 4 와 같은 눈금(rigidPoseDiff)으로 잰다
+    const seen = { under: false, mid: false, over: false };
+    for (let f = 0.05; f <= 0.7; f += 0.025) {
+      const deg = Math.abs(rigidPoseDiff(FACE, turnedFace(f)).yaw), a = alphaOf("liner", f).alpha!;
+      const far = Math.min(...a);
+      if (deg < FAR_FADE.from - 0.5) { expect(a, `${deg.toFixed(1)}°`).toEqual([1, 1]); seen.under = true; }
+      else if (deg > FAR_FADE.to + 0.5) { expect(far, `${deg.toFixed(1)}°`).toBeCloseTo(FAR_FADE.min, 6); seen.over = true; }
+      else if (deg > FAR_FADE.from + 0.5 && deg < FAR_FADE.to - 0.5) { expect(far, `${deg.toFixed(1)}°`).toBeLessThan(1); expect(far).toBeGreaterThan(FAR_FADE.min); seen.mid = true; }
+    }
+    expect(seen).toEqual({ under: true, mid: true, over: true });
+    // 눈 아닌 부위는 흐리게 하지 않는다
     expect(alphaOf("lip", 0.7).alpha).toBeNull();
     // 화면이 구간을 바꾸거나(?fade=15-30) 끌 수 있다(?fade=0)
     expect(alphaOf("liner", 0.25, { from: 15, to: 30, min: 0.25 }).alpha![rightIdx]).toBeCloseTo(0.25, 6);

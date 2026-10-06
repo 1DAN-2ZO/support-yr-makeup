@@ -4,7 +4,11 @@ import { PNG } from "pngjs";
 import { affine, eyeOpenness, LASH_RULES, lashState, lidStrip, resampleLid, texPx, type LashMeta } from "@core/lash";
 import type { Pt } from "@core/types";
 
-const meta = JSON.parse(readFileSync(new URL("../public/lashes/lashes.json", import.meta.url), "utf8")) as LashMeta;
+const STYLES = ["natural", "deep"] as const;
+const metaOf = (style: (typeof STYLES)[number]): LashMeta =>
+  JSON.parse(readFileSync(new URL(`../public/lashes/${style}/lashes.json`, import.meta.url), "utf8")) as LashMeta;
+/** 아래 띠·텍스처 좌표 시험은 natural 하나로 충분하다 — 수학(core/lash.ts)은 스타일과 무관하다 */
+const meta = metaOf("natural");
 
 /** 눈 폭 100px, 안쪽(0,0) → 바깥(100,0) 윗눈꺼풀 아치. y 는 화면 좌표(아래가 +) */
 const arch = (h: number): Pt[] => Array.from({ length: 9 }, (_, i) => ({ x: (i / 8) * 100, y: -h * Math.sin((i / 8) * Math.PI) }));
@@ -111,13 +115,16 @@ describe("텍스처 좌표·아핀", () => {
   });
 });
 
-describe("PNG 규격 — 그림을 갈아 끼워도 지켜야 할 것", () => {
-  for (const [key, t] of Object.entries(meta.textures)) {
+describe.each(STYLES)("PNG 규격(%s) — 그림을 갈아 끼워도 지켜야 할 것", (style) => {
+  const m = metaOf(style);
+  for (const [key, t] of Object.entries(m.textures)) {
     it(`${key}: 파일이 있고, 세로 픽셀 비율이 v 범위와 맞고, 뿌리 선(v=0)이 그림 안에 있다`, () => {
-      const png = PNG.sync.read(readFileSync(new URL(`../public/lashes/${t.file}`, import.meta.url)));
-      const ppuX = png.width / (meta.uMax - meta.uMin);
+      const png = PNG.sync.read(readFileSync(new URL(`../public/lashes/${style}/${t.file}`, import.meta.url)));
+      const ppuX = png.width / (m.uMax - m.uMin);
       const ppuY = png.height / (t.vMax - t.vMin);
-      expect(ppuY / ppuX).toBeGreaterThan(0.6);
+      // 0.6 → 0.55: 실사 참고 사진(natural/deep)으로 교체하며 deep/mid 실측 비율이 0.5879 로 옛 문턱(0.6) 밑으로
+      // 내려갔다 — 절차 생성 그림보다 가로로 좀 더 납작해서다. 나머지 7장은 전부 0.58 이상(2026-10-02 실측)
+      expect(ppuY / ppuX).toBeGreaterThan(0.55);
       expect(ppuY / ppuX).toBeLessThan(1.6);
       expect(t.vMin).toBeLessThan(0);
       expect(t.vMax).toBeGreaterThan(0);
@@ -129,8 +136,8 @@ describe("PNG 규격 — 그림을 갈아 끼워도 지켜야 할 것", () => {
   }
   it("up 은 뿌리 선 위(+v)에, down 은 아래(-v)에 가닥이 몰려 있다", () => {
     const mass = (key: "up" | "down"): number => {
-      const t = meta.textures[key];
-      const png = PNG.sync.read(readFileSync(new URL(`../public/lashes/${t.file}`, import.meta.url)));
+      const t = m.textures[key];
+      const png = PNG.sync.read(readFileSync(new URL(`../public/lashes/${style}/${t.file}`, import.meta.url)));
       const rootY = (t.vMax / (t.vMax - t.vMin)) * png.height;
       let above = 0, below = 0;
       for (let y = 0; y < png.height; y++) for (let x = 0; x < png.width; x++) {

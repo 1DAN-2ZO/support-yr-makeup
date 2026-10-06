@@ -16,6 +16,7 @@
       #guidecv, #lashcv { position: absolute; left: 0; top: 0; pointer-events: none; background: transparent; }
       #lashcv { mix-blend-mode: multiply; }
       canvas { width: 100%; height: auto; transform: scaleX(-1); border-radius: 8px; background: #000; }
+      #pickcv { transform: none; max-width: 480px; cursor: crosshair; touch-action: none; }
       .panel { flex: 1 1 300px; max-width: 420px; }
       .buttons { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 12px; }
       button, select { font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--line); background: ButtonFace; color: ButtonText; }
@@ -77,6 +78,36 @@
           <button id="exportJson" type="button">설정 받기 (JSON)</button>
           <span id="exportMsg" style="font-size:12px;opacity:.75"></span>
         </div>
+        <details>
+          <summary>점 찍기 — 랜드마크로 영역 만들기 (사진 찍기 먼저)</summary>
+          <p class="note" style="margin:6px 0">사진 찍기로 기준 사진을 잡은 뒤, 부위 고르고 점을 순서대로 클릭. 드래그 = 이동, 휠/확대 슬라이더 = 확대.</p>
+          <div class="buttons">
+            <label>부위
+              <select id="pickPart">
+                <option value="brow">눈썹</option>
+                <option value="liner">아이라인</option>
+                <option value="shadow">섀도우</option>
+                <option value="lip">입술</option>
+                <option value="cheek">블러셔</option>
+                <option value="contour">쉐딩</option>
+                <option value="highlight">하이라이트</option>
+              </select>
+            </label>
+            <label id="pickSideWrap">쪽 <select id="pickSide"><option value="R">오른쪽(R)</option><option value="L">왼쪽(L)</option></select></label>
+            <label id="pickRegionWrap">영역 <select id="pickRegion"></select></label>
+            <label id="pickEdgeWrap">경계 <select id="pickEdge"><option value="lo">속눈썹 쪽</option><option value="hi">눈썹 쪽</option></select></label>
+          </div>
+          <div class="buttons">
+            <label>확대 <input id="pickZoom" type="range" min="1" max="6" step="0.1" value="1" /></label>
+            <button id="pickReset" type="button">보기 리셋</button>
+            <button id="pickUndo" type="button">마지막 점 취소</button>
+            <button id="pickDone" type="button">이 구간 완료</button>
+            <button id="pickClearAll" type="button">전체 초기화</button>
+          </div>
+          <canvas id="pickcv" width="640" height="640"></canvas>
+          <p id="pickStatus" style="font-size:12px;opacity:.75;margin:6px 0"></p>
+          <textarea id="pickOut" readonly rows="10" style="width:100%;font:11px monospace;white-space:pre"></textarea>
+        </details>
         <details open>
           <summary>VLM 개인화 제안 붙여 넣기</summary>
           <textarea id="vlm" rows="5" style="width:100%;font:12px monospace" placeholder='{"liner":{"style":"winged"},"faceShape":{"label":"oval"},...}'></textarea>
