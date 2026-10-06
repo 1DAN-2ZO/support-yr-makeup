@@ -4,7 +4,7 @@
  * 화면 1 촬영(①, screens/capture.ts)과 따로 만들었다. 판정은 ① 의 core 를 그대로 쓴다 (core/attempt.ts — capture-run · shotGate).
  * 카메라는 화면 6 정면 1장(review-shot.ts)과 같은 방식: 공용 카메라 루프(새 장면에만 얼굴 찾기, #245) · 켤 때·끌 때 잠금 풀기(#267).
  * 맨얼굴 대비 밝기 · 색은 막지 않는다 — 조명이 달라졌으면 피드백(③)이 판단할 일이다.
- * 두 장을 다 찍으면 카메라를 끄고 사진 · 얼굴 점을 넘긴 뒤 다음 화면(6 피드백)으로.
+ * 두 장을 다 찍으면 카메라를 끄고 미리보기 — "다시 찍기"(눈 뜬 장부터) 또는 "이대로 피드백 받기"(사진 · 얼굴 점을 넘기고 6 피드백으로).
  */
 
 import type { FaceLandmarker, FaceLandmarkerResult } from "@mediapipe/tasks-vision";
@@ -45,6 +45,11 @@ export const ATTEMPT_TEXT = {
   saving: "사진을 정리하고 있어요…",
   cameraFail: "카메라를 열 수 없어요. 카메라 권한을 확인해 주세요",
   retry: "다시 시도",
+  previewTitle: "이렇게 찍혔어요",
+  openLabel: "눈 뜬 사진",
+  closedLabel: "눈 감은 사진",
+  retake: "다시 찍기",
+  confirm: "이대로 피드백 받기",
 } as const;
 
 /**
@@ -79,6 +84,46 @@ export function attemptScreen<S>(deps: AttemptDeps): Screen<S> {
       ctx.root.append(wrap);
       let stopCamera: (() => void) | null = null;
       let alive = true;
+      /** 미리보기에 쓴 객체 URL — 다시 찍거나 떠날 때 돌려준다 */
+      let previewUrls: string[] = [];
+      const dropPreview = (): void => {
+        for (const u of previewUrls) URL.revokeObjectURL(u);
+        previewUrls = [];
+      };
+
+      /** 두 장을 보여 주고 고르게 한다 */
+      function preview(shots: AttemptShots): void {
+        dropPreview();
+        wrap.textContent = "";
+        const row = el("div", "attempt-preview");
+        for (const [id, label] of [["front_open", ATTEMPT_TEXT.openLabel], ["front_closed", ATTEMPT_TEXT.closedLabel]] as const) {
+          const fig = el("figure");
+          const img = el("img");
+          const url = URL.createObjectURL(shots[id].blob);
+          previewUrls.push(url);
+          img.src = url;
+          img.alt = label;
+          fig.append(img, el("figcaption", "", label));
+          row.append(fig);
+        }
+        const retake = el("button", "ghost", ATTEMPT_TEXT.retake);
+        retake.type = "button";
+        retake.addEventListener("click", () => {
+          ctx.log.log({ name: "button", button: "attempt_retake" });
+          dropPreview();
+          camera();
+        });
+        const confirm = el("button", "primary", ATTEMPT_TEXT.confirm);
+        confirm.type = "button";
+        let sent = false;
+        confirm.addEventListener("click", () => {
+          if (sent) return;
+          sent = true;
+          ctx.log.log({ name: "button", button: "attempt_confirm" });
+          void Promise.resolve(deps.setAttempt(shots)).then(() => { if (alive) ctx.go(deps.next); });
+        });
+        wrap.append(el("h1", "", ATTEMPT_TEXT.previewTitle), row, retake, confirm);
+      }
 
       function intro(): void {
         wrap.textContent = "";
@@ -182,7 +227,7 @@ export function attemptScreen<S>(deps: AttemptDeps): Screen<S> {
               ctx.log.log({ name: "button", button: `attempt_shot:${shot}` });
               run = startAttemptRun(taken, now);
               if (run.shot) { step.textContent = STEP_TEXT[run.shot]; return; }
-              // 두 장 다 — 카메라를 끄고 넘긴다
+              // 두 장 다 — 카메라를 끄고 미리보기
               stop();
               step.textContent = "";
               line.textContent = ATTEMPT_TEXT.saving;
@@ -190,10 +235,8 @@ export function attemptScreen<S>(deps: AttemptDeps): Screen<S> {
                 const t = taken[id]!;
                 const e = await encodeForStore(t.cv);
                 return [id, { blob: e.blob, lm: t.lm, w: t.w, h: t.h }] as const;
-              })).then(async (pairs) => {
-                if (!alive) return;
-                await deps.setAttempt(Object.fromEntries(pairs) as AttemptShots);
-                if (alive) ctx.go(deps.next);
+              })).then((pairs) => {
+                if (alive) preview(Object.fromEntries(pairs) as AttemptShots);
               }, (e: unknown) => { if (alive) failed(e); });
             };
             // 카메라 새 장면에만 얼굴을 찾는다 (#245). 루프 안 오류는 바깥 try 가 못 잡는다
@@ -209,6 +252,7 @@ export function attemptScreen<S>(deps: AttemptDeps): Screen<S> {
       return () => {
         alive = false;
         stopCamera?.();
+        dropPreview();
       };
     },
   };
