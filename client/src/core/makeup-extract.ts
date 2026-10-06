@@ -10,7 +10,7 @@
  * 다른 부위(섀도우 · 라이너 · 입술 · 눈썹)는 다음.
  */
 
-import { deltaE, foreheadLab, labAt, type Lab, type RgbaImage } from "./color";
+import { deltaE, foreheadLab, labAt, pointInPoly, type Lab, type RgbaImage } from "./color";
 import { LM } from "./landmarks";
 import type { Side } from "./score";
 import type { Pt } from "./types";
@@ -109,4 +109,123 @@ export function extractCheek(bare: RgbaImage, made: RgbaImage, lm: readonly Pt[]
     return { center: c, rx, ry, angleDeg, outline: ellipsePts(c, rx, ry, angleDeg), peakDeltaE: peak };
   };
   return { R: one("R"), L: one("L") };
+}
+
+// ---------- 모든 부위 (2026-10-06 사용자: "블러셔 말고 다른 부분도 최대한 다") ----------
+
+export type ExtractPart = "lip" | "brow" | "liner" | "shadow" | "underShadow" | "cheek" | "contour" | "highlight";
+
+export interface PartMask {
+  part: ExtractPart;
+  /** 좌우가 있는 부위만 (R = 사진 왼쪽) */
+  side: Side | null;
+  /** 사진 크기 w × h — 1 이면 이 부위로 뗀 픽셀 */
+  mask: Uint8Array;
+  count: number;
+  /** 가장 진한 곳 색 차 */
+  peakDeltaE: number;
+}
+
+/**
+ * 부위별 기준. minDeltaE: 가장 진한 곳이 이보다 작으면 없음 · edge: 가장 진한 곳의 이 비율까지 화장 · minPixels: 덩어리가 이보다 작으면 없음.
+ * 라이너는 '어두운 선' 으로 가른다 — 화장 사진 밝기(L) linerMaxL 아래이거나 맨얼굴보다 linerDarker 넘게 어두워진 곳.
+ * 쉐딩 · 하이라이트는 얼굴 나머지에서 밝기가 contourDL 넘게 내려가거나 올라간 곳 — 조명과 갈리지 않아 참고용. 눈대중 시작값
+ */
+export const EXTRACT = {
+  minDeltaE: { lip: 4, brow: 4, liner: 6, shadow: 3, underShadow: 3, cheek: 3, rest: 4 },
+  edge: 0.3, peakPct: 0.98, minPixels: 30,
+  linerMaxL: 40, linerDarker: 30, contourDL: 3,
+} as const;
+
+/** MediaPipe 얼굴 윤곽 (이마 위 → 오른쪽 → 턱 → 왼쪽) */
+const FACE_OVAL = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109];
+
+const add = (a: Pt, b: Pt, k = 1): Pt => ({ x: a.x + b.x * k, y: a.y + b.y * k });
+const scaleAbout = (ps: readonly Pt[], k: number): Pt[] => {
+  const c = { x: ps.reduce((s, p) => s + p.x, 0) / ps.length, y: ps.reduce((s, p) => s + p.y, 0) / ps.length };
+  return ps.map((p) => ({ x: c.x + (p.x - c.x) * k, y: c.y + (p.y - c.y) * k }));
+};
+
+interface Zone { part: ExtractPart; side: Side | null; poly: Pt[] }
+
+/** 부위 찾을 자리 — 얼굴 점으로. 순서 = 먼저 가져가는 순서 (라이너 → 섀도 → 아래 섀도 → 볼) */
+function zones(lm: readonly Pt[]): { list: Zone[]; exclude: Pt[][] } {
+  const P = (i: number): Pt => lm[i]!;
+  const f = faceFrame(lm);
+  const up = (() => { const a = f.from(0, 0), b = f.from(0, -1); return { x: b.x - a.x, y: b.y - a.y }; })();
+  const down = { x: -up.x, y: -up.y };
+  const list: Zone[] = [{ part: "lip", side: null, poly: scaleAbout(LM.lipsOuter.map(P), 1.15) }];
+  const exclude: Pt[][] = [];
+  const sides = [{ side: "R" as Side, eye: LM.eyeA, brow: LM.browA }, { side: "L" as Side, eye: LM.eyeB, brow: LM.browB }];
+  for (const { side, brow } of sides) list.push({ part: "brow", side, poly: scaleAbout([...brow.upper.map(P), ...[...brow.lower].reverse().map(P)], 1.35) });
+  for (const { side, eye, brow } of sides) {
+    const o = P(eye.outer), i = P(eye.inner), ew = Math.hypot(o.x - i.x, o.y - i.y) || 1;
+    const out = { x: (o.x - i.x) / ew, y: (o.y - i.y) / ew };
+    // 눈 양 끝이 윗눈꺼풀 배열의 어느 쪽인지 — 바깥 끝부터 차례로
+    const lidRaw = eye.upper.map(P), lid = Math.hypot(lidRaw[0]!.x - o.x, lidRaw[0]!.y - o.y) < Math.hypot(lidRaw[lidRaw.length - 1]!.x - o.x, lidRaw[lidRaw.length - 1]!.y - o.y) ? lidRaw : [...lidRaw].reverse();
+    const lowRaw = eye.lower.map(P), low = Math.hypot(lowRaw[0]!.x - o.x, lowRaw[0]!.y - o.y) < Math.hypot(lowRaw[lowRaw.length - 1]!.x - o.x, lowRaw[lowRaw.length - 1]!.y - o.y) ? lowRaw : [...lowRaw].reverse();
+    const bRaw = brow.lower.map(P), bLow = Math.hypot(bRaw[0]!.x - o.x, bRaw[0]!.y - o.y) < Math.hypot(bRaw[bRaw.length - 1]!.x - o.x, bRaw[bRaw.length - 1]!.y - o.y) ? bRaw : [...bRaw].reverse();
+    // 눈알(흰자 · 홍채)만 뺀다 — 눈꺼풀 선보다 조금 안쪽. 크게 잡으면 속눈썹 선 위 라이너까지 빠졌다 (시험 X13)
+    exclude.push(scaleAbout([...lid, ...[...low].reverse()], 0.92));
+    list.push({ part: "liner", side, poly: [
+      ...lid.map((p) => add(p, down, 0.03 * ew)), ...[...lid].reverse().map((p) => add(p, up, 0.15 * ew)),
+      add(add(o, out, 0.45 * ew), up, 0.15 * ew), add(o, out, 0.45 * ew),
+    ] });
+    list.push({ part: "shadow", side, poly: [
+      ...lid, ...[...bLow].reverse().map((p) => add(p, down, 0.03 * ew)),
+      add(add(o, out, 0.5 * ew), up, 0.25 * ew), add(o, out, 0.5 * ew),
+    ] });
+    list.push({ part: "underShadow", side, poly: [
+      ...low, ...[...low].reverse().map((p) => add(p, down, 0.25 * ew)), add(add(o, out, 0.3 * ew), down, 0.1 * ew),
+    ] });
+  }
+  for (const { side } of sides) {
+    const z = cheekZone(lm, side);
+    list.push({ part: "cheek", side, poly: [z.f.from(z.a0, z.b0), z.f.from(z.a1, z.b0), z.f.from(z.a1, z.b1), z.f.from(z.a0, z.b1)] });
+  }
+  list.push({ part: "contour", side: null, poly: FACE_OVAL.map(P) });   // 얼굴 나머지 — 쉐딩 · 하이라이트를 함께 본다
+  return { list, exclude };
+}
+
+/** 모든 부위 떼기 — 겹치는 자리는 앞 부위가 먼저 가져간다. 눈알은 늘 뺀다 */
+export function extractAll(bare: RgbaImage, made: RgbaImage, lm: readonly Pt[], opts: typeof EXTRACT = EXTRACT): { w: number; h: number; parts: PartMask[] } {
+  const { w, h } = bare, shift = toneShift(bare, made, lm);
+  const taken = new Uint8Array(w * h), parts: PartMask[] = [];
+  const { list, exclude } = zones(lm);
+  const inside = (x: number, y: number, polys: readonly Pt[][]) => polys.some((q) => pointInPoly(x, y, q));
+  for (const z of list) {
+    const xs = z.poly.map((p) => p.x), ys = z.poly.map((p) => p.y);
+    const px: { i: number; d: number; dL: number; L: number }[] = [];
+    for (let y = Math.max(0, Math.floor(Math.min(...ys))); y <= Math.min(h - 1, Math.ceil(Math.max(...ys))); y++) {
+      for (let x = Math.max(0, Math.floor(Math.min(...xs))); x <= Math.min(w - 1, Math.ceil(Math.max(...xs))); x++) {
+        const i = y * w + x;
+        if (taken[i] || (made.data[i * 4 + 3] ?? 255) < 250 || !pointInPoly(x, y, z.poly) || inside(x, y, exclude)) continue;
+        const b = labAt(bare, x, y), m0 = labAt(made, x, y), m = { L: m0.L - shift.L, a: m0.a - shift.a, b: m0.b - shift.b };
+        px.push({ i, d: deltaE(b, m), dL: m.L - b.L, L: m.L });
+      }
+    }
+    if (!px.length) continue;
+    const key = z.part === "contour" ? "rest" : z.part;
+    const sorted = px.map((p) => p.d).sort((a, b) => a - b);
+    const peak = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * opts.peakPct))]!;
+    if (peak < opts.minDeltaE[key as keyof typeof opts.minDeltaE]) continue;
+    // 라이너는 '어두운 선' 이 기준이라 가장 진한 곳 비율을 안 쓴다 — 원래 속눈썹 위에 겹친 선은 색 차가 작다 (시험 X13)
+    const th = z.part === "liner" ? opts.minDeltaE.liner : Math.max(opts.minDeltaE[key as keyof typeof opts.minDeltaE], peak * opts.edge);
+    const dark = (p: (typeof px)[number]) => p.L <= opts.linerMaxL || p.dL <= -opts.linerDarker;
+    const pick = (keep: (p: (typeof px)[number]) => boolean, part: ExtractPart) => {
+      const on = px.filter((p) => p.d >= th && keep(p));
+      if (on.length < opts.minPixels) return;
+      const mask = new Uint8Array(w * h);
+      for (const p of on) { mask[p.i] = 1; taken[p.i] = 1; }
+      parts.push({ part, side: z.side, mask, count: on.length, peakDeltaE: peak });
+    };
+    if (z.part === "liner") pick(dark, "liner");
+    // 섀도 자리의 아주 어두운 픽셀은 라이너 · 속눈썹 — 섀도로 안 가져간다
+    else if (z.part === "shadow" || z.part === "underShadow") pick((p) => p.L > opts.linerMaxL, z.part);
+    else if (z.part === "contour") {
+      pick((p) => p.dL <= -opts.contourDL, "contour");
+      pick((p) => p.dL >= opts.contourDL, "highlight");
+    } else pick(() => true, z.part);
+  }
+  return { w, h, parts };
 }

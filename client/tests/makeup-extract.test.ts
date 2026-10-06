@@ -84,3 +84,93 @@ describe("화장 떼기 — 블러셔", () => {
     expect(deep.peakDeltaE).toBeGreaterThan(light.peakDeltaE);
   });
 });
+
+// ---------- 모든 부위 (extractAll) ----------
+// 진짜 같은 맨얼굴(속눈썹 · 흰자 · 눈썹 털) 위에 부위 하나씩 칠해서 떼면 그 부위로 돌아오나. 다른 부위는 비어 있어야 한다
+import { EXTRACT, extractAll, type ExtractPart } from "@core/makeup-extract";
+import { deltaE, labAt, pointInPoly, type RgbaImage } from "@core/color";
+import { LM } from "@core/landmarks";
+import { browPaint, eyeballPaint, eyeOf, INK, lipPaint, linerPaint, naturalPaint, regionPaint, SHADE, P, type Paint } from "./helpers/synth-face";
+
+describe("화장 떼기 — 모든 부위", () => {
+  const nat = (extra?: Paint) => image((x, y) => extra?.(x, y) ?? naturalPaint(x, y));
+  const bare = nat();
+  const count = (r: ReturnType<typeof extractAll>, part: ExtractPart) => r.parts.filter((p) => p.part === part).reduce((s, p) => s + p.count, 0);
+  /** 칠한 픽셀 중 그 부위로 뗀 비율. visible: 맨얼굴과 색이 확실히 다른(ΔE ≥ 15) 픽셀만 — 원래 속눈썹 위에 칠한 까만 선은 사진으로 못 가른다 */
+  const recall = (r: ReturnType<typeof extractAll>, part: ExtractPart, painted: Paint, visible?: { bare: RgbaImage; made: RgbaImage }) => {
+    let n = 0, hit = 0;
+    for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) {
+      if (!painted(x, y)) continue;
+      if (visible && deltaE(labAt(visible.bare, x, y), labAt(visible.made, x, y)) < 15) continue;
+      n++;
+      if (r.parts.some((p) => p.part === part && p.mask[y * r.w + x])) hit++;
+    }
+    return n ? hit / n : 0;
+  };
+  const others = (r: ReturnType<typeof extractAll>, part: ExtractPart) => r.parts.filter((p) => p.part !== part).reduce((s, p) => s + p.count, 0);
+
+  it("X10 화장이 없으면 어느 부위도 안 뗀다 — 속눈썹 · 눈썹 털을 화장으로 지어내지 않는다", () => {
+    const r = extractAll(bare, nat(), LMS);
+    expect(r.parts.reduce((s, p) => s + p.count, 0)).toBe(0);
+  });
+
+  it("X11 입술", () => {
+    const r = extractAll(bare, nat(lipPaint), LMS);
+    expect(recall(r, "lip", lipPaint)).toBeGreaterThan(0.85);
+    expect(others(r, "lip")).toBeLessThan(count(r, "lip") * 0.1);
+  });
+
+  it("X12 눈썹 — 맨얼굴 눈썹 털 위에 칠한 것", () => {
+    const r = extractAll(bare, nat(browPaint), LMS);
+    expect(recall(r, "brow", browPaint)).toBeGreaterThan(0.8);
+    expect(others(r, "brow")).toBeLessThan(count(r, "brow") * 0.1);
+  });
+
+  it("X13 아이라이너 — 속눈썹 선 위 어두운 선, 꼬리까지 · 섀도로 안 본다 (원래 속눈썹과 겹친 자리는 못 가른다 — 보이는 선만)", () => {
+    const liner = linerPaint(), m = nat(liner);
+    const r = extractAll(bare, m, LMS);
+    expect(recall(r, "liner", liner, { bare, made: m })).toBeGreaterThan(0.85);
+    // 원래 속눈썹 위에 겹친 선도 더 어두워졌으면 라이너 — 라이너는 진하기 비율이 아니라 '어두운 선' 으로 가른다
+    expect(recall(r, "liner", liner)).toBeGreaterThan(0.9);
+    expect(count(r, "shadow")).toBeLessThan(count(r, "liner") * 0.2);
+  });
+
+  it("X14 아이섀도 — 눈꺼풀 ~ 눈썹 사이 · 눈알(흰자)은 안 건드린다", () => {
+    const shadow = regionPaint("shadow", SHADE);
+    const r = extractAll(bare, nat(shadow), LMS);
+    expect(recall(r, "shadow", shadow) + recall(r, "liner", shadow)).toBeGreaterThan(0.7);
+    // 섀도 색은 어둡지 않다 — 속눈썹 선 위 띠라도 라이너로 가져가지 않는다
+    expect(count(r, "liner")).toBeLessThan(count(r, "shadow") * 0.1);
+    // 눈알 자리는 어느 부위에도 안 들어간다
+    for (const eye of [LM.eyeA, LM.eyeB]) {
+      const open = [...eye.upper.map(P), ...[...eye.lower].reverse().map(P)];
+      const c = { x: open.reduce((s, p) => s + p.x, 0) / open.length, y: open.reduce((s, p) => s + p.y, 0) / open.length };
+      expect(pointInPoly(c.x, c.y, open)).toBe(true);
+      expect(r.parts.some((p) => p.mask[Math.round(c.y) * r.w + Math.round(c.x)])).toBe(false);
+    }
+  });
+
+  it("X17 띠보다 두꺼운 라이너(속눈썹 선에서 위로 16px)도 위쪽까지 라이너 — 아주 어두운 픽셀은 섀도로 안 본다", () => {
+    const thick: Paint = (x, y) => {
+      for (const s of ["R", "L"] as const) {
+        const lid = eyeOf(s).upper.map(P), near = lid.reduce((b, p) => (Math.abs(p.x - x) < Math.abs(b.x - x) ? p : b)), xs = lid.map((p) => p.x);
+        if (x >= Math.min(...xs) && x <= Math.max(...xs) && y <= near.y - 1 && y >= near.y - 16) return INK;
+      }
+      return null;
+    };
+    const r = extractAll(bare, nat(thick), LMS);
+    expect(count(r, "liner")).toBeGreaterThan(1500);
+    expect(count(r, "shadow")).toBeLessThan(count(r, "liner") * 0.1);
+  });
+
+  it("X16 눈알 색이 바뀌어도(AI 가 렌즈 색 · 시선을 바꿈) 화장으로 안 본다", () => {
+    const r = extractAll(bare, nat(eyeballPaint([90, 60, 50])), LMS);
+    expect(r.parts.reduce((s, p) => s + p.count, 0)).toBeLessThan(EXTRACT.minPixels * 2);
+  });
+
+  it("X15 블러셔도 같이 — 볼 자리", () => {
+    const r = extractAll(BARE.im, blushImage(), LMS);
+    expect(count(r, "cheek")).toBeGreaterThan(200);
+    expect(r.parts.filter((p) => p.part === "cheek").map((p) => p.side).sort()).toEqual(["L", "R"]);
+  });
+});
