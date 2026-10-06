@@ -4,18 +4,27 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />
-    <title>화장 떼기 POC — 당화응</title>
+    <title>화장 입히고 떼기 POC — 당화응</title>
     <!--
-      [dev 전용] 화장 떼기 POC (2026-10-06) — AI 가 내 얼굴에 입힌 화장 사진에서 부위별 화장을 떼서 보여 준다.
-      맨얼굴 사진 + AI 화장 사진을 올리면, 얼굴 점으로 두 사진을 겹치고 부위마다 뗀다.
-      앱 흐름과 상관없는 독립 페이지다. 사진은 브라우저 안에서만 쓰고 저장하지 않는다.
+      [dev 전용] 화장 입히고 떼기 POC (2026-10-06) — 한 페이지에서
+        ① 맨얼굴(웹캠 · 파일) → ② 참고 화장 사진 → ③ AI 가 내 얼굴에 입히기(Stable-Makeup 데모 서버 127.0.0.1:7860) → ④ 부위별로 떼기.
+      AI 서버는 poc/look-tryon/server-bench/app_demo.py 를 켜 둔다. 사진은 이 컴퓨터 안에서만 쓰고 저장소에 남기지 않는다.
     -->
     <style>
       :root { color-scheme: light dark; --line: #8884; }
       body { margin: 0; padding: 16px; font: 14px/1.5 system-ui, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; background: Canvas; color: CanvasText; }
       h1 { font-size: 18px; margin: 0 0 4px; }
+      h2 { font-size: 15px; margin: 18px 0 6px; }
       .note { margin: 0 0 12px; opacity: .75; font-size: 13px; }
-      .bar { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
+      .cards { display: flex; gap: 12px; flex-wrap: wrap; }
+      .card { flex: 1 1 260px; max-width: 340px; border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+      .card h3 { font-size: 14px; margin: 0 0 6px; }
+      .card .thumb { width: 100%; aspect-ratio: 3 / 4; object-fit: contain; background: #000; border-radius: 8px; display: block; }
+      .bar { display: flex; gap: 8px 12px; flex-wrap: wrap; align-items: center; margin: 6px 0; font-size: 13px; }
+      button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line); background: ButtonFace; color: ButtonText; cursor: pointer; }
+      button.main { font-weight: 700; }
+      button:disabled { opacity: .5; cursor: default; }
+      .msg { font-size: 12px; min-height: 1.4em; opacity: .85; }
       #status { font-size: 14px; margin: 6px 0; min-height: 1.5em; white-space: pre-line; font-variant-numeric: tabular-nums; }
       .warn { color: #d9480f; font-weight: 600; }
       #parts { display: flex; gap: 6px 14px; flex-wrap: wrap; margin: 8px 0; font-size: 13px; }
@@ -27,31 +36,64 @@
       figure { margin: 0; flex: 1 1 340px; max-width: 520px; }
       .big figure { max-width: none; }
       figcaption { font-size: 13px; opacity: .8; margin-bottom: 4px; }
-      canvas { width: 100%; height: auto; border-radius: 8px; background: #000; display: block; }
+      #cvOnly, #cvBare, #cvMade { width: 100%; height: auto; border-radius: 8px; background: #000; display: block; }
     </style>
   </head>
   <body>
-    <h1>화장 떼기 POC</h1>
-    <p class="note">맨얼굴 사진과, 같은 사람에게 AI 가 화장을 입힌 사진을 올려 주세요. 두 사진을 얼굴 점으로 겹친 뒤 부위마다 화장을 떼요. 위 큰 그림은 <b>뗀 화장만</b> (회색 바탕 위에 AI 색 그대로), 테두리 색은 부위.</p>
-    <div class="bar">
-      <label>맨얼굴 <input id="bare" type="file" accept="image/*" /></label>
-      <label>AI 화장 <input id="made" type="file" accept="image/*" /></label>
-      <label><input id="heat" type="checkbox" /> AI 쪽을 색 차로 보기</label>
+    <h1>화장 입히고 떼기 POC</h1>
+    <p class="note">① 맨얼굴 → ② 따라 하고 싶은 화장 사진 → ③ AI 가 내 얼굴에 입히기 → ④ 부위별로 떼기. AI 서버(127.0.0.1:7860)가 켜져 있어야 ③ 버튼이 돌아가요 — 없으면 AI 결과 파일을 직접 올려도 돼요.</p>
+
+    <div class="cards">
+      <div class="card">
+        <h3>① 맨얼굴</h3>
+        <canvas id="bareView" class="thumb"></canvas>
+        <div class="bar">
+          <button id="camBtn" type="button">카메라 켜기</button>
+          <button id="snapBtn" type="button" disabled>찍기 (3초)</button>
+          <button id="bareSave" type="button" disabled>저장</button>
+        </div>
+        <div class="bar"><label>또는 파일 <input id="bareFile" type="file" accept="image/*" /></label></div>
+        <div id="bareMsg" class="msg"></div>
+      </div>
+      <div class="card">
+        <h3>② 참고 화장 사진</h3>
+        <canvas id="refView" class="thumb"></canvas>
+        <div class="bar"><label>파일 <input id="refFile" type="file" accept="image/*" /></label></div>
+        <div id="refMsg" class="msg">정면에 가깝고 화장이 잘 보이는 사진</div>
+      </div>
+      <div class="card">
+        <h3>③ AI 가 입힌 내 얼굴</h3>
+        <canvas id="madeView" class="thumb"></canvas>
+        <div class="bar">
+          <label>진하기 <input id="guide" type="range" min="1.05" max="3" step="0.05" value="1.6" /> <span id="guideVal">1.6</span></label>
+          <label>단계 <input id="steps" type="number" min="4" max="30" value="8" style="width:3.5em" /></label>
+        </div>
+        <div class="bar">
+          <button id="aiBtn" class="main" type="button" disabled>AI 화장 입히기</button>
+          <button id="madeSave" type="button" disabled>저장</button>
+        </div>
+        <div class="bar"><label>또는 AI 결과 파일 <input id="madeFile" type="file" accept="image/*" /></label></div>
+        <div id="madeMsg" class="msg"></div>
+      </div>
     </div>
+
+    <h2>④ 떼기</h2>
     <div class="bar" title="AI 가 피부까지 바꿀 때 거르기 — 하나씩 켜 보며 비교">
       <b>피부 변화 거르기</b>
-      <label><input id="optBlur" type="checkbox" /> ① 잡티·모공 무시 (살짝 흐려 비교)</label>
-      <label><input id="optMap" type="checkbox" /> ② 피부 변화 지도로 빼기</label>
-      <label><input id="optChroma" type="checkbox" /> ③ 블러셔·섀도·입술은 색 위주</label>
-      <label><input id="optAdaptive" type="checkbox" /> ④ 사진마다 문턱 자동</label>
+      <label><input id="optBlur" type="checkbox" checked /> ① 잡티·모공 무시</label>
+      <label><input id="optMap" type="checkbox" checked /> ② 피부 변화 지도로 빼기</label>
+      <label><input id="optChroma" type="checkbox" checked /> ③ 블러셔·섀도·입술은 색 위주</label>
+      <label><input id="optAdaptive" type="checkbox" checked /> ④ 사진마다 문턱 자동</label>
+      <label><input id="heat" type="checkbox" /> AI 쪽을 색 차로 보기</label>
     </div>
-    <div id="status">두 사진을 올려 주세요.</div>
+    <div id="status">맨얼굴과 AI 결과가 있으면 자동으로 떼요.</div>
     <div id="parts"></div>
-    <div class="big"><figure><figcaption>뗀 화장만</figcaption><canvas id="cvOnly"></canvas></figure></div>
+    <div class="big"><figure><figcaption>뗀 화장만 (회색 바탕 위에 AI 색 그대로, 테두리 색 = 부위)</figcaption><canvas id="cvOnly"></canvas></figure></div>
     <div class="row">
       <figure><figcaption>맨얼굴 + 뗀 자리</figcaption><canvas id="cvBare"></canvas></figure>
       <figure><figcaption>AI 화장 (맨얼굴에 맞춤) + 뗀 자리</figcaption><canvas id="cvMade"></canvas></figure>
     </div>
+    <video id="v" autoplay playsinline muted hidden></video>
     <script type="module" src="/src/screens/makeup-extract-probe.ts"></script>
   </body>
 </html>
