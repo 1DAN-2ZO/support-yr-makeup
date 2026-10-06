@@ -8,6 +8,8 @@ RUN npm ci
 
 COPY rules/ /rules/
 COPY poc/ /poc/
+# 일부 테스트가 ../../eval 을 참조해 빌드 타입검사가 eval 을 필요로 한다 (client 밖)
+COPY eval/ /eval/
 
 COPY ./client .
 
