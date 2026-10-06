@@ -270,3 +270,13 @@ if (ONLY.includes("5") && existsSync(`${T}/reshoot`)) {
   }
   tally(`따로 찍은 맨얼굴 쌍 (미세 맞춤 · ${names.join(" / ")})`, judged, "'비슷해요' 0건");
 }
+
+if (ONLY.includes("7") && process.env.MULTI) {
+  // 여러 장 찍기: 같은 맨얼굴에 시도사진 여러 장 (MULTI = work/liner-test 기준 경로/id 들, 맨얼굴은 첫 id 의 것). 절반 넘는 장에서 나온 꼬리만 친다 (voteTip)
+  const ids = process.env.MULTI.split(","), P = { open: [], closed: [] };
+  for (const st of ["open", "closed"]) { const b = load(`${ids[0]}_${st}_bare`); for (const id of ids) P[st].push(pairOf(b, load(`${id}_${st}_made`))); }
+  const g = guideOf(P.open[0].base.lm);
+  console.log(`\n===== (7) 여러 장 찍기 — 시도사진 ${ids.length}장 (맨얼굴은 한 장). 미세 맞춤 범위 ±${pc(core.EYE_SHIFT.range)}%`);
+  ids.forEach((id, i) => console.log(`  한 장씩 ${id.split("/").pop()}: ${say(core.scoreLinerWing(P.open[i], P.closed[i], g))}`));
+  console.log(`  ${ids.length}장 합쳐서: ${say(core.scoreLinerWing(P.open, P.closed, g))}`);
+}

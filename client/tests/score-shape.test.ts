@@ -787,6 +787,35 @@ describe("라이너 꼬리 — 눈꼬리 부채꼴 훑기 (linerFan · eyeShift 
     expect(match(r)).toBe("far");
     expect(r.score).not.toBeNull();
   });
+  it("W11 여러 장을 주면 절반 넘는 장에서 나온 꼬리만 친다 — 한 장에만 있는 가짜 꼬리는 버린다 (길이는 가운데 값)", () => {
+    const opens = (ps: (Paint | null)[]) => ps.map((q) => ({ base: NAT, cur: frame(drawn(q)) }));
+    const shuts = (ps: (Paint | null)[]) => ps.map((q) => ({ base: shut(skin), cur: shut(drawn(q)) }));
+    const fake = ray("R", 5, 0.3), none = [null, null, null];
+    expect(scoreLinerWing(opens([fake])[0]!, shuts([null])[0]!, guide).present).toBe(true);   // 한 장만 보면 꼬리로 읽는다
+    expect(scoreLinerWing(opens([fake, null, null]), shuts(none), guide).present).toBe(false);
+    const all = scoreLinerWing(opens([ray("R", 5, 0.26), ray("R", 5, 0.3), ray("R", 5, 0.34)]), shuts(none), guide);
+    expect(eyes(all).R.open.found).toBe(true);
+    expect(Math.abs(eyes(all).R.open.r - 0.3)).toBeLessThan(0.025);
+    // 두 장 중 한 장 = 절반 — 넘지 않으니 버린다
+    expect(eyes(scoreLinerWing(opens([fake, null]), shuts([null, null]), guide)).R.open.found).toBe(false);
+  });
+
+  it("W12 좌우 길이 차는 가이드의 좌우 차와 견준다 — 가이드가 원래 좌우가 다르면 그대로 그린 것을 지적하지 않는다", () => {
+    // 가이드: R 은 30%, L 은 15% (정답사진에서 읽은 꼬리가 좌우가 다른 경우)
+    const uneven: GuideSource = (part, f) => {
+      const g = guide(part, f);
+      if (!g.liner) return g;
+      const [o, t] = g.liner.wing.R;
+      return { ...g, liner: { ...g.liner, wing: { R: [o, { x: o.x + (t.x - o.x) * 2, y: o.y + (t.y - o.y) * 2 }], L: g.liner.wing.L } } };
+    };
+    const asGuide = over(ray("R", GUIDE_DEG, 0.3), ray("L", GUIDE_DEG, 0.15));
+    const shutBoth: Paint = (x, y) => shutTail(0.3, ["R"])(x, y) ?? shutTail(0.15, ["L"])(x, y);
+    const r = wing(asGuide, shutBoth, uneven);
+    expect(Math.abs((r.metrics as { lrLen: number }).lrLen)).toBeGreaterThan(PARAMS.tol.lrDiff);
+    expect(extra(r)).not.toContain("LINER_WING_LR_LEN");
+    // 좌우가 같은 가이드로 보면 같은 그림이 좌우 차로 지적된다
+    expect(extra(wing(asGuide, shutBoth))).toContain("LINER_WING_LR_LEN");
+  });
 });
 
 // 마지막 전체 사진 한 장을 '정답 그림'(맨얼굴에 화장을 입힌 그림)과 부위별로 견준다 — 부위마다 바로 주변 피부 대비 색이 얼마나 바뀌었나
