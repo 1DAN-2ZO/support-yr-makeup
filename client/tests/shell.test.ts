@@ -19,7 +19,7 @@ interface Session {
   parts: ChipInput[];
 }
 
-function setup(start: Partial<Session> = {}) {
+function setup(start: Partial<Session> = {}, orientation: () => "portrait" | "landscape" | null = () => "portrait") {
   document.body.innerHTML = `<div id="root"></div><div id="chips"></div><div id="hint"></div>`;
   const root = document.getElementById("root") as HTMLElement;
   const chipsRoot = document.getElementById("chips") as HTMLElement;
@@ -45,7 +45,7 @@ function setup(start: Partial<Session> = {}) {
     setPart: (p) => {
       session.currentPart = p;
     },
-    orientation: () => "portrait",
+    orientation,
   });
   return { shell, session, events: m.events, root, chipsRoot, hintRoot };
 }
@@ -125,6 +125,13 @@ describe("껍데기", () => {
     shell.render();
     expect(hintRoot.hidden).toBe(false);
     expect(hintRoot.textContent).toBe("폰을 가로로 돌리세요");
+  });
+
+  it("방향을 모르면(null — 옛 브라우저 · 주소 ?norotate) 안내를 안 띄운다", () => {
+    const { shell, hintRoot } = setup({ screen: "live", currentPart: "liner" }, () => null);
+    shell.render();
+    expect(hintRoot.hidden).toBe(true);
+    expect(hintRoot.textContent).toBe("");
   });
 
   it("부위 화면이 아니면(리뷰 등) 마지막 부위가 남아 있어도 방향 안내를 안 띄운다 (#169 3번)", () => {

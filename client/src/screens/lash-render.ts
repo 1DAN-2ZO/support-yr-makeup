@@ -3,7 +3,7 @@
  *
  * 눈꺼풀 선을 따라 띠를 만들고(core/lash.ts), PNG 를 삼각형 단위로 휘어 붙인다.
  * 눈 뜬 정도로 위·중간·아래 그림을 뚝 끊어 바꾼다(섞지 않음). 아랫속눈썹은 눈 감음일 때 그리지 않는다.
- * 그림·규격: client/public/lashes/ (scripts/gen_lash_textures.py 가 만든다, 디자이너 그림으로 갈아 끼울 수 있다).
+ * 그림·규격: client/public/lashes/{natural,deep}/ (scripts/gen_photo_lash.py 가 참고 사진에서 만든다).
  */
 
 import { affine, eyeOpenness, lashState, lidStrip, texPx, type LashMeta, type LashState, type StripVertex } from "@core/lash";

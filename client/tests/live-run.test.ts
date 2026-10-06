@@ -1,7 +1,8 @@
 // 화면 4 진행 (2-1 넷째 조각, #21) 검증 — 카메라 없이 프레임 측정값만 넣는다
 // 프레임마다: 게이트 한 줄 · 가이드 테두리 · (확인받기 뒤) 묶음 모으기
 import { describe, expect, it } from "vitest";
-import { FAR_EYE_DEFAULT, FAR_FADE, createLiveRun, outlineOf, type LiveFrame } from "@core/live-run";
+import { FAR_FADE, createLiveRun, outlineOf, type LiveFrame } from "@core/live-run";
+import { FAR_EYE_DEFAULT } from "@core/eye-fit";
 import { pinOutline, placeOutline } from "@core/mesh-pin";
 import { GATE_TEXT, LIVE_LIMITS, RIGID_POSE, poseOf } from "@core/gate";
 import { linerOutline, lookGuide } from "@core/guides";
