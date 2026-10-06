@@ -274,6 +274,38 @@ describe("모양 숫자 재기 — 아이라이너", () => {
     }
   });
 
+  it("F20 사진에서 읽은 라이너 띠도 눈꼬리 근처까지 두께가 고르다 (눈꺼풀에 수직, 기본 틀과 같은 그리기) — 실사진: 눈꼬리에서 띠가 얇아지고 꼬리와 만나는 데가 꺾였다", () => {
+    const r = fitMakeup(bare, nat(linerWith(tips)), LMS, G);
+    for (const s of ["R", "L"] as const) {
+      const f = get(r, "liner", s), eye = eyeOf(s), lid = eye.upper.map(P);
+      const ew = Math.hypot(P(eye.outer).x - P(eye.inner).x, P(eye.outer).y - P(eye.inner).y), t = f.params.thickness! * ew;
+      const tip = { x: f.params.tipX!, y: f.params.tipY! };
+      const toLid = (p: Pt) => Math.min(...lid.slice(1).map((q, i) => nearSeg(p.x, p.y, lid[i]!, q)));
+      const top = f.poly.filter((p) => toLid(p) > 0.5 && Math.hypot(p.x - tip.x, p.y - tip.y) > 1);
+      expect(top.length, `${s} 윗선 점`).toBeGreaterThan(5);
+      for (const p of top) expect(toLid(p) / t, `${s} 윗선 (${p.x.toFixed(0)}, ${p.y.toFixed(0)}) 이 눈꺼풀에서 ${toLid(p).toFixed(1)}px (두께 ${t.toFixed(1)}px)`).toBeGreaterThan(0.9);
+    }
+  });
+
+  it("F21 꼬리가 수평이어도 띠 윗선이 꼬리 끝까지 오목하게 꺾이지 않고 이어진다 — 실사진: 눈꼬리 위에 홈이 생겼다", () => {
+    const flat = { R: { x: P(LM.eyeA.outer).x - 22, y: P(LM.eyeA.outer).y }, L: { x: P(LM.eyeB.outer).x + 22, y: P(LM.eyeB.outer).y } };
+    const r = fitMakeup(bare, nat(linerWith(flat)), LMS, G);
+    for (const s of ["R", "L"] as const) {
+      const f = get(r, "liner", s), lid = eyeOf(s).upper.map(P), sgn = s === "R" ? -1 : 1;
+      const tip = { x: f.params.tipX!, y: f.params.tipY! };
+      expect(f.params.wingLen!, `${s} 꼬리 (전제)`).toBeGreaterThan(0.2);
+      const toLid = (p: Pt) => Math.min(...lid.slice(1).map((q, i) => nearSeg(p.x, p.y, lid[i]!, q)));
+      // 윗선: 꼬리 끝 + 눈꺼풀 위로 떨어진 점들, 꼬리 끝 → 눈머리 순 (바깥 쪽 좌표 큰 것부터)
+      const top = [tip, ...f.poly.filter((p) => toLid(p) > 0.5 && Math.hypot(p.x - tip.x, p.y - tip.y) > 1)].sort((a, b) => sgn * (b.x - a.x));
+      for (let i = 1; i + 1 < top.length; i++) {
+        const a = top[i - 1]!, m = top[i]!, c = top[i + 1]!;
+        if (Math.abs(c.x - a.x) < 1e-6) continue;
+        const yLine = a.y + ((c.y - a.y) * (m.x - a.x)) / (c.x - a.x);
+        expect(m.y - yLine, `${s} 윗선 (${m.x.toFixed(1)}, ${m.y.toFixed(1)}) 이 양옆을 이은 선보다 ${(m.y - yLine).toFixed(1)}px 아래 (홈)`).toBeLessThan(0.3);
+      }
+    }
+  });
+
   it("F7 라이너가 없으면 기본 틀 (가이드 꼬리)", () => {
     const r = fitMakeup(bare, nat(), LMS, G);
     for (const s of ["R", "L"] as const) {

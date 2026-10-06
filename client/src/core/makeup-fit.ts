@@ -204,7 +204,23 @@ function fitLiner(f: DiffField, lm: readonly Pt[], side: Side, opts: ExtractOpti
   // 끝에 남은 몇 픽셀이 위 · 아래로 바뀌어 각도가 8° ↔ -3° 로 뒤집혔다 (실사진, 시험 F19)
   const tipV = lineAt(track, lastS) ?? lastV;
   const tip = hasWing ? add(add(o, out, lastS), up, tipV) : o;
-  const poly = [...lid, ...[...lid].reverse().map((p) => add(p, up, t)), ...(hasWing ? [tip] : [])];
+  // 테두리는 기본 틀과 같은 그리기(띠 윗선을 눈꺼풀에 수직으로) — 얼굴 위쪽으로만 띄웠더니 눈꺼풀이 가파른 눈꼬리 · 눈머리에서
+  // 띠가 얇아지고 꼬리와 만나는 데가 꺾였다 (실사진, 시험 F20)
+  const frame = { im: NO_IMAGE, lm, unit: unitScale(lm) };
+  const outline = linerOutline(frame, t / frame.unit.eye, { R: [o, tip], L: [o, tip] })[side], n = eye.upper.length;
+  // [눈꺼풀 눈머리 → 눈꼬리, 꼬리 끝, 윗선 눈꼬리 → 눈머리]. 윗선은 꼬리 끝에서 위로 볼록하게만 잇는다 (홈이 된 점은 뺀다) —
+  // 꼬리가 수평에 가까우면 눈꼬리 위 띠 끝이 꼬리 선보다 아래로 들어가 홈이 생겼다 (실사진, 시험 F21)
+  const sv = (p: Pt) => ({ s: (p.x - o.x) * out.x + (p.y - o.y) * out.y, v: (p.x - o.x) * up.x + (p.y - o.y) * up.y });
+  const top: Pt[] = [];
+  for (const p of outline.slice(n)) {
+    while (top.length >= 2) {
+      const a = sv(top[top.length - 2]!), b = sv(top[top.length - 1]!), c = sv(p);
+      if (Math.abs(c.s - a.s) < 1e-6 || b.v >= a.v + ((c.v - a.v) * (b.s - a.s)) / (c.s - a.s)) break;
+      top.pop();
+    }
+    top.push(p);
+  }
+  const poly = [...outline.slice(0, n), ...top];
   const angle = (Math.atan2(tipV, Math.max(1e-6, lastS)) * 180) / Math.PI;
   return { poly, fromPhoto: true, params: { thickness: t / ew, tipX: tip.x, tipY: tip.y, wingLen: lastS / ew, wingAngle: hasWing ? angle : 0 } };
 }
