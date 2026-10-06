@@ -1,0 +1,140 @@
+/**
+ * 새 흐름 화면 6 — 잰 값을 부위별 문장으로 바꾼다 (실험, 앱에 연결하지 않음). 점수는 없다.
+ *
+ * 정한 것 (2026-10-06, 사용자):
+ *  - 부위마다 가장 중요한 말 하나 + 덧붙임 최대 하나. 순서 = 통째로 없음 > 한쪽 없음 > 자리 · 모양 > 진하기 > "정답과 비슷해요"
+ *  - "잘 됐어요" · "확인만" · "안 발랐어요" 는 쓰지 않는다 — 못 잡은 것일 수 있어 단정하지 않는다.
+ *    변화를 못 찾은 것은 어디에서인지만 붙인다: "정답 화장에서 …"(고칠 것 없음) / "내 화장에서 …"(고칠 것)
+ *  - 고치는 방법(fix)은 방향만 말한다. 얼마나(몇 mm)는 말하지 않는다 — 그만큼 재지 못한다
+ *  - 비슷한 색을 가리는 것은 하지 않는다. 볼은 했나 안 했나만. 라이너 꼬리는 눈 폭의 10% 미만이면 보지 않는다
+ *  - 화면은 전체 얼굴 사진(정답 · 시도) + 이 문장들. 숫자는 보여 주지 않는다
+ *
+ * 기준값은 임시값이 아니라 잰 흔들림 폭에서 왔다 (eval/samples/shape/README.md 실험 19~36, 한 사람 · 얹은 화장 · 조건마다 3~4장):
+ *  아무것도 안 한 맨얼굴의 양 -0.24~0.26(섀도우 눈 하나가 가장 넓다) / 한 것 0.42 위 · 입술 눈썹 흔들림 ±0.05 · 섀도우 눈 하나 ±0.25 · 라이너 꼬리 ±2~4%p
+ * 양(amount) = 정답 그림의 변화 방향으로 바뀐 크기 ÷ 정답 변화의 크기 (0 = 맨얼굴 그대로 · 1 = 정답만큼)
+ */
+
+export const FEEDBACK = {
+  /** 정답 그림의 변화가 이보다 작으면(Lab 거리) 그 부위는 견줄 것이 없다 — 따로 찍은 사진 사이의 잡음이 5~7 */
+  minTarget: 8,
+  /** 양이 이 아래면 변화를 못 찾은 것 */
+  none: 0.3,
+  /** 양이 이 아래면 옅다 — 정답의 절반. 그 위의 차이는 흔들림과 구분되지 않는다 */
+  weak: 0.5,
+  /** 볼은 맨얼굴도 0.3 쯤으로 읽힌다 (한 것 1.1) */
+  cheekNone: 0.6,
+  /** 입술선 바깥 띠: 평소 ±0.07, 넘치면 0.5 */
+  lipOut: 0.25,
+  /** 섀도우 눈꼬리 바깥: 정답대로 0.72~0.94 (정답 1.00), 더 빼면 1.18~1.32 */
+  shadowOuter: 0.12,
+  /** 눈썹 바로 아래 띠: 안 넓힌 것 0.10~0.15, 넓힌 것 0.76 */
+  browBelow: 0.35,
+  /** 라이너 꼬리(눈 폭 비율): 이보다 짧으면 보지 않는다 · 정답과 이만큼 넘게 다르면 짧다 · 길다 */
+  linerMin: 0.1,
+  linerTol: 0.08,
+} as const;
+
+export type FeedbackPartId = "brow" | "shadow" | "liner" | "cheek" | "lip";
+/** ok = 정답과 비슷 · fix = 고칠 것 · info = 견줄 것이 없거나 볼 수 없었다 */
+export type FeedbackTone = "ok" | "fix" | "info";
+
+export interface WholeMeasures {
+  /** 사진 조건이 맨얼굴과 달라 판정하지 않는다: 밝기 · 얼굴 크기 */
+  condition?: "light" | "size";
+  /** out = 입술선 바깥 띠의 양 · upper / lower = 윗입술 · 아랫입술의 양 */
+  lip?: { target: number; amount: number; out: number; outTarget: number; upper: number; lower: number };
+  /** higher = 정답이 안 칠한 위쪽 구역까지 칠했다 · outer = 눈꼬리 바깥 구역의 양 */
+  shadow?: { target: number; amountR: number; amountL: number; higher: boolean; outer: number; outerTarget: number };
+  /** below = 눈썹 바로 아래 띠의 양 */
+  brow?: { target: number; amountR: number; amountL: number; below: number; belowTarget: number };
+  cheek?: { target: number; amount: number };
+  /** 꼬리 길이 (눈 폭 비율, 옮긴 그림에서 잰 것). null = 꼬리 없음 */
+  liner?: { targetR: number | null; targetL: number | null; R: number | null; L: number | null };
+}
+
+export interface FeedbackLine {
+  part: FeedbackPartId;
+  name: string;
+  tone: FeedbackTone;
+  line: string;
+  /** 덧붙이는 말 (있을 때만) */
+  more?: string;
+  /** 고치는 방법 — 방향만 (tone 이 fix 일 때만) */
+  fix?: string;
+}
+
+export interface WholeFeedback {
+  /** 사진 조건 때문에 판정하지 않았으면 그 안내 (이때 parts 는 비어 있다) */
+  blocked?: string;
+  parts: FeedbackLine[];
+  /** 요약 묶음 — 부위 이름 */
+  ok: string[];
+  fix: string[];
+}
+
+const NAME: Record<FeedbackPartId, string> = { brow: "눈썹", shadow: "섀도우", liner: "라이너", cheek: "볼", lip: "입술" };
+const ORDER: readonly FeedbackPartId[] = ["brow", "shadow", "liner", "cheek", "lip"];
+const SAME = "정답과 비슷해요", NO_TARGET = "정답 화장에서 변화를 찾지 못했어요", NO_MINE = "내 화장에서 변화를 찾지 못했어요", UNSEEN = "이번에는 볼 수 없었어요";
+const BLOCK = {
+  light: "처음 찍은 사진과 밝기가 많이 달라요. 같은 자리에서 다시 찍어 주세요",
+  size: "처음 찍은 사진과 얼굴 크기가 많이 달라요. 같은 거리에서 다시 찍어 주세요",
+};
+/** [문장, 고치는 방법] */
+type Say = readonly [string, string];
+const side = (k: "R" | "L"): string => (k === "R" ? "오른쪽" : "왼쪽");
+
+function pick(part: FeedbackPartId, target: number | null, says: readonly Say[], missing?: Say): FeedbackLine {
+  const base = { part, name: NAME[part] };
+  if (target !== null && target < FEEDBACK.minTarget) return { ...base, tone: "info", line: NO_TARGET };
+  if (missing) return { ...base, tone: "fix", line: missing[0], fix: missing[1] };
+  if (!says.length) return { ...base, tone: "ok", line: SAME };
+  return { ...base, tone: "fix", line: says[0]![0], fix: says[0]![1], ...(says[1] ? { more: says[1][0] } : {}) };
+}
+
+/** 양쪽 값에서 한쪽만 빠졌으면 그쪽 */
+const lost = (r: number, l: number): "R" | "L" | null => (r < FEEDBACK.none && l >= FEEDBACK.weak ? "R" : l < FEEDBACK.none && r >= FEEDBACK.weak ? "L" : null);
+
+export function composeFeedback(m: WholeMeasures): WholeFeedback {
+  if (m.condition) return { blocked: BLOCK[m.condition], parts: [], ok: [], fix: [] };
+  const F = FEEDBACK, parts: FeedbackLine[] = [];
+  for (const part of ORDER) {
+    const says: Say[] = [];
+    if (part === "lip" && m.lip) {
+      const p = m.lip, none = p.amount < F.none;
+      if (!none && p.upper < F.none && p.lower >= F.weak) says.push(["윗입술이 비었어요", "윗입술에도 발라 보세요"]);
+      if (!none && p.lower < F.none && p.upper >= F.weak) says.push(["아랫입술이 비었어요", "아랫입술에도 발라 보세요"]);
+      if (p.out - p.outTarget > F.lipOut) says.push(["입술선 밖으로 나갔어요", "입술선 안쪽으로 정리해 보세요"]);
+      if (!says.length && p.amount < F.weak) says.push(["정답보다 옅어요", "한 번 더 덧발라 보세요"]);
+      parts.push(pick(part, p.target, says, none ? [NO_MINE, "입술을 발라 보세요"] : undefined));
+    } else if (part === "shadow" && m.shadow) {
+      const p = m.shadow, mean = (p.amountR + p.amountL) / 2, one = lost(p.amountR, p.amountL), none = Math.max(p.amountR, p.amountL) < F.none;
+      if (one) says.push([`${side(one)} 눈이 비었어요`, `${side(one)} 눈에도 칠해 보세요`]);
+      if (p.higher) says.push(["정답보다 높이 칠했어요", "눈두덩 위쪽을 덜어 내 보세요"]);
+      if (p.outer - p.outerTarget > F.shadowOuter) says.push(["눈꼬리 바깥으로 더 뺐어요", "눈꼬리 바깥쪽을 덜어 내 보세요"]);
+      // 눈 하나의 값은 ±0.25 흔들린다 — 옅다는 두 눈 평균으로만
+      if (!says.length && mean < F.weak) says.push(["정답보다 옅어요", "한 번 더 덧발라 보세요"]);
+      parts.push(pick(part, p.target, says, none ? [NO_MINE, "눈두덩에 섀도우를 칠해 보세요"] : undefined));
+    } else if (part === "brow" && m.brow) {
+      const p = m.brow, mean = (p.amountR + p.amountL) / 2, one = lost(p.amountR, p.amountL), none = Math.max(p.amountR, p.amountL) < F.none;
+      if (one) says.push([`${side(one)} 눈썹이 비었어요`, `${side(one)} 눈썹도 그려 보세요`]);
+      if (p.below - p.belowTarget > F.browBelow) says.push(["정답보다 아래로 두꺼워요", "눈썹 아래쪽을 정리해 보세요"]);
+      if (p.belowTarget - p.below > F.browBelow) says.push(["정답보다 얇아요", "눈썹 아래쪽을 조금 더 채워 보세요"]);
+      if (!says.length && mean < F.weak) says.push(["정답보다 옅어요", "조금 더 진하게 채워 보세요"]);
+      parts.push(pick(part, p.target, says, none ? [NO_MINE, "눈썹을 그려 보세요"] : undefined));
+    } else if (part === "cheek" && m.cheek) {
+      parts.push(pick(part, m.cheek.target, [], m.cheek.amount < F.cheekNone ? [NO_MINE, "볼에 블러셔를 올려 보세요"] : undefined));
+    } else if (part === "liner" && m.liner) {
+      const p = m.liner, want = { R: p.targetR ?? 0, L: p.targetL ?? 0 }, got = { R: p.R ?? 0, L: p.L ?? 0 }, ks = (["R", "L"] as const).filter((k) => want[k] >= F.linerMin);
+      if (!ks.length) { parts.push({ part, name: NAME[part], tone: "info", line: NO_TARGET }); continue; }
+      const gone = ks.filter((k) => got[k] < F.linerMin);
+      if (gone.length === ks.length) { parts.push(pick(part, null, [], ["내 화장에서 꼬리를 찾지 못했어요", "눈꼬리에서 바깥으로 꼬리를 빼 보세요"])); continue; }
+      for (const k of gone) says.push([`${side(k)} 눈에 꼬리가 없어요`, `${side(k)} 눈에도 꼬리를 빼 보세요`]);
+      const rest = ks.filter((k) => !gone.includes(k)), short = rest.filter((k) => got[k] < want[k] - F.linerTol), long = rest.filter((k) => got[k] > want[k] + F.linerTol);
+      const who = (list: readonly ("R" | "L")[]): string => (list.length === ks.length ? "꼬리가" : `${side(list[0]!)} 꼬리가`);
+      if (short.length) says.push([`${who(short)} 정답보다 짧아요`, "꼬리를 조금 더 길게 빼 보세요"]);
+      if (long.length) says.push([`${who(long)} 정답보다 길어요`, "꼬리 끝을 조금 지워 보세요"]);
+      parts.push(pick(part, null, says));
+    } else parts.push({ part, name: NAME[part], tone: "info", line: UNSEEN });
+  }
+  return { parts, ok: parts.filter((p) => p.tone === "ok").map((p) => p.name), fix: parts.filter((p) => p.tone === "fix").map((p) => p.name) };
+}
