@@ -95,6 +95,22 @@ function shadowFeedback(zs) {
 const LIP_SAY = { similar: "잘 됐어요", none: "입술을 안 발랐어요", weak: "정답보다 옅어요", strong: "정답보다 진해요", color: "색이 정답과 달라요", check_only: "확인만 (정답 그림의 입술이 옅어요)" };
 const lipRegions = (f) => ({ polys: [pts(f, LM.lipsOuter)] });
 
+// NOISE=1: 아무것도 안 그린 사진 쌍에서 섀도우 구역 값이 얼마나 흔들리나 (눈 뜬 쌍 · 눈 감은 쌍). WHOLE_WORK = <id>_{open,closed}_{bare,made}.png 가 있는 폴더, WHOLE_IDS = id 들
+if (process.env.NOISE) {
+  console.log("아무것도 안 그린 쌍의 구역 변화 크기 (Lab 거리, 0 이어야 한다) — 눈마다 바깥 · 가운데 · 안쪽 × 아래 · 위");
+  for (const st of ["open", "closed"]) {
+    const all = [];
+    for (const id of IDS) {
+      const bb = load(`${id}_${st}_bare`), mm = load(`${id}_${st}_made`), fb = core.frameOf(bb.im, bb.lm), fm = core.frameOf(mm.im, mm.lm);
+      const zs = shadowZones(fb, fb, fm).map((z) => ({ ...z, n: len(z.d) }));
+      all.push(...zs);
+      console.log(`  ${st === "open" ? "눈 뜬" : "눈 감은"} ${id}: ` + ["R", "L"].map((sd) => `${sd === "R" ? "오" : "왼"} ` + zs.filter((z) => z.side === sd).map((z) => z.n.toFixed(1)).join(" ")).join(" | "));
+    }
+    const of = (row) => all.filter((z) => z.row === row).map((z) => z.n), mx = (v) => Math.max(...v);
+    console.log(`  => ${st === "open" ? "눈 뜬" : "눈 감은"} 쌍: 아래 구역 평균 ${mean(of("아래")).toFixed(1)} · 최대 ${mx(of("아래")).toFixed(1)} | 위 구역 평균 ${mean(of("위")).toFixed(1)} · 최대 ${mx(of("위")).toFixed(1)}`);
+  }
+  process.exit(0);
+}
 const b = load("_bare"), bare = core.frameOf(b.im, b.lm), target = core.frameOf(png(`${T}/_made.png`), b.lm);
 const zt = shadowZones(bare, target, target);
 console.log("정답 그림의 섀도우 구역별 변화 크기 (6 이상 = 칠할 자리, 4 미만 = 안 칠한 자리):");
