@@ -28,7 +28,7 @@
   </head>
   <body>
     <h1>사진 가이드 POC</h1>
-    <p class="note">① 맨얼굴로 정면을 보고 "찍기" → 그 사진에 가이드가 떠요. ② 보면서 그리고 "다시 찍기" → 지금 얼굴 위에 같은 가이드. 화면은 거울처럼 보여요.</p>
+    <p class="note">① 맨얼굴로 정면을 보고 "찍기" → 3초 뒤 찍고 그 사진에 가이드가 떠요. ② 보면서 그리고 "다시 찍기" → 3초 뒤 지금 얼굴 위에 같은 가이드. 화면은 거울처럼 보여요.</p>
     <div class="bar">
       <button id="start" type="button">카메라 시작</button>
       <label>화장 <select id="look"></select></label>
@@ -36,7 +36,6 @@
     </div>
     <div class="bar">
       <button id="snap" class="main" type="button" disabled>찍기 (맨얼굴)</button>
-      <button id="mirror" type="button" disabled>거울 보기</button>
       <label><input id="showGuide" type="checkbox" checked /> 가이드 보기</label>
       <button id="rebase" type="button" disabled>맨얼굴부터 다시</button>
     </div>

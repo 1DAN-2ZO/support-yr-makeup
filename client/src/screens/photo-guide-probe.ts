@@ -5,7 +5,8 @@
  *  1. 맨얼굴로 가만히 있는 순간을 찍어(core/snapshot — 몇 장 중앙값) 그 사진 위에 가이드를 그린다
  *  2. 가이드는 맨얼굴에서 한 번 정해 얼굴 그물에 붙여 둔다(mesh-pin) — 화장이 점을 밀어도 가이드 모양은 그대로
  *  3. 그리다가 "다시 찍기" → 지금 얼굴 사진 위에 같은 가이드를 놓는다
- *  4. "거울 보기" 는 실시간 영상만 (선 없음). 사진 화면에서는 얼굴 찾기를 쉰다
+ *  4. 찍기는 3초 카운트다운 뒤 (붓을 내려놓고 자세를 잡을 시간 — PC 시험에서 바로 찍히니 너무 빨랐다). 그동안만 실시간 영상.
+ *     사진 화면에서는 얼굴 찾기를 쉰다. 거울 보기는 실사용에 필요 없어서 뺐다 (2026-10-06 사용자)
  * 가이드는 앱과 같다 — planGuide(화장, 표준 계획) · outlineOf(테두리 + 퍼지는 방향). 사진은 저장하지 않는다.
  */
 
@@ -36,7 +37,6 @@ const cv = $<HTMLCanvasElement>("cv");
 const statusEl = $("status");
 const startBtn = $<HTMLButtonElement>("start");
 const snapBtn = $<HTMLButtonElement>("snap");
-const mirrorBtn = $<HTMLButtonElement>("mirror");
 const rebaseBtn = $<HTMLButtonElement>("rebase");
 const showGuide = $<HTMLInputElement>("showGuide");
 const lookSel = $<HTMLSelectElement>("look");
@@ -52,9 +52,12 @@ lookSel.value = "daily";
 
 /** 사진 화면 가로 폭(px) — 가로 부위 16:9, 세로 부위 3:4 (화면 3 과 같은 비율) */
 const VIEW_W = 960;
+/** 찍기를 누르고 실제로 모으기 시작할 때까지 */
+const COUNTDOWN_MS = 3000;
 
-type Mode = "mirror" | "collecting" | "photo";
-let mode: Mode = "mirror";
+type Mode = "idle" | "countdown" | "collecting" | "photo";
+let mode: Mode = "idle";
+let countT0 = 0;
 let landmarker: FaceLandmarker | null = null;
 const collector = createSnapshotCollector<HTMLCanvasElement>();
 /** 맨얼굴 기준 사진 · 가이드는 여기서 정해 그물에 붙인다 */
@@ -101,8 +104,8 @@ function drawPhoto(): void {
   g.restore();
 }
 
-/** 실시간 영상 (선 없음) — 거울 · 찍는 중 */
-function drawLive(): void {
+/** 실시간 영상 (선 없음) — 찍기 전 · 카운트다운 · 찍는 중. count 가 있으면 가운데에 크게 */
+function drawLive(count?: number): void {
   const w = video.videoWidth, h = video.videoHeight;
   if (!w || !h) return;
   const cw = VIEW_W, ch = Math.round((cw * h) / w);
@@ -112,6 +115,18 @@ function drawLive(): void {
   g.scale(-1, 1);
   g.drawImage(video, 0, 0, cw, ch);
   g.restore();
+  if (count !== undefined) {
+    g.save();
+    g.font = `700 ${Math.round(ch / 3)}px system-ui, sans-serif`;
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.lineWidth = Math.max(4, ch / 90);
+    g.strokeStyle = "rgba(0,0,0,.6)";
+    g.fillStyle = "#fff";
+    g.strokeText(String(count), cw / 2, ch / 2);
+    g.fillText(String(count), cw / 2, ch / 2);
+    g.restore();
+  }
 }
 
 function setStatus(text: string, warn = false): void {
@@ -119,11 +134,10 @@ function setStatus(text: string, warn = false): void {
 }
 
 function refreshButtons(): void {
-  snapBtn.disabled = !landmarker || mode === "collecting";
+  const busy = mode === "countdown" || mode === "collecting";
+  snapBtn.disabled = !landmarker || busy;
   snapBtn.textContent = base ? "다시 찍기" : "찍기 (맨얼굴)";
-  mirrorBtn.disabled = !landmarker || mode === "collecting" || !shown;
-  mirrorBtn.textContent = mode === "mirror" ? "사진 가이드 보기" : "거울 보기";
-  rebaseBtn.disabled = !base || mode === "collecting";
+  rebaseBtn.disabled = !base || busy;
 }
 
 function showPhotoMode(): void {
@@ -137,6 +151,14 @@ function showPhotoMode(): void {
 function frame(now: number): void {
   if (!landmarker || video.readyState < 2) return;
   if (mode === "photo") return;   // 사진 화면 — 얼굴 찾기 · 그리기 쉼
+  if (mode === "countdown") {
+    const left = COUNTDOWN_MS - (now - countT0);
+    if (left > 0) { drawLive(Math.ceil(left / 1000)); return; }
+    mode = "collecting";
+    collector.reset();
+    collectT0 = now;
+    setStatus("가만히 있어 주세요…");
+  }
   drawLive();
   if (mode !== "collecting") return;
   const w = video.videoWidth, h = video.videoHeight;
@@ -172,21 +194,14 @@ async function start(): Promise<void> {
 
 startBtn.addEventListener("click", () => void start());
 snapBtn.addEventListener("click", () => {
-  collector.reset();
-  collectT0 = performance.now();
-  mode = "collecting";
-  setStatus("가만히 있어 주세요…");
-  refreshButtons();
-});
-mirrorBtn.addEventListener("click", () => {
-  if (mode === "mirror") { showPhotoMode(); return; }
-  mode = "mirror";
-  setStatus("거울 — 선은 사진 가이드에서만 보여요");
+  countT0 = performance.now();
+  mode = "countdown";
+  setStatus("붓을 내려놓고 정면을 봐 주세요 — 3초 뒤 찍어요");
   refreshButtons();
 });
 rebaseBtn.addEventListener("click", () => {
   base = null; pinned = null; shown = null; shots = 0;
-  mode = "mirror";
+  mode = "idle";
   setStatus('맨얼굴로 정면을 보고 "찍기" 를 눌러 주세요');
   refreshButtons();
 });
