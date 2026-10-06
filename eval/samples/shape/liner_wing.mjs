@@ -224,7 +224,9 @@ if (ONLY.includes("4")) {
 if (ONLY.includes("5") && existsSync(`${T}/reshoot`)) {
   console.log(`\n===== (5) 따로 찍은 맨얼굴 쌍 (실제로 두 번 찍음 · 그린 것 없음) — 가짜 꼬리 · 가짜 눈머리 넘김 · 판정 (기대: '비슷해요' 가 나오면 안 된다 — 안 그린 얼굴은 '가이드와 달라요' 가 정답이고, 덧붙이는 말은 틀려도 된다). 칸 값 hat`);
   const judged = [], names = [];
-  const SETS = [["다른 날 · 다른 장소 · 다른 조명", ["me", "me2"]], ["같은 자리 · 몇 분 간격 · 앱과 같은 크기 비 (세로 맨얼굴 → 가로 확인)", ["me3"]], ["〃 방향을 바꾼 것 (가로가 맨얼굴, 참고)", ["me4"]]];
+  let SETS = [["다른 날 · 다른 장소 · 다른 조명", ["me", "me2"]], ["같은 자리 · 몇 분 간격 · 앱과 같은 크기 비 (세로 맨얼굴 → 가로 확인)", ["me3"]], ["〃 방향을 바꾼 것 (가로가 맨얼굴, 참고)", ["me4"]]];
+  if (process.env.EXTRA) SETS = [["추가 쌍 (EXTRA — 그린 사진일 수 있다, 아래 기대 문구는 맨얼굴 쌍 기준)", process.env.EXTRA.split(",")]]; // work/liner-test 기준 경로/id
+  const pre = (id) => (id.includes("/") ? id : `reshoot/${id}`);
   const tilt = (lm) => (Math.atan2(lm[263].y - lm[33].y, lm[263].x - lm[33].x) * 180) / Math.PI;
   for (const [tag, ids] of SETS) {
     console.log(`-- ${tag}`);
@@ -232,7 +234,7 @@ if (ONLY.includes("5") && existsSync(`${T}/reshoot`)) {
     for (const id of ids) {
       const P = {};
       for (const st of ["open", "closed"]) {
-        const b = load(`reshoot/${id}_${st}_bare`), m = load(`reshoot/${id}_${st}_made`), p = (P[st] = pairOf(b, m)), fb = core.sampleForehead(p.base), fm = core.sampleForehead(core.frameOf(m.im, m.lm));
+        const b = load(`${pre(id)}_${st}_bare`), m = load(`${pre(id)}_${st}_made`), p = (P[st] = pairOf(b, m)), fb = core.sampleForehead(p.base), fm = core.sampleForehead(core.frameOf(m.im, m.lm));
         console.log(`  ${id}_${st}: 눈 폭 ${p.base.unit.eye.toFixed(0)} → ${core.frameOf(m.im, m.lm).unit.eye.toFixed(0)}px · 이마 밝기 L ${fb?.L.toFixed(0)} → ${fm?.L.toFixed(0)} · 눈 기울기 ${tilt(b.lm).toFixed(1)} → ${tilt(m.lm).toFixed(1)}도`);
         for (const s of SIDES) {
           const w0 = fan(p, s, { reg: false }), w1 = fan(p, s), i0 = fan(p, s, { reg: false, end: "inner" }), i1 = fan(p, s, { end: "inner" }), sh = (t) => `(${t.sh.x},${t.sh.y}) ${t.sh.fit.toFixed(2)}${t.sh.edge ? " 범위 끝" : ""}`;
