@@ -33,7 +33,7 @@ RAW = Path(os.environ.get("WHOLE_RAW", DATA / "golden" / "raw" / "p01"))
 WORK = Path(os.environ.get("WHOLE_WORK", DATA / "work" / "final-whole"))
 IDS = os.environ.get("WHOLE_IDS", "4,2,1").split(",")
 WORK.mkdir(parents=True, exist_ok=True)
-FACE_W = 380
+FACE_W = int(os.environ.get("WHOLE_FACE_W", 380))   # 얼굴 폭(px). 모델에 넣을 큰 그림이 필요하면 키운다
 LIP_O = [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 409, 270, 269, 267, 0, 37, 39, 40, 185]
 LIP_I = [78, 95, 88, 178, 87, 14, 317, 402, 318, 324, 308, 415, 310, 311, 312, 13, 82, 81, 80, 191]
 EYES = [[33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246],
