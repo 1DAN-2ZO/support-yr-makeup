@@ -273,7 +273,9 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 }
 .slot-answer-preview,
 .slot-save-card,
-.slot-feedback-list div {
+.slot-feedback-list div,
+.slot-answer-loading,
+.slot-answer-photo {
   padding: 17px 18px;
   border: 1px solid #ebe6e8;
   border-radius: 4px;
@@ -283,7 +285,8 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 }
 .slot-answer-preview b,
 .slot-save-card strong,
-.slot-feedback-list strong {
+.slot-feedback-list strong,
+.slot-answer-loading strong {
   display: block;
   color: var(--beauty-ink);
   font-size: 14px;
@@ -291,7 +294,8 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 }
 .slot-answer-preview p,
 .slot-save-card p,
-.slot-feedback-list p {
+.slot-feedback-list p,
+.slot-answer-loading p {
   margin: 5px 0 0;
   color: var(--beauty-muted);
   font-size: 13px;
@@ -1802,4 +1806,66 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   font-size: 17px;
   font-weight: var(--weight-strong);
   box-shadow: 0 14px 30px rgba(255, 137, 155, 0.19);
+}
+
+/* ── 정답사진 화면(answer) — 로딩 · 완성 (코덱스) ── */
+
+/* ── 정답사진 화면(answer) — 로딩 · 완성 (코덱스) ── */
+.slot-answer-loading {
+  display: grid;
+  place-items: center;
+  min-height: 390px;
+  padding: 46px 28px;
+  text-align: center;
+}
+.slot-answer-loading span {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 18px;
+  border: 3px solid #f3dfe6;
+  border-top-color: var(--beauty-pink);
+  border-radius: 50%;
+  animation: slot-spin 900ms linear infinite;
+}
+.slot-answer-photo-frame {
+  position: relative;
+  min-height: 390px;
+  overflow: hidden;
+  border-radius: 4px;
+  background:
+    radial-gradient(circle at 50% 33%, #2e2929 0 18%, transparent 18.5%),
+    radial-gradient(circle at 50% 47%, #f3d8d2 0 25%, transparent 25.5%),
+    linear-gradient(180deg, #f6f1ee, #fff);
+}
+.slot-answer-face {
+  position: absolute;
+  left: 50%;
+  top: 43%;
+  width: 46%;
+  height: 54%;
+  border-radius: 48% 48% 44% 44%;
+  background:
+    radial-gradient(circle at 35% 43%, rgba(235, 121, 139, 0.22) 0 8%, transparent 9%),
+    radial-gradient(circle at 65% 43%, rgba(235, 121, 139, 0.2) 0 8%, transparent 9%),
+    #f7dcd5;
+  transform: translate(-50%, -50%);
+  box-shadow: inset 0 -18px 38px rgba(184, 127, 112, 0.12);
+}
+.slot-answer-line {
+  position: absolute;
+  left: 27%;
+  right: 27%;
+  height: 2px;
+  border-radius: 999px;
+  background: rgba(234, 95, 159, 0.48);
+}
+.slot-answer-line.one {
+  top: 42%;
+}
+.slot-answer-line.two {
+  top: 56%;
+  background: rgba(132, 223, 203, 0.54);
+}
+@keyframes slot-spin {
+  to { transform: rotate(360deg); }
 }

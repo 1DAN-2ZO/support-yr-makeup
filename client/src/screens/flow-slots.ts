@@ -93,6 +93,10 @@ function action(ctx: ScreenContext<unknown>, label: string, next: ScreenId): HTM
   });
 }
 
+function resetPage(root: HTMLElement): void {
+  root.replaceChildren(logo());
+}
+
 function uploadCard(): HTMLElement {
   const card = document.createElement("div");
   card.className = "slot-upload";
@@ -102,9 +106,33 @@ function uploadCard(): HTMLElement {
       <strong>참고 사진 업로드</strong>
       <em>정면 사진이면 가장 좋아요</em>
     </div>
+  `;
+  return card;
+}
+
+function loadingCard(): HTMLElement {
+  const card = document.createElement("div");
+  card.className = "slot-answer-loading";
+  card.innerHTML = `
+    <span aria-hidden="true"></span>
+    <strong>정답사진을 만들고 있어요</strong>
+    <p>참고 사진의 화장을 맨얼굴 사진에 맞춰 정리하는 중이에요.</p>
+  `;
+  return card;
+}
+
+function answerPhotoCard(): HTMLElement {
+  const card = document.createElement("div");
+  card.className = "slot-answer-photo";
+  card.innerHTML = `
+    <div class="slot-answer-photo-frame">
+      <span class="slot-answer-face" aria-hidden="true"></span>
+      <span class="slot-answer-line one" aria-hidden="true"></span>
+      <span class="slot-answer-line two" aria-hidden="true"></span>
+    </div>
     <div class="slot-answer-preview">
-      <b>정답사진</b>
-      <p>업로드한 화장을 기준으로 부위별 가이드가 만들어져요</p>
+      <b>정답사진 완성</b>
+      <p>이 사진을 기준으로 부위별 화장 가이드를 보여드릴게요.</p>
     </div>
   `;
   return card;
@@ -162,14 +190,45 @@ export function slotScreen<S>(spec: SlotSpec): Screen<S> {
   return {
     mount(ctx: ScreenContext<S>) {
       const root = page(`slot-${spec.next === "partguide" ? "answer" : spec.next}`);
+      let loadingTimer: number | null = null;
       if (spec.next === "partguide") {
-        root.append(
-          testMeta(spec.title, spec.owner, spec.todo),
-          coach("따라 하고 싶은 화장 사진을 먼저 올려 주세요"),
-          title("참고 사진 · 정답사진", "정답사진을 만들고 부위별로 나눠서 보여드릴게요"),
-          uploadCard(),
-          action(ctx as ScreenContext<unknown>, "다음 · 화장 가이드 보기", spec.next),
-        );
+        const renderUpload = () => {
+          resetPage(root);
+          root.append(
+            testMeta(spec.title, spec.owner, spec.todo),
+            coach("따라 하고 싶은 화장 사진을 먼저 올려 주세요"),
+            title("참고 사진 · 정답사진", "참고 사진을 올리면 정답사진을 만들어드릴게요"),
+            uploadCard(),
+            button("적용하기", () => {
+              ctx.log.log({ name: "button", button: "answer_apply" });
+              renderLoading();
+              loadingTimer = window.setTimeout(renderAnswer, 900);
+            }),
+          );
+        };
+        const renderLoading = () => {
+          resetPage(root);
+          root.append(
+            testMeta(spec.title, spec.owner, spec.todo),
+            title("Beauty AI가 분석중입니다.", "참고 사진의 색감과 위치를 확인하고 있어요"),
+            loadingCard(),
+          );
+        };
+        const renderAnswer = () => {
+          if (loadingTimer !== null) {
+            window.clearTimeout(loadingTimer);
+            loadingTimer = null;
+          }
+          resetPage(root);
+          root.append(
+            testMeta(spec.title, spec.owner, spec.todo),
+            coach("정답사진이 완성됐어요. 이제 부위별로 따라 해볼게요"),
+            title("정답사진 완성", "이 사진을 기준으로 화장 가이드가 만들어져요"),
+            answerPhotoCard(),
+            action(ctx as ScreenContext<unknown>, "다음 · 화장 가이드 보기", spec.next),
+          );
+        };
+        renderUpload();
       } else if (spec.next === "feedback") {
         root.append(
           testMeta(spec.title, spec.owner, spec.todo),
@@ -188,6 +247,9 @@ export function slotScreen<S>(spec: SlotSpec): Screen<S> {
         );
       }
       ctx.root.append(root);
+      return () => {
+        if (loadingTimer !== null) window.clearTimeout(loadingTimer);
+      };
     },
   };
 }
