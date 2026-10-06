@@ -209,6 +209,8 @@ CASES = {
     "섀도우 색 다름": {"섀도우": lambda L: np.stack([L[..., 0], -L[..., 2], L[..., 1]], 2)},
     "볼 옅음(0.4)": {"볼": lambda L: L * 0.4},
     "볼 아래로": {"볼": lambda L: np.stack([nshift(L[..., c], (eye * 0.6, 0), order=1) for c in range(3)], 2)},
+    "섀도우 위로 더": {"섀도우": lambda L: L + np.stack([nshift(L[..., c], (-eye * 0.2, 0), order=1) for c in range(3)], 2) * (np.abs(L).sum(2, keepdims=True) < 1)},
+    "섀도우 한쪽만": {"섀도우": lambda L: L * (xx < PA[168, 0])[..., None]},
 }
 sheet = []
 for n in ("4", "2", "1"):

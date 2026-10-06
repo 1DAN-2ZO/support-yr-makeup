@@ -2,7 +2,7 @@
 // "가이드 안이 얼마나 채워져 있나" 를 잰다. 원래 있던 눈썹과 새로 그린 것을 가리지 않는다 (팀 방향: 눈썹이 이미 정답 모양이면 무시하지 않는다)
 import { describe, expect, it } from "vitest";
 import { LM } from "@core/landmarks";
-import { frameOf } from "@core/sampling";
+import { frameOf, type SampleFrame } from "@core/sampling";
 import { EYE_SHIFT, LINER_WING, browShape, eyeShift, lidEdge, liftLid, linerBand, linerEnds, linerEndsResult, linerFan, linerStroke, routeOf, scoreHybrid, scoreLinerPair, scoreLinerWing, scoreWhole, WHOLE, type WholeRegions, shapeFill, tintFill, tintProgress, type LinerWingEye, type WingMatch } from "@core/score-shape";
 import { PARAMS, decide, type PartScore, type Side } from "@core/score";
 import type { GuideSource } from "@core/score-part";
@@ -838,5 +838,14 @@ describe("마지막 전체 사진 — 정답 그림과 비교 (scoreWhole)", () 
     const a = scoreWhole(bare, target, frame(tint(RED, 0.5)), eyes), b = scoreWhole(bare, target, frame(dark), eyes);
     expect(b.amount!).toBeCloseTo(a.amount!, 2);
     expect(scoreWhole(bare, target, frame(dark), regions).amount!).not.toBeCloseTo(a.amount!, 2);   // 안 빼면 변한다
+  });
+
+  it("X8 기준 피부(ref)를 주면 둘레 띠 대신 그것을 쓴다 — 옆 구역이 칠해져 있어도 값이 안 변한다", () => {
+    const half = (f: SampleFrame) => regions(f).polys.map((p) => { const top = Math.min(...p.map((q) => q.y)), mid = top + 8; return [{ x: Math.min(...p.map((q) => q.x)) + 30, y: top + 2 }, { x: Math.max(...p.map((q) => q.x)) - 30, y: top + 2 }, { x: Math.max(...p.map((q) => q.x)) - 30, y: mid }, { x: Math.min(...p.map((q) => q.x)) + 30, y: mid }]; });
+    const fore = (f: SampleFrame) => [[{ x: f.lm[10]!.x - 40, y: f.lm[10]!.y + 20 }, { x: f.lm[10]!.x + 40, y: f.lm[10]!.y + 20 }, { x: f.lm[10]!.x + 40, y: f.lm[10]!.y + 50 }, { x: f.lm[10]!.x - 40, y: f.lm[10]!.y + 50 }]];
+    const withRef: WholeRegions = (f) => ({ polys: half(f), ref: fore(f) }), noRef: WholeRegions = (f) => ({ polys: half(f) });
+    // 정답도 시도도 영역 전체를 같은 색으로 칠했다 — 작은 구역의 둘레 띠는 칠한 자리라 대비가 0 에 가깝다
+    expect(scoreWhole(bare, target, frame(tint(RED, 0.5)), withRef).verdict).toBe("similar");
+    expect(scoreWhole(bare, target, frame(tint(RED, 0.5)), noRef).verdict).toBe("check_only");
   });
 });

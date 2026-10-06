@@ -1,0 +1,113 @@
+// 피드백 문장 뽑기 시험 — 정답 그림 대 시도사진에서 부위별로 "어느 부분이 어떻게 됐나" (실험 22, 점수 없음)
+//   DHE_DATA_DIR=D:/nudy-data node eval/samples/shape/whole_feedback.mjs
+//   사진: $DHE_DATA_DIR/work/final-whole/ (저장소 밖 · final_whole.py 가 만든다) — whole_score.mjs 와 같은 사진 + 섀도우 위로 더 · 한쪽만
+// 전부 규칙이다 (모델 없음):
+//   입술    입술 다각형 평균 색 − 둘레 피부 띠 평균 색. 그 값이 맨얼굴에서 얼마나 바뀌었나를 정답 그림과 견준다 (scoreWhole)
+//   섀도우  눈두덩을 얼굴 점으로 눈마다 6구역(바깥 · 가운데 · 안쪽 × 아래 · 위)으로 나눈다. 기준 피부는 눈 가까운 피부.
+//           (기준 피부는 REF 로 바꿔 볼 수 있다 — 기본 near = 눈썹 바로 아래 띠 + 눈꼬리 바깥. 이마(fore)는 조명 방향에 따라 눈두덩과 따로 놀았다)
+//           정답 그림에서 바뀐 구역 = 칠할 자리. 칠할 자리의 평균 양 → 안 함 / 옅음 / 진함 / 색 다름 / 잘 됨,
+//           칠할 자리인데 안 바뀐 구역 → 비었어요, 칠할 자리가 아닌데 바뀐 구역 → 더 칠했어요, 좌우 양의 차 → 한쪽이 옅어요
+// 시도사진의 얼굴 점은 그 사진에서 뽑은 것을 그대로 쓴다 (실험 21: 맨얼굴 점을 옮겨 쓰는 것보다 낫다)
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..").replaceAll("\\", "/");
+if (!process.env.DHE_DATA_DIR) { console.error("DHE_DATA_DIR 를 정해 주세요 (사진은 저장소 밖에 둔다)"); process.exit(1); }
+const DATA = process.env.DHE_DATA_DIR.replaceAll("\\", "/"), CLIENT = join(ROOT, "client"), T = join(DATA, "work/final-whole").replaceAll("\\", "/");
+const require = createRequire(pathToFileURL(join(CLIENT, "package.json")));
+const esbuild = require("esbuild"), { PNG } = require("pngjs");
+const r = await esbuild.build({ stdin: { contents: [
+  'export { frameOf } from "./src/core/sampling";',
+  'export { scoreWhole, wholeContrast, WHOLE } from "./src/core/score-shape";',
+  'export { LM } from "./src/core/landmarks";',
+].join("\n"), resolveDir: CLIENT, loader: "ts" }, bundle: true, format: "esm", platform: "node", write: false, logLevel: "silent" });
+const OUT = join(DATA, "work/shape-out"); mkdirSync(OUT, { recursive: true });
+writeFileSync(join(OUT, "whole-feedback-core.mjs"), r.outputFiles[0].text);
+const core = await import(pathToFileURL(join(OUT, "whole-feedback-core.mjs")).href);
+
+const LM = core.LM, W = core.WHOLE, png = (f) => { const p = PNG.sync.read(readFileSync(f)); return { data: p.data, w: p.width, h: p.height }; };
+const load = (n) => ({ im: png(`${T}/${n}.png`), lm: JSON.parse(readFileSync(`${T}/${n}.lm.json`, "utf8")) });
+const pts = (f, ids) => ids.map((i) => f.lm[i]);
+const mix = (a, b, t) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], len = (a) => Math.hypot(...a), sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const mean = (v) => (v.length ? v.reduce((s, x) => s + x, 0) / v.length : NaN), meanV = (vs) => [0, 1, 2].map((i) => mean(vs.map((v) => v[i])));
+
+// ── 섀도우 구역 ── 눈마다 6개: 윗눈꺼풀 선에서 눈썹 아래 선까지를 비율로 자른다
+const SIDES = { R: [LM.eyeA, LM.browA], L: [LM.eyeB, LM.browB] }, COLS = { 바깥쪽: [0, 3], 가운데: [3, 5], 안쪽: [5, 8] }, ROWS = { 아래: [0.1, 0.4], 위: [0.4, 0.75] };
+const ZONE = { paint: 6, blank: 4, miss: 0.25, over: 0.6, lr: 0.4 };   // 칠할 자리로 보는 정답 변화 · 안 칠한 자리 · 비었다 · 넘쳤다 · 좌우 차
+function zonesOf(f, side) {
+  const [e, b] = SIDES[side], lid = pts(f, e.upper), lo = pts(f, b.lower), up = pts(f, b.upper);
+  const browAt = (i) => { const u = (i / (lid.length - 1)) * (lo.length - 1), k = Math.min(lo.length - 2, Math.floor(u)); return mix(lo[k], lo[k + 1], u - k); };
+  const P = (i, t) => mix(lid[i], browAt(i), t), eye = f.unit.eye;
+  // 기준 피부 (REF): fore 눈썹 위 이마 · brow 눈썹 바로 아래 띠 · temple 눈꼬리 바깥 관자놀이 쪽 · near = brow + temple
+  const all = lid.map((_, i) => i), dir = Math.sign(lid[0].x - lid[lid.length - 1].x), oc = lid[0];
+  const REFS = {
+    fore: [[...up.map((p) => ({ x: p.x, y: p.y - eye * 0.3 })), ...up.map((p) => ({ x: p.x, y: p.y - eye * 0.6 })).reverse()]],
+    brow: [[...all.map((i) => P(i, 0.82)), ...all.map((i) => P(i, 0.98)).reverse()]],
+    temple: [[{ x: oc.x + dir * eye * 0.25, y: oc.y - eye * 0.35 }, { x: oc.x + dir * eye * 0.5, y: oc.y - eye * 0.35 }, { x: oc.x + dir * eye * 0.5, y: oc.y + eye * 0.1 }, { x: oc.x + dir * eye * 0.25, y: oc.y + eye * 0.1 }]],
+  };
+  REFS.near = [...REFS.brow, ...REFS.temple];
+  const ref = REFS[process.env.REF ?? "near"];
+  const out = [];
+  for (const [col, [i0, i1]] of Object.entries(COLS)) for (const [row, [t0, t1]] of Object.entries(ROWS)) {
+    const idx = Array.from({ length: i1 - i0 + 1 }, (_, k) => i0 + k);
+    out.push({ col, row, regions: () => ({ polys: [[...idx.map((i) => P(i, t0)), ...idx.map((i) => P(i, t1)).reverse()]], ref }) });
+  }
+  return out;
+}
+/** 구역마다 정답 변화 t · 시도 변화 d (기준 피부 대비 Lab) */
+function shadowZones(bare, target, cur) {
+  const out = [];
+  for (const side of ["R", "L"]) {
+    const zb = zonesOf(bare, side), zc = zonesOf(cur, side);
+    zb.forEach((z, i) => {
+      const b = core.wholeContrast(bare, z.regions), tg = core.wholeContrast(target, z.regions), c = core.wholeContrast(cur, zc[i].regions);
+      const ch = (v) => (process.env.CH ? [0, v[1], v[2]] : v);   // CH=1 이면 밝기를 빼고 색만
+      if (b && tg && c) out.push({ side, col: z.col, row: z.row, t: ch(sub(tg, b)), d: ch(sub(c, b)) });
+    });
+  }
+  return out;
+}
+function shadowFeedback(zs) {
+  const paint = zs.filter((z) => len(z.t) >= ZONE.paint), blank = zs.filter((z) => len(z.t) < ZONE.blank);
+  if (paint.length < 2) return { say: ["확인만 (정답 그림의 섀도우가 옅어요)"], num: "" };
+  const T = meanV(paint.map((z) => z.t)), amt = (z) => dot(z.d, z.t) / dot(z.t, z.t), sideAmt = (s) => mean(paint.filter((z) => z.side === s).map(amt));
+  const all = mean(paint.map(amt)), D = meanV(paint.map((z) => z.d)), cos = dot(D, T) / (len(D) * len(T) || 1), aR = sideAmt("R"), aL = sideAmt("L");
+  const over = blank.filter((z) => dot(z.d, T) / dot(T, T) >= ZONE.over);
+  const say = [], where = (list) => [...new Set(list.map((z) => `${z.side === "R" ? "오른쪽" : "왼쪽"} 눈 ${z.col} ${z.row}`))].join(", ");
+  const lr = Math.abs(aR - aL) >= ZONE.lr && Math.max(aR, aL) >= W.none;
+  if (Math.max(aR, aL) < W.none) say.push("섀도우를 안 했어요");
+  else {
+    if (lr) say.push(`${aR < aL ? "오른쪽" : "왼쪽"} 눈이 ${Math.min(aR, aL) < W.none ? "비었어요" : "더 옅어요"}`);
+    const base = lr ? Math.max(aR, aL) : all;
+    if (cos < W.minCos) say.push("색이 정답과 달라요");
+    else if (base < W.weak) say.push("정답보다 옅어요");
+    else if (base > W.strong) say.push("정답보다 진해요");
+    else if (!lr) say.push("잘 됐어요");
+    const miss = lr ? [] : paint.filter((z) => amt(z) < ZONE.miss);
+    if (miss.length && miss.length < paint.length) say.push(`${where(miss)}가 비었어요`);
+  }
+  if (over.length) say.push(`${where(over)}까지 더 칠했어요`);
+  return { say, num: `양 오 ${aR.toFixed(2)} 왼 ${aL.toFixed(2)} · 색 ${cos.toFixed(2)} · 칠할 구역 ${paint.length} · 넘친 구역 ${over.length}/${blank.length}` };
+}
+const LIP_SAY = { similar: "잘 됐어요", none: "입술을 안 발랐어요", weak: "정답보다 옅어요", strong: "정답보다 진해요", color: "색이 정답과 달라요", check_only: "확인만 (정답 그림의 입술이 옅어요)" };
+const lipRegions = (f) => ({ polys: [pts(f, LM.lipsOuter)] });
+
+const b = load("_bare"), bare = core.frameOf(b.im, b.lm), target = core.frameOf(png(`${T}/_made.png`), b.lm);
+const zt = shadowZones(bare, target, target);
+console.log("정답 그림의 섀도우 구역별 변화 크기 (6 이상 = 칠할 자리, 4 미만 = 안 칠한 자리):");
+for (const s of ["R", "L"]) console.log(`  ${s === "R" ? "오른쪽" : "왼쪽"} 눈: ` + zt.filter((z) => z.side === s).map((z) => `${z.col} ${z.row} ${len(z.t).toFixed(1)}`).join(" · "));
+const CASES = ["bare", "1", "2", "3", "6", "7"], NAMES = ["아무것도 안 함 (진짜 맨얼굴)", "정답대로", "입술 빼먹음", "섀도우 색 다름", "섀도우 위로 더 칠함", "섀도우 오른쪽 눈만"];
+for (const n of ["4", "2", "1"]) {
+  console.log(`\n===== 사진 ${n} (${{ 4: "같은 자리 가로", 2: "집 낮", 1: "학원" }[n]})`);
+  CASES.forEach((c, i) => {
+    if (!existsSync(`${T}/c${n}_${c}.png`)) return;
+    const m = load(`c${n}_${c}`), cur = core.frameOf(m.im, m.lm);
+    const lip = core.scoreWhole(bare, target, cur, lipRegions), sh = shadowFeedback(shadowZones(bare, target, cur));
+    if (process.env.SUM) { console.log(`  ${NAMES[i].padEnd(20)} ${sh.num.slice(0, 22)} | ${sh.say.join(' · ')}`); return; }
+    console.log(`[${NAMES[i]}]`);
+    console.log(`   입술: ${LIP_SAY[lip.verdict]}${lip.amount == null ? "" : `   (양 ${lip.amount.toFixed(2)} · 색 ${lip.cos.toFixed(2)})`}`);
+    console.log(`   섀도우: ${sh.say.join(" · ")}   (${sh.num})`);
+  });
+}

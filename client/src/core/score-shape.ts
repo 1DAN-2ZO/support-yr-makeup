@@ -1097,8 +1097,11 @@ export const WHOLE = { minTarget: 8, none: 0.3, weak: 0.6, strong: 1.6, minCos: 
 
 export type WholeVerdict = "similar" | "none" | "weak" | "strong" | "color" | "check_only";
 
-/** 한 부위의 다각형들(좌우 등)과, 둘레 피부에서 뺄 자리(눈 · 눈썹처럼 사진마다 달라지는 곳). 받은 프레임의 얼굴 점으로 만든다 */
-export type WholeRegions = (f: SampleFrame) => { polys: readonly (readonly Pt[])[]; avoid?: readonly (readonly Pt[])[] };
+/**
+ * 한 부위의 다각형들(좌우 등)과, 둘레 피부에서 뺄 자리(눈 · 눈썹처럼 사진마다 달라지는 곳). 받은 프레임의 얼굴 점으로 만든다.
+ * ref 를 주면 둘레 띠 대신 그 다각형들을 기준 피부로 쓴다 — 부위를 잘게 나눈 구역은 둘레가 옆 구역(칠한 자리)이라서
+ */
+export type WholeRegions = (f: SampleFrame) => { polys: readonly (readonly Pt[])[]; avoid?: readonly (readonly Pt[])[]; ref?: readonly (readonly Pt[])[] };
 
 export interface WholePart {
   verdict: WholeVerdict;
@@ -1118,7 +1121,7 @@ const growPoly = (poly: readonly Pt[], k: number): Pt[] => {
 
 /** 부위 평균 − 둘레 피부 평균 (Lab). 둘레는 다각형을 1.3~1.8배 키운 띠에서 다른 다각형 · avoid 를 뺀 것. 픽셀이 없으면 null */
 export function wholeContrast(f: SampleFrame, regions: WholeRegions, o = WHOLE): V3 | null {
-  const { polys, avoid = [] } = regions(f), step = Math.max(1, Math.round(f.unit.eye / 40));
+  const { polys, avoid = [], ref } = regions(f), step = Math.max(1, Math.round(f.unit.eye / 40));
   const sum = (list: readonly (readonly Pt[])[], keep: (x: number, y: number) => boolean): Lab | null => {
     let L = 0, a = 0, b = 0, n = 0;
     for (const poly of list) {
@@ -1134,7 +1137,7 @@ export function wholeContrast(f: SampleFrame, regions: WholeRegions, o = WHOLE):
     return n ? { L: L / n, a: a / n, b: b / n } : null;
   };
   const holes = [...polys.map((p) => growPoly(p, o.ring[0])), ...avoid];
-  const part = sum(polys, () => true), ring = sum(polys.map((p) => growPoly(p, o.ring[1])), (x, y) => !holes.some((h) => pointInPoly(x, y, h)));
+  const part = sum(polys, () => true), ring = ref ? sum(ref, () => true) : sum(polys.map((p) => growPoly(p, o.ring[1])), (x, y) => !holes.some((h) => pointInPoly(x, y, h)));
   return part && ring ? [part.L - ring.L, part.a - ring.a, part.b - ring.b] : null;
 }
 
