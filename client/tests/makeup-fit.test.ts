@@ -256,6 +256,24 @@ describe("모양 숫자 재기 — 아이라이너", () => {
     }
   });
 
+  it("F19 꼬리 끝에 작은 조각이 아래로 튀어 붙어도 꼬리 끝 높이 · 각도는 꼬리 선대로 — 실사진: 같은 사진을 다시 돌릴 때마다 끝 몇 픽셀이 위 · 아래로 남아 각도가 8° ↔ -3°", () => {
+    const base = linerWith(tips);
+    // 꼬리 끝(둥근 마무리) 바로 바깥, 꼬리 선에서 3px 아래에 반지름 1 조각
+    const frag = (["R", "L"] as const).map((s) => {
+      const o = P(eyeOf(s).outer), a = { x: o.x, y: o.y - 3 }, b = { x: tips[s].x, y: tips[s].y - 3 };
+      const len = Math.hypot(b.x - a.x, b.y - a.y), d = { x: (b.x - a.x) / len, y: (b.y - a.y) / len };
+      return { x: b.x + d.x * 3.5, y: b.y + d.y * 3.5 + 3 };
+    });
+    const tipped: Paint = (x, y) => (frag.some((q) => Math.hypot(x - q.x, y - q.y) <= 1) ? INK : base(x, y));
+    const r = fitMakeup(bare, nat(tipped), LMS, G);
+    for (const s of ["R", "L"] as const) {
+      const f = get(r, "liner", s), o = P(eyeOf(s).outer), a = { x: o.x, y: o.y - 3 }, b = { x: tips[s].x, y: tips[s].y - 3 };
+      // 보고된 꼬리 끝이 진짜 꼬리 선(눈꼬리 → 꼬리 끝 연장선)에서 얼마나 벗어났나
+      const len = Math.hypot(b.x - a.x, b.y - a.y), off = Math.abs(((b.x - a.x) * (f.params.tipY! - a.y) - (b.y - a.y) * (f.params.tipX! - a.x)) / len);
+      expect(off, `${s} 꼬리 선에서 ${off.toFixed(1)}px 벗어남 (끝 (${f.params.tipX?.toFixed(1)}, ${f.params.tipY?.toFixed(1)}))`).toBeLessThan(1.5);
+    }
+  });
+
   it("F7 라이너가 없으면 기본 틀 (가이드 꼬리)", () => {
     const r = fitMakeup(bare, nat(), LMS, G);
     for (const s of ["R", "L"] as const) {

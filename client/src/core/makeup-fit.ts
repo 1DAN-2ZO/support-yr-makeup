@@ -54,6 +54,14 @@ const NO_IMAGE = { data: new Uint8ClampedArray(0), w: 0, h: 0 };
 const mix = (a: Pt, b: Pt, t: number): Pt => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
 const add = (a: Pt, b: Pt, k: number): Pt => ({ x: a.x + b.x * k, y: a.y + b.y * k });
 const median = (v: number[]): number => { const s = [...v].sort((a, b) => a - b); return s.length ? s[s.length >> 1]! : 0; };
+/** 점들 (s, v) 에 맞춘 직선(최소제곱)의 s 자리 높이. 점이 모자라면 null */
+function lineAt(pts: readonly { s: number; v: number }[], s: number): number | null {
+  const n = pts.length;
+  if (n < 2) return null;
+  const ms = pts.reduce((a, p) => a + p.s, 0) / n, mv = pts.reduce((a, p) => a + p.v, 0) / n;
+  const sxx = pts.reduce((a, p) => a + (p.s - ms) ** 2, 0), sxv = pts.reduce((a, p) => a + (p.s - ms) * (p.v - mv), 0);
+  return sxx > 0 ? mv + (sxv / sxx) * (s - ms) : null;
+}
 
 function ellipsePts(c: Pt, rx: number, ry: number, deg: number, n = 28): Pt[] {
   const t = (deg * Math.PI) / 180, ct = Math.cos(t), st = Math.sin(t);
@@ -185,16 +193,19 @@ function fitLiner(f: DiffField, lm: readonly Pt[], side: Side, opts: ExtractOpti
     return { lo, hi };
   };
   let lastS = 0, lastV = t / 2, gap = 0;
-  const widths: number[] = [];
+  const widths: number[] = [], track: { s: number; v: number }[] = [];
   for (let s = 0; s <= FIT.wingMax * ew; s += 0.5) {
     const r = runAt(s, lastV), wd = r ? r.hi - r.lo : 0;
-    if (r && (!widths.length || wd <= 2 * median(widths) + 2)) { lastS = s; lastV = (r.lo + r.hi) / 2; widths.push(wd); gap = 0; } else if (++gap > 6) break;
+    if (r && (!widths.length || wd <= 2 * median(widths) + 2)) { lastS = s; lastV = (r.lo + r.hi) / 2; widths.push(wd); track.push({ s, v: lastV }); gap = 0; } else if (++gap > 6) break;
   }
   const hasWing = lastS >= 0.04 * ew;
   if (!hasLine && !hasWing) return null;
-  const tip = hasWing ? add(add(o, out, lastS), up, lastV) : o;
+  // 꼬리 끝 높이는 따라온 칸 전체에 맞춘 직선에서 — 마지막 칸 하나로 정했더니 같은 사진을 다시 돌릴 때마다
+  // 끝에 남은 몇 픽셀이 위 · 아래로 바뀌어 각도가 8° ↔ -3° 로 뒤집혔다 (실사진, 시험 F19)
+  const tipV = lineAt(track, lastS) ?? lastV;
+  const tip = hasWing ? add(add(o, out, lastS), up, tipV) : o;
   const poly = [...lid, ...[...lid].reverse().map((p) => add(p, up, t)), ...(hasWing ? [tip] : [])];
-  const angle = (Math.atan2(lastV, Math.max(1e-6, lastS)) * 180) / Math.PI;
+  const angle = (Math.atan2(tipV, Math.max(1e-6, lastS)) * 180) / Math.PI;
   return { poly, fromPhoto: true, params: { thickness: t / ew, tipX: tip.x, tipY: tip.y, wingLen: lastS / ew, wingAngle: hasWing ? angle : 0 } };
 }
 
