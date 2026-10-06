@@ -214,6 +214,14 @@ CASES = {
     "섀도우 위로 더": {"섀도우": lambda L: L + np.stack([nshift(L[..., c], (-eye * 0.2, 0), order=1) for c in range(3)], 2) * (np.abs(L).sum(2, keepdims=True) < 1)},
     "섀도우 한쪽만": {"섀도우": lambda L: L * (xx < PA[168, 0])[..., None]},
 }
+if os.environ.get("WHOLE_CASES") == "brow":   # 눈썹 시험 (실험 31): 정답 그림이 눈썹만 그린 것일 때
+    CASES = {
+        "맨얼굴(진짜)": None,
+        "그대로 얹음": {},
+        "눈썹 안 그림": {"눈썹": lambda L: L * 0},
+        "눈썹 옅게(0.4)": {"눈썹": lambda L: L * 0.4},
+        "눈썹 오른쪽만": {"눈썹": lambda L: L * (xx < PA[168, 0])[..., None]},
+    }
 sheet = []
 for n in IDS:
     src = ImageOps.exif_transpose(Image.open(RAW / f"{n}_open.jpg")).convert("RGB")

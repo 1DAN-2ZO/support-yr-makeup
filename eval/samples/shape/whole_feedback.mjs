@@ -115,13 +115,27 @@ const b = load("_bare"), bare = core.frameOf(b.im, b.lm), target = core.frameOf(
 const zt = shadowZones(bare, target, target);
 console.log("정답 그림의 섀도우 구역별 변화 크기 (6 이상 = 칠할 자리, 4 미만 = 안 칠한 자리):");
 for (const s of ["R", "L"]) console.log(`  ${s === "R" ? "오른쪽" : "왼쪽"} 눈: ` + zt.filter((z) => z.side === s).map((z) => `${z.col} ${z.row} ${len(z.t).toFixed(1)}`).join(" · "));
-const CASES = ["bare", "1", "2", "3", "6", "7"], NAMES = ["아무것도 안 함 (진짜 맨얼굴)", "정답대로", "입술 빼먹음", "섀도우 색 다름", "섀도우 위로 더 칠함", "섀도우 오른쪽 눈만"];
+// 눈썹: 좌우 눈썹 다각형(위 · 아래 선)의 평균 색 − 둘레 피부(눈은 뺌). 양쪽 합친 양으로 했나 · 옅은가 · 진한가, 좌우를 따로 재서 한쪽이 옅은가
+const browPoly = (f, b) => [...pts(f, b.upper), ...pts(f, b.lower).reverse()], eyeAll = (f) => [LM.eyeA, LM.eyeB].map((e) => [...pts(f, e.upper), ...pts(f, e.lower).reverse()]);
+const browRegions = (sides) => (f) => ({ polys: sides.map((k) => browPoly(f, k === "R" ? LM.browA : LM.browB)), avoid: eyeAll(f) });
+const BROW_SAY = { similar: "잘 됐어요", none: "눈썹을 안 그렸어요", weak: "정답보다 옅어요", strong: "정답보다 진해요", color: "색이 정답과 달라요", check_only: "확인만 (정답 그림의 눈썹이 맨얼굴과 거의 같아요)" };
+function browFeedback(bare, target, cur) {
+  const all = core.scoreWhole(bare, target, cur, browRegions(["R", "L"])), r = core.scoreWhole(bare, target, cur, browRegions(["R"])), l = core.scoreWhole(bare, target, cur, browRegions(["L"]));
+  const say = [BROW_SAY[all.verdict]], num = all.amount == null ? `정답 크기 ${all.target.toFixed(1)}` : `양 ${all.amount.toFixed(2)} (오 ${r.amount?.toFixed(2)} 왼 ${l.amount?.toFixed(2)}) · 색 ${all.cos.toFixed(2)} · 정답 크기 ${all.target.toFixed(1)}`;
+  if (r.amount != null && l.amount != null && Math.abs(r.amount - l.amount) >= ZONE.lr && Math.max(r.amount, l.amount) >= W.none) {
+    say.length = 0; say.push(`${r.amount < l.amount ? "오른쪽" : "왼쪽"} 눈썹이 ${Math.min(r.amount, l.amount) < W.none ? "비었어요" : "더 옅어요"}`);
+  }
+  return { say, num };
+}
+const BROW = process.env.WHOLE_CASES === "brow";
+const CASES = BROW ? ["bare", "1", "2", "3", "4"] : ["bare", "1", "2", "3", "6", "7"], NAMES = BROW ? ["아무것도 안 함 (진짜 맨얼굴)", "정답대로", "눈썹 안 그림", "눈썹 옅게", "눈썹 오른쪽만"] : ["아무것도 안 함 (진짜 맨얼굴)", "정답대로", "입술 빼먹음", "섀도우 색 다름", "섀도우 위로 더 칠함", "섀도우 오른쪽 눈만"];
 for (const n of IDS) {
   console.log(`\n===== 사진 ${n}${process.env.WHOLE_WORK ? "" : ` (${{ 4: "같은 자리 가로", 2: "집 낮", 1: "학원" }[n]})`}`);
   CASES.forEach((c, i) => {
     if (!existsSync(`${T}/c${n}_${c}.png`)) return;
     const m = load(`c${n}_${c}`), cur = core.frameOf(m.im, m.lm);
     const lip = core.scoreWhole(bare, target, cur, lipRegions), sh = shadowFeedback(shadowZones(bare, target, cur));
+    if (BROW) { const bw = browFeedback(bare, target, cur); console.log(`  ${NAMES[i].padEnd(22)} 눈썹: ${bw.say.join(' · ').padEnd(16)} (${bw.num})`); return; }
     if (process.env.SUM) { console.log(`  ${NAMES[i].padEnd(20)} ${sh.num.slice(0, 22)} | ${sh.say.join(' · ')}`); return; }
     console.log(`[${NAMES[i]}]`);
     console.log(`   입술: ${LIP_SAY[lip.verdict]}${lip.amount == null ? "" : `   (양 ${lip.amount.toFixed(2)} · 색 ${lip.cos.toFixed(2)})`}`);
