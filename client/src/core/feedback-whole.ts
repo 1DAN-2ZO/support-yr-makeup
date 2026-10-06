@@ -165,7 +165,7 @@ export function composeFeedback(m: WholeMeasures): WholeFeedback {
       if (short.length) says.push([`${who(short)} 정답보다 짧아요`, "꼬리를 조금 더 길게 빼 보세요"]);
       if (long.length) says.push([`${who(long)} 정답보다 길어요`, "꼬리 끝을 조금 지워 보세요"]);
       parts.push(pick(part, null, says));
-    } else parts.push({ part, name: NAME[part], tone: "info", line: UNSEEN });
+    } else if (part !== "cheek") parts.push({ part, name: NAME[part], tone: "info", line: UNSEEN });   // 볼은 잰 값이 있을 때만 줄을 낸다 (했나 안 했나만 보는 부위)
   }
   return { parts, ok: parts.filter((p) => p.tone === "ok").map((p) => p.name), fix: parts.filter((p) => p.tone === "fix").map((p) => p.name) };
 }
