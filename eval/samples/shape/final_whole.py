@@ -121,6 +121,10 @@ REGION = {
 }
 
 
+if os.environ.get("WHOLE_CASES") == "brow2":   # 늘린 꼬리까지 눈썹 부위로 뜨도록 넓힌다 (이 시험의 정답 그림은 눈썹만 바꾼 것)
+    REGION["눈썹"] = fea(dBrow < eye * 0.35, eye * 0.03)
+
+
 def ring(k):
     """부위 바로 주변의 피부 (다른 부위 · 눈은 뺀다) — 그 부위의 기준 피부"""
     core = REGION[k] > 0.5
@@ -214,6 +218,23 @@ CASES = {
     "섀도우 위로 더": {"섀도우": lambda L: L + np.stack([nshift(L[..., c], (-eye * 0.2, 0), order=1) for c in range(3)], 2) * (np.abs(L).sum(2, keepdims=True) < 1)},
     "섀도우 한쪽만": {"섀도우": lambda L: L * (xx < PA[168, 0])[..., None]},
 }
+if os.environ.get("WHOLE_CASES") == "brow2":   # 눈썹 모양 시험 (실험 32): 정답 그림의 눈썹 꼬리가 원래보다 길다
+    def beyond_tail():
+        """원래 눈썹 꼬리(얼굴 점)보다 바깥인 칸"""
+        out = np.zeros((H, W), bool)
+        for head, tail, right in (((107, 55), (70, 46), True), ((336, 285), (300, 276), False)):
+            h, t = (PA[head[0]] + PA[head[1]]) / 2, (PA[tail[0]] + PA[tail[1]]) / 2
+            ax = (t - h) / np.linalg.norm(t - h)
+            out |= ((xx < PA[168, 0]) == right) & (((xx - h[0]) * ax[0] + (yy - h[1]) * ax[1]) > np.linalg.norm(t - h))
+        return out
+    CUT = beyond_tail()
+    CASES = {
+        "맨얼굴(진짜)": None,
+        "그대로 얹음": {},
+        "꼬리 안 늘림": {"눈썹": lambda L: L * ~CUT[..., None]},
+        "눈썹 안 그림": {"눈썹": lambda L: L * 0},
+        "오른쪽만 늘림": {"눈썹": lambda L: L * ~(CUT & (xx > PA[168, 0]))[..., None]},
+    }
 if os.environ.get("WHOLE_CASES") == "brow":   # 눈썹 시험 (실험 31): 정답 그림이 눈썹만 그린 것일 때
     CASES = {
         "맨얼굴(진짜)": None,
