@@ -121,7 +121,7 @@ REGION = {
 }
 
 
-if os.environ.get("WHOLE_CASES") == "brow2":   # 늘린 꼬리까지 눈썹 부위로 뜨도록 넓힌다 (이 시험의 정답 그림은 눈썹만 바꾼 것)
+if os.environ.get("WHOLE_CASES") in ("brow2", "brow3"):   # 늘린 꼬리 · 넓힌 두께까지 눈썹 부위로 뜨도록 넓힌다 (이 시험의 정답 그림은 눈썹만 바꾼 것)
     REGION["눈썹"] = fea(dBrow < eye * 0.35, eye * 0.03)
 
 
@@ -243,6 +243,27 @@ if os.environ.get("WHOLE_CASES") == "lip":   # 입술 범위 시험 (실험 34):
         "입술선 밖으로": {"입술": lambda L: TV["입술"] * fea(dLipOut < eye * 0.09, eye * 0.02)[..., None]},
         "가운데만": {"입술": lambda L: L * fea(dLipIn > eye * 0.07, eye * 0.02)[..., None]},
         "아랫입술만": {"입술": lambda L: L * (yy > (PA[61, 1] + PA[291, 1]) / 2 + (xx - (PA[61, 0] + PA[291, 0]) / 2) * (PA[291, 1] - PA[61, 1]) / (PA[291, 0] - PA[61, 0]))[..., None]},
+    }
+if os.environ.get("WHOLE_CASES") == "brow3":   # 눈썹 두께 시험 (실험 36): 정답 그림의 눈썹이 원래보다 위아래로 넓다
+    dBrowA = edt(~(poly(PA, BROWS[0]) | poly(PA, BROWS[1])))
+    CASES = {
+        "맨얼굴(진짜)": None,
+        "그대로 얹음": {},
+        "원래 두께만": {"눈썹": lambda L: L * (dBrowA < eye * 0.02)[..., None]},
+        "눈썹 안 그림": {"눈썹": lambda L: L * 0},
+    }
+if os.environ.get("WHOLE_CASES") == "shadow2":   # 섀도우 범위 시험 (실험 36): 눈꼬리 바깥으로 더 뺌 · 눈 밑에도 칠함 (정답에는 없다)
+    def blob(c, r):
+        return np.exp(-((xx - c[0]) ** 2 + (yy - c[1]) ** 2) / (2 * (r * eye) ** 2))
+    def out_dir(o, i):
+        return (PA[o] - PA[i]) / np.linalg.norm(PA[o] - PA[i])
+    OUTER = sum(blob(PA[o] + out_dir(o, i) * eye * 0.2 + np.array([0, -eye * 0.06]), 0.08) for o, i in ((33, 133), (263, 362)))
+    UNDER = sum(blob(PA[k] + np.array([0, eye * 0.1]), 0.06) for k in (144, 145, 153, 373, 374, 380))
+    CASES = {
+        "맨얼굴(진짜)": None,
+        "그대로 얹음": {},
+        "바깥으로 더 뺌": {"섀도우": lambda L: L + TV["섀도우"] * np.clip(OUTER, 0, 1)[..., None]},
+        "눈 밑에도": {"섀도우": lambda L: L + TV["섀도우"] * np.clip(UNDER, 0, 1)[..., None]},
     }
 if os.environ.get("WHOLE_CASES") == "brow":   # 눈썹 시험 (실험 31): 정답 그림이 눈썹만 그린 것일 때
     CASES = {
