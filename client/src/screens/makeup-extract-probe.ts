@@ -1,18 +1,17 @@
 /**
  * [dev 전용] 화장 떼기 POC (makeup-extract-probe.html, 2026-10-06).
- * 맨얼굴 사진 + AI 가 입힌 화장 사진 → 얼굴 점으로 겹치기(튀는 점 무시한 아핀) → core/makeup-extract 로 떼기 →
- * 맨얼굴 위에 가이드(테두리 + 퍼지는 방향), AI 사진 위에도 같은 선. 사진은 브라우저 안에서만 쓴다.
+ * 맨얼굴 사진 + AI 가 입힌 화장 사진 → 얼굴 점으로 겹치기(튀는 점 무시한 아핀) → core/makeup-extract extractAll 로 부위마다 떼기 →
+ *  - 뗀 화장만: 회색 바탕 위에 뗀 픽셀만 AI 색 그대로 (사람 얼굴 위에서는 잘 안 보여서 — 사용자)
+ *  - 맨얼굴 · AI 사진 위에 부위별 색 테두리
+ * 부위마다 켜고 끈다. 얼굴 둘레만 잘라 크게 보여 준다. 사진은 브라우저 안에서만 쓴다.
  */
 
 import type { FaceLandmarker } from "@mediapipe/tasks-vision";
 import { deltaE, foreheadLab, labAt, type RgbaImage } from "@core/color";
 import { applyAffine, robustAffine, type Affine } from "@core/eye-fit";
-import { extractCheek, type ExtractedBlob } from "@core/makeup-extract";
-import type { Outline } from "@core/overlay";
-import { spreadMarks } from "@core/spread-marks";
+import { extractAll, type ExtractPart, type PartMask } from "@core/makeup-extract";
 import type { Pt } from "@core/types";
 import { createLandmarker } from "./landmarker";
-import { strokeOutline } from "./outline-draw";
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -21,11 +20,24 @@ const $ = <T extends HTMLElement>(id: string): T => {
 };
 
 const bareIn = $<HTMLInputElement>("bare"), madeIn = $<HTMLInputElement>("made"), heat = $<HTMLInputElement>("heat");
-const cvBare = $<HTMLCanvasElement>("cvBare"), cvMade = $<HTMLCanvasElement>("cvMade"), statusEl = $("status");
+const cvOnly = $<HTMLCanvasElement>("cvOnly"), cvBare = $<HTMLCanvasElement>("cvBare"), cvMade = $<HTMLCanvasElement>("cvMade");
+const statusEl = $("status"), partsEl = $("parts");
+
+const PARTS: { id: ExtractPart; name: string; color: [number, number, number] }[] = [
+  { id: "lip", name: "입술", color: [255, 59, 92] },
+  { id: "brow", name: "눈썹", color: [255, 159, 28] },
+  { id: "liner", name: "아이라이너", color: [0, 209, 255] },
+  { id: "shadow", name: "아이섀도", color: [177, 75, 255] },
+  { id: "underShadow", name: "아래 섀도", color: [224, 123, 255] },
+  { id: "cheek", name: "블러셔", color: [255, 126, 182] },
+  { id: "contour", name: "쉐딩 (참고)", color: [160, 82, 45] },
+  { id: "highlight", name: "하이라이트 (참고)", color: [255, 225, 77] },
+];
+const on = new Set<ExtractPart>(PARTS.map((p) => p.id));
 
 let landmarker: Promise<FaceLandmarker> | null = null;
 let bareImg: ImageBitmap | null = null, madeImg: ImageBitmap | null = null;
-let last: { bare: RgbaImage; made: RgbaImage; lm: Pt[]; outline: Outline; R: ExtractedBlob | null; L: ExtractedBlob | null } | null = null;
+let last: { bare: RgbaImage; made: RgbaImage; lm: Pt[]; parts: PartMask[]; crop: { x: number; y: number; w: number; h: number } } | null = null;
 
 const setStatus = (text: string, warn = false): void => { statusEl.innerHTML = warn ? `<span class="warn">${text}</span>` : text; };
 
@@ -50,31 +62,71 @@ function aligned(made: ImageBitmap, t: Affine, w: number, h: number): HTMLCanvas
   return c;
 }
 
-function draw(cv: HTMLCanvasElement, im: RgbaImage, o: Outline | null, heatOf?: { bare: RgbaImage; lm: Pt[] }): void {
-  cv.width = im.w; cv.height = im.h;
-  const g = cv.getContext("2d")!;
-  const id = new ImageData(new Uint8ClampedArray(im.data), im.w, im.h);
-  if (heatOf) {
-    // 색 차(이마로 톤을 뺀 ΔE)를 밝기로 — 0 검정 · 15 이상 흰색
-    const a = foreheadLab(heatOf.bare, heatOf.lm), b = foreheadLab(im, heatOf.lm);
-    const s = a && b ? { L: b.L - a.L, a: b.a - a.a, b: b.b - a.b } : { L: 0, a: 0, b: 0 };
-    for (let y = 0; y < im.h; y++) for (let x = 0; x < im.w; x++) {
-      const m = labAt(im, x, y), v = Math.min(255, (deltaE(labAt(heatOf.bare, x, y), { L: m.L - s.L, a: m.a - s.a, b: m.b - s.b }) / 15) * 255), i = (y * im.w + x) * 4;
-      id.data[i] = v; id.data[i + 1] = v; id.data[i + 2] = v;
+/** 켠 부위의 픽셀 → 그 부위 번호(+1), 없으면 0 */
+function labelMap(parts: readonly PartMask[], n: number): Uint8Array {
+  const lab = new Uint8Array(n);
+  for (const p of parts) {
+    if (!on.has(p.part)) continue;
+    const k = PARTS.findIndex((q) => q.id === p.part) + 1;
+    for (let i = 0; i < n; i++) if (p.mask[i]) lab[i] = k;
+  }
+  return lab;
+}
+
+/** 자른 자리(crop)만 새 캔버스로. 배경 그리기 → 부위 테두리(두께 lw) */
+function compose(cv: HTMLCanvasElement, w: number, crop: NonNullable<typeof last>["crop"], lab: Uint8Array, pixel: (i: number) => [number, number, number] | null) {
+  cv.width = crop.w; cv.height = crop.h;
+  const g = cv.getContext("2d")!, id = g.createImageData(crop.w, crop.h), lw = Math.max(1, Math.round(crop.w / 450));
+  for (let y = 0; y < crop.h; y++) for (let x = 0; x < crop.w; x++) {
+    const i = (crop.y + y) * w + (crop.x + x), o = (y * crop.w + x) * 4, k = lab[i]!;
+    let c = pixel(i);
+    if (k) {
+      // 테두리: 둘레 lw 안에 다른 부위(또는 없음)가 있으면
+      let edge = false;
+      for (let d = 1; d <= lw && !edge; d++) {
+        if (lab[i - d] !== k || lab[i + d] !== k || lab[i - d * w] !== k || lab[i + d * w] !== k) edge = true;
+      }
+      if (edge) c = PARTS[k - 1]!.color;
     }
+    if (!c) continue;
+    id.data[o] = c[0]; id.data[o + 1] = c[1]; id.data[o + 2] = c[2]; id.data[o + 3] = 255;
   }
   g.putImageData(id, 0, 0);
-  if (o) strokeOutline(g, o, Math.max(2, im.w / 400));
 }
 
 function render(): void {
   if (!last) return;
-  draw(cvBare, last.bare, last.outline);
-  draw(cvMade, last.made, last.outline, heat.checked ? { bare: last.bare, lm: last.lm } : undefined);
+  const { bare, made, lm, parts, crop } = last, w = bare.w, lab = labelMap(parts, w * bare.h);
+  const rgb = (im: RgbaImage, i: number): [number, number, number] => [im.data[i * 4]!, im.data[i * 4 + 1]!, im.data[i * 4 + 2]!];
+  // 뗀 화장만: 회색 바탕 + 뗀 픽셀은 AI 색
+  compose(cvOnly, w, crop, lab, (i) => (lab[i] ? rgb(made, i) : [233, 233, 233]));
+  compose(cvBare, w, crop, lab, (i) => rgb(bare, i));
+  if (heat.checked) {
+    const a = foreheadLab(bare, lm), b = foreheadLab(made, lm), s = a && b ? { L: b.L - a.L, a: b.a - a.a, b: b.b - a.b } : { L: 0, a: 0, b: 0 };
+    compose(cvMade, w, crop, lab, (i) => {
+      const x = i % w, y = Math.floor(i / w), m = labAt(made, x, y);
+      const v = Math.min(255, (deltaE(labAt(bare, x, y), { L: m.L - s.L, a: m.a - s.a, b: m.b - s.b }) / 15) * 255);
+      return [v, v, v];
+    });
+  } else compose(cvMade, w, crop, lab, (i) => rgb(made, i));
 }
 
-const fmt = (s: string, e: ExtractedBlob | null): string =>
-  e ? `${s}: 가운데 (${e.center.x.toFixed(0)}, ${e.center.y.toFixed(0)}) · 크기 ${e.rx.toFixed(0)}×${e.ry.toFixed(0)}px · 기울기 ${e.angleDeg.toFixed(0)}° · 가장 진한 곳 색 차 ${e.peakDeltaE.toFixed(1)}` : `${s}: 블러셔 없음`;
+function drawPartList(parts: readonly PartMask[]): void {
+  partsEl.replaceChildren(...PARTS.map((p) => {
+    const mine = parts.filter((q) => q.part === p.id), n = mine.reduce((s, q) => s + q.count, 0);
+    const label = document.createElement("label");
+    if (!n) label.className = "none";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = on.has(p.id);
+    cb.addEventListener("change", () => { if (cb.checked) on.add(p.id); else on.delete(p.id); render(); });
+    const sw = document.createElement("i");
+    sw.style.background = `rgb(${p.color.join(",")})`;
+    const peak = mine.length ? Math.max(...mine.map((q) => q.peakDeltaE)) : 0;
+    label.append(cb, sw, `${p.name} ${n ? `${n.toLocaleString()}px · 진하기 ${peak.toFixed(0)}` : "없음"}`);
+    return label;
+  }));
+}
 
 async function run(): Promise<void> {
   if (!bareImg || !madeImg) return;
@@ -92,16 +144,16 @@ async function run(): Promise<void> {
   const bare = rgbaOf(bc), made = rgbaOf(aligned(madeImg, t, bc.width, bc.height));
   setStatus("떼는 중…");
   await new Promise((r) => setTimeout(r, 0));
-  const t0 = performance.now(), got = extractCheek(bare, made, bl), ms = Math.round(performance.now() - t0);
-  const polys = [got.R?.outline, got.L?.outline].filter((p): p is Pt[] => !!p);
-  const marks = spreadMarks("cheek", polys);
-  last = { bare, made, lm: bl, outline: { polys, lines: [], dots: marks.dots, arrows: marks.arrows }, R: got.R, L: got.L };
+  const t0 = performance.now(), res = extractAll(bare, made, bl), ms = Math.round(performance.now() - t0);
+  // 얼굴 둘레만 크게 — 얼굴 점 상자 + 여백 12%
+  const xs = bl.map((p) => p.x), ys = bl.map((p) => p.y), mx = (Math.max(...xs) - Math.min(...xs)) * 0.12, my = (Math.max(...ys) - Math.min(...ys)) * 0.12;
+  const x0 = Math.max(0, Math.floor(Math.min(...xs) - mx)), y0 = Math.max(0, Math.floor(Math.min(...ys) - my));
+  const crop = { x: x0, y: y0, w: Math.min(bare.w, Math.ceil(Math.max(...xs) + mx)) - x0, h: Math.min(bare.h, Math.ceil(Math.max(...ys) + my)) - y0 };
+  last = { bare, made, lm: bl, parts: res.parts, crop };
+  drawPartList(res.parts);
   render();
   const eyeW = Math.hypot(bl[33]!.x - bl[133]!.x, bl[33]!.y - bl[133]!.y);
-  setStatus([
-    `겹치기 오차 평균 ${resid.toFixed(1)}px (눈 폭의 ${((resid / eyeW) * 100).toFixed(1)}%) · 떼기 ${ms}ms`,
-    fmt("사진 왼쪽 볼", got.R), fmt("사진 오른쪽 볼", got.L),
-  ].join("\n"));
+  setStatus(`겹치기 오차 평균 ${resid.toFixed(1)}px (눈 폭의 ${((resid / eyeW) * 100).toFixed(1)}%) · 떼기 ${ms}ms · 부위를 눌러 켜고 끄기`);
 }
 
 async function load(input: HTMLInputElement): Promise<ImageBitmap | null> {

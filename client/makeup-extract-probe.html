@@ -6,8 +6,8 @@
     <meta name="color-scheme" content="light dark" />
     <title>화장 떼기 POC — 당화응</title>
     <!--
-      [dev 전용] 화장 떼기 POC (2026-10-06) — AI 가 내 얼굴에 입힌 화장 사진에서 화장 모양을 떼서 맨얼굴 위 가이드로.
-      맨얼굴 사진 + AI 화장 사진을 올리면, 얼굴 점으로 두 사진을 겹치고 부위별로 뗀다 (지금은 블러셔).
+      [dev 전용] 화장 떼기 POC (2026-10-06) — AI 가 내 얼굴에 입힌 화장 사진에서 부위별 화장을 떼서 보여 준다.
+      맨얼굴 사진 + AI 화장 사진을 올리면, 얼굴 점으로 두 사진을 겹치고 부위마다 뗀다.
       앱 흐름과 상관없는 독립 페이지다. 사진은 브라우저 안에서만 쓰고 저장하지 않는다.
     -->
     <style>
@@ -18,24 +18,32 @@
       .bar { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
       #status { font-size: 14px; margin: 6px 0; min-height: 1.5em; white-space: pre-line; font-variant-numeric: tabular-nums; }
       .warn { color: #d9480f; font-weight: 600; }
-      .row { display: flex; gap: 12px; flex-wrap: wrap; }
-      figure { margin: 0; flex: 1 1 360px; max-width: 560px; }
+      #parts { display: flex; gap: 6px 14px; flex-wrap: wrap; margin: 8px 0; font-size: 13px; }
+      #parts label { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border: 1px solid var(--line); border-radius: 6px; }
+      #parts i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; }
+      #parts .none { opacity: .45; }
+      .big { max-width: 900px; }
+      .row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+      figure { margin: 0; flex: 1 1 340px; max-width: 520px; }
+      .big figure { max-width: none; }
       figcaption { font-size: 13px; opacity: .8; margin-bottom: 4px; }
       canvas { width: 100%; height: auto; border-radius: 8px; background: #000; display: block; }
     </style>
   </head>
   <body>
     <h1>화장 떼기 POC</h1>
-    <p class="note">맨얼굴 사진과, 같은 사람에게 AI 가 화장을 입힌 사진을 올려 주세요. 두 사진을 얼굴 점으로 겹친 뒤 화장 모양을 떼서 맨얼굴 위에 가이드로 보여 줘요. 지금은 블러셔만.</p>
+    <p class="note">맨얼굴 사진과, 같은 사람에게 AI 가 화장을 입힌 사진을 올려 주세요. 두 사진을 얼굴 점으로 겹친 뒤 부위마다 화장을 떼요. 위 큰 그림은 <b>뗀 화장만</b> (회색 바탕 위에 AI 색 그대로), 테두리 색은 부위.</p>
     <div class="bar">
       <label>맨얼굴 <input id="bare" type="file" accept="image/*" /></label>
       <label>AI 화장 <input id="made" type="file" accept="image/*" /></label>
-      <label><input id="heat" type="checkbox" /> 색 차 보기</label>
+      <label><input id="heat" type="checkbox" /> AI 쪽을 색 차로 보기</label>
     </div>
     <div id="status">두 사진을 올려 주세요.</div>
+    <div id="parts"></div>
+    <div class="big"><figure><figcaption>뗀 화장만</figcaption><canvas id="cvOnly"></canvas></figure></div>
     <div class="row">
-      <figure><figcaption>맨얼굴 + 뗀 가이드</figcaption><canvas id="cvBare"></canvas></figure>
-      <figure><figcaption>AI 화장 (맨얼굴에 맞춤) + 같은 선</figcaption><canvas id="cvMade"></canvas></figure>
+      <figure><figcaption>맨얼굴 + 뗀 자리</figcaption><canvas id="cvBare"></canvas></figure>
+      <figure><figcaption>AI 화장 (맨얼굴에 맞춤) + 뗀 자리</figcaption><canvas id="cvMade"></canvas></figure>
     </div>
     <script type="module" src="/src/screens/makeup-extract-probe.ts"></script>
   </body>
