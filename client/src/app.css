@@ -122,7 +122,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 }
 .slot-logo {
   align-self: flex-start;
-  color: #ff8fab;
+  color: #ff9bac;
   font-size: 30px;
   opacity: 0.92;
   text-shadow: none;
@@ -306,12 +306,19 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
   line-height: 1.4;
 }
 .slot-guide-card {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 16px;
+  /* 버튼과의 간격은 .slot > button.primary 의 margin-top 하나로 관리한다 */
+  margin-bottom: 0;
+  min-height: 0;
 }
 .slot-guide-photo {
   position: relative;
-  min-height: 384px;
+  /* 384px 고정이면 작은 화면에서 아래 버튼이 잘린다.
+     화면 높이에 따라 줄어들되 너무 작아지지는 않게. */
+  min-height: min(384px, 44dvh);
+  flex: 1 1 auto;
   overflow: hidden;
   border: 1px solid #ebe6e8;
   border-radius: 4px;
@@ -407,7 +414,11 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
   width: min(100%, 320px);
   height: 56px;
   padding: 0 22px;
+  /* auto 만 쓰면 공간이 모자랄 때 여백이 0 이 되어 카드에 붙는다.
+     최소 간격을 따로 보장한다. */
   margin: auto auto 0;
+  margin-top: 12px;
+
   border-radius: 999px;
   background: #ea5f9f;
   font-size: 16px;
@@ -528,9 +539,9 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   position: relative;
   display: inline-flex;
   align-items: flex-start;
-  color: #eba0aa;
+  color: #ff9bac;
   font-family: "Arial Rounded MT Bold", "Avenir Next Rounded", "Nunito", "Apple SD Gothic Neo", system-ui, sans-serif;
-  font-size: clamp(68px, 19vw, 108px);
+  font-size: 30px;
   font-weight: 800;
   line-height: 1;
   letter-spacing: 0.015em;
@@ -539,8 +550,8 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
 }
 .nudy-logo i {
   position: relative;
-  width: 16px;
-  height: 14px;
+  width: 11px;
+  height: 10px;
   margin: -0.08em 0 0 -0.03em;
   background: transparent;
   transform: rotate(-14deg);
@@ -549,14 +560,14 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
 .nudy-logo i::after {
   content: "";
   position: absolute;
-  width: 9px;
-  height: 14px;
+  width: 6.2px;
+  height: 10px;
   border-radius: 999px 999px 0 0;
-  background: #eba0aa;
+  background: #ff9bac;
   transform-origin: 50% 100%;
 }
 .nudy-logo i::before {
-  left: 7px;
+  left: 4.8px;
   transform: rotate(-45deg);
 }
 .nudy-logo i::after {
@@ -592,17 +603,19 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
 .intro-logo {
   align-self: flex-start;
   font-size: 30px;
+  color: #ff9bac;
 }
 .intro-logo i {
-  width: 7px;
-  height: 6px;
+  width: 11px;
+  height: 10px;
 }
 .intro-logo i::before,
 .intro-logo i::after {
-  width: 4px;
-  height: 6px;
+  width: 6.2px;
+  height: 10px;
+  background: #ff9bac;
 }
-.intro-logo i::before { left: 3px; }
+.intro-logo i::before { left: 4.8px; }
 .intro-hero {
   position: relative;
   display: grid;
@@ -846,8 +859,8 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   left: 5.8%;
   top: 1.8%;
   z-index: 2;
-  color: #fff;
-  font-size: 42px;
+  color: #ff9bac;
+  font-size: 30px;
   text-shadow:
     0 1px 2px rgba(70, 52, 58, 0.18),
     0 5px 18px rgba(70, 52, 58, 0.2);
@@ -855,7 +868,7 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
 }
 .intro-overlay-logo i::before,
 .intro-overlay-logo i::after {
-  background: #ffb2bf;
+  background: #ff9bac;
 }
 .nudy-coach-face {
   position: absolute;
@@ -1015,13 +1028,13 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   font-weight: var(--weight-strong);
 }
 .intro-white-logo {
-  color: #fff;
-  font-size: 50px;
+  color: #ff9bac;
+  font-size: 30px;
   filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.08));
 }
 .intro-white-logo i::before,
 .intro-white-logo i::after {
-  background: #ffbac6;
+  background: #ff9bac;
 }
 .intro-status {
   position: absolute;
@@ -1283,6 +1296,7 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   z-index: 1;
   align-self: flex-start;
   font-size: 30px;
+  color: #ff9bac;
 }
 .capture-guide-logo i {
   width: 11px;
