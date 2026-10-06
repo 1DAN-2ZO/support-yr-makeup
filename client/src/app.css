@@ -16,7 +16,7 @@
   --beauty-ink: #26272b;
   --beauty-text: #3b3c40;
   --beauty-muted: #83858c;
-  --beauty-pink: #ea5f9f;
+  --beauty-pink: #ff8095;
   --weight-title: 650;
   --weight-strong: 600;
   --weight-regular: 400;
@@ -236,7 +236,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
   margin-bottom: 12px;
   border-radius: 16px;
   background: #f27aa9;
-  box-shadow: 0 10px 18px rgba(234, 95, 159, 0.16);
+  box-shadow: 0 10px 18px rgba(255, 128, 149, 0.16);
 }
 .slot-upload-main span::before {
   content: "";
@@ -402,7 +402,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
   border-radius: 18px;
   background:
     linear-gradient(135deg, #f27aa9, #ffd6de 56%, #bdeee3);
-  box-shadow: 0 12px 24px rgba(234, 95, 159, 0.14);
+  box-shadow: 0 12px 24px rgba(255, 128, 149, 0.14);
 }
 .slot > button.primary {
   flex: 0 0 auto;
@@ -416,7 +416,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
   margin-top: 12px;
 
   border-radius: 999px;
-  background: #ea5f9f;
+  background: #ff8095;
   font-size: 16px;
   font-weight: var(--weight-title);
   line-height: 1;
@@ -779,7 +779,7 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
 .intro-start {
   min-height: 54px;
   border-radius: 999px;
-  background: linear-gradient(100deg, #ff879b, #ffc3b0 52%, #9be7ce) !important;
+  background: #ff8095;
   box-shadow: 0 14px 30px rgba(255, 135, 155, 0.26);
 }
 .intro-notice {
@@ -1199,7 +1199,7 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   font-size: 19px;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 12px 24px rgba(234, 95, 159, 0.18);
+  box-shadow: 0 12px 24px rgba(255, 128, 149, 0.18);
 }
 .intro-camera-start svg {
   width: 29px;
@@ -1388,7 +1388,7 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   margin: auto auto 0;
   border: 1px solid rgba(255, 255, 255, 0.9);
   border-radius: 999px;
-  background: #ff8fa1;
+  background: #ff8095;
   color: #fff;
   font: inherit;
   font-size: 20px;
@@ -1655,7 +1655,7 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
 .capture-done-screen .primary {
   height: 58px;
   border-radius: 999px;
-  background: #ff8fa1;
+  background: #ff8095;
   font-size: 18px;
   font-weight: var(--weight-title);
   box-shadow: 0 12px 28px rgba(255, 137, 155, 0.2);
@@ -1707,7 +1707,7 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
 .live-btn {
   min-height: 54px;
   border-radius: 999px;
-  background: #ff8fa1;
+  background: #ff8095;
   font-size: 17px;
   font-weight: var(--weight-strong);
   box-shadow: 0 14px 30px rgba(255, 137, 155, 0.19);
@@ -1802,7 +1802,7 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
 .guide .primary {
   min-height: 54px;
   border-radius: 999px;
-  background: #ff8fa1;
+  background: #ff8095;
   font-size: 17px;
   font-weight: var(--weight-strong);
   box-shadow: 0 14px 30px rgba(255, 137, 155, 0.19);
@@ -1857,7 +1857,7 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   right: 27%;
   height: 2px;
   border-radius: 999px;
-  background: rgba(234, 95, 159, 0.48);
+  background: rgba(255, 128, 149, 0.48);
 }
 .slot-answer-line.one {
   top: 42%;
