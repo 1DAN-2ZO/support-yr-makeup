@@ -38,6 +38,7 @@ const statusEl = $("status");
 const startBtn = $<HTMLButtonElement>("start");
 const snapBtn = $<HTMLButtonElement>("snap");
 const rebaseBtn = $<HTMLButtonElement>("rebase");
+const saveBtn = $<HTMLButtonElement>("save");
 const showGuide = $<HTMLInputElement>("showGuide");
 const lookSel = $<HTMLSelectElement>("look");
 const partSel = $<HTMLSelectElement>("part");
@@ -138,6 +139,30 @@ function refreshButtons(): void {
   snapBtn.disabled = !landmarker || busy;
   snapBtn.textContent = base ? "다시 찍기" : "찍기 (맨얼굴)";
   rebaseBtn.disabled = !base || busy;
+  saveBtn.disabled = !shown || busy;
+}
+
+const stamp = (): string => {
+  const d = new Date(), p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+};
+
+/**
+ * 지금 보이는 사진(맨얼굴 또는 다시 찍은 것)을 원본 크기 · 원래 방향(거울 아님)으로 내려받는다 — PNG(손실 없음).
+ * AI 화장 입히기(Stable-Makeup 데모) · 화장 떼기(makeup-extract-probe)에 그대로 올린다. 사용자가 누를 때만, 다운로드 폴더로
+ */
+function saveShown(): void {
+  if (!shown) return;
+  const name = shown === base ? `nudy-bare-${stamp()}.png` : `nudy-shot${shots}-${stamp()}.png`;
+  shown.image.toBlob((blob) => {
+    if (!blob) { setStatus("사진을 만들지 못했어요", true); return; }
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    setStatus(`${name} 저장 — 다운로드 폴더 (원본 크기, 거울 아닌 원래 방향)`);
+  }, "image/png");
 }
 
 function showPhotoMode(): void {
@@ -193,6 +218,7 @@ async function start(): Promise<void> {
 }
 
 startBtn.addEventListener("click", () => void start());
+saveBtn.addEventListener("click", saveShown);
 snapBtn.addEventListener("click", () => {
   countT0 = performance.now();
   mode = "countdown";
