@@ -134,7 +134,7 @@ function cutWing(p, len) {
 
 // ---- 그린 쌍 10개 (눈 20개) ----
 const PEOPLE = ["p01", "p02", "p03", "p04"], drawn = {};
-if (ONLY.some((k) => k === "1" || k === "3" || k === "4")) {
+if (ONLY.some((k) => k === "1" || k === "3" || k === "4" || k === "6")) {
   for (const id of PEOPLE) for (const st of ["open", "closed"]) drawn[`${id}_${st}`] = { ...pairOf(load(`gpt/${id}_${st}_bare`), load(`gpt/${id}_${st}_made`)), closed: st === "closed" };
   const base = load("base");
   for (const n of ["in1", "in2"]) drawn[n] = { ...pairOf(base, load(n, "base")), closed: false };
@@ -219,6 +219,23 @@ if (ONLY.includes("4")) {
     PEOPLE.map((id) => { const o = cutWing(drawn[`${id}_open`], GUIDE_LEN), c = cutWing(drawn[`${id}_closed`], GUIDE_LEN * RATIO); return [id, core.scoreLinerWing(o, c, guideOf(o.base.lm))]; }));
   run("맨얼굴끼리 (같은 사진)", "그린 것 없음",
     PEOPLE.map((id) => { const o = drawn[`${id}_open`], c = drawn[`${id}_closed`]; return [id, core.scoreLinerWing({ base: o.base, cur: o.base }, { base: c.base, cur: c.base }, guideOf(o.base.lm))]; }));
+}
+
+if (ONLY.includes("6")) {
+  // 새 흐름(2026-10-06): 가이드가 템플릿이 아니라 **정답사진** 이다. 정답사진(맨얼굴과 겹치는 그림)에서 꼬리 끝을 읽어 그것을 가이드 꼬리로 쓴다.
+  // 정답사진은 눈 뜬 것만 있다 — 눈 감은 장은 시도사진 쪽만 쓴다 (scoreLinerWing 이 원래 그렇게 쓴다: 가이드는 눈 뜬 맨얼굴 기준)
+  console.log(`\n===== (6) 정답사진의 꼬리를 가이드로 — 생성 4명의 라이너 그림(눈 뜬 장)을 정답사진으로 삼는다. ONLY=6 으로만 돈다`);
+  const outerOf = (f, s) => f.lm[EYE[s].outer];
+  const targetGuide = (o) => { const tip = Object.fromEntries(SIDES.map((s) => [s, fan(o, s)])); return { tip, guide: (part, f) => (part === "liner" ? { liner: { wing: Object.fromEntries(SIDES.map((s) => [s, [outerOf(f, s), tip[s].found ? tip[s].at : outerOf(f, s)]])), thick: 0.04 } } : {}) }; };
+  const run = (tag, expect, rows) => { console.log(tag); const out = rows.map(([name, res]) => { console.log(`  ${name.padEnd(6)}: ${say(res)}`); return res; }); tally(tag.split(" (")[0], out, expect); };
+  const G = Object.fromEntries(PEOPLE.map((id) => [id, targetGuide(drawn[`${id}_open`])]));
+  console.log("정답사진에서 읽은 꼬리 (눈 폭 % · 각도): " + PEOPLE.map((id) => `${id} ` + SIDES.map((s) => (G[id].tip[s].found ? `${s} ${pc(G[id].tip[s].r)}% ${G[id].tip[s].deg.toFixed(0)}도` : `${s} 없음`)).join(" ")).join(" | "));
+  const len = (id) => med(SIDES.map((s) => G[id].tip[s].r));
+  run("정답과 같게 그림 (시도사진 = 정답사진 그대로 + 눈 감은 장)", "비슷해요", PEOPLE.map((id) => [id, core.scoreLinerWing(drawn[`${id}_open`], drawn[`${id}_closed`], G[id].guide)]));
+  run("꼬리를 정답의 절반 길이로 (눈 뜬 장 · 눈 감은 장 둘 다 자름)", "달라요 · 짧아요", PEOPLE.map((id) => [id, core.scoreLinerWing(cutWing(drawn[`${id}_open`], len(id) / 2), cutWing(drawn[`${id}_closed`], (len(id) / 2) * RATIO), G[id].guide)]));
+  run("꼬리를 안 뺌 (눈꼬리에서 3% 까지만 남김)", "달라요 · 짧아요(없어요)", PEOPLE.map((id) => [id, core.scoreLinerWing(cutWing(drawn[`${id}_open`], 0.03), cutWing(drawn[`${id}_closed`], 0.03), G[id].guide)]));
+  run("한쪽(L)만 절반 길이로", "달라요 · 좌우", PEOPLE.map((id) => { const half = (p, l) => { const c = cutWing(p, l), im = { data: Uint8ClampedArray.from(c.cur.im.data), w: c.cur.im.w, h: c.cur.im.h }, mid = (p.cur.lm[EYE.R.inner].x + p.cur.lm[EYE.L.inner].x) / 2, R = p.cur.lm[EYE.R.outer].x < mid; for (let y = 0; y < im.h; y++) for (let x = 0; x < im.w; x++) if ((x < mid) === R) for (let k = 0; k < 3; k++) im.data[(y * im.w + x) * 4 + k] = p.cur.im.data[(y * im.w + x) * 4 + k]; return { base: p.base, cur: { ...c.cur, im } }; }; return [id, core.scoreLinerWing(half(drawn[`${id}_open`], len(id) / 2), half(drawn[`${id}_closed`], (len(id) / 2) * RATIO), G[id].guide)]; }));
+  run("아무것도 안 그림 (맨얼굴 그대로)", "그린 것 없음", PEOPLE.map((id) => { const o = drawn[`${id}_open`], c = drawn[`${id}_closed`]; return [id, core.scoreLinerWing({ base: o.base, cur: o.base }, { base: c.base, cur: c.base }, G[id].guide)]; }));
 }
 
 if (ONLY.includes("5") && existsSync(`${T}/reshoot`)) {
