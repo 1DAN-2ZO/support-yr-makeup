@@ -291,8 +291,8 @@ function zones(lm: readonly Pt[]): { list: Zone[]; exclude: Pt[][] } {
   return { list, exclude };
 }
 
-/** 한 픽셀의 색 차 — d: 거르기 적용한 차(색 위주면 밝기를 줄여 잰 것) · dL: 밝기 차 · L: 화장 사진 밝기(톤 뺀) · bL · mL: 맨얼굴 · 화장 사진 밝기 그대로 */
-export interface DiffPx { d: number; dL: number; L: number; bL: number; mL: number }
+/** 한 픽셀의 색 차 — d: 거르기 적용한 차(색 위주면 밝기를 줄여 잰 것) · dL · da · db: 밝기 · 붉은기 · 노란기 차(톤 뺀) · L: 화장 사진 밝기(톤 뺀) · bL · mL: 맨얼굴 · 화장 사진 밝기 그대로 */
+export interface DiffPx { d: number; dL: number; da: number; db: number; L: number; bL: number; mL: number }
 
 /**
  * 맨얼굴 ↔ 화장 사진 색 차 — 떼기(extractAll)와 모양 숫자 재기(makeup-fit)가 같은 기준을 쓴다.
@@ -319,7 +319,7 @@ export function diffField(bare0: RgbaImage, made0: RgbaImage, lm: readonly Pt[],
     if ((made.data[(y * made.w + x) * 4 + 3] ?? 255) < 250) return null;
     const sh = shiftAt(x, y), b = labAt(bare, x, y), m0 = labAt(made, x, y), m = { L: m0.L - sh.L, a: m0.a - sh.a, b: m0.b - sh.b };
     const dL = m.L - b.L, d = colorZone ? Math.hypot(opts.chromaL * dL, m.a - b.a, m.b - b.b) : deltaE(b, m);
-    return { d, dL, L: m.L, bL: b.L, mL: m0.L };
+    return { d, dL, da: m.a - b.a, db: m.b - b.b, L: m.L, bL: b.L, mL: m0.L };
   };
   // adaptive: 얼굴 상자 안 색 차 분포 — 대부분이 화장 아닌 피부라 중앙값 + K × 퍼짐(MAD × 1.4826) 이 '피부 변화' 의 윗선
   let floor = 0;

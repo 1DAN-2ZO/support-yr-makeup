@@ -37,9 +37,17 @@ export interface FitPart {
  * blushMinL · blushMaxDarker: 아주 어둡거나(L 아래) 크게 어두워진(밝기 차 넘게) 픽셀은 블러셔가 아니다 — AI 가 얼굴 윤곽을 바꿔 생긴
  *   턱선 줄(경계의 배경 · 머리카락)이었다. 처음엔 옆선 쪽 25% 를 덜어 냈는데 블러셔 바깥까지 잘렸다 (시험 F1) ·
  * shadowSkip: 섀도 높이를 잴 때 속눈썹 선 바로 위(눈꺼풀 → 눈썹의 이 비율)는 뺀다 — 까만 속눈썹이 섀도 색으로 바뀐 차가 '가장 진한 곳' 이 됐다 ·
+ * blushMinRed · blushMinAspect · blushMaxTilt · blushMaxR: 블러셔 증거는 '붉어짐'(a* 증가, 이만큼 넘게) — 밝기 · 윤곽 변화는 블러셔가 아니다.
+ *   짧은 반지름이 긴 반지름의 이 비율보다 작거나(세로 줄), 이 각도(°)보다 기울었거나, 긴 반지름이 눈 폭 × 이 배보다 크면 블러셔가 아니라 못 읽음
+ *   (실사진: 얼굴 옆선을 따라 세로로 긴 타원이 잡혔다, 시험 F10) ·
+ * shadowMaxT · shadowDarkL: 섀도 높이는 눈썹 아랫선의 이 비율까지만, 화장 사진에서 이보다 어두운 픽셀(눈썹 털 · 라이너)은 빼고 잰다
+ *   (실사진: AI 가 눈썹을 진하고 두껍게 바꿔 섀도가 눈썹까지 올라갔다, 시험 F11) ·
  * minPixels: 덩어리가 이보다 작으면 못 읽음 · shadowSteps: 섀도 세로 줄을 나눌 칸 · linerMaxThick · wingMax: 라이너 두께 · 꼬리를 찾는 거리(눈 폭 배수). 눈대중 시작값
  */
-export const FIT = { blushShrink: 0.08, blushEdge: 0.3, blushMinL: 35, blushMaxDarker: 15, minPixels: 40, shadowSteps: 25, shadowSkip: 0.12, linerMaxThick: 0.2, wingMax: 0.7 } as const;
+export const FIT = {
+  blushShrink: 0.08, blushEdge: 0.3, blushMinL: 35, blushMaxDarker: 15, blushMinRed: 1.5, blushMinAspect: 0.4, blushMaxTilt: 45, blushMaxR: 1.2,
+  minPixels: 40, shadowSteps: 25, shadowSkip: 0.12, shadowMaxT: 0.9, shadowDarkL: 45, linerMaxThick: 0.2, wingMax: 0.7,
+} as const;
 
 const NO_IMAGE = { data: new Uint8ClampedArray(0), w: 0, h: 0 };
 const mix = (a: Pt, b: Pt, t: number): Pt => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
@@ -54,7 +62,7 @@ function ellipsePts(c: Pt, rx: number, ry: number, deg: number, n = 28): Pt[] {
   });
 }
 
-/** 블러셔 — 볼 자리에서 주변(자리 안 중앙값 + 2 × 퍼짐)보다 진한 곳 → 그 덩어리 모멘트로 타원 */
+/** 블러셔 — 볼 자리에서 주변(자리 안 중앙값 + 2 × 퍼짐)보다 붉어진 곳 → 그 덩어리 모멘트로 타원. 블러셔 모양이 아니면 못 읽음 */
 function fitCheek(f: DiffField, lm: readonly Pt[], side: Side, opts: ExtractOptions): Omit<FitPart, "part" | "side"> | null {
   const z = cheekZone(lm, side), wid = z.a1 - z.a0;
   const a0 = side === "R" ? z.a0 + FIT.blushShrink * wid : z.a0, a1 = side === "R" ? z.a1 : z.a1 - FIT.blushShrink * wid;
@@ -66,12 +74,12 @@ function fitCheek(f: DiffField, lm: readonly Pt[], side: Side, opts: ExtractOpti
       const q = z.f.to({ x, y });
       if (q.a < a0 || q.a > a1 || q.b < z.b0 || q.b > z.b1) continue;
       const v = f.at(x, y, true);
-      if (v && Math.min(v.bL, v.mL) >= FIT.blushMinL && v.dL >= -FIT.blushMaxDarker) px.push({ x, y, d: v.d });
+      if (v && Math.min(v.bL, v.mL) >= FIT.blushMinL && v.dL >= -FIT.blushMaxDarker) px.push({ x, y, d: Math.max(0, v.da) });
     }
   }
   if (px.length < FIT.minPixels) return null;
   const ds = px.map((p) => p.d), m = median(ds), mad = median(ds.map((d) => Math.abs(d - m))) * 1.4826;
-  const thr = Math.max(opts.minDeltaE.cheek, f.floor * opts.chromaL, m + 2 * mad);
+  const thr = Math.max(FIT.blushMinRed, m + 2 * mad);
   const sorted = [...ds].sort((x, y) => x - y), peak = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.98))]!;
   if (peak <= thr) return null;
   // 테두리 = 가장 진한 곳의 blushEdge — 완성본 방사형 블러셔에서는 그 자리가 가이드 타원. 다만 주변 잡음(thr)보다 아래로는 안 내려간다.
@@ -85,6 +93,8 @@ function fitCheek(f: DiffField, lm: readonly Pt[], side: Side, opts: ExtractOpti
   const tr = (sxx + syy) / 2, det = Math.sqrt(Math.max(0, ((sxx - syy) / 2) ** 2 + sxy * sxy));
   // 고르게 찬 타원은 축 방향 분산 = 반지름² / 4
   const rx = 2 * Math.sqrt(tr + det), ry = 2 * Math.sqrt(Math.max(0, tr - det)), angle = (0.5 * Math.atan2(2 * sxy, sxx - syy) * 180) / Math.PI;
+  // 블러셔 모양이 아니면(세로 줄 · 많이 기욺 · 너무 큼) 못 읽음 — 기본 틀로
+  if (ry < FIT.blushMinAspect * rx || Math.abs(angle) > FIT.blushMaxTilt || rx > FIT.blushMaxR * f.eyeW) return null;
   return { poly: ellipsePts(c, rx, ry, angle), fromPhoto: true, params: { cx: c.x, cy: c.y, rx, ry, angle } };
 }
 
@@ -100,18 +110,18 @@ function fitShadow(f: DiffField, lm: readonly Pt[], side: Side, opts: ExtractOpt
       const x = Math.round(p.x) + dx, y = Math.round(p.y) + dy;
       if (x < 0 || y < 0 || x >= f.w || y >= f.h) continue;
       const q = f.at(x, y, color);
-      if (q) v.push(q.d);
+      if (q && q.mL > FIT.shadowDarkL) v.push(q.d);   // 아주 어두운 픽셀은 눈썹 털 · 라이너
     }
     return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
   };
   const T = FIT.shadowSteps, prof: number[] = [];
   for (let s = 0; s <= T; s++) {
-    const t = s / T, col: number[] = [];
+    const t = (s / T) * FIT.shadowMaxT, col: number[] = [];
     for (let k = 1; k < lid.length - 1; k++) { const v = sample(mix(lid[k]!, top(k), t)); if (v !== null) col.push(v); }
     prof.push(col.length ? median(col) : 0);
   }
   const base = Math.max(opts.minDeltaE.shadow, f.floor * (color ? opts.chromaL : 1));
-  const s0 = Math.round(T * FIT.shadowSkip);
+  const s0 = Math.round((T * FIT.shadowSkip) / FIT.shadowMaxT);
   let im = s0;
   for (let s = s0; s <= Math.round(T * 0.6); s++) if (prof[s]! > prof[im]!) im = s;
   const pmax = prof[im]!;
@@ -119,8 +129,9 @@ function fitShadow(f: DiffField, lm: readonly Pt[], side: Side, opts: ExtractOpt
   const half = pmax / 2;
   let height = 1;
   for (let s = im + 1; s <= T; s++) {
-    if (prof[s]! < half) { const a = prof[s - 1]!, b = prof[s]!; height = (s - 1 + (a - half) / (a - b || 1)) / T; break; }
+    if (prof[s]! < half) { const a = prof[s - 1]!, b = prof[s]!; height = ((s - 1 + (a - half) / (a - b || 1)) / T) * FIT.shadowMaxT; break; }
   }
+  if (height === 1) height = FIT.shadowMaxT;
   const poly = [...lid, ...lid.map((p, i) => mix(p, top(i), height)).reverse()];
   return { poly, fromPhoto: true, params: { height } };
 }

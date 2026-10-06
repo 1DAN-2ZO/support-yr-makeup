@@ -64,6 +64,7 @@ describe("모양 숫자 재기 — 블러셔", () => {
     const r = fitMakeup(BARE.im, image((x, y) => blush(hole)(x, y) ?? SKIN), LMS, G);
     for (const s of ["R", "L"] as const) {
       const want = ellipseOf(G("cheek", BARE).regions![s]), got = ellipseOf(get(r, "cheek", s).poly);
+      expect(get(r, "cheek", s).fromPhoto, s).toBe(true);
       expect(Math.hypot(got.c.x - want.c.x, got.c.y - want.c.y), s).toBeLessThan(6);
       expect(got.rx / want.rx, s).toBeGreaterThan(0.75);
       expect(got.rx / want.rx, s).toBeLessThan(1.25);
@@ -76,9 +77,28 @@ describe("모양 숫자 재기 — 블러셔", () => {
     const r = fitMakeup(BARE.im, image((x, y) => stripe(x, y) ?? blush()(x, y) ?? SKIN), LMS, G);
     for (const s of ["R", "L"] as const) {
       const want = ellipseOf(G("cheek", BARE).regions![s]), got = ellipseOf(get(r, "cheek", s).poly);
+      expect(get(r, "cheek", s).fromPhoto, s).toBe(true);
       expect(Math.hypot(got.c.x - want.c.x, got.c.y - want.c.y), s).toBeLessThan(5);
       expect(got.rx / want.rx, s).toBeLessThan(1.2);
     }
+  });
+
+  it("F10 얼굴 옆선이 누렇게 바뀌면(AI 가 바꾼 윤곽 · 톤) 블러셔로 안 읽는다 — 블러셔 증거는 '붉어짐'", () => {
+    // 사진 오른쪽 볼 아래 옆선을 따라 세로로 긴 누런 띠 — 색은 바뀌었지만 붉어진 게 아니다. 블러셔와는 안 겹치게
+    const strip = (x: number, y: number): Rgb | null => (x >= 462 && x < 478 && y > 372 && y < 420 ? [214, 182, 100] : null);
+    const r = fitMakeup(BARE.im, image((x, y) => strip(x, y) ?? blush()(x, y) ?? SKIN), LMS, G);
+    const want = ellipseOf(G("cheek", BARE).regions!.L), got = ellipseOf(get(r, "cheek", "L").poly);
+    // 가짜 블러셔는 기본 틀 자리에 칠했다 — 기본 틀로 돌아가도 같은 타원이라, 사진에서 읽었는지도 본다
+    expect(get(r, "cheek", "L").fromPhoto).toBe(true);
+    expect(Math.hypot(got.c.x - want.c.x, got.c.y - want.c.y)).toBeLessThan(6);
+    expect(got.rx / want.rx).toBeLessThan(1.25);
+    expect(got.ry / got.rx, "세로로 긴 줄이 아니다").toBeGreaterThan(0.4);
+  });
+
+  it("F13 붉은 세로 줄만 있으면(블러셔 모양이 아님) 못 읽음 — 기본 틀", () => {
+    const red = (x: number, y: number): Rgb | null => (x >= 455 && x < 470 && y > 280 && y < 420 ? [226, 130, 135] : null);
+    const r = fitMakeup(BARE.im, image((x, y) => red(x, y) ?? SKIN), LMS, G);
+    expect(get(r, "cheek", "L").fromPhoto).toBe(false);
   });
 
   it("F3 블러셔가 없으면 기본 틀(템플릿 타원) — 사진에서 못 읽음으로 표시", () => {
@@ -100,6 +120,22 @@ describe("모양 숫자 재기 — 아이섀도", () => {
         expect(f.fromPhoto, `${h} ${s}`).toBe(true);
         expect(Math.abs(f.params.height! - h), `${h} ${s} 높이 ${f.params.height}`).toBeLessThan(0.1);
       }
+    }
+  });
+
+  it("F11 AI 가 눈썹을 아래로 두껍게 바꿔도 섀도 높이는 섀도만 — 눈썹 둘레는 안 본다", () => {
+    // 눈썹 아랫선에서 아래로 12px 더 진한 눈썹 — 섀도 띠에 붙는다 (실사진: 옅은 눈썹 → AI 가 진하고 두껍게)
+    const thickBrow: Paint = (x, y) => {
+      for (const b of [LM.browA, LM.browB]) {
+        const poly = [...b.upper.map(P), ...[...b.lower].reverse().map((i) => ({ x: P(i).x, y: P(i).y + 12 }))];
+        if (pointInPoly(x, y, poly)) return [80, 55, 45];
+      }
+      return null;
+    };
+    const r = fitMakeup(bare, nat((x, y) => thickBrow(x, y) ?? shadowTo(0.4)(x, y)), LMS, G);
+    for (const s of ["R", "L"] as const) {
+      const f = get(r, "shadow", s);
+      expect(Math.abs(f.params.height! - 0.4), `${s} 높이 ${f.params.height}`).toBeLessThan(0.12);
     }
   });
 
