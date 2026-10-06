@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <title>사진 가이드 POC — 당화응</title>
+    <!--
+      [dev 전용] 사진 가이드 POC (2026-10-06) — 실시간 선 대신, 가만히 있는 순간을 찍어 그 사진 위에 가이드를 그린다.
+      첫 장(맨얼굴)에서 가이드를 정하고 얼굴 그물에 붙여 두었다가, 다시 찍을 때마다 그 사진 위에 같은 가이드를 놓는다.
+      앱 흐름과 상관없는 독립 페이지다. 사진은 저장하지 않는다.
+    -->
+    <style>
+      :root { color-scheme: light dark; --line: #8884; }
+      body { margin: 0; padding: 16px; font: 14px/1.5 system-ui, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; background: Canvas; color: CanvasText; }
+      h1 { font-size: 18px; margin: 0 0 4px; }
+      .note { margin: 0 0 12px; opacity: .75; font-size: 13px; }
+      .bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
+      button { font: inherit; padding: 8px 14px; border-radius: 6px; border: 1px solid var(--line); background: ButtonFace; color: ButtonText; cursor: pointer; }
+      button.main { font-weight: 700; }
+      button:disabled { opacity: .5; cursor: default; }
+      select { font: inherit; padding: 6px; }
+      #status { font-size: 14px; margin: 6px 0; min-height: 1.5em; }
+      .warn { color: #d9480f; font-weight: 600; }
+      .stage { max-width: 1100px; }
+      canvas { width: 100%; height: auto; border-radius: 8px; background: #000; display: block; }
+    </style>
+  </head>
+  <body>
+    <h1>사진 가이드 POC</h1>
+    <p class="note">① 맨얼굴로 정면을 보고 "찍기" → 그 사진에 가이드가 떠요. ② 보면서 그리고 "다시 찍기" → 지금 얼굴 위에 같은 가이드. 화면은 거울처럼 보여요.</p>
+    <div class="bar">
+      <button id="start" type="button">카메라 시작</button>
+      <label>화장 <select id="look"></select></label>
+      <label>부위 <select id="part"></select></label>
+    </div>
+    <div class="bar">
+      <button id="snap" class="main" type="button" disabled>찍기 (맨얼굴)</button>
+      <button id="mirror" type="button" disabled>거울 보기</button>
+      <label><input id="showGuide" type="checkbox" checked /> 가이드 보기</label>
+      <button id="rebase" type="button" disabled>맨얼굴부터 다시</button>
+    </div>
+    <div id="status">카메라 시작을 눌러 주세요.</div>
+    <div class="stage"><canvas id="cv" width="960" height="540"></canvas></div>
+    <video id="v" autoplay playsinline muted hidden></video>
+    <script type="module" src="/src/screens/photo-guide-probe.ts"></script>
+  </body>
+</html>
