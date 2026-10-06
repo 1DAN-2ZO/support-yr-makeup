@@ -77,7 +77,10 @@ function testMeta(title: string, owner: string, todo: readonly string[]): HTMLEl
 function title(title: string, sub: string): HTMLElement {
   const head = document.createElement("div");
   head.className = "slot-head";
-  head.innerHTML = `<h1>${title}</h1><p>${sub}</p>`;
+  const markedTitle = title.includes("·")
+    ? `<em>${title.replace("·", "</em> ·")}`
+    : title.replace(/^(\S+)/, "<em>$1</em>");
+  head.innerHTML = `<h1>${markedTitle}</h1><p>${sub}</p>`;
   return head;
 }
 
