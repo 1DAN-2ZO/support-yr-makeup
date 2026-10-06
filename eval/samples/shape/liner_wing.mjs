@@ -280,3 +280,16 @@ if (ONLY.includes("7") && process.env.MULTI) {
   ids.forEach((id, i) => console.log(`  한 장씩 ${id.split("/").pop()}: ${say(core.scoreLinerWing(P.open[i], P.closed[i], g))}`));
   console.log(`  ${ids.length}장 합쳐서: ${say(core.scoreLinerWing(P.open, P.closed, g))}`);
 }
+
+if (ONLY.includes("8") && process.env.TRANSFER) {
+  // 시도사진의 화장을 모델로 맨얼굴에 옮긴 그림에서 꼬리를 잰다 (실험 28). TRANSFER = "폴더(work/liner-test 기준)|묶음:맨얼굴:정답:옮긴 그림,옮긴 그림…|…"
+  //   맨얼굴과 겹치는 그림(정답 · 부위 붙임 판)은 맨얼굴의 얼굴 점을, 모델 원본은 그 그림에서 뽑은 얼굴 점을 lm.json 으로 둔다
+  const [dir, ...sets] = process.env.TRANSFER.split("|"), L = (n) => load(`${dir}/${n}`);
+  const tip = (t) => (t.found ? `${pc(t.r).padStart(3)}% ${t.deg.toFixed(0).padStart(4)}도` : "    없음   ");
+  console.log(`\n===== (8) 모델이 옮긴 그림의 꼬리 — 눈 뜬 장만. 길이 = 눈 폭 %, 각도 = 눈 축 기준 · 위가 +. 미세 맞춤 ±${pc(core.EYE_SHIFT.range)}%`);
+  for (const set of sets) {
+    const [tag, bare, target, list] = set.split(":"), b = L(bare);
+    console.log(`-- ${tag}`);
+    for (const n of [target, ...list.split(",")]) { const q = pairOf(b, L(n)); console.log(`  ${n.padEnd(22)} R ${tip(fan(q, "R"))} | L ${tip(fan(q, "L"))}`); }
+  }
+}

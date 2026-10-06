@@ -36,7 +36,7 @@ const mean = (v) => (v.length ? v.reduce((s, x) => s + x, 0) / v.length : NaN), 
 
 // ── 섀도우 구역 ── 눈마다 6개: 윗눈꺼풀 선에서 눈썹 아래 선까지를 비율로 자른다
 const SIDES = { R: [LM.eyeA, LM.browA], L: [LM.eyeB, LM.browB] }, COLS = { 바깥쪽: [0, 3], 가운데: [3, 5], 안쪽: [5, 8] }, ROWS = { 아래: [0.1, 0.4], 위: [0.4, 0.75] };
-const ZONE = { paint: 6, blank: 4, miss: 0.25, over: 0.6, lr: 0.4 };   // 칠할 자리로 보는 정답 변화 · 안 칠한 자리 · 비었다 · 넘쳤다 · 좌우 차
+const ZONE = { paint: 6, blank: 4, miss: 0.25, over: Number(process.env.OVER ?? 0.4), lr: 0.4 };   // 칠할 자리로 보는 정답 변화 · 안 칠한 자리 · 비었다 · 넘쳤다 · 좌우 차
 function zonesOf(f, side) {
   const [e, b] = SIDES[side], lid = pts(f, e.upper), lo = pts(f, b.lower), up = pts(f, b.upper);
   const browAt = (i) => { const u = (i / (lid.length - 1)) * (lo.length - 1), k = Math.min(lo.length - 2, Math.floor(u)); return mix(lo[k], lo[k + 1], u - k); };
