@@ -33,15 +33,21 @@ describe("동의 화면", () => {
     expect(go).toHaveBeenCalledWith("capture");
   });
 
-  it("C2 거부하면 이용 불가로 — 촬영으로 가지 않는다", () => {
+  // 2026-10-06 새 흐름: 아래 버튼이 '거부' 가 아니라 '닫기' 다. 안내 시트만 닫고 아무것도 적지 않는다
+  it("C2 '닫기' 는 안내 시트만 닫는다 — 동의도 거부도 적지 않고 화면도 안 옮긴다", () => {
     const { root, ctx, go } = setup();
     const setConsent = vi.fn(), onConsent = vi.fn();
     consentScreen<null>({ setConsent, onConsent }).mount(ctx);
+    const sheet = root.querySelector<HTMLElement>(".consent-sheet");
+    expect(sheet).not.toBeNull();
+    expect(sheet!.hidden).toBe(true);
+    root.querySelector<HTMLButtonElement>(".intro-camera-start")!.click();
+    expect(sheet!.hidden).toBe(false);
     click(root, CONSENT_TEXT.deny);
-    expect(setConsent).toHaveBeenCalledWith(false);
-    expect(onConsent).toHaveBeenCalledWith(false);
-    expect(go).toHaveBeenCalledWith("denied");
-    expect(go).not.toHaveBeenCalledWith("capture");
+    expect(sheet!.hidden).toBe(true);
+    expect(setConsent).not.toHaveBeenCalled();
+    expect(onConsent).not.toHaveBeenCalled();
+    expect(go).not.toHaveBeenCalled();
   });
 
   it("C3 이용 불가 화면은 정의서 문구 그대로, 다시 동의 화면으로만 갈 수 있다", () => {
