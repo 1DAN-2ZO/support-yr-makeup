@@ -7,8 +7,8 @@
     <title>화장 입히고 떼기 POC — 당화응</title>
     <!--
       [dev 전용] 화장 입히고 떼기 POC (2026-10-06) — 한 페이지에서
-        ① 맨얼굴(웹캠 · 파일) → ② 참고 화장 사진 → ③ AI 가 내 얼굴에 입히기(Stable-Makeup 7860 또는 FLUX.2 klein 4B 7861) → ④ 부위별로 떼기.
-      AI 서버는 poc/look-tryon/server-bench/app_demo.py 또는 app_klein.py 를 켜 둔다 (그래픽카드 12GB 라 하나씩). 사진은 이 컴퓨터 안에서만 쓰고 저장소에 남기지 않는다.
+        ① 맨얼굴(웹캠 · 파일) → ② 참고 화장 사진 → ③ AI 가 내 얼굴에 입히기(FLUX.2 klein 4B 127.0.0.1:7861) → ④ 부위별로 떼기 → ⑤ 화장 영역 테두리 가이드.
+      AI 서버는 poc/look-tryon/server-bench/app_klein.py 를 켜 둔다. 사진은 이 컴퓨터 안에서만 쓰고 저장소에 남기지 않는다.
     -->
     <style>
       :root { color-scheme: light dark; --line: #8884; }
@@ -41,7 +41,7 @@
   </head>
   <body>
     <h1>화장 입히고 떼기 POC</h1>
-    <p class="note">① 맨얼굴 → ② 따라 하고 싶은 화장 사진 → ③ AI 가 내 얼굴에 입히기 → ④ 부위별로 떼기. 고른 AI 서버(Stable-Makeup 7860 · FLUX.2 klein 7861)가 켜져 있어야 ③ 버튼이 돌아가요 — 없으면 AI 결과 파일을 직접 올려도 돼요.</p>
+    <p class="note">① 맨얼굴 → ② 따라 하고 싶은 화장 사진 → ③ AI 가 내 얼굴에 입히기 → ④ 부위별로 떼기. AI 서버(FLUX.2 klein 4B, 127.0.0.1:7861)가 켜져 있어야 ③ 버튼이 돌아가요 — 없으면 AI 결과 파일을 직접 올려도 돼요.</p>
 
     <div class="cards">
       <div class="card">
@@ -62,26 +62,12 @@
         <div id="refMsg" class="msg">정면에 가깝고 화장이 잘 보이는 사진</div>
       </div>
       <div class="card">
-        <h3>③-0 AI 가 그린 맨얼굴 (비교용)</h3>
-        <canvas id="aiBareView" class="thumb"></canvas>
-        <div class="bar"><button id="aiBareSave" type="button" disabled>저장</button></div>
-        <div id="aiBareMsg" class="msg">참고 사진 자리에 내 맨얼굴을 넣고 같은 seed 로 한 번 더 그려요 — AI 가 바꾼 피부 · 톤 · 윤곽을 똑같이 갖게 해서, 차이엔 화장만 남게</div>
-      </div>
-      <div class="card">
-        <h3>③ AI 가 입힌 내 얼굴</h3>
+        <h3>③ AI 가 입힌 내 얼굴 (FLUX.2 klein 4B)</h3>
         <canvas id="madeView" class="thumb"></canvas>
         <div class="bar">
-          <label title="FLUX.2 klein: 눈두덩 · 볼 · 입술만 다시 그려 얼굴형 · 피부는 원본 그대로 (poc/look-tryon/server-bench/app_klein.py, 7861)">AI 모델
-            <select id="model">
-              <option value="sm">Stable-Makeup (7860)</option>
-              <option value="klein">FLUX.2 klein 4B (7861)</option>
-            </select>
-          </label>
-        </div>
-        <div class="bar">
-          <label><span id="guideName">진하기</span> <input id="guide" type="range" min="1.05" max="3" step="0.05" value="1.6" /> <span id="guideVal">1.6</span></label>
-          <label>단계 <input id="steps" type="number" min="4" max="30" value="8" style="width:3.5em" /></label>
-          <label title="같은 seed 로 맨얼굴 · 화장을 그려 두 그림의 차이로 화장만 뗀다">seed <input id="seed" type="number" value="1234" style="width:5em" /></label>
+          <label title="눈두덩 · 볼 · 입술을 얼마나 다시 그릴지 — 0.7 자연스러움, 0.85 진함">강도 <input id="guide" type="range" min="0.5" max="1" step="0.05" value="0.7" /> <span id="guideVal">0.70</span></label>
+          <label>단계 <input id="steps" type="number" min="2" max="12" value="4" style="width:3.5em" /></label>
+          <label title="같은 값이면 같은 잡음에서 그린다">seed <input id="seed" type="number" value="1234" style="width:5em" /></label>
         </div>
         <div class="bar">
           <button id="aiBtn" class="main" type="button" disabled>AI 화장 입히기</button>
@@ -93,23 +79,11 @@
     </div>
 
     <h2>④ 떼기</h2>
-    <div class="bar">
-      <b>비교 기준</b>
-      <label><input type="radio" name="base" value="ai" checked /> AI 가 그린 맨얼굴 (추천)</label>
-      <label><input type="radio" name="base" value="bare" /> 원래 맨얼굴</label>
-    </div>
-    <div class="bar" title="AI 가 피부까지 바꿀 때 거르기 — 하나씩 켜 보며 비교">
-      <b>피부 변화 거르기</b>
-      <label><input id="optBlur" type="checkbox" checked /> ① 잡티·모공 무시</label>
-      <label><input id="optMap" type="checkbox" checked /> ② 피부 변화 지도로 빼기</label>
-      <label><input id="optChroma" type="checkbox" checked /> ③ 블러셔·섀도·입술은 색 위주</label>
-      <label><input id="optAdaptive" type="checkbox" checked /> ④ 사진마다 문턱 자동</label>
-      <label><input id="heat" type="checkbox" /> AI 쪽을 색 차로 보기</label>
-    </div>
+    <div class="bar"><label><input id="heat" type="checkbox" /> AI 쪽을 색 차로 보기</label></div>
     <div id="status">맨얼굴과 AI 결과가 있으면 자동으로 떼요.</div>
     <div id="parts"></div>
-    <h2>⑤ 가이드 (모양 숫자로) — 블러셔 · 섀도 · 라이너</h2>
-    <p class="note">구역(틀)은 고정하고 크기 · 위치 숫자만 AI 사진에서 읽어요. 실선 = 사진에서 읽음, 점선 = 못 읽어서 기본 틀.</p>
+    <h2>⑤ 가이드 — FLUX 가 화장한 영역 테두리</h2>
+    <p class="note">원래 맨얼굴과 차이 나는 픽셀을 부위별로 모아 바깥 테두리를 따요 (가까운 조각은 메우고 작은 점은 버림). 위 부위 칸을 눌러 켜고 끄기.</p>
     <div class="row">
       <figure><figcaption>원래 맨얼굴 위 가이드</figcaption><canvas id="cvFitBare"></canvas></figure>
       <figure><figcaption>AI 화장 위 같은 가이드</figcaption><canvas id="cvFitMade"></canvas></figure>

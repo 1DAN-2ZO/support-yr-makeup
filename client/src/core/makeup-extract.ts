@@ -240,7 +240,7 @@ function skinShiftMap(bare: RgbaImage, made: RgbaImage, lm: readonly Pt[], eyeW:
 }
 
 /** MediaPipe 얼굴 윤곽 (이마 위 → 오른쪽 → 턱 → 왼쪽) */
-const FACE_OVAL = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109];
+export const FACE_OVAL = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109];
 
 const add = (a: Pt, b: Pt, k = 1): Pt => ({ x: a.x + b.x * k, y: a.y + b.y * k });
 const scaleAbout = (ps: readonly Pt[], k: number): Pt[] => {

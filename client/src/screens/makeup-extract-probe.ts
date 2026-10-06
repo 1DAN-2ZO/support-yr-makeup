@@ -2,20 +2,20 @@
  * [dev 전용] 화장 입히고 떼기 POC (makeup-extract-probe.html, 2026-10-06) — 한 페이지에서 다 (사용자):
  *  ① 맨얼굴: 웹캠 3초 찍기(가만히 있는 장 몇 개 중앙값 — core/snapshot) 또는 파일
  *  ② 참고 화장 사진: 파일
- *  ③ AI 가 내 얼굴에 입히기: Stable-Makeup 데모 서버(127.0.0.1:7860, poc/look-tryon/server-bench/app_demo.py) 또는
- *     FLUX.2 klein 4B 서버(127.0.0.1:7861, app_klein.py — 눈두덩 · 볼 · 입술만 다시 그림)의 REST API —
- *     사진은 base64 로 보내고 결과 파일을 받아온다 (서버가 localhost 를 CORS 로 허용) · 또는 결과 파일을 직접
- *  ④ 떼기: 얼굴 점으로 두 사진 겹치기(튀는 점 무시한 아핀) → core/makeup-extract extractAll →
- *     뗀 화장만(회색 바탕 + AI 색) · 맨얼굴 · AI 사진 위 부위별 색 테두리 · 부위 켜고 끄기 · 피부 변화 거르기 스위치
+ *  ③ AI 가 내 얼굴에 입히기: FLUX.2 klein 4B 서버(127.0.0.1:7861, poc/look-tryon/server-bench/app_klein.py — 눈두덩 · 볼 · 입술만
+ *     다시 그려 나머지는 원본 그대로)의 REST API — 사진은 base64 로 보내고 결과 파일을 받아온다 (서버가 localhost 를 CORS 로 허용) · 또는 결과 파일을 직접
+ *  ④ 떼기: 얼굴 점으로 두 사진 겹치기(튀는 점 무시한 아핀) → core/makeup-extract extractAll (원래 맨얼굴과 비교) →
+ *     뗀 화장만(회색 바탕 + AI 색) · 맨얼굴 · AI 사진 위 부위별 색 테두리 · 부위 켜고 끄기
+ *  ⑤ 가이드: 부위별 화장 영역의 바깥 테두리(core/region-outline) — FLUX 는 칠하지 않은 곳이 원본 그대로라 차이가 깨끗해서
+ *     템플릿 모양에 숫자를 읽던 방식(makeup-fit, Stable-Makeup 용)과 AI 맨얼굴 비교 · 피부 변화 거르기는 뺐다 (사용자 2026-10-06)
  * 사진은 이 컴퓨터 안에서만 쓴다 (저장은 누를 때만, 다운로드 폴더로).
  */
 
 import type { FaceLandmarker } from "@mediapipe/tasks-vision";
-import { deltaE, foreheadLab, labAt, type RgbaImage } from "@core/color";
+import { deltaE, foreheadLab, labAt, pointInPoly, type RgbaImage } from "@core/color";
 import { applyAffine, robustAffine, type Affine } from "@core/eye-fit";
-import { lookGuide } from "@core/guides";
-import { EXTRACT, extractAll, type ExtractPart, type PartMask } from "@core/makeup-extract";
-import { fitMakeup, type FitPart } from "@core/makeup-fit";
+import { EXTRACT, FACE_OVAL, extractAll, type ExtractPart, type PartMask } from "@core/makeup-extract";
+import { maskOutlines } from "@core/region-outline";
 import { createSnapshotCollector } from "@core/snapshot";
 import type { Pt } from "@core/types";
 import { startFrameLoop } from "./camera-loop";
@@ -28,14 +28,11 @@ const $ = <T extends HTMLElement>(id: string): T => {
 };
 
 /**
- * AI 서버 (Gradio REST) — 모델마다 서버 · 기본값. 둘 다 run(얼굴, 참고, steps, 진하기, 원본 크기 유지, seed) 모양.
- * klein 의 '진하기' 는 칠할 영역(눈두덩 · 볼 · 입술)을 얼마나 다시 그릴지(strength) — 그냥 두 장을 넣으면 참고 인물 얼굴로 바뀌어서 영역만 다시 그린다
+ * AI 서버 (FLUX.2 klein 4B, Gradio REST) — run(얼굴, 참고, steps, 강도, 원본 크기 유지, seed).
+ * 강도 = 칠할 영역(눈두덩 · 볼 · 입술)을 얼마나 다시 그릴지 — 그냥 두 장을 넣으면 참고 인물 얼굴로 바뀌어서 영역만 다시 그린다
  */
-const MODELS = {
-  sm: { url: "http://127.0.0.1:7860", steps: 8, guide: { name: "진하기", min: 1.05, max: 3, step: 0.05, value: 1.6 } },
-  klein: { url: "http://127.0.0.1:7861", steps: 4, guide: { name: "강도", min: 0.5, max: 1, step: 0.05, value: 0.7 } },
-} as const;
-type ModelId = keyof typeof MODELS;
+const AI_SERVER = "http://127.0.0.1:7861";
+const AI_STEPS = 4, AI_STRENGTH = 0.7;
 const COUNTDOWN_MS = 3000;
 
 const video = $<HTMLVideoElement>("v");
@@ -45,10 +42,7 @@ const aiBtn = $<HTMLButtonElement>("aiBtn"), madeSave = $<HTMLButtonElement>("ma
 const bareFile = $<HTMLInputElement>("bareFile"), refFile = $<HTMLInputElement>("refFile"), madeFile = $<HTMLInputElement>("madeFile");
 const bareMsg = $("bareMsg"), refMsg = $("refMsg"), madeMsg = $("madeMsg");
 const guide = $<HTMLInputElement>("guide"), guideVal = $("guideVal"), steps = $<HTMLInputElement>("steps"), seedIn = $<HTMLInputElement>("seed");
-const modelSel = $<HTMLSelectElement>("model"), guideName = $("guideName");
-const aiBareView = $<HTMLCanvasElement>("aiBareView"), aiBareSave = $<HTMLButtonElement>("aiBareSave"), aiBareMsg = $("aiBareMsg");
 const heat = $<HTMLInputElement>("heat");
-const optBlur = $<HTMLInputElement>("optBlur"), optMap = $<HTMLInputElement>("optMap"), optChroma = $<HTMLInputElement>("optChroma"), optAdaptive = $<HTMLInputElement>("optAdaptive");
 const cvOnly = $<HTMLCanvasElement>("cvOnly"), cvBare = $<HTMLCanvasElement>("cvBare"), cvMade = $<HTMLCanvasElement>("cvMade");
 const statusEl = $("status"), partsEl = $("parts");
 const cvFitBare = $<HTMLCanvasElement>("cvFitBare"), cvFitMade = $<HTMLCanvasElement>("cvFitMade"), fitInfo = $("fitInfo");
@@ -67,14 +61,12 @@ const on = new Set<ExtractPart>(PARTS.map((p) => p.id));
 
 /** 원본 크기 그림 (저장 · AI 보내기 · 떼기에 쓴다) */
 let bareCv: HTMLCanvasElement | null = null, refCv: HTMLCanvasElement | null = null, madeCv: HTMLCanvasElement | null = null;
-/** AI 가 그린 맨얼굴 (참고 = 내 맨얼굴, 같은 seed) — 비교 기준 */
-let aiBareCv: HTMLCanvasElement | null = null;
 let imageLm: Promise<FaceLandmarker> | null = null;
 type Crop = { x: number; y: number; w: number; h: number };
-/**
- * bare: 비교 기준(AI 맨얼굴 또는 원래 맨얼굴) · made: 그 자리에 맞춘 AI 화장 · orig: 원래 맨얼굴 · toOrig: 기준 → 원래 맨얼굴 좌표 (가이드를 옮겨 그린다)
- */
-let last: { bare: RgbaImage; made: RgbaImage; lm: Pt[]; parts: PartMask[]; fit: FitPart[]; crop: Crop; orig: RgbaImage; origCrop: Crop; toOrig: (p: Pt) => Pt; info: string } | null = null;
+/** 부위 · 좌우마다 화장 영역 테두리 (큰 덩어리 먼저) */
+type Outline = { part: ExtractPart; side: PartMask["side"]; polys: Pt[][]; count: number };
+/** bare: 원래 맨얼굴 · made: 그 자리에 맞춘 AI 화장 · outlines: ⑤ 가이드 */
+let last: { bare: RgbaImage; made: RgbaImage; lm: Pt[]; parts: PartMask[]; outlines: Outline[]; crop: Crop; info: string } | null = null;
 
 const setStatus = (text: string, warn = false): void => { statusEl.innerHTML = warn ? `<span class="warn">${text}</span>` : text; };
 const setMsg = (el: HTMLElement, text: string, warn = false): void => { el.innerHTML = warn ? `<span class="warn">${text}</span>` : text; };
@@ -124,7 +116,6 @@ function save(c: HTMLCanvasElement | null, name: string): void {
 
 function refreshButtons(): void {
   bareSave.disabled = !bareCv;
-  aiBareSave.disabled = !aiBareCv;
   madeSave.disabled = !madeCv;
   aiBtn.disabled = !bareCv || !refCv || aiBusy;
 }
@@ -250,23 +241,14 @@ refFile.addEventListener("change", async () => {
 
 let aiBusy = false;
 guide.addEventListener("input", () => { guideVal.textContent = Number(guide.value).toFixed(2); });
-const model = (): (typeof MODELS)[ModelId] => MODELS[modelSel.value as ModelId] ?? MODELS.sm;
-modelSel.addEventListener("change", () => {
-  const m = model();
-  steps.value = String(m.steps);
-  guideName.textContent = m.guide.name;
-  Object.assign(guide, { min: String(m.guide.min), max: String(m.guide.max), step: String(m.guide.step), value: String(m.guide.value) });
-  guideVal.textContent = m.guide.value.toFixed(2);
-});
 
 /** Gradio REST: POST /gradio_api/call/predict → event_id → GET 같은 주소/event_id 의 SSE 에서 complete 줄 */
 async function callAi(bare: HTMLCanvasElement, ref: HTMLCanvasElement, seed: number): Promise<{ img: HTMLCanvasElement; note: string }> {
   const fd = (c: HTMLCanvasElement) => ({ url: c.toDataURL("image/png"), meta: { _type: "gradio.FileData" } });
-  const md = model(), AI_SERVER = md.url;
   const r = await fetch(`${AI_SERVER}/gradio_api/call/predict`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ data: [fd(bare), fd(ref), Number(steps.value) || md.steps, Number(guide.value) || md.guide.value, true, seed] }),
+    body: JSON.stringify({ data: [fd(bare), fd(ref), Number(steps.value) || AI_STEPS, Number(guide.value) || AI_STRENGTH, true, seed] }),
   });
   if (!r.ok) throw new Error(`AI 서버 응답 ${r.status}`);
   const { event_id: id } = (await r.json()) as { event_id: string };
@@ -290,30 +272,16 @@ aiBtn.addEventListener("click", async () => {
   const seed = Math.round(Number(seedIn.value));
   const t0 = performance.now();
   try {
-    // klein 은 칠할 영역(눈두덩 · 볼 · 입술) 밖이 원본 그대로라 원래 맨얼굴과 바로 비교한다 — 참고 = 내 맨얼굴로 그려도
-    // '화장을 입혀라' 지시라 화장이 들어가 AI 맨얼굴이 안 된다 (2026-10-06 확인)
-    const pair = modelSel.value !== "klein";
-    if (pair) {
-      // 같은 seed 로 두 번: ① 참고 = 내 맨얼굴 (AI 가 그린 맨얼굴 — 비교 기준) ② 참고 = 화장 사진
-      setMsg(aiBareMsg, "AI 가 맨얼굴을 그리는 중… (1/2)");
-      setMsg(madeMsg, "기다리는 중… (2/2)");
-      const a = await callAi(bareCv, bareCv, seed);
-      aiBareCv = a.img;
-      preview(aiBareView, aiBareCv);
-      setMsg(aiBareMsg, `seed ${seed} · ${a.note}`);
-    } else {
-      aiBareCv = null;
-      preview(aiBareView, null);
-      setMsg(aiBareMsg, "FLUX.2 klein 은 칠할 영역 밖이 원본 그대로라 AI 맨얼굴 없이 원래 맨얼굴과 바로 비교해요");
-    }
-    setMsg(madeMsg, `AI 가 화장을 입히는 중…${pair ? " (2/2)" : ""}`);
+    // 칠할 영역(눈두덩 · 볼 · 입술) 밖이 원본 그대로라 원래 맨얼굴과 바로 비교한다 — AI 맨얼굴은 따로 안 그린다
+    // (참고 = 내 맨얼굴로 그려도 '화장을 입혀라' 지시라 화장이 들어갔다, 2026-10-06)
+    setMsg(madeMsg, "AI 가 화장을 입히는 중… (켜고 처음 한 장은 1분쯤)");
     const { img, note } = await callAi(bareCv, refCv, seed);
     madeCv = img;
     preview(madeView, madeCv);
-    setMsg(madeMsg, `${pair ? "두 장" : "한 장"} ${((performance.now() - t0) / 1000).toFixed(1)}초 · seed ${seed} · ${note}`);
+    setMsg(madeMsg, `${((performance.now() - t0) / 1000).toFixed(1)}초 · seed ${seed} · ${note}`);
     void maybeExtract();
   } catch (e) {
-    setMsg(madeMsg, `${e instanceof Error ? e.message : String(e)} — AI 서버(${model().url})가 켜져 있나요?`, true);
+    setMsg(madeMsg, `${e instanceof Error ? e.message : String(e)} — AI 서버(${AI_SERVER})가 켜져 있나요?`, true);
   } finally {
     aiBusy = false;
     refreshButtons();
@@ -325,15 +293,10 @@ madeFile.addEventListener("change", async () => {
   madeCv = await canvasOfFile(f);
   preview(madeView, madeCv);
   setMsg(madeMsg, `${madeCv.width}×${madeCv.height}`);
-  // 직접 올린 AI 결과는 같은 seed 로 그린 맨얼굴이 없다 → 원래 맨얼굴과 비교
-  aiBareCv = null;
-  preview(aiBareView, null);
-  setMsg(aiBareMsg, "직접 올린 AI 결과 — 원래 맨얼굴과 비교해요");
   refreshButtons();
   void maybeExtract();
 });
 madeSave.addEventListener("click", () => save(madeCv, "nudy-ai"));
-aiBareSave.addEventListener("click", () => save(aiBareCv, "nudy-ai-bare"));
 
 // ---------- ④ 떼기 ----------
 
@@ -413,7 +376,7 @@ function drawPartList(parts: readonly PartMask[]): void {
     const cb = document.createElement("input");
     cb.type = "checkbox";
     cb.checked = on.has(p.id);
-    cb.addEventListener("change", () => { if (cb.checked) on.add(p.id); else on.delete(p.id); render(); });
+    cb.addEventListener("change", () => { if (cb.checked) on.add(p.id); else on.delete(p.id); render(); renderGuide(); });
     const sw = document.createElement("i");
     sw.style.background = `rgb(${p.color.join(",")})`;
     const peak = mine.length ? Math.max(...mine.map((q) => q.peakDeltaE)) : 0;
@@ -422,8 +385,6 @@ function drawPartList(parts: readonly PartMask[]): void {
   }));
 }
 
-const baseMode = (): "ai" | "bare" => ((document.querySelector('input[name="base"]:checked') as HTMLInputElement | null)?.value === "bare" ? "bare" : "ai");
-
 /** 얼굴 점 상자 + 여백 12% */
 function faceCrop(lm: readonly Pt[], w: number, h: number): Crop {
   const xs = lm.map((p) => p.x), ys = lm.map((p) => p.y), mx = (Math.max(...xs) - Math.min(...xs)) * 0.12, my = (Math.max(...ys) - Math.min(...ys)) * 0.12;
@@ -431,53 +392,58 @@ function faceCrop(lm: readonly Pt[], w: number, h: number): Crop {
   return { x: x0, y: y0, w: Math.min(w, Math.ceil(Math.max(...xs) + mx)) - x0, h: Math.min(h, Math.ceil(Math.max(...ys) + my)) - y0 };
 }
 
-/**
- * 비교 기준(AI 가 그린 맨얼굴 — 없으면 원래 맨얼굴)과 AI 화장을 겹치고 뗀다.
- * AI 맨얼굴 기준이면 두 그림이 AI 가 바꾼 피부 · 톤 · 윤곽을 똑같이 가져 차이엔 화장만 남는다 (사용자 제안 2026-10-06)
- */
+/** 원래 맨얼굴과 AI 화장을 겹치고 뗀다 */
 async function maybeExtract(): Promise<void> {
   if (!bareCv || !madeCv) return;
-  const base = baseMode() === "ai" && aiBareCv ? aiBareCv : bareCv, baseName = base === bareCv ? "원래 맨얼굴" : "AI 가 그린 맨얼굴";
   setStatus("얼굴 점을 찾는 중…");
-  const [bl, ml, ol] = await Promise.all([lmOf(base), lmOf(madeCv), base === bareCv ? Promise.resolve(null) : lmOf(bareCv)]);
-  if (!bl || !ml) { setStatus(!bl ? `${baseName}에서 얼굴을 못 찾았어요` : "AI 화장 사진에서 얼굴을 못 찾았어요", true); return; }
+  const [bl, ml] = await Promise.all([lmOf(bareCv), lmOf(madeCv)]);
+  if (!bl || !ml) { setStatus(!bl ? "맨얼굴에서 얼굴을 못 찾았어요" : "AI 화장 사진에서 얼굴을 못 찾았어요", true); return; }
   // 두 사진 겹치기: 얼굴 점 468개로 아핀 — 튀는 점은 무시
   const ids = Array.from({ length: 468 }, (_, i) => i);
   const t = robustAffine(ids.map((i) => ml[i]!), ids.map((i) => bl[i]!), 1);
   if (!t) { setStatus("두 사진을 겹치지 못했어요", true); return; }
   const resid = ids.reduce((s, i) => s + Math.hypot(applyAffine(t, ml[i]!).x - bl[i]!.x, applyAffine(t, ml[i]!).y - bl[i]!.y), 0) / ids.length;
-  const bare = rgbaOf(base), made = rgbaOf(aligned(madeCv, t, base.width, base.height));
-  // 가이드를 원래 맨얼굴 위에도 — 기준 → 원래 맨얼굴 얼굴 점 아핀
-  const orig = base === bareCv ? bare : rgbaOf(bareCv);
-  const tb = ol ? robustAffine(ids.map((i) => bl[i]!), ids.map((i) => ol[i]!), 1) : null;
-  const toOrig = tb ? (p: Pt): Pt => applyAffine(tb, p) : (p: Pt): Pt => p;
+  const bare = rgbaOf(bareCv), made = rgbaOf(aligned(madeCv, t, bareCv.width, bareCv.height));
   const eyeW = Math.hypot(bl[33]!.x - bl[133]!.x, bl[33]!.y - bl[133]!.y);
   last = {
-    bare, made, lm: bl, parts: [], fit: [], crop: faceCrop(bl, bare.w, bare.h), orig, origCrop: faceCrop(ol ?? bl, orig.w, orig.h), toOrig,
-    info: `비교 기준: ${baseName} · 겹치기 오차 평균 ${resid.toFixed(1)}px (눈 폭의 ${((resid / eyeW) * 100).toFixed(1)}%)`,
+    bare, made, lm: bl, parts: [], outlines: [], crop: faceCrop(bl, bare.w, bare.h),
+    info: `겹치기 오차 평균 ${resid.toFixed(1)}px (눈 폭의 ${((resid / eyeW) * 100).toFixed(1)}%)`,
   };
   await extract();
 }
 
-/** 지금 스위치로 다시 떼기 — 사진 · 겹치기는 그대로 */
+/**
+ * 떼기 → 부위 · 좌우마다 화장 영역 테두리. 피부 변화 거르기는 끈다(EXTRACT 기본) — FLUX 는 칠하지 않은 곳이 원본 그대로라 차이가 깨끗하다.
+ * 조각 메우기 반지름 = 눈 폭 × 0.06, 버릴 작은 점 = (눈 폭 × 0.15)² — 눈대중 시작값
+ */
 async function extract(): Promise<void> {
   if (!last) return;
   setStatus("떼는 중…");
   await new Promise((r) => setTimeout(r, 0));
-  const opts = { ...EXTRACT, blur: optBlur.checked, skinMap: optMap.checked, chroma: optChroma.checked, adaptive: optAdaptive.checked };
-  const t0 = performance.now(), res = extractAll(last.bare, last.made, last.lm, opts), ms = Math.round(performance.now() - t0);
+  const t0 = performance.now(), res = extractAll(last.bare, last.made, last.lm, EXTRACT);
+  const eyeW = Math.hypot(last.lm[33]!.x - last.lm[133]!.x, last.lm[33]!.y - last.lm[133]!.y);
+  const opts = { close: Math.max(1, Math.round(eyeW * 0.06)), minArea: Math.max(12, Math.round((eyeW * 0.15) ** 2)) };
   last.parts = res.parts;
-  // 모양 숫자 재기 — 못 읽은 부위는 기본 틀(앱의 템플릿 가이드와 같은 계산)로
-  last.fit = fitMakeup(last.bare, last.made, last.lm, lookGuide({}), opts);
+  // klein 이 칠하는 곳은 얼굴 윤곽을 가운데 쪽으로 0.9 줄인 안(app_klein.py OVAL_KEEP) — 그 밖은 원본에 되붙일 때 머리카락 경계에 생긴 차이라
+  // 가이드에서 뺀다 (실사진: 볼 가이드에 얼굴 옆선 띠). 쉐딩 · 하이라이트(참고)도 뺀다 — klein 은 그 자리를 칠하지 않는다
+  const oval = FACE_OVAL.map((i) => last!.lm[i]!), c = oval.reduce((s, p) => ({ x: s.x + p.x / oval.length, y: s.y + p.y / oval.length }), { x: 0, y: 0 });
+  const paintArea = oval.map((p) => ({ x: c.x + (p.x - c.x) * 0.9, y: c.y + (p.y - c.y) * 0.9 }));
+  last.outlines = res.parts
+    .filter((p) => p.part !== "contour" && p.part !== "highlight")
+    .map((p) => {
+      const m = p.mask.slice();
+      for (let i = 0; i < m.length; i++) if (m[i] && !pointInPoly(i % res.w, Math.floor(i / res.w), paintArea)) m[i] = 0;
+      return { part: p.part, side: p.side, polys: maskOutlines(m, res.w, res.h, opts), count: p.count };
+    });
+  const ms = Math.round(performance.now() - t0);
   drawPartList(res.parts);
   render();
-  renderFit();
-  const sw = [optBlur.checked && "①", optMap.checked && "②", optChroma.checked && "③", optAdaptive.checked && "④"].filter(Boolean).join(" ") || "없음";
-  setStatus(`${last.info} · 떼기 ${ms}ms · 켠 거르기: ${sw} · 부위를 눌러 켜고 끄기`);
+  renderGuide();
+  setStatus(`${last.info} · 떼기 + 테두리 ${ms}ms · 부위를 눌러 켜고 끄기`);
 }
 
-/** 가이드 그리기 — 사진(자른 자리) 위에 부위 색 테두리. 사진에서 읽음 = 실선, 기본 틀 = 점선 */
-function drawFit(cv: HTMLCanvasElement, im: RgbaImage, crop: Crop, fit: readonly FitPart[], map: (p: Pt) => Pt = (p) => p): void {
+/** 가이드 그리기 — 사진(자른 자리) 위에 켠 부위의 화장 영역 테두리 (부위 색 실선) */
+function drawOutlines(cv: HTMLCanvasElement, im: RgbaImage, crop: Crop, outlines: readonly Outline[]): void {
   cv.width = crop.w; cv.height = crop.h;
   const g = cv.getContext("2d")!, id = g.createImageData(crop.w, crop.h);
   for (let y = 0; y < crop.h; y++) for (let x = 0; x < crop.w; x++) {
@@ -486,38 +452,30 @@ function drawFit(cv: HTMLCanvasElement, im: RgbaImage, crop: Crop, fit: readonly
   }
   g.putImageData(id, 0, 0);
   const lw = Math.max(2, crop.w / 300);
-  for (const f of fit) {
-    if (f.poly.length < 2) continue;
-    const c = PARTS.find((p) => p.id === f.part)!.color;
-    g.strokeStyle = `rgb(${c.join(",")})`;
-    g.lineWidth = lw;
-    g.setLineDash(f.fromPhoto ? [] : [lw * 3, lw * 2]);
-    const pts = f.poly.map(map);
-    g.beginPath();
-    g.moveTo(pts[0]!.x - crop.x, pts[0]!.y - crop.y);
-    for (const p of pts.slice(1)) g.lineTo(p.x - crop.x, p.y - crop.y);
-    g.closePath();
-    g.stroke();
+  g.lineWidth = lw;
+  for (const o of outlines) {
+    if (!on.has(o.part)) continue;
+    g.strokeStyle = `rgb(${PARTS.find((p) => p.id === o.part)!.color.join(",")})`;
+    for (const poly of o.polys) {
+      if (poly.length < 3) continue;
+      g.beginPath();
+      g.moveTo(poly[0]!.x - crop.x, poly[0]!.y - crop.y);
+      for (const p of poly.slice(1)) g.lineTo(p.x - crop.x, p.y - crop.y);
+      g.closePath();
+      g.stroke();
+    }
   }
 }
 
-function renderFit(): void {
+function renderGuide(): void {
   if (!last) return;
-  drawFit(cvFitBare, last.orig, last.origCrop, last.fit, last.toOrig);
-  drawFit(cvFitMade, last.made, last.crop, last.fit);
-  const side = (s: "R" | "L") => (s === "R" ? "사진 왼쪽" : "사진 오른쪽");
-  const n = (v: number | undefined, k = 1) => (v === undefined ? "-" : (v * k).toFixed(0));
-  fitInfo.textContent = last.fit.map((f) => {
-    const name = PARTS.find((p) => p.id === f.part)!.name;
-    if (!f.fromPhoto) return `${name} ${side(f.side)}: 못 읽음 → 기본 틀`;
-    if (f.part === "cheek") return `${name} ${side(f.side)}: 크기 ${n(f.params.rx)}×${n(f.params.ry)}px · 기울기 ${n(f.params.angle)}°`;
-    if (f.part === "shadow") return `${name} ${side(f.side)}: 눈꺼풀 → 눈썹 ${n(f.params.height, 100)}% 까지`;
-    return `${name} ${side(f.side)}: 두께 눈 폭의 ${n(f.params.thickness, 100)}% · 꼬리 ${n(f.params.wingLen, 100)}% · 각도 ${n(f.params.wingAngle)}°`;
-  }).join("\n");
+  drawOutlines(cvFitBare, last.bare, last.crop, last.outlines);
+  drawOutlines(cvFitMade, last.made, last.crop, last.outlines);
+  const side = (s: PartMask["side"]) => (s === "R" ? " 사진 왼쪽" : s === "L" ? " 사진 오른쪽" : "");
+  const lines = last.outlines.map((o) => `${PARTS.find((p) => p.id === o.part)!.name}${side(o.side)}: 테두리 ${o.polys.length}개 · ${o.count.toLocaleString()}px`);
+  fitInfo.textContent = lines.length ? lines.join("\n") : "화장 영역을 못 찾았어요";
 }
 
 heat.addEventListener("change", render);
-for (const o of [optBlur, optMap, optChroma, optAdaptive]) o.addEventListener("change", () => void extract());
-for (const r of document.querySelectorAll<HTMLInputElement>('input[name="base"]')) r.addEventListener("change", () => void maybeExtract());
-preview(bareView, null); preview(refView, null); preview(madeView, null); preview(aiBareView, null);
+preview(bareView, null); preview(refView, null); preview(madeView, null);
 refreshButtons();

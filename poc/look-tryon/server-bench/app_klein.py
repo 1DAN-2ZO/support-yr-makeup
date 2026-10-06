@@ -37,6 +37,7 @@ SIZE = 768          # 얼굴 정사각형을 이 크기로 그린다
 REF_SIZE = 512      # 참고 사진 크기 (작아도 화장은 옮겨 오고 더 빠르다)
 FACE_MARGIN = 1.3   # 얼굴 점 상자 긴 변의 몇 배로 자를지 (이마 꼭대기 ~ 턱이 이미 들어 있다)
 FEATHER = 0.08      # 원본에 되붙일 때 가장자리를 섞는 폭
+OVAL_KEEP = 0.9     # 칠할 영역은 얼굴 윤곽을 가운데 쪽으로 이만큼 줄인 안에서만
 PROMPT = ("Apply the makeup from the reference image (eyeshadow colors and placement, eyeliner, blush, lip color) to this woman's face. "
           "Keep her own skin tone, eye shape and identity.")
 
@@ -101,7 +102,10 @@ def makeup_mask(lm, size):
     m = m.filter(ImageFilter.MaxFilter(9)).filter(ImageFilter.GaussianBlur(4))
     keep = Image.new("L", (size, size), 0)
     kd = ImageDraw.Draw(keep)
-    kd.polygon([tuple(lm[k]) for k in FACE_OVAL], fill=255)
+    # 얼굴 윤곽보다 조금 안쪽까지만 — 윤곽 끝까지 칠하게 했더니 얼굴 · 머리카락 경계를 다시 그려 볼 가이드에 옆선 띠가 잡혔다
+    oval = np.array([lm[k] for k in FACE_OVAL])
+    c = oval.mean(axis=0)
+    kd.polygon([tuple(c + (p - c) * OVAL_KEEP) for p in oval], fill=255)
     for up, lo, *_ in EYES:
         kd.polygon([tuple(lm[k]) for k in up + lo[::-1]], fill=0)
     keep = keep.filter(ImageFilter.GaussianBlur(1.5))
