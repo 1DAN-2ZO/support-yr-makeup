@@ -9,7 +9,7 @@
 import type { FaceLandmarker } from "@mediapipe/tasks-vision";
 import { deltaE, foreheadLab, labAt, type RgbaImage } from "@core/color";
 import { applyAffine, robustAffine, type Affine } from "@core/eye-fit";
-import { extractAll, type ExtractPart, type PartMask } from "@core/makeup-extract";
+import { EXTRACT, extractAll, type ExtractPart, type PartMask } from "@core/makeup-extract";
 import type { Pt } from "@core/types";
 import { createLandmarker } from "./landmarker";
 
@@ -20,6 +20,7 @@ const $ = <T extends HTMLElement>(id: string): T => {
 };
 
 const bareIn = $<HTMLInputElement>("bare"), madeIn = $<HTMLInputElement>("made"), heat = $<HTMLInputElement>("heat");
+const optBlur = $<HTMLInputElement>("optBlur"), optMap = $<HTMLInputElement>("optMap"), optChroma = $<HTMLInputElement>("optChroma");
 const cvOnly = $<HTMLCanvasElement>("cvOnly"), cvBare = $<HTMLCanvasElement>("cvBare"), cvMade = $<HTMLCanvasElement>("cvMade");
 const statusEl = $("status"), partsEl = $("parts");
 
@@ -37,7 +38,7 @@ const on = new Set<ExtractPart>(PARTS.map((p) => p.id));
 
 let landmarker: Promise<FaceLandmarker> | null = null;
 let bareImg: ImageBitmap | null = null, madeImg: ImageBitmap | null = null;
-let last: { bare: RgbaImage; made: RgbaImage; lm: Pt[]; parts: PartMask[]; crop: { x: number; y: number; w: number; h: number } } | null = null;
+let last: { bare: RgbaImage; made: RgbaImage; lm: Pt[]; parts: PartMask[]; crop: { x: number; y: number; w: number; h: number }; info: string } | null = null;
 
 const setStatus = (text: string, warn = false): void => { statusEl.innerHTML = warn ? `<span class="warn">${text}</span>` : text; };
 
@@ -142,18 +143,27 @@ async function run(): Promise<void> {
   bc.width = bareImg.width; bc.height = bareImg.height;
   bc.getContext("2d", { willReadFrequently: true })!.drawImage(bareImg, 0, 0);
   const bare = rgbaOf(bc), made = rgbaOf(aligned(madeImg, t, bc.width, bc.height));
-  setStatus("떼는 중…");
-  await new Promise((r) => setTimeout(r, 0));
-  const t0 = performance.now(), res = extractAll(bare, made, bl), ms = Math.round(performance.now() - t0);
   // 얼굴 둘레만 크게 — 얼굴 점 상자 + 여백 12%
   const xs = bl.map((p) => p.x), ys = bl.map((p) => p.y), mx = (Math.max(...xs) - Math.min(...xs)) * 0.12, my = (Math.max(...ys) - Math.min(...ys)) * 0.12;
   const x0 = Math.max(0, Math.floor(Math.min(...xs) - mx)), y0 = Math.max(0, Math.floor(Math.min(...ys) - my));
   const crop = { x: x0, y: y0, w: Math.min(bare.w, Math.ceil(Math.max(...xs) + mx)) - x0, h: Math.min(bare.h, Math.ceil(Math.max(...ys) + my)) - y0 };
-  last = { bare, made, lm: bl, parts: res.parts, crop };
+  const eyeW = Math.hypot(bl[33]!.x - bl[133]!.x, bl[33]!.y - bl[133]!.y);
+  last = { bare, made, lm: bl, parts: [], crop, info: `겹치기 오차 평균 ${resid.toFixed(1)}px (눈 폭의 ${((resid / eyeW) * 100).toFixed(1)}%)` };
+  await extract();
+}
+
+/** 지금 스위치로 다시 떼기 — 사진 · 겹치기는 그대로 */
+async function extract(): Promise<void> {
+  if (!last) return;
+  setStatus("떼는 중…");
+  await new Promise((r) => setTimeout(r, 0));
+  const opts = { ...EXTRACT, blur: optBlur.checked, skinMap: optMap.checked, chroma: optChroma.checked };
+  const t0 = performance.now(), res = extractAll(last.bare, last.made, last.lm, opts), ms = Math.round(performance.now() - t0);
+  last.parts = res.parts;
   drawPartList(res.parts);
   render();
-  const eyeW = Math.hypot(bl[33]!.x - bl[133]!.x, bl[33]!.y - bl[133]!.y);
-  setStatus(`겹치기 오차 평균 ${resid.toFixed(1)}px (눈 폭의 ${((resid / eyeW) * 100).toFixed(1)}%) · 떼기 ${ms}ms · 부위를 눌러 켜고 끄기`);
+  const sw = [optBlur.checked && "①", optMap.checked && "②", optChroma.checked && "③"].filter(Boolean).join(" ") || "없음";
+  setStatus(`${last.info} · 떼기 ${ms}ms · 켠 거르기: ${sw} · 부위를 눌러 켜고 끄기`);
 }
 
 async function load(input: HTMLInputElement): Promise<ImageBitmap | null> {
@@ -163,3 +173,4 @@ async function load(input: HTMLInputElement): Promise<ImageBitmap | null> {
 bareIn.addEventListener("change", async () => { bareImg = await load(bareIn); void run(); });
 madeIn.addEventListener("change", async () => { madeImg = await load(madeIn); void run(); });
 heat.addEventListener("change", render);
+for (const o of [optBlur, optMap, optChroma]) o.addEventListener("change", () => void extract());

@@ -38,6 +38,12 @@
       <label>AI 화장 <input id="made" type="file" accept="image/*" /></label>
       <label><input id="heat" type="checkbox" /> AI 쪽을 색 차로 보기</label>
     </div>
+    <div class="bar" title="AI 가 피부까지 바꿀 때 거르기 — 하나씩 켜 보며 비교">
+      <b>피부 변화 거르기</b>
+      <label><input id="optBlur" type="checkbox" /> ① 잡티·모공 무시 (살짝 흐려 비교)</label>
+      <label><input id="optMap" type="checkbox" /> ② 피부 변화 지도로 빼기</label>
+      <label><input id="optChroma" type="checkbox" /> ③ 블러셔·섀도·입술은 색 위주</label>
+    </div>
     <div id="status">두 사진을 올려 주세요.</div>
     <div id="parts"></div>
     <div class="big"><figure><figcaption>뗀 화장만</figcaption><canvas id="cvOnly"></canvas></figure></div>

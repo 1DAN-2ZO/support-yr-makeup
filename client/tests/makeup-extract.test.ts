@@ -174,3 +174,51 @@ describe("화장 떼기 — 모든 부위", () => {
     expect(r.parts.filter((p) => p.part === "cheek").map((p) => p.side).sort()).toEqual(["L", "R"]);
   });
 });
+
+// ---------- AI 가 피부까지 바꿀 때 (2026-10-06 사용자: 피부 보정까지 같이 떼 온다) ----------
+// 스위치 셋 — blur: 잡티 · 모공 차이 무시 · skinMap: 피부 변화를 얼굴 여러 자리에서 재 지도로 빼기 · chroma: 블러셔 · 섀도 · 입술은 색 위주
+describe("화장 떼기 — AI 피부 변화 거르기 (스위치)", () => {
+  const total = (r: ReturnType<typeof extractAll>) => r.parts.reduce((s, p) => s + p.count, 0);
+  const add = (c: Rgb, k: number): Rgb => [c[0] + k, c[1] + k, c[2] + k];
+  /** 맨얼굴 잔무늬(잡티 · 모공 흉내): 픽셀마다 ±9 */
+  const speck = (x: number, y: number) => (((x * 73 + y * 151) % 7) - 3) * 3;
+  const textured = image((x, y) => { const c = naturalPaint(x, y); return c ? c : add(SKIN, speck(x, y)); });
+  const smooth = image((x, y) => naturalPaint(x, y) ?? SKIN);
+
+  it("Y1 blur — AI 가 잡티 · 모공만 지우면, 켜면 안 뗀다 (끄면 잔무늬를 화장으로 뗀다)", () => {
+    expect(total(extractAll(textured, smooth, LMS))).toBeGreaterThan(500);
+    expect(total(extractAll(textured, smooth, LMS, { ...EXTRACT, blur: true }))).toBeLessThan(EXTRACT.minPixels * 2);
+  });
+
+  it("Y2 skinMap — 얼굴 한쪽만 밝아지면(고르지 않은 톤 변화), 켜면 안 뗀다 (끄면 이마 한 곳으로만 빼서 남는다)", () => {
+    // 사진 왼쪽 0 → 오른쪽 +40 으로 밝아짐 (이마 가운데는 +20)
+    const tilt = image((x, y) => { const c = naturalPaint(x, y) ?? SKIN; return add(c, (x / 600) * 40); });
+    expect(total(extractAll(smooth, tilt, LMS))).toBeGreaterThan(500);
+    expect(total(extractAll(smooth, tilt, LMS, { ...EXTRACT, skinMap: true }))).toBeLessThan(EXTRACT.minPixels * 2);
+  });
+
+  it("Y3 chroma — 볼이 밝아지기만 하면(색은 그대로), 켜면 블러셔로 안 본다 · 진짜 블러셔(색)는 켜도 뗀다", () => {
+    const zones = (["R", "L"] as const).map((s) => truth[s]);
+    const bright = image((x, y) => zones.some((q) => pointInPoly(x, y, q)) ? add(SKIN, 12) : SKIN);
+    const cheekOf = (r: ReturnType<typeof extractAll>) => r.parts.filter((p) => p.part === "cheek").reduce((s, p) => s + p.count, 0);
+    expect(cheekOf(extractAll(BARE.im, bright, LMS))).toBeGreaterThan(500);
+    expect(cheekOf(extractAll(BARE.im, bright, LMS, { ...EXTRACT, chroma: true }))).toBeLessThan(EXTRACT.minPixels * 2);
+    expect(cheekOf(extractAll(BARE.im, blushImage(), LMS, { ...EXTRACT, chroma: true }))).toBeGreaterThan(500);
+  });
+
+  it("Y5 blur 를 켜도 AI 사진이 닿지 않는 빈칸 경계가 번져 화장으로 잡히지 않는다", () => {
+    const made = blushImage(undefined, 0);   // 화장 없음
+    for (let y = 0; y < made.h; y++) for (let x = 0; x < 200; x++) { const i = (y * made.w + x) * 4; made.data[i] = 0; made.data[i + 1] = 0; made.data[i + 2] = 0; made.data[i + 3] = 0; }
+    expect(total(extractAll(BARE.im, made, LMS, { ...EXTRACT, blur: true }))).toBeLessThan(EXTRACT.minPixels * 2);
+  });
+
+  it("Y4 셋 다 켜도 부위 화장은 그대로 뗀다 — 입술 · 라이너 · 블러셔", () => {
+    const all = { ...EXTRACT, blur: true, skinMap: true, chroma: true };
+    const nat = (extra?: Paint) => image((x, y) => extra?.(x, y) ?? naturalPaint(x, y));
+    const bare = nat();
+    const cnt = (r: ReturnType<typeof extractAll>, part: ExtractPart) => r.parts.filter((p) => p.part === part).reduce((s, p) => s + p.count, 0);
+    expect(cnt(extractAll(bare, nat(lipPaint), LMS, all), "lip")).toBeGreaterThan(1000);
+    expect(cnt(extractAll(bare, nat(linerPaint()), LMS, all), "liner")).toBeGreaterThan(300);
+    expect(cnt(extractAll(BARE.im, blushImage(), LMS, all), "cheek")).toBeGreaterThan(500);
+  });
+});
