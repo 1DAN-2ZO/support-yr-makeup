@@ -71,6 +71,26 @@ function el(id: string): HTMLElement {
   return found;
 }
 
+function showBootError(e: unknown): void {
+  console.error(e);
+  const root = el("screen");
+  root.textContent = "";
+  const box = document.createElement("div");
+  box.className = "unavailable";
+  const h = document.createElement("h1");
+  h.textContent = "앱을 다시 열어 주세요";
+  const p = document.createElement("p");
+  p.className = "muted";
+  p.textContent = "초기 화면을 불러오지 못했어요. 새로고침하면 다시 시작합니다.";
+  const again = document.createElement("button");
+  again.type = "button";
+  again.className = "primary";
+  again.textContent = "새로고침";
+  again.addEventListener("click", () => location.reload());
+  box.append(h, p, again);
+  root.append(box);
+}
+
 async function boot(): Promise<void> {
   let session: Session = createSession();
 

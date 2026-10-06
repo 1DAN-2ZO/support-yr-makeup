@@ -76,8 +76,6 @@ export interface ShotSpec {
 export const SHOTS: readonly ShotSpec[] = [
   { id: "front_open", name: "정면 · 눈 뜸", yaw: [-10, 10], eyes: "open" },
   { id: "front_closed", name: "정면 · 눈 감음", yaw: [-10, 10], eyes: "closed" },
-  { id: "left_45", name: "왼쪽 45°", yaw: [-60, -22], eyes: "open" },
-  { id: "right_45", name: "오른쪽 45°", yaw: [22, 60], eyes: "open" },
 ];
 
 /**
@@ -89,14 +87,14 @@ export const CAPTURE_GUIDE = {
   title: "카메라 준비",
   lines: [
     "앞머리를 넘겨서 이마가 다 보이게 해 주세요",
-    "머리카락을 귀 뒤로 넘겨서 양쪽 귀가 다 보이게 해 주세요",
+    "머리카락이나 손이 얼굴을 가리지 않게 해 주세요",
     "안경을 쓰셨다면 벗어 주세요",
   ],
   button: "카메라 켜기",
 } as const;
 
-/** 서버(법선 정밀화)로 보내는 3장. 눈 감음 장은 폰에만 남는다 (F-01) */
-export const SERVER_SHOTS: readonly ShotId[] = ["front_open", "left_45", "right_45"];
+/** 새 흐름은 서버 개인화를 하지 않는다. 정면 눈 뜬 사진만 후속 화면 기준으로 쓴다 */
+export const SERVER_SHOTS: readonly ShotId[] = ["front_open"];
 
 /** 촬영 조건 한계. 화면 4 게이트(gate.ts, 1-9)와 값을 맞춘다 */
 export interface CaptureLimits {

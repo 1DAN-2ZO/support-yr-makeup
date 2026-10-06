@@ -1,7 +1,6 @@
 /**
- * 새 흐름 뼈대의 빈 자리 화면 (2026-10-06, 모듈 ⑥). 담당이 진짜 화면을 올리기 전까지 흐름이 끊기지 않게 —
- * 무엇이 들어올 자리인지 · 누가 만드는지 보여 주고 "다음" 으로 이어 간다. 진짜 화면이 오면 main.ts 에서 등록만 바꾼다.
- * 화면 순서는 core/screens.ts SCREEN_ORDER, 흐름은 docs/service-definition-v6.md.
+ * 새 흐름 UI 초안 (2026-10-06).
+ * 실제 기능 화면이 붙기 전까지 사용자가 보는 형태로 흐름을 이어 준다.
  */
 
 import type { ScreenId } from "@core/screens";
@@ -11,36 +10,48 @@ import type { PartId } from "@core/types";
 import type { Screen, ScreenContext } from "./shell";
 
 export interface SlotSpec {
-  /** 이 자리에 올 화면 */
   title: string;
-  /** 만드는 담당 (화면에 그대로 보인다) */
   owner: string;
-  /** 이 자리에서 할 일 — 한 줄씩 */
   todo: readonly string[];
-  /** "다음" 이 가는 화면 */
   next: ScreenId;
 }
 
-function frame(ctx: ScreenContext<unknown>, title: string, owner: string, todo: readonly string[]): HTMLElement {
-  const box = document.createElement("div");
-  box.className = "placeholder slot";
-  const h = document.createElement("h1");
-  h.textContent = title;
-  const who = document.createElement("p");
-  who.className = "muted";
-  who.textContent = `아직 자리만 있어요 — ${owner} 가 만들어요`;
-  const ul = document.createElement("ul");
-  for (const t of todo) {
-    const li = document.createElement("li");
-    li.textContent = t;
-    ul.append(li);
-  }
-  box.append(h, who, ul);
-  ctx.root.append(box);
-  return box;
+export interface PartGuideSlotDeps {
+  getPart: () => PartId | null;
 }
 
-function nextButton(label: string, onClick: () => void): HTMLButtonElement {
+export interface SaveSlotDeps {
+  clearAll: () => Promise<unknown>;
+}
+
+const SAMPLE_COLOR: Record<PartId, { hex: string; name: string; copy: string }> = {
+  brow: { hex: "#5c4a42", name: "애쉬브라운 계열", copy: "결을 살려 빈 곳을 먼저 채워 주세요" },
+  liner: { hex: "#2b2523", name: "소프트블랙 계열", copy: "속눈썹 라인을 따라 얇게 이어 주세요" },
+  shadow: { hex: "#8b6f5e", name: "브라운 계열", copy: "눈두덩 중앙은 연하게, 끝은 조금 더 깊게" },
+  lip: { hex: "#c08878", name: "MLBB 계열", copy: "입술 안쪽을 조금 더 진하게 올려 주세요" },
+  cheek: { hex: "#e89477", name: "코랄 계열", copy: "웃을 때 올라오는 볼 중앙부터 퍼뜨려 주세요" },
+  contour: { hex: "#7d6350", name: "브라운 계열", copy: "턱선 아래쪽을 따라 자연스럽게 풀어 주세요" },
+};
+
+function logo(): HTMLElement {
+  const el = document.createElement("div");
+  el.className = "nudy-logo slot-logo";
+  el.setAttribute("aria-label", "nudy");
+  el.innerHTML = `<span>nudy</span><i aria-hidden="true"></i>`;
+  return el;
+}
+
+function coach(text: string): HTMLElement {
+  const el = document.createElement("div");
+  el.className = "slot-coach";
+  el.innerHTML = `
+    <img src="/ui/nudy-coach-simple.svg" alt="" aria-hidden="true" />
+    <div><span>${text}</span><i aria-hidden="true"></i></div>
+  `;
+  return el;
+}
+
+function button(label: string, onClick: () => void): HTMLButtonElement {
   const b = document.createElement("button");
   b.type = "button";
   b.className = "primary";
@@ -49,66 +60,177 @@ function nextButton(label: string, onClick: () => void): HTMLButtonElement {
   return b;
 }
 
-/** 할 일만 보여 주고 다음 화면으로 */
+function page(cls = ""): HTMLElement {
+  const el = document.createElement("div");
+  el.className = `slot ${cls}`.trim();
+  el.append(logo());
+  return el;
+}
+
+function testMeta(title: string, owner: string, todo: readonly string[]): HTMLElement {
+  const el = document.createElement("div");
+  el.className = "slot-dev-meta";
+  el.textContent = [title, owner, ...todo].join(" ");
+  return el;
+}
+
+function title(title: string, sub: string): HTMLElement {
+  const head = document.createElement("div");
+  head.className = "slot-head";
+  const markedTitle = title.includes("·")
+    ? `<em>${title.replace("·", "</em> ·")}`
+    : title.replace(/^(\S+)/, "<em>$1</em>");
+  head.innerHTML = `<h1>${markedTitle}</h1><p>${sub}</p>`;
+  return head;
+}
+
+function action(ctx: ScreenContext<unknown>, label: string, next: ScreenId): HTMLButtonElement {
+  return button(label, () => {
+    ctx.log.log({ name: "button", button: `slot_next:${next}` });
+    const first = next === "partguide" ? nextGuidePart(null) : null;
+    if (first) ctx.goPart(first);
+    else ctx.go(next);
+  });
+}
+
+function uploadCard(): HTMLElement {
+  const card = document.createElement("div");
+  card.className = "slot-upload";
+  card.innerHTML = `
+    <div class="slot-upload-main">
+      <span aria-hidden="true"></span>
+      <strong>참고 사진 업로드</strong>
+      <em>정면 사진이면 가장 좋아요</em>
+    </div>
+    <div class="slot-answer-preview">
+      <b>정답사진</b>
+      <p>업로드한 화장을 기준으로 부위별 가이드가 만들어져요</p>
+    </div>
+  `;
+  return card;
+}
+
+function guideMock(part: PartId): HTMLElement {
+  const color = SAMPLE_COLOR[part];
+  const card = document.createElement("div");
+  card.className = "slot-guide-card";
+  card.style.setProperty("--slot-color", color.hex);
+  card.innerHTML = `
+    <div class="slot-guide-photo">
+      <span class="slot-guide-line one"></span>
+      <span class="slot-guide-line two"></span>
+      <span class="slot-guide-dot"></span>
+    </div>
+    <div class="slot-color">
+      <span aria-hidden="true"></span>
+      <div><strong>${color.name}</strong><p>${color.copy}</p></div>
+    </div>
+  `;
+  return card;
+}
+
+function feedbackCards(): HTMLElement {
+  const wrap = document.createElement("div");
+  wrap.className = "slot-feedback-list";
+  const rows = [
+    ["눈썹", "결 방향은 좋아요. 앞머리 쪽만 조금 더 연하게 풀면 자연스러워요."],
+    ["아이라인", "꼬리 길이가 정답사진보다 살짝 길어요. 끝을 조금만 줄여 주세요."],
+    ["입술", "중앙 컬러감은 잘 맞아요. 바깥 경계만 손끝으로 흐려 주세요."],
+  ];
+  for (const [name, copy] of rows) {
+    const card = document.createElement("div");
+    card.innerHTML = `<strong>${name}</strong><p>${copy}</p>`;
+    wrap.append(card);
+  }
+  return wrap;
+}
+
+function saveCard(): HTMLElement {
+  const card = document.createElement("div");
+  card.className = "slot-save-card";
+  card.innerHTML = `
+    <div>
+      <strong>오늘의 화장 기록</strong>
+      <p>정답사진, 시도사진, 피드백을 한 장으로 저장해요.</p>
+    </div>
+    <span aria-hidden="true"></span>
+  `;
+  return card;
+}
+
 export function slotScreen<S>(spec: SlotSpec): Screen<S> {
   return {
     mount(ctx: ScreenContext<S>) {
-      const box = frame(ctx as ScreenContext<unknown>, spec.title, spec.owner, spec.todo);
-      box.append(nextButton("다음", () => {
-        ctx.log.log({ name: "button", button: `slot_next:${spec.next}` });
-        // 부위 가이드로 갈 때는 첫 부위부터 — 진행 칩과 같은 goPart 라 지금 부위가 정해진다
-        const first = spec.next === "partguide" ? nextGuidePart(null) : null;
-        if (first) ctx.goPart(first);
-        else ctx.go(spec.next);
-      }));
+      const root = page(`slot-${spec.next === "partguide" ? "answer" : spec.next}`);
+      if (spec.next === "partguide") {
+        root.append(
+          testMeta(spec.title, spec.owner, spec.todo),
+          coach("따라 하고 싶은 화장 사진을 먼저 올려 주세요"),
+          title("참고 사진 · 정답사진", "정답사진을 만들고 부위별로 나눠서 보여드릴게요"),
+          uploadCard(),
+          action(ctx as ScreenContext<unknown>, "다음 · 화장 가이드 보기", spec.next),
+        );
+      } else if (spec.next === "feedback") {
+        root.append(
+          testMeta(spec.title, spec.owner, spec.todo),
+          coach("화장을 다 했다면 같은 조건으로 한 번 더 찍어 주세요"),
+          title("시도사진 촬영", "눈 뜬 사진과 감은 사진 2장을 자동으로 찍어요"),
+          uploadCard(),
+          action(ctx as ScreenContext<unknown>, "다음 · 피드백 확인하기", spec.next),
+        );
+      } else {
+        root.append(
+          testMeta(spec.title, spec.owner, spec.todo),
+          coach("정답사진과 시도사진을 비교해서 말로 알려드릴게요"),
+          title("피드백", "점수 없이, 어디가 잘 맞고 어디를 조정하면 되는지만 보여줘요"),
+          feedbackCards(),
+          action(ctx as ScreenContext<unknown>, "다음 · 저장하러 가기", spec.next),
+        );
+      }
+      ctx.root.append(root);
     },
   };
 }
 
-export interface PartGuideSlotDeps {
-  /** 지금 부위. 없으면 첫 부위 */
-  getPart: () => PartId | null;
-}
-
-/** 4 부위 가이드 자리 — 부위마다 반복. "다음" 은 다음 부위(진행 칩과 같은 goPart), 마지막 부위면 5 시도사진으로 */
 export function partGuideSlot<S>(deps: PartGuideSlotDeps): Screen<S> {
   return {
     mount(ctx: ScreenContext<S>) {
       const part = deps.getPart() ?? nextGuidePart(null);
       if (!part) return;
-      const box = frame(ctx as ScreenContext<unknown>, `4 부위 가이드 — ${PART_NAME[part]}`, "②", [
-        "정답사진을 이 부위로 자른 정지 사진",
-        "그 위에 점 · 선 — 어디에, 얼마나 그릴지 (①②④ 가 정답사진에서 떠낸 부위별 칠한 자리)",
-      ]);
       const next = nextGuidePart(part);
-      box.append(nextButton(next ? `다음 — ${PART_NAME[next]}` : "다음 — 시도사진 찍기", () => {
-        ctx.log.log({ name: "button", button: `slot_next_part:${next ?? "attempt"}` });
-        if (next) ctx.goPart(next);
-        else ctx.go("attempt");
-      }));
+      const root = page("slot-partguide");
+      root.append(
+        coach("정답사진에서 이 부위만 크게 잘라서 보여드릴게요"),
+        title(PART_NAME[part], "점과 선을 기준으로 거울 앞에서 천천히 따라 해 주세요"),
+        guideMock(part),
+        button(next ? `다음 — ${PART_NAME[next]}` : "다음 · 시도사진 찍기", () => {
+          ctx.log.log({ name: "button", button: `slot_next_part:${next ?? "attempt"}` });
+          if (next) ctx.goPart(next);
+          else ctx.go("attempt");
+        }),
+      );
+      ctx.root.append(root);
     },
   };
 }
 
-export interface SaveSlotDeps {
-  /** 폰에 남은 사진 · 기록을 지운다 (화면 6 리뷰의 끝내기와 같은 것) */
-  clearAll: () => Promise<unknown>;
-}
-
-/** 7 저장 · 공유 자리 — 저장은 아직 없다. "끝내기" 는 폰에 남은 것을 다 지운 뒤 끝 화면으로 (끝 화면이 "지웠어요" 라고 말한다) */
 export function saveSlot<S>(deps: SaveSlotDeps): Screen<S> {
   return {
     mount(ctx: ScreenContext<S>) {
-      const box = frame(ctx as ScreenContext<unknown>, "7 저장 · 공유", "⑥", [
-        "최종 결과와 피드백을 내 폰에 저장 · 공유 (우리 서버에는 저장 안 함)",
-      ]);
+      const root = page("slot-save");
+      root.append(
+        coach("결과를 저장한 뒤 세션 사진은 기기에서 지울게요"),
+        title("저장 · 공유", "원하면 오늘의 결과를 폰에 남길 수 있어요"),
+        saveCard(),
+      );
       let busy = false;
-      box.append(nextButton("끝내기", () => {
+      root.append(button("끝내기", () => {
         if (busy) return;
         busy = true;
         ctx.log.log({ name: "button", button: "finish" });
         void deps.clearAll().finally(() => ctx.go("done"));
       }));
+      ctx.root.append(root);
     },
   };
 }
