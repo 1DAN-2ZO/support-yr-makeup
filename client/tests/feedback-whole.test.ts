@@ -1,6 +1,8 @@
 // 새 흐름 화면 6 — 잰 값을 부위별 문장으로 (점수 없음). 기준값은 2026-10-06 실험에서 잰 흔들림 폭에서 왔다 (eval/samples/shape/README.md 실험 19~36)
 import { describe, expect, it } from "vitest";
-import { FEEDBACK, composeFeedback, type WholeMeasures } from "@core/feedback-whole";
+import { FEEDBACK, composeFeedback, shotCondition, type WholeMeasures } from "@core/feedback-whole";
+import { frameOf } from "@core/sampling";
+import { H, LMS, W, image } from "./helpers/synth-face";
 
 const good: WholeMeasures = {
   lip: { target: 9, amount: 0.9, out: 0, outTarget: 0, upper: 0.85, lower: 1 },
@@ -95,5 +97,36 @@ describe("고치는 방법 (fix) — 방향만 말한다", () => {
     for (const p of r.parts) expect(p.fix ?? "").not.toMatch(/\d/);
     expect(r.fix).toEqual(["라이너", "볼", "입술"]);
     expect(r.ok).toEqual(["눈썹", "섀도우"]);
+  });
+});
+
+// 사진 조건 확인 — 맨얼굴과 시도사진이 견줄 만한 조건으로 찍혔나. 안 맞으면 판정하지 않고 다시 찍게 한다
+describe("사진 조건 확인 (shotCondition)", () => {
+  const base = frameOf(image(), LMS);
+  const scaled = (k: number) => frameOf(image(), LMS.map((p) => ({ x: W / 2 + (p.x - W / 2) * k, y: H / 2 + (p.y - H / 2) * k })));
+  const rolled = (deg: number) => { const r = (deg * Math.PI) / 180; return frameOf(image(), LMS.map((p) => ({ x: W / 2 + (p.x - W / 2) * Math.cos(r) - (p.y - H / 2) * Math.sin(r), y: H / 2 + (p.x - W / 2) * Math.sin(r) + (p.y - H / 2) * Math.cos(r) }))); };
+
+  it("K1 같은 조건이면 통과 (null)", () => {
+    expect(shotCondition(base, frameOf(image(), LMS))).toBeNull();
+    expect(shotCondition(base, scaled(0.94))).toBeNull();          // 잘 됐던 쌍의 크기 비 0.93~1.00
+    expect(shotCondition(base, frameOf(image(() => null, 0.97), LMS))).toBeNull();
+  });
+
+  it("K2 밝기가 많이 다르면 'light'", () => {
+    expect(shotCondition(base, frameOf(image(() => null, 0.8), LMS))).toBe("light");
+  });
+
+  it("K3 얼굴 크기가 많이 다르면 'size' — 틀렸던 쌍은 0.82 이하 · 1.44 이상이었다", () => {
+    expect(shotCondition(base, scaled(0.8))).toBe("size");
+    expect(shotCondition(base, scaled(1.3))).toBe("size");
+  });
+
+  it("K4 고개가 많이 기울면 'pose'", () => {
+    expect(shotCondition(base, rolled(7))).toBe("pose");
+    expect(shotCondition(base, rolled(2))).toBeNull();
+  });
+
+  it("K5 걸리면 composeFeedback 이 판정 대신 다시 찍어 달라고 한다", () => {
+    expect(composeFeedback({ ...good, condition: "pose" }).blocked).toBe("처음 찍은 사진과 고개 각도가 많이 달라요. 정면을 보고 다시 찍어 주세요");
   });
 });

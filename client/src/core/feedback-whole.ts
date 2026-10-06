@@ -14,6 +14,36 @@
  * 양(amount) = 정답 그림의 변화 방향으로 바뀐 크기 ÷ 정답 변화의 크기 (0 = 맨얼굴 그대로 · 1 = 정답만큼)
  */
 
+import { LM, at } from "./landmarks";
+import { sampleForehead, type SampleFrame } from "./sampling";
+
+/**
+ * 사진 조건 (실험 37, eval/samples/shape/shot_condition.py): 판정이 맞았던 쌍은 이마 밝기 차 0.7 · 색 차 1.6 · 크기 비 0.93~1.00 · 기울기 차 1도,
+ * 틀렸던 쌍은 크기 비 0.82 이하 · 1.44 이상(가짜 라이너 꼬리 · 눈썹 치우침), 색 차 6.8 · 밝기 차 3.1 · 기울기 6도(다른 날 · 다른 곳)
+ */
+export const CONDITION = { light: 2.5, color: 4.5, sizeLo: 0.87, sizeHi: 1.15, roll: 5, turn: 0.08 } as const;
+
+export type ShotCondition = "light" | "size" | "pose";
+
+/**
+ * 맨얼굴과 시도사진이 견줄 만한 조건으로 찍혔나 — 안 맞으면 무엇이 다른지, 맞으면 null. 판정 앞에 두고, 걸리면 다시 찍게 한다.
+ * 밝기 · 색 = 이마(화장을 안 하는 자리)의 Lab 차 · 크기 = 눈 폭 ÷ 사진 가로의 비 · 고개 = 두 눈을 잇는 선의 기울기와, 코끝이 두 눈 가운데에서 벗어난 정도(두 눈 사이 대비)
+ * 이마가 머리카락에 가려 못 재면 밝기는 건너뛴다 (모르는 것이지 다른 것이 아니다)
+ */
+export function shotCondition(bare: SampleFrame, cur: SampleFrame): ShotCondition | null {
+  const C = CONDITION, size = (f: SampleFrame): number => f.unit.eye / f.im.w, ratio = size(cur) / size(bare);
+  if (ratio < C.sizeLo || ratio > C.sizeHi) return "size";
+  const pose = (f: SampleFrame): { roll: number; x: number; y: number } => {
+    const r = at(f.lm, LM.eyeA.outer), l = at(f.lm, LM.eyeB.outer), n = at(f.lm, 4), gap = Math.hypot(l.x - r.x, l.y - r.y) || 1;
+    return { roll: (Math.atan2(l.y - r.y, l.x - r.x) * 180) / Math.PI, x: (n.x - (r.x + l.x) / 2) / gap, y: (n.y - (r.y + l.y) / 2) / gap };
+  };
+  const pb = pose(bare), pc = pose(cur);
+  if (Math.abs(pc.roll - pb.roll) > C.roll || Math.abs(pc.x - pb.x) > C.turn || Math.abs(pc.y - pb.y) > C.turn) return "pose";
+  const fb = sampleForehead(bare), fc = sampleForehead(cur);
+  if (fb && fc && (Math.abs(fc.L - fb.L) > C.light || Math.hypot(fc.a - fb.a, fc.b - fb.b) > C.color)) return "light";
+  return null;
+}
+
 export const FEEDBACK = {
   /** 정답 그림의 변화가 이보다 작으면(Lab 거리) 그 부위는 견줄 것이 없다 — 따로 찍은 사진 사이의 잡음이 5~7 */
   minTarget: 8,
@@ -39,8 +69,8 @@ export type FeedbackPartId = "brow" | "shadow" | "liner" | "cheek" | "lip";
 export type FeedbackTone = "ok" | "fix" | "info";
 
 export interface WholeMeasures {
-  /** 사진 조건이 맨얼굴과 달라 판정하지 않는다: 밝기 · 얼굴 크기 */
-  condition?: "light" | "size";
+  /** 사진 조건이 맨얼굴과 달라 판정하지 않는다 (shotCondition): 밝기 · 얼굴 크기 · 고개 각도 */
+  condition?: ShotCondition;
   /** out = 입술선 바깥 띠의 양 · upper / lower = 윗입술 · 아랫입술의 양 */
   lip?: { target: number; amount: number; out: number; outTarget: number; upper: number; lower: number };
   /** higher = 정답이 안 칠한 위쪽 구역까지 칠했다 · outer = 눈꼬리 바깥 구역의 양 */
@@ -78,6 +108,7 @@ const SAME = "정답과 비슷해요", NO_TARGET = "정답 화장에서 변화�
 const BLOCK = {
   light: "처음 찍은 사진과 밝기가 많이 달라요. 같은 자리에서 다시 찍어 주세요",
   size: "처음 찍은 사진과 얼굴 크기가 많이 달라요. 같은 거리에서 다시 찍어 주세요",
+  pose: "처음 찍은 사진과 고개 각도가 많이 달라요. 정면을 보고 다시 찍어 주세요",
 };
 /** [문장, 고치는 방법] */
 type Say = readonly [string, string];
