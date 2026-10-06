@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <title>화장 떼기 POC — 당화응</title>
+    <!--
+      [dev 전용] 화장 떼기 POC (2026-10-06) — AI 가 내 얼굴에 입힌 화장 사진에서 화장 모양을 떼서 맨얼굴 위 가이드로.
+      맨얼굴 사진 + AI 화장 사진을 올리면, 얼굴 점으로 두 사진을 겹치고 부위별로 뗀다 (지금은 블러셔).
+      앱 흐름과 상관없는 독립 페이지다. 사진은 브라우저 안에서만 쓰고 저장하지 않는다.
+    -->
+    <style>
+      :root { color-scheme: light dark; --line: #8884; }
+      body { margin: 0; padding: 16px; font: 14px/1.5 system-ui, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; background: Canvas; color: CanvasText; }
+      h1 { font-size: 18px; margin: 0 0 4px; }
+      .note { margin: 0 0 12px; opacity: .75; font-size: 13px; }
+      .bar { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
+      #status { font-size: 14px; margin: 6px 0; min-height: 1.5em; white-space: pre-line; font-variant-numeric: tabular-nums; }
+      .warn { color: #d9480f; font-weight: 600; }
+      .row { display: flex; gap: 12px; flex-wrap: wrap; }
+      figure { margin: 0; flex: 1 1 360px; max-width: 560px; }
+      figcaption { font-size: 13px; opacity: .8; margin-bottom: 4px; }
+      canvas { width: 100%; height: auto; border-radius: 8px; background: #000; display: block; }
+    </style>
+  </head>
+  <body>
+    <h1>화장 떼기 POC</h1>
+    <p class="note">맨얼굴 사진과, 같은 사람에게 AI 가 화장을 입힌 사진을 올려 주세요. 두 사진을 얼굴 점으로 겹친 뒤 화장 모양을 떼서 맨얼굴 위에 가이드로 보여 줘요. 지금은 블러셔만.</p>
+    <div class="bar">
+      <label>맨얼굴 <input id="bare" type="file" accept="image/*" /></label>
+      <label>AI 화장 <input id="made" type="file" accept="image/*" /></label>
+      <label><input id="heat" type="checkbox" /> 색 차 보기</label>
+    </div>
+    <div id="status">두 사진을 올려 주세요.</div>
+    <div class="row">
+      <figure><figcaption>맨얼굴 + 뗀 가이드</figcaption><canvas id="cvBare"></canvas></figure>
+      <figure><figcaption>AI 화장 (맨얼굴에 맞춤) + 같은 선</figcaption><canvas id="cvMade"></canvas></figure>
+    </div>
+    <script type="module" src="/src/screens/makeup-extract-probe.ts"></script>
+  </body>
+</html>

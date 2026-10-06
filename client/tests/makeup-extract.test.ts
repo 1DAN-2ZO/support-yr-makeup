@@ -70,6 +70,15 @@ describe("화장 떼기 — 블러셔", () => {
     expect(BLUSH_EXTRACT.minDeltaE).toBeGreaterThan(0);
   });
 
+  it("X5 AI 사진이 닿지 않는 빈칸(투명 — 맞춰 넣고 남은 바깥)은 화장으로 안 본다", () => {
+    const made = blushImage(undefined, 0);   // 화장 없음
+    // 사진 왼쪽 볼 쪽 절반을 빈칸으로 (검정 · 투명)
+    for (let y = 0; y < made.h; y++) for (let x = 0; x < 200; x++) { const i = (y * made.w + x) * 4; made.data[i] = 0; made.data[i + 1] = 0; made.data[i + 2] = 0; made.data[i + 3] = 0; }
+    const got = extractCheek(BARE.im, made, LMS);
+    expect(got.R).toBeNull();
+    expect(got.L).toBeNull();
+  });
+
   it("X4 진하기(가장 진한 곳 색 차)도 같이 알려 준다 — 진할수록 크다", () => {
     const light = extractCheek(BARE.im, blushImage(undefined, 0.2), LMS).R!, deep = extractCheek(BARE.im, blushImage(undefined, 0.45), LMS).R!;
     expect(deep.peakDeltaE).toBeGreaterThan(light.peakDeltaE);

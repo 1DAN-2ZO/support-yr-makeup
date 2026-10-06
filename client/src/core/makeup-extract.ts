@@ -86,6 +86,8 @@ export function extractCheek(bare: RgbaImage, made: RgbaImage, lm: readonly Pt[]
       for (let x = Math.max(0, Math.floor(Math.min(...xs))); x <= Math.min(bare.w - 1, Math.ceil(Math.max(...xs))); x++) {
         const q = z.f.to({ x, y });
         if (q.a < z.a0 || q.a > z.a1 || q.b < z.b0 || q.b > z.b1) continue;
+        // AI 사진이 닿지 않는 빈칸(맞춰 넣고 남은 바깥, 투명)은 건너뛴다
+        if ((made.data[(y * made.w + x) * 4 + 3] ?? 255) < 250) continue;
         const m = labAt(made, x, y);
         px.push({ x, y, d: deltaE(labAt(bare, x, y), { L: m.L - shift.L, a: m.a - shift.a, b: m.b - shift.b }) });
       }
