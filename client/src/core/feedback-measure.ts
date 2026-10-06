@@ -11,7 +11,7 @@
 import { pointInPoly, rgbToLab, type RgbaImage } from "./color";
 import { FEEDBACK, composeFeedback, shotCondition, type WholeFeedback, type WholeMeasures } from "./feedback-whole";
 import { LM, at } from "./landmarks";
-import { frameOf, isHair, type SampleFrame } from "./sampling";
+import { frameOf, isHair, labBox, type SampleFrame } from "./sampling";
 import { scoreWhole } from "./score-shape";
 import type { Pt } from "./types";
 
@@ -123,6 +123,38 @@ function shadowMeasure(fs: Frames): WholeMeasures["shadow"] | undefined {
   };
 }
 
+/** min = 피부보다 어두운 정도(L) · gap = 이만큼 넘게 끊기면 끝 · band = 축에서 벗어나도 되는 폭 · skin = 기준 피부를 재는 자리 · far = 꼬리 너머로 보는 범위 (모두 눈썹 길이 비율) */
+export const BROW_TAIL = { min: 9, gap: 0.06, step: 0.02, band: 0.28, skin: [0.38, 0.5] as const, far: 0.7 } as const;
+
+/**
+ * 눈썹 꼬리 끝 — 그 사진 한 장에서 잰다 (실험 33, eval/samples/shape/brow_tail.py). 눈썹 길이의 비율로, 얼굴 점의 꼬리 = 1.
+ * 눈썹 머리 → 꼬리 축을 따라가며, 축에 수직인 줄에서 가장 어두운 칸이 위 · 아래 피부(밝은 쪽)보다 min 넘게 어두운 데까지가 눈썹이다.
+ * 머리카락 칸은 보지 않고, 줄의 가운데가 머리카락이면 거기서 멈춘다 — 꼬리 자리는 관자놀이 머리카락과 붙어 있어, 머리카락 분할 없이는
+ * 늘린 꼬리가 머리카락까지 이어 읽힌다 (실험 32). 그래서 **머리카락 분할(f.hair)이 없으면 재지 않는다 (null)**.
+ * 맨얼굴의 끝을 뺀 것이 '늘린 양'. 같은 방식으로 찍은 사진 사이의 흔들림은 ±2%p
+ */
+export function browTail(f: SampleFrame, k: Side2): number | null {
+  if (!f.hair) return null;
+  const C = BROW_TAIL, b = browOf(k), mid = (i: number, j: number): Pt => mixPt(at(f.lm, i), at(f.lm, j), 0.5);
+  const h = mid(b.upper[b.upper.length - 1]!, b.lower[b.lower.length - 1]!), t = mid(b.upper[0]!, b.lower[0]!), len = Math.hypot(t.x - h.x, t.y - h.y) || 1;
+  const a = { x: (t.x - h.x) / len, y: (t.y - h.y) / len }, n0 = { x: -a.y, y: a.x }, n = n0.y > 0 ? { x: -n0.x, y: -n0.y } : n0;
+  const xy = (u: number, v: number): Pt => ({ x: h.x + (a.x * u + n.x * v) * len, y: h.y + (a.y * u + n.y * v) * len });
+  const lum = (p: Pt): number => labBox(f.im, p.x, p.y, 3).L, hair = (p: Pt): boolean => isHair(f, p.x, p.y);
+  /** v0 ~ v1 줄에서 머리카락이 아닌 칸의 밝기들 */
+  const along = (u: number, v0: number, v1: number): number[] => { const out: number[] = []; for (let v = v0; v <= v1 + 1e-6; v += 0.03) { const p = xy(u, v); if (!hair(p)) out.push(lum(p)); } return out; };
+  const meanOf = (v: number[]): number => v.reduce((s, x) => s + x, 0) / v.length;
+  let end = 0.5, gap = 0;
+  for (let u = 0.5; u <= 1 + C.far; u += C.step) {
+    let hairMid = 0, q = 0;
+    for (let v = -0.1; v <= 0.1 + 1e-6; v += 0.03) { if (hair(xy(u, v))) hairMid++; q++; }
+    if (hairMid / q > 0.5) break;
+    const up = along(u, C.skin[0], C.skin[1]), dn = along(u, -C.skin[1], -C.skin[0]), band = along(u, -C.band, C.band);
+    const skin = Math.max(up.length ? meanOf(up) : -1e9, dn.length ? meanOf(dn) : -1e9);
+    if (band.length && skin > -1e8 && skin - Math.min(...band) >= C.min) { end = u; gap = 0; } else if ((gap += C.step) > C.gap) break;
+  }
+  return end;
+}
+
 function browMeasure(fs: Frames): WholeMeasures["brow"] | undefined {
   const reg = (ks: readonly Side2[]) => (f: SampleFrame) => ({ polys: ks.map((k) => browPoly(f, k)), avoid: SIDES2.map((k) => eyePoly(f, k)) });
   const all = scoreWhole(fs.bare, fs.target, fs.cur, reg(SIDES2)), r = scoreWhole(fs.bare, fs.target, fs.cur, reg(["R"])), l = scoreWhole(fs.bare, fs.target, fs.cur, reg(["L"]));
@@ -131,7 +163,11 @@ function browMeasure(fs: Frames): WholeMeasures["brow"] | undefined {
   const fore = (f: SampleFrame): Zone => ({ in: SIDES2.map((k) => band(pts(f, browOf(k).upper), -0.34 * f.unit.eye, -0.22 * f.unit.eye)) });
   const core = change(fs, (f) => ({ in: SIDES2.map((k) => browPoly(f, k)) }), fore), below = change(fs, (f) => ({ in: SIDES2.map((k) => band(pts(f, browOf(k).lower), 0.03 * f.unit.eye, 0.1 * f.unit.eye)) }), fore);
   const tn2 = core ? dot3(core.t, core.t) || 1 : 1;
-  return { target: all.target, amountR: r.amount ?? 0, amountL: l.amount ?? 0, below: core && below ? dot3(below.d, core.t) / tn2 : 0, belowTarget: core && below ? dot3(below.t, core.t) / tn2 : 0 };
+  // 꼬리를 늘린 양 = 그 사진의 꼬리 끝 − 맨얼굴의 꼬리 끝. 세 장 모두 머리카락 분할이 있어야 잰다
+  const ext = (f: SampleFrame, k: Side2): number | null => { const b = browTail(fs.bare, k), v = browTail(f, k); return b === null || v === null ? null : v - b; };
+  const tR = ext(fs.target, "R"), tL = ext(fs.target, "L"), cR = ext(fs.cur, "R"), cL = ext(fs.cur, "L");
+  const tail = tR !== null && tL !== null && cR !== null && cL !== null ? { tailTargetR: tR, tailTargetL: tL, tailR: cR, tailL: cL } : {};
+  return { target: all.target, amountR: r.amount ?? 0, amountL: l.amount ?? 0, below: core && below ? dot3(below.d, core.t) / tn2 : 0, belowTarget: core && below ? dot3(below.t, core.t) / tn2 : 0, ...tail };
 }
 
 /** 볼을 재서 넘길지 — 정답에서 바뀐 자리(①②④ 가 떠낸 칠한 자리)를 받게 되면 켠다 */
@@ -222,7 +258,8 @@ export interface WholeInput {
 
 /** 사진 네 장에서 부위별 값을 잰다 (사진 조건은 보지 않는다 — feedbackWhole 이 먼저 본다) */
 export function measureWhole(i: WholeInput): WholeMeasures {
-  const fs: Frames = { bare: i.bare, target: frameOf(i.target, i.bare.lm), cur: i.cur };
+  // 정답 그림은 맨얼굴과 겹치므로 얼굴 점도 머리카락 분할도 맨얼굴 것을 쓴다
+  const fs: Frames = { bare: i.bare, target: frameOf(i.target, i.bare.lm, i.bare.hair), cur: i.cur };
   // 볼은 아직 넘기지 않는다: 볼 다각형 전체의 평균으로는 블러셔가 묽어져 정답 변화가 1.1 로 읽힌다 (파이썬 실험은 정답에서 바뀐 칸에만 무게를 줬다 — 그 자리를 받아야 한다)
   const lip = lipMeasure(fs), shadow = shadowMeasure(fs), brow = browMeasure(fs), cheek = CHEEK_READY ? cheekMeasure(fs) : undefined;
   const liner = i.moved ? { targetR: ridgeTail(i.bare, i.target, "R"), targetL: ridgeTail(i.bare, i.target, "L"), R: ridgeTail(i.bare, i.moved, "R"), L: ridgeTail(i.bare, i.moved, "L") } : undefined;

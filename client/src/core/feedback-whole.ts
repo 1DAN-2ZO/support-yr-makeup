@@ -59,6 +59,8 @@ export const FEEDBACK = {
   shadowOuter: 0.12,
   /** 눈썹 바로 아래 띠: 안 넓힌 것 0.10~0.15, 넓힌 것 0.76 */
   browBelow: 0.35,
+  /** 눈썹 꼬리(눈썹 길이 비율): 흔들림 ±2%p. 정답과 이만큼 넘게 다르면 짧다 · 길다 */
+  browTail: 0.1,
   /** 라이너 꼬리(눈 폭 비율): 이보다 짧으면 보지 않는다 · 정답과 이만큼 넘게 다르면 짧다 · 길다 */
   linerMin: 0.1,
   linerTol: 0.08,
@@ -76,7 +78,11 @@ export interface WholeMeasures {
   /** higher = 정답이 안 칠한 위쪽 구역까지 칠했다 · outer = 눈꼬리 바깥 구역의 양 */
   shadow?: { target: number; amountR: number; amountL: number; higher: boolean; outer: number; outerTarget: number };
   /** below = 눈썹 바로 아래 띠의 양 */
-  brow?: { target: number; amountR: number; amountL: number; below: number; belowTarget: number };
+  brow?: {
+    target: number; amountR: number; amountL: number; below: number; belowTarget: number;
+    /** 눈썹 꼬리를 맨얼굴보다 늘린 양 (눈썹 길이 비율) — 정답 · 시도. 머리카락 분할이 없으면 없다 */
+    tailTargetR?: number; tailTargetL?: number; tailR?: number; tailL?: number;
+  };
   cheek?: { target: number; amount: number };
   /** 꼬리 길이 (눈 폭 비율, 옮긴 그림에서 잰 것). null = 꼬리 없음 */
   liner?: { targetR: number | null; targetL: number | null; R: number | null; L: number | null };
@@ -150,6 +156,14 @@ export function composeFeedback(m: WholeMeasures): WholeFeedback {
       if (one) says.push([`${side(one)} 눈썹이 비었어요`, `${side(one)} 눈썹도 그려 보세요`]);
       if (p.below - p.belowTarget > F.browBelow) says.push(["정답보다 아래로 두꺼워요", "눈썹 아래쪽을 정리해 보세요"]);
       if (p.belowTarget - p.below > F.browBelow) says.push(["정답보다 얇아요", "눈썹 아래쪽을 조금 더 채워 보세요"]);
+      if (p.tailR !== undefined && p.tailL !== undefined && p.tailTargetR !== undefined && p.tailTargetL !== undefined) {
+        // 꼬리 길이: 정답이 늘린 양과 견준다 (정답이 안 늘렸으면 0 과 견주는 셈 — 늘려 그렸으면 길다)
+        const got = { R: p.tailR, L: p.tailL }, want = { R: p.tailTargetR, L: p.tailTargetL }, ks = ["R", "L"] as const;
+        const short = ks.filter((k) => got[k] < want[k] - F.browTail), long = ks.filter((k) => got[k] > want[k] + F.browTail);
+        const who = (list: readonly ("R" | "L")[]): string => (list.length === 2 ? "눈썹 꼬리가" : `${side(list[0]!)} 눈썹 꼬리가`);
+        if (short.length) says.push([`${who(short)} 정답보다 짧아요`, "눈썹 꼬리를 조금 더 길게 빼 보세요"]);
+        if (long.length) says.push([`${who(long)} 정답보다 길어요`, "눈썹 꼬리 끝을 조금 지워 보세요"]);
+      }
       if (!says.length && mean < F.weak) says.push(["정답보다 옅어요", "조금 더 진하게 채워 보세요"]);
       parts.push(pick(part, p.target, says, none ? [NO_MINE, "눈썹을 그려 보세요"] : undefined));
     } else if (part === "cheek" && m.cheek) {

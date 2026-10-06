@@ -78,6 +78,15 @@ def tail_end(L, hair, lm, side):
     return end
 
 
+if "--dump-hair" in sys.argv:   # brow_tail.mjs 가 읽을 머리카락 분할을 사진마다 저장하고 끝낸다 (흰 칸 = 머리카락)
+    for f in sorted(DIR.glob("*.png")):
+        if f.name.endswith(".hair.png"):
+            continue
+        a_ = np.asarray(Image.open(f).convert("RGB"))
+        cat = SEG.segment(mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(a_))).category_mask.numpy_view().squeeze()
+        Image.fromarray((cat == 1).astype(np.uint8) * 255).resize((a_.shape[1], a_.shape[0]), Image.BILINEAR).convert("RGB").save(f.with_suffix("").as_posix() + ".hair.png")
+    sys.exit(0)
+
 bare, made = load("_bare"), load("_made", "_bare")
 base = {s: tail_end(*bare, s) for s in "RL"}
 want = {s: tail_end(*made, s) - base[s] for s in "RL"}

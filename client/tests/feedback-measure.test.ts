@@ -1,7 +1,8 @@
 // 새 흐름 화면 6 — 사진에서 재서 문장까지 (feedbackWhole) · 겹치는 그림에서 라이너 꼬리 끝 찾기 (ridgeTail)
 import { describe, expect, it } from "vitest";
 import { pointInPoly } from "@core/color";
-import { feedbackWhole, measureWhole, ridgeTail } from "@core/feedback-measure";
+import { browTail, feedbackWhole, measureWhole, ridgeTail } from "@core/feedback-measure";
+import { composeFeedback, type WholeMeasures } from "@core/feedback-whole";
 import { LM } from "@core/landmarks";
 import { frameOf } from "@core/sampling";
 import { LMS, P, RED, SKIN, image, type Paint, type Rgb } from "./helpers/synth-face";
@@ -80,5 +81,48 @@ describe("사진에서 재서 문장까지 (feedbackWhole)", () => {
     const m = measureWhole({ bare, target, cur: frameOf(image(lips(0.6)), LMS) });
     expect(m.lip!.amount).toBeCloseTo(1, 1);
     expect(m.liner).toBeUndefined();
+  });
+});
+
+describe("눈썹 꼬리 끝 (browTail) — 머리카락 분할이 있어야 잰다", () => {
+  const browPolys = [LM.browA, LM.browB].map((b) => [...b.upper.map(P), ...b.lower.map(P).reverse()]);
+  const brows: Paint = (x, y) => (browPolys.some((p) => pointInPoly(x, y, p)) ? [80, 55, 45] : null);
+  /** 눈썹 꼬리를 눈썹 길이의 ext 배만큼 늘린 것 (머리 → 꼬리 축을 따라 뾰족하게) */
+  const longer = (side: "R" | "L", ext: number): Paint => {
+    const b = side === "R" ? LM.browA : LM.browB, mid = (i: number, j: number) => ({ x: (P(i).x + P(j).x) / 2, y: (P(i).y + P(j).y) / 2 });
+    const h = mid(b.upper[b.upper.length - 1]!, b.lower[b.lower.length - 1]!), t = mid(b.upper[0]!, b.lower[0]!), len = Math.hypot(t.x - h.x, t.y - h.y);
+    const tri = [P(b.upper[0]!), P(b.lower[0]!), { x: t.x + ((t.x - h.x) / len) * len * ext, y: t.y + ((t.y - h.y) / len) * len * ext }];
+    return (x, y) => (pointInPoly(x, y, tri) ? [80, 55, 45] : null);
+  };
+  const noHair = { w: 8, h: 8, data: new Float32Array(64) };
+  const fr = (p: Paint, hair = noHair) => frameOf(image(p), LMS, hair);
+
+  it("T1 원래 눈썹의 끝은 얼굴 점의 꼬리 근처 (1) · 늘리면 그만큼 길게 읽는다", () => {
+    for (const side of ["R", "L"] as const) {
+      const base = browTail(fr(brows), side)!;
+      expect(Math.abs(base - 1)).toBeLessThan(0.12);
+      expect(browTail(fr(over(brows, longer(side, 0.3))), side)! - base).toBeGreaterThan(0.15);
+    }
+  });
+
+  it("T2 머리카락 분할이 없으면 재지 않는다 (null) — 관자놀이 머리카락까지 이어 읽기 때문", () => {
+    expect(browTail(frameOf(image(brows), LMS), "R")).toBeNull();
+  });
+
+  it("T3 머리카락 칸에서 멈춘다", () => {
+    // 꼬리 바깥을 전부 머리카락으로 표시하면 늘린 꼬리를 따라가지 않는다
+    const tailX = P(LM.browA.upper[0]!).x, W8 = 600, hair = { w: W8, h: 1, data: Float32Array.from({ length: W8 }, (_, x) => (x < tailX - 4 ? 1 : 0)) };
+    const withHair = fr(over(brows, longer("R", 0.3)), hair), base = browTail(fr(brows, hair), "R")!;
+    expect(browTail(withHair, "R")! - base).toBeLessThan(0.08);
+  });
+
+  it("T4 문장: 정답이 꼬리를 늘렸는데 안 늘렸으면 '눈썹 꼬리가 짧아요' · 정답이 안 늘렸으면 말하지 않는다", () => {
+    const base = { target: 13, amountR: 0.9, amountL: 0.9, below: 0.1, belowTarget: 0.1 };
+    const line = (brow: NonNullable<WholeMeasures["brow"]>) => composeFeedback({ brow }).parts.find((p) => p.part === "brow")!;
+    expect(line({ ...base, tailTargetR: 0.2, tailTargetL: 0.2, tailR: 0.0, tailL: 0.02 }).line).toBe("눈썹 꼬리가 정답보다 짧아요");
+    expect(line({ ...base, tailTargetR: 0.2, tailTargetL: 0.2, tailR: 0.2, tailL: 0.02 }).line).toBe("왼쪽 눈썹 꼬리가 정답보다 짧아요");
+    expect(line({ ...base, tailTargetR: 0.2, tailTargetL: 0.2, tailR: 0.18, tailL: 0.22 }).line).toBe("정답과 비슷해요");
+    expect(line({ ...base, tailTargetR: 0.02, tailTargetL: 0.0, tailR: 0.25, tailL: 0.25 }).line).toBe("눈썹 꼬리가 정답보다 길어요");
+    expect(line({ ...base, tailTargetR: 0.02, tailTargetL: 0.0, tailR: 0.05, tailL: 0.04 }).line).toBe("정답과 비슷해요");
   });
 });
