@@ -235,6 +235,15 @@ if os.environ.get("WHOLE_CASES") == "brow2":   # 눈썹 모양 시험 (실험 32
         "눈썹 안 그림": {"눈썹": lambda L: L * 0},
         "오른쪽만 늘림": {"눈썹": lambda L: L * ~(CUT & (xx > PA[168, 0]))[..., None]},
     }
+if os.environ.get("WHOLE_CASES") == "lip":   # 입술 범위 시험 (실험 34): 입술선 밖 · 가운데만 · 아랫입술만
+    dLipOut, dLipIn = edt(~lips), edt(lips)
+    CASES = {
+        "맨얼굴(진짜)": None,
+        "그대로 얹음": {},
+        "입술선 밖으로": {"입술": lambda L: TV["입술"] * fea(dLipOut < eye * 0.09, eye * 0.02)[..., None]},
+        "가운데만": {"입술": lambda L: L * fea(dLipIn > eye * 0.07, eye * 0.02)[..., None]},
+        "아랫입술만": {"입술": lambda L: L * (yy > (PA[61, 1] + PA[291, 1]) / 2 + (xx - (PA[61, 0] + PA[291, 0]) / 2) * (PA[291, 1] - PA[61, 1]) / (PA[291, 0] - PA[61, 0]))[..., None]},
+    }
 if os.environ.get("WHOLE_CASES") == "brow":   # 눈썹 시험 (실험 31): 정답 그림이 눈썹만 그린 것일 때
     CASES = {
         "맨얼굴(진짜)": None,
