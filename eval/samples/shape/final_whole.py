@@ -27,9 +27,11 @@ from mediapipe.tasks.python import BaseOptions  # noqa: E402
 from mediapipe.tasks.python.vision import FaceLandmarker, FaceLandmarkerOptions, RunningMode  # noqa: E402
 
 DATA = Path(os.environ["DHE_DATA_DIR"])
-SRC = DATA / "work" / "makeup-layer"
-RAW = DATA / "golden" / "raw" / "p01"
-WORK = DATA / "work" / "final-whole"
+# 다른 묶음으로 돌릴 때: WHOLE_SRC (bare.png · made.png) · WHOLE_RAW (<id>_open.jpg) · WHOLE_WORK (출력) · WHOLE_IDS
+SRC = Path(os.environ.get("WHOLE_SRC", DATA / "work" / "makeup-layer"))
+RAW = Path(os.environ.get("WHOLE_RAW", DATA / "golden" / "raw" / "p01"))
+WORK = Path(os.environ.get("WHOLE_WORK", DATA / "work" / "final-whole"))
+IDS = os.environ.get("WHOLE_IDS", "4,2,1").split(",")
 WORK.mkdir(parents=True, exist_ok=True)
 FACE_W = 380
 LIP_O = [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 409, 270, 269, 267, 0, 37, 39, 40, 185]
@@ -213,7 +215,7 @@ CASES = {
     "섀도우 한쪽만": {"섀도우": lambda L: L * (xx < PA[168, 0])[..., None]},
 }
 sheet = []
-for n in ("4", "2", "1"):
+for n in IDS:
     src = ImageOps.exif_transpose(Image.open(RAW / f"{n}_open.jpg")).convert("RGB")
     src.thumbnail((1600, 1600))
     src.save(WORK / f"_c{n}_full.png")
@@ -229,7 +231,7 @@ for n in ("4", "2", "1"):
             Image.fromarray((img * 255).astype(np.uint8)).save(f)
             P = points(f)
             dump(f.stem, P)
-            if n == "4" and not mod:
+            if n == IDS[0] and not mod:
                 sheet = [C, img]
         show(f"사진{n} {name}", score(to_A(img, P)))
 if sheet:

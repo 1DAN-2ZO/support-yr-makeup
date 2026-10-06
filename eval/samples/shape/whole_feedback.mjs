@@ -14,7 +14,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..").replaceAll("\\", "/");
 if (!process.env.DHE_DATA_DIR) { console.error("DHE_DATA_DIR 를 정해 주세요 (사진은 저장소 밖에 둔다)"); process.exit(1); }
-const DATA = process.env.DHE_DATA_DIR.replaceAll("\\", "/"), CLIENT = join(ROOT, "client"), T = join(DATA, "work/final-whole").replaceAll("\\", "/");
+const DATA = process.env.DHE_DATA_DIR.replaceAll("\\", "/"), CLIENT = join(ROOT, "client"), T = (process.env.WHOLE_WORK ?? join(DATA, "work/final-whole")).replaceAll("\\", "/");
+const IDS = (process.env.WHOLE_IDS ?? "4,2,1").split(",");   // 다른 묶음: WHOLE_WORK · WHOLE_IDS (final_whole.py 와 같게)
 const require = createRequire(pathToFileURL(join(CLIENT, "package.json")));
 const esbuild = require("esbuild"), { PNG } = require("pngjs");
 const r = await esbuild.build({ stdin: { contents: [
@@ -99,8 +100,8 @@ const zt = shadowZones(bare, target, target);
 console.log("정답 그림의 섀도우 구역별 변화 크기 (6 이상 = 칠할 자리, 4 미만 = 안 칠한 자리):");
 for (const s of ["R", "L"]) console.log(`  ${s === "R" ? "오른쪽" : "왼쪽"} 눈: ` + zt.filter((z) => z.side === s).map((z) => `${z.col} ${z.row} ${len(z.t).toFixed(1)}`).join(" · "));
 const CASES = ["bare", "1", "2", "3", "6", "7"], NAMES = ["아무것도 안 함 (진짜 맨얼굴)", "정답대로", "입술 빼먹음", "섀도우 색 다름", "섀도우 위로 더 칠함", "섀도우 오른쪽 눈만"];
-for (const n of ["4", "2", "1"]) {
-  console.log(`\n===== 사진 ${n} (${{ 4: "같은 자리 가로", 2: "집 낮", 1: "학원" }[n]})`);
+for (const n of IDS) {
+  console.log(`\n===== 사진 ${n}${process.env.WHOLE_WORK ? "" : ` (${{ 4: "같은 자리 가로", 2: "집 낮", 1: "학원" }[n]})`}`);
   CASES.forEach((c, i) => {
     if (!existsSync(`${T}/c${n}_${c}.png`)) return;
     const m = load(`c${n}_${c}`), cur = core.frameOf(m.im, m.lm);
