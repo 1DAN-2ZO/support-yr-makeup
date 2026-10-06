@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { LM } from "@core/landmarks";
 import { frameOf } from "@core/sampling";
-import { LINER_WING, browShape, eyeShift, lidEdge, liftLid, linerBand, linerEnds, linerEndsResult, linerFan, linerStroke, routeOf, scoreHybrid, scoreLinerPair, scoreLinerWing, shapeFill, tintFill, tintProgress, type LinerWingEye } from "@core/score-shape";
+import { EYE_SHIFT, LINER_WING, browShape, eyeShift, lidEdge, liftLid, linerBand, linerEnds, linerEndsResult, linerFan, linerStroke, routeOf, scoreHybrid, scoreLinerPair, scoreLinerWing, shapeFill, tintFill, tintProgress, type LinerWingEye, type WingMatch } from "@core/score-shape";
 import { PARAMS, decide, type PartScore, type Side } from "@core/score";
 import type { GuideSource } from "@core/score-part";
 import { rgbToLab } from "@core/color";
@@ -605,7 +605,7 @@ describe("라이너 꼬리 — 눈꼬리 부채꼴 훑기 (linerFan · eyeShift 
     expect(Math.abs(t.r - 0.3)).toBeLessThan(0.025);
   });
 
-  // ---- 판정 (scoreLinerWing): 꼬리 길이 · 좌우 꼬리 길이 차 · 눈머리 넘김 ----
+  // ---- 판정 (scoreLinerWing): 가이드와 비슷한가 — 그린 꼬리 끝과 가이드 꼬리 끝 사이의 거리 하나로 (결정 2026-10-06) ----
   /** open · closed = 눈 뜬 장 · 눈 감은 장에 그린 것 (null = 안 그림 · 안 보임). closed 를 안 주면 눈 감은 쌍이 없다 */
   const wing = (open: Paint | null, closed?: Paint | null, gs: GuideSource = guide): PartScore => scoreLinerWing(
     { base: NAT, cur: frame(drawn(open)) },
@@ -613,38 +613,65 @@ describe("라이너 꼬리 — 눈꼬리 부채꼴 훑기 (linerFan · eyeShift 
     gs);
   const extra = (r: PartScore): string[] => (r.metrics as { endCodes?: string[] }).endCodes ?? [];
   const eyes = (r: PartScore): Record<Side, LinerWingEye> => (r.metrics as { wing: Record<Side, LinerWingEye> }).wing;
+  const match = (r: PartScore): WingMatch | null => (r.metrics as { match: WingMatch | null }).match;
+  /** 화면에 접는 세 단계 (맞음 80 이상 · 조금 50 이상 · 많이) — 판정 단계와 같아야 한다 */
+  const fold = (r: PartScore): string => { const s = decide("liner", r).score; return s === null ? "없음" : s >= 80 ? "similar" : s >= 50 ? "slight" : "far"; };
   /** 같은 꼬리가 눈 감은 장에서는 더 가파르고 짧게 재진다 (조사: 뜬 눈 -11~8도 · 23~34%, 감은 눈 36~51도 · 19~25%) — 눈 뜬 눈 기준 길이 len 의 꼬리를 눈 감은 장에 그린 것 */
   const shutTail = (len: number, sides: readonly Side[] = ["R", "L"]): Paint => (x, y) => sides.map((s) => ray(s, 40, len * LINER_WING.closedRatio)(x, y)).find((c) => c) ?? null;
   const innerOver = both((s) => ray(s, -10, 0.1, { end: "inner" }));
-  const GUIDE_LEN = 0.15;   // 시험용 가이드의 꼬리 길이 (synth-face guide)
+  const GUIDE_LEN = 0.15, GUIDE_DEG = 30;   // 시험용 가이드의 꼬리 (synth-face guide)
 
-  it("W1 가이드보다 긴 꼬리는 눈 뜬 장으로 '길다'", () => {
-    const r = wing(both((s) => ray(s, 5, 0.32)), shutTail(0.32));
+  it("W1 가이드보다 길게 뺀 꼬리는 눈 뜬 장으로 '달라요 · 길어요' — 점수가 80 아래다 (전에는 아무리 길어도 80점 '맞음')", () => {
+    const r = wing(both((s) => ray(s, GUIDE_DEG, 0.32)), shutTail(0.32));
     expect(r.present).toBe(true);
     expect(extra(r)).toEqual(expect.arrayContaining(["LINER_WING_LONG_R", "LINER_WING_LONG_L"]));
     expect(r.codes).toEqual([]);
     expect(eyes(r).R.length).toBe("long");
     expect(Math.abs(eyes(r).R.drawn! - 0.32)).toBeLessThan(0.025);
     expect(Math.abs(eyes(r).R.guide - GUIDE_LEN)).toBeLessThan(0.005);
+    expect(Math.abs(eyes(r).R.guideDeg - GUIDE_DEG)).toBeLessThan(1);
+    // 끝 사이 거리 = 길이 차 17%p (각도는 가이드와 같다)
+    expect(Math.abs(eyes(r).R.off! - 0.17)).toBeLessThan(0.03);
+    expect(match(r)).toBe("far");
+    expect(r.score!).toBeLessThan(80);
+    expect(fold(r)).toBe("far");
+    // 조금만 길면 '조금 달라요'
+    const some = wing(both((s) => ray(s, GUIDE_DEG, 0.23)), shutTail(0.23));
+    expect(match(some)).toBe("slight");
+    expect(fold(some)).toBe("slight");
+    expect(extra(some)).toEqual(expect.arrayContaining(["LINER_WING_LONG_R", "LINER_WING_LONG_L"]));
   });
 
-  it("W2 가이드 길이 꼬리는 눈 뜬 장에서 놓쳐도 눈 감은 장에서 잡히면 '맞다' — 지적 없음", () => {
+  it("W2 가이드대로 그린 꼬리는 '비슷해요' — 눈 뜬 장에서 놓쳐도 눈 감은 장에서 잡히면 된다. 지적 없음", () => {
     const r = wing(null, shutTail(GUIDE_LEN));   // 눈 뜬 장에서는 안 보였다 (꼬리 뿌리 자리가 원래 어둡다)
     expect(r.present).toBe(true);
     expect(eyes(r).R.length).toBe("ok");
     expect(eyes(r).L.length).toBe("ok");
     expect(Math.abs(eyes(r).R.drawn! - GUIDE_LEN)).toBeLessThan(0.04);
+    expect(eyes(r).R.dDeg).toBeNull();   // 각도는 눈 뜬 장에서 찾았을 때만 본다
+    expect(eyes(r).R.off!).toBeLessThanOrEqual(PARAMS.tol.wingShort);
+    expect(match(r)).toBe("similar");
+    expect(r.score!).toBeGreaterThanOrEqual(80);
+    expect(fold(r)).toBe("similar");
     expect(r.codes).toEqual([]);
     expect(extra(r)).toEqual([]);
-    // 눈 뜬 장에서도 보이면 그대로 '맞다'
-    expect(eyes(wing(both((s) => ray(s, 30, GUIDE_LEN)), shutTail(GUIDE_LEN))).R.length).toBe("ok");
+    expect((r.metrics as { edge: boolean }).edge).toBe(false);
+    // 눈 뜬 장에서도 보이면 각도까지 견준다 — 그대로 '비슷해요'
+    const both2 = wing(both((s) => ray(s, GUIDE_DEG, GUIDE_LEN)), shutTail(GUIDE_LEN));
+    expect(eyes(both2).R.length).toBe("ok");
+    expect(Math.abs(eyes(both2).R.dDeg!)).toBeLessThan(4);
+    expect(match(both2)).toBe("similar");
   });
 
-  it("W3 눈 감은 장에서도 꼬리가 없으면 '짧다 · 없음' — 그쪽 눈에 '꼬리가 짧아요'", () => {
+  it("W3 꼬리를 못 찾은 눈은 '많이 달라요 · 없어요' — 한쪽만 없어도 전체가 많이 다르다", () => {
     const r = wing(null, shutTail(GUIDE_LEN, ["R"]));
     expect(r.codes).toEqual(["LINER_WING_SHORT_L"]);
     expect(eyes(r).L.length).toBe("none");
-    expect(eyes(r).R.length).toBe("ok");
+    expect(eyes(r).L.match).toBe("far");
+    expect(eyes(r).R.match).toBe("similar");
+    expect(match(r)).toBe("far");
+    expect(r.score!).toBeLessThan(50);
+    expect(fold(r)).toBe("far");
     // 가이드 꼬리가 길 때: 찾았지만 가이드보다 허용 폭 넘게 짧으면 '짧다'
     const longGuide: GuideSource = (partId, f) => {
       const g0 = guide(partId, f), ext = (w: readonly [Pt, Pt]): readonly [Pt, Pt] => [w[0], { x: w[0].x + (w[1].x - w[0].x) * 2, y: w[0].y + (w[1].y - w[0].y) * 2 }];
@@ -653,30 +680,35 @@ describe("라이너 꼬리 — 눈꼬리 부채꼴 훑기 (linerFan · eyeShift 
     const s = wing(null, shutTail(GUIDE_LEN), longGuide);
     expect(eyes(s).R.length).toBe("short");
     expect(s.codes).toEqual(expect.arrayContaining(["LINER_WING_SHORT_R", "LINER_WING_SHORT_L"]));
+    expect(match(s)).not.toBe("similar");
+    expect(s.score!).toBeLessThan(80);
   });
 
-  it("W4 눈 감은 쌍이 없으면(null) '길다' 와 좌우 차만 판정한다 — '맞다 · 짧다 · 없음' 과 눈머리 넘김은 판정하지 않는다", () => {
+  it("W4 눈 감은 쌍이 없으면(null) '길다' 만 판정한다 — 그 밖의 눈과 눈머리 넘김은 판정하지 않는다", () => {
     const long = wing(ray("R", 5, 0.32));
-    expect(extra(long)).toEqual(["LINER_WING_LONG_R"]);
-    expect(long.codes).toEqual([]);   // 왼쪽 꼬리가 안 보여도 '짧아요' 를 붙이지 않는다 — 눈 뜬 장은 짧은 꼬리를 자주 놓친다
+    expect(extra(long)).toContain("LINER_WING_LONG_R");
+    expect(long.codes.filter((c) => c.startsWith("LINER_WING_SHORT"))).toEqual([]);   // 왼쪽 꼬리가 안 보여도 '짧아요' 를 붙이지 않는다 — 눈 뜬 장은 짧은 꼬리를 자주 놓친다
     expect(eyes(long).L.length).toBeNull();
+    expect(eyes(long).L.match).toBeNull();
     expect(eyes(long).L.closed).toBeNull();
+    expect(match(long)).toBe("far");   // 판정한 눈만으로
     const over1 = wing(innerOver);
     expect(extra(over1)).toEqual([]);
     expect(eyes(over1).R.innerOver).toBeNull();
-    // 눈 뜬 장에서 가이드 길이 꼬리가 보여도 '맞다' 로 치지 않는다 — 판정한 것이 없으니 점수도 없다
+    // 눈 뜬 장에서 가이드 길이 꼬리가 보여도 '비슷해요' 로 치지 않는다 — 판정한 것이 없으니 점수도 없다
     const seen = wing(both((s) => ray(s, 30, GUIDE_LEN)));
     expect(seen.present).toBe(true);
     expect(eyes(seen).R.open.found).toBe(true);
     expect(eyes(seen).R.length).toBeNull();
     expect(seen.score).toBeNull();
+    expect(match(seen)).toBeNull();
     expect(seen.codes).toEqual([]);
     // 둘째 쌍이 눈 감은 장이 아니면 없는 것으로 본다
     const open = { base: NAT, cur: frame(drawn(ray("R", 5, 0.32))) };
     expect(eyes(scoreLinerWing(open, open, guide)).L.length).toBeNull();
   });
 
-  it("W5 좌우 꼬리 길이가 허용 폭 넘게 다르면 알린다", () => {
+  it("W5 좌우 꼬리 길이가 허용 폭 넘게 다르면 알린다 — 두 눈이 각각 가이드와 비슷해도 '조금 달라요' 로 한 칸 내린다", () => {
     const r = wing(over(ray("R", 5, 0.32), ray("L", 5, 0.24)));
     const lr = (r.metrics as { lrLen: number | null }).lrLen!;
     expect(Math.abs(lr - 0.08)).toBeLessThan(0.03);   // R − L
@@ -687,12 +719,21 @@ describe("라이너 꼬리 — 눈꼬리 부채꼴 훑기 (linerFan · eyeShift 
     const c = wing(null, over(shutTail(0.3, ["R"]), shutTail(0.16, ["L"])));
     expect(extra(c)).toContain("LINER_WING_LR_LEN");
     expect((c.metrics as { lrLen: number | null }).lrLen!).toBeGreaterThan(0.08);
+    // 한쪽은 가이드보다 조금 길고 한쪽은 조금 짧다 — 눈마다는 '비슷해요' 지만 좌우가 다르다
+    const m = wing(null, over(shutTail(0.185, ["R"]), shutTail(0.12, ["L"])));
+    expect(eyes(m).R.match).toBe("similar");
+    expect(eyes(m).L.match).toBe("similar");
+    expect(extra(m)).toEqual(["LINER_WING_LR_LEN"]);
+    expect(match(m)).toBe("slight");
+    expect(fold(m)).toBe("slight");
   });
 
-  it("W6 눈머리 너머로 뺀 선은 '눈머리를 넘겼다'", () => {
+  it("W6 눈머리 너머로 뺀 선은 '눈머리를 넘겼다' — 꼬리가 가이드대로여도 '조금 달라요'", () => {
     const r = wing(null, over(innerOver, shutTail(GUIDE_LEN)));
     expect(extra(r)).toEqual(expect.arrayContaining(["LINER_INNER_OVER_R", "LINER_INNER_OVER_L"]));
     expect(Math.abs(eyes(r).R.innerOver! - 0.1)).toBeLessThan(0.025);
+    expect(match(r)).toBe("slight");
+    expect(fold(r)).toBe("slight");
     expect(eyes(wing(null, shutTail(GUIDE_LEN))).R.innerOver).toBe(0);
   });
 
@@ -700,16 +741,50 @@ describe("라이너 꼬리 — 눈꼬리 부채꼴 훑기 (linerFan · eyeShift 
     for (const r of [wing(null, null), wing(null)]) {
       expect(r.present).toBe(false);
       expect(r.score).toBeNull();
+      expect(match(r)).toBeNull();
       expect(r.codes).toEqual([]);
       expect(extra(r)).toEqual([]);
     }
   });
 
-  it("W8 점수 — 맞게 그린 꼬리 > 길게 뺀 꼬리 · 눈머리를 넘긴 것 · 한쪽 꼬리가 없는 것", () => {
+  it("W8 점수 — 가이드대로 > 눈머리를 넘긴 것 > 길게 뺀 꼬리 · 한쪽 꼬리가 없는 것. 접은 단계가 판정과 같다", () => {
     const ok = wing(null, shutTail(GUIDE_LEN)).score!;
     expect(ok).toBeGreaterThanOrEqual(90);
-    expect(wing(both((s) => ray(s, 5, 0.32)), shutTail(0.32)).score!).toBeLessThan(ok - 10);
-    expect(wing(null, over(innerOver, shutTail(GUIDE_LEN))).score!).toBeLessThan(ok - 5);
-    expect(wing(null, shutTail(GUIDE_LEN, ["R"])).score!).toBeLessThan(ok - 5);
+    const inner = wing(null, over(innerOver, shutTail(GUIDE_LEN))).score!;
+    expect(inner).toBeLessThan(80);
+    expect(inner).toBeGreaterThanOrEqual(50);
+    expect(wing(both((s) => ray(s, 5, 0.32)), shutTail(0.32)).score!).toBeLessThan(50);
+    expect(wing(null, shutTail(GUIDE_LEN, ["R"])).score!).toBeLessThan(50);
+    // 길수록 낮다 — 상한 없이 끝 사이 거리를 따라간다
+    expect(wing(both((s) => ray(s, GUIDE_DEG, 0.3)), shutTail(0.3)).score!).toBeLessThan(wing(both((s) => ray(s, GUIDE_DEG, 0.24)), shutTail(0.24)).score!);
+  });
+
+  it("W9 길이가 가이드와 같아도 각도가 크게 다르면 '달라요' — 위로 · 아래로. 각도는 눈 뜬 장에서 꼬리를 찾았을 때만 본다", () => {
+    // 가이드 30도 · 15% 인데 65도로 세워 그렸다: 끝 사이 거리 = 2 × 15% × sin(35도 / 2) = 9%
+    const up = wing(both((s) => ray(s, 65, GUIDE_LEN)), shutTail(GUIDE_LEN));
+    expect(eyes(up).R.open.found).toBe(true);
+    expect(eyes(up).R.length).toBe("ok");
+    expect(eyes(up).R.dDeg!).toBeGreaterThan(25);
+    expect(Math.abs(eyes(up).R.off! - 0.09)).toBeLessThan(0.03);
+    expect(match(up)).not.toBe("similar");
+    expect(up.score!).toBeLessThan(80);
+    expect(up.codes).toEqual(expect.arrayContaining(["LINER_WING_HIGH_R", "LINER_WING_HIGH_L"]));
+    expect(extra(up)).toEqual([]);   // 길다고 하지 않는다
+    // 길고 눕혀 그렸다 (가이드보다 35도 아래) — 길이 차와 각도 차가 한 값에 같이 들어간다: 길이만 같은 만큼 긴 것보다 더 다르다
+    const low = wing(both((s) => ray(s, -5, 0.25)), shutTail(0.25)), straight = wing(both((s) => ray(s, GUIDE_DEG, 0.25)), shutTail(0.25));
+    expect(low.codes).toEqual(expect.arrayContaining(["LINER_WING_LOW_R", "LINER_WING_LOW_L"]));
+    expect(extra(low)).toEqual(expect.arrayContaining(["LINER_WING_LONG_R", "LINER_WING_LONG_L"]));
+    expect(eyes(low).R.off!).toBeGreaterThan(eyes(straight).R.off! + 0.02);
+    expect(low.score!).toBeLessThan(straight.score!);
+  });
+
+  it("W10 미세 맞춤이 범위 끝에 걸린 눈도 판정한다 — 표시만 남긴다 (metrics.edge)", () => {
+    const far = Math.ceil(eyeW * EYE_SHIFT.range);   // 사진이 맞춤 범위 끝만큼 어긋났다
+    const r = scoreLinerWing({ base: NAT, cur: frame(shifted(drawn(both((s) => ray(s, GUIDE_DEG, 0.32))), far, 0)) }, null, guide);
+    expect(eyes(r).R.open.reg!.edge).toBe(true);
+    expect(eyes(r).R.edge).toBe(true);
+    expect((r.metrics as { edge: boolean }).edge).toBe(true);
+    expect(match(r)).toBe("far");
+    expect(r.score).not.toBeNull();
   });
 });

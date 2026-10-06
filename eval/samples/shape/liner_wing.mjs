@@ -57,12 +57,24 @@ const fan = (p, s, { end = "outer", value = "hat", reg = true } = {}) => { const
 const tipTxt = (t) => (t.found ? `${pc(t.r).padStart(2)}% ${t.deg.toFixed(0).padStart(3)}도` : "   -    ");
 const guideOf = (lm) => core.planGuide(core.LOOKS.find((l) => l.id === LOOK).parts, core.resolvePlan(core.measureFace(lm)));
 const fold = (s) => (s >= 80 ? "맞음" : s >= 50 ? "조금" : "많이");
-/** scoreLinerWing 결과 한 줄 — 눈마다 길이 판정(눈 뜬 장 · 눈 감은 장에서 잰 길이) · 좌우 차 · 지적 */
+const MATCH = { similar: "비슷해요", slight: "조금 달라요", far: "많이 달라요" }, FOLD = { similar: "맞음", slight: "조금", far: "많이" };
+/** 판정 한마디 — 가이드와 비슷한가 (세 단계) · 그린 것 없음 · 판정 안 함 */
+const verdict = (res) => (!res.present ? "그린 것 없음" : res.metrics.match ? MATCH[res.metrics.match] : "판정 안 함");
+const hints = (res) => [...res.codes, ...(res.metrics.endCodes ?? [])];
+/** scoreLinerWing 결과 한 줄 — 단계 · 점수 | 눈마다 단계 · 끝 사이 거리 [길이 쪽 · 두 장에서 잰 길이 · 각도 차] | 좌우 차 | 덧붙이는 말. '범위 끝' = 미세 맞춤이 범위 끝에 걸린 눈 */
 function say(res) {
   const d = core.decide("liner", res, {}), w = res.metrics.wing, name = { long: "길다", ok: "맞다", short: "짧다", none: "없음" };
-  const eye = (k) => (w ? `${k} ${w[k].length ? name[w[k].length] : "판정 안 함"}(뜬 ${w[k].open.found ? pc(w[k].open.r) + "%" : "-"}${w[k].closed ? ` · 감은 ${w[k].closed.found ? pc(w[k].closed.r) + "% → " + pc(w[k].closed.r / RATIO) + "%" : "-"}` : ""})` : "");
-  const lr = res.metrics.lrLen, codes = [...res.codes, ...(res.metrics.endCodes ?? [])].map((c) => c.replace("LINER_", "").replace(/_([RL])$/, "·$1"));
-  return `${d.status === "scored" ? `${fold(d.score)} ${d.score}` : res.present ? "점수 없음 (판정한 것이 없다)" : "그린 것 없음"} | ${eye("R")} · ${eye("L")}${lr != null ? ` · 좌우 차 ${(lr * 100).toFixed(1)}%p` : ""} | ${codes.join(" ") || "지적 없음"}`;
+  const eye = (k) => { const e = w[k]; return `${k} ${e.match ? MATCH[e.match] : "판정 안 함"}${e.off != null ? ` 끝 차 ${pc(e.off, 1)}%` : ""} [${e.length ? name[e.length] : "-"} · 뜬 ${e.open.found ? pc(e.open.r) + "%" : "-"}${e.closed ? ` · 감은 ${e.closed.found ? pc(e.closed.r) + "% → " + pc(e.closed.r / RATIO) + "%" : "-"}` : ""}${e.dDeg != null ? ` · 각도 차 ${e.dDeg.toFixed(0)}도 (가이드 ${e.guideDeg.toFixed(0)}도)` : ""}]${e.edge ? " 범위 끝" : ""}`; };
+  const lr = res.metrics.lrLen, codes = hints(res).map((c) => c.replace("LINER_", "").replace(/_([RL])$/, "·$1"));
+  // 점수를 접은 단계(80 · 50)가 판정 단계와 다르면 드러낸다 — 같아야 한다
+  const head = d.status === "scored" ? `${verdict(res)} ${d.score}점${fold(d.score) === FOLD[res.metrics.match] ? "" : ` (!! 접으면 ${fold(d.score)})`}` : res.present ? "점수 없음 (판정한 것이 없다)" : "그린 것 없음";
+  return `${head} | ${w ? `${eye("R")} · ${eye("L")}` : ""}${lr != null ? ` · 좌우 차 ${(lr * 100).toFixed(1)}%p` : ""} | ${codes.join(" ") || "지적 없음"}`;
+}
+/** 묶음 요약 한 줄 — 판정별 건수. long = '길어요' 가 붙은 건수도 센다 */
+function tally(tag, list, expect, long = false) {
+  const n = {}; for (const r of list) n[verdict(r)] = (n[verdict(r)] ?? 0) + 1;
+  const order = ["비슷해요", "조금 달라요", "많이 달라요", "그린 것 없음", "판정 안 함"].filter((k) => n[k]).map((k) => `${k} ${n[k]}`).join(" · ");
+  console.log(`  => ${tag} ${list.length}건: ${order}${long ? ` | '길어요' 가 붙은 것 ${list.filter((r) => hints(r).some((c) => c.startsWith("LINER_WING_LONG"))).length}건` : ""} (기대: ${expect})`);
 }
 
 // ---- 사진 변형 (2 대조용): 두 눈 둘레만 잘라서 한다 — 사진 전체를 다시 뽑으면 무겁다 ----
@@ -196,18 +208,22 @@ if (ONLY.includes("3")) {
 }
 
 if (ONLY.includes("4")) {
-  console.log(`\n===== (4) scoreLinerWing 판정 — 화장 ${LOOK}. 가이드 꼬리 ${pc(GUIDE_LEN)}% · '길다' ${pc(LONG, 1)}% 넘게 (눈 뜬 장) · '짧다' ${pc(GUIDE_LEN - core.PARAMS.tol.wingShort, 1)}% 아래 (눈 감은 장 ÷ ${RATIO})`);
-  console.log("그린 그대로 (눈으로 본 것: 네 명 · 덧그린 두 장 모두 꼬리가 가이드의 약 2배 = '길다')");
-  for (const id of PEOPLE) { const o = drawn[`${id}_open`], c = drawn[`${id}_closed`]; console.log(`  ${id}        : ${say(core.scoreLinerWing(o, c, guideOf(o.base.lm)))}`); }
-  for (const n of ["in1", "in2"]) console.log(`  ${n} (눈 뜬 장만): ${say(core.scoreLinerWing(drawn[n], null, guideOf(drawn[n].base.lm)))}`);
-  console.log(`꼬리를 가이드 길이에서 자른 것 (눈 뜬 장 ${pc(GUIDE_LEN)}% · 눈 감은 장 ${pc(GUIDE_LEN * RATIO, 1)}% — 기대: '맞다')`);
-  for (const id of PEOPLE) { const o = cutWing(drawn[`${id}_open`], GUIDE_LEN), c = cutWing(drawn[`${id}_closed`], GUIDE_LEN * RATIO); console.log(`  ${id}        : ${say(core.scoreLinerWing(o, c, guideOf(o.base.lm)))}`); }
-  console.log("맨얼굴끼리 (기대: 그린 것 없음)");
-  for (const id of PEOPLE) { const o = drawn[`${id}_open`], c = drawn[`${id}_closed`]; console.log(`  ${id}        : ${say(core.scoreLinerWing({ base: o.base, cur: o.base }, { base: c.base, cur: c.base }, guideOf(o.base.lm)))}`); }
+  const NEAR = core.PARAMS.tol.wingShort, FAR = core.LINER_WING.far;
+  console.log(`\n===== (4) scoreLinerWing 판정 — 가이드와 비슷한가. 화장 ${LOOK} · 가이드 꼬리 ${pc(GUIDE_LEN)}%. 끝 차 = 그린 꼬리 끝과 가이드 꼬리 끝 사이 거리(눈 폭 %): ${pc(NEAR, 1)}% 까지 비슷해요 · ${pc(FAR, 1)}% 까지 조금 달라요 · 그 위 많이 달라요`);
+  console.log(`  길이 = 눈 뜬 장에서 ${pc(LONG, 1)}% 넘으면 그 값, 아니면 눈 감은 장 ÷ ${RATIO}. 각도 차 = 눈 뜬 장에서 꼬리를 찾았을 때만`);
+  const run = (tag, expect, rows, long = false) => { console.log(tag); const out = rows.map(([name, res]) => { console.log(`  ${name.padEnd(14)}: ${say(res)}`); return res; }); tally(tag.split(" (")[0], out, expect, long); };
+  run("그린 그대로 (눈으로 본 것: 네 명 · 덧그린 두 장 모두 꼬리가 가이드의 약 2배)", "달라요 · 길어요", [
+    ...PEOPLE.map((id) => { const o = drawn[`${id}_open`]; return [id, core.scoreLinerWing(o, drawn[`${id}_closed`], guideOf(o.base.lm))]; }),
+    ...["in1", "in2"].map((n) => [`${n} (눈 뜬 장만)`, core.scoreLinerWing(drawn[n], null, guideOf(drawn[n].base.lm))])], true);
+  run(`꼬리를 가이드 길이에서 자른 것 (눈 뜬 장 ${pc(GUIDE_LEN)}% · 눈 감은 장 ${pc(GUIDE_LEN * RATIO, 1)}%. 각도는 그린 그대로 — 가이드 각도로 그린 것이 아니다)`, "비슷해요",
+    PEOPLE.map((id) => { const o = cutWing(drawn[`${id}_open`], GUIDE_LEN), c = cutWing(drawn[`${id}_closed`], GUIDE_LEN * RATIO); return [id, core.scoreLinerWing(o, c, guideOf(o.base.lm))]; }));
+  run("맨얼굴끼리 (같은 사진)", "그린 것 없음",
+    PEOPLE.map((id) => { const o = drawn[`${id}_open`], c = drawn[`${id}_closed`]; return [id, core.scoreLinerWing({ base: o.base, cur: o.base }, { base: c.base, cur: c.base }, guideOf(o.base.lm))]; }));
 }
 
 if (ONLY.includes("5") && existsSync(`${T}/reshoot`)) {
-  console.log(`\n===== (5) 따로 찍은 맨얼굴 쌍 (실제로 두 번 찍음 · 그린 것 없음) — 가짜 꼬리 · 가짜 눈머리 넘김 · 판정 (기대: 그린 것 없음). 칸 값 hat`);
+  console.log(`\n===== (5) 따로 찍은 맨얼굴 쌍 (실제로 두 번 찍음 · 그린 것 없음) — 가짜 꼬리 · 가짜 눈머리 넘김 · 판정 (기대: '비슷해요' 가 나오면 안 된다 — 안 그린 얼굴은 '가이드와 달라요' 가 정답이고, 덧붙이는 말은 틀려도 된다). 칸 값 hat`);
+  const judged = [], names = [];
   const SETS = [["다른 날 · 다른 장소 · 다른 조명", ["me", "me2"]], ["같은 자리 · 몇 분 간격 · 앱과 같은 크기 비 (세로 맨얼굴 → 가로 확인)", ["me3"]], ["〃 방향을 바꾼 것 (가로가 맨얼굴, 참고)", ["me4"]]];
   const tilt = (lm) => (Math.atan2(lm[263].y - lm[33].y, lm[263].x - lm[33].x) * 180) / Math.PI;
   for (const [tag, ids] of SETS) {
@@ -227,8 +243,11 @@ if (ONLY.includes("5") && existsSync(`${T}/reshoot`)) {
       }
       const g = guideOf(P.open.base.lm);
       console.log(`    판정 — 얼굴 점만: ${say(core.scoreLinerWing(P.open, P.closed, g, { register: false }))}`);
-      console.log(`    판정 — 미세 맞춤: ${say(core.scoreLinerWing(P.open, P.closed, g))}`);
+      const res = core.scoreLinerWing(P.open, P.closed, g);
+      judged.push(res); names.push(`${id} ${verdict(res)}`);
+      console.log(`    판정 — 미세 맞춤: ${say(res)}`);
     }
     console.log(`  => ${sum.n}눈: 가짜 꼬리 ${sum.w0} → ${sum.w1} · 가짜 눈머리 ${sum.i0} → ${sum.i1} (얼굴 점만 → 미세 맞춤) · 미세 맞춤이 범위(±${pc(core.EYE_SHIFT.range)}%) 끝에 걸린 것 ${sum.edge}/${sum.n * 2} — 안 걸린 ${sum.inN}곳만 보면 가짜 ${sum.inFake}`);
   }
+  tally(`따로 찍은 맨얼굴 쌍 (미세 맞춤 · ${names.join(" / ")})`, judged, "'비슷해요' 0건");
 }

@@ -952,26 +952,40 @@ export function eyeShift(base: SampleFrame, cur: SampleFrame, side: Side, end: "
  *   closedRatio = 같은 꼬리가 눈 감은 장에서는 눈 뜬 장의 몇 배 길이로 재지나. 눈 감은 장의 길이를 이 값으로 나눠 가이드(눈 뜬 눈 기준)와 견준다.
  *     생성 사진 4명 8눈(같은 꼬리의 뜬 눈 · 감은 눈, liner_wing.mjs)에서 잰 비율 0.63~0.92 의 중앙값 (눈으로 읽은 끝으로는 0.68~1.03 · 중앙 0.77).
  *     눈마다 크게 달라 이 값 하나로 환산하면 길이가 ±20% 쯤 틀릴 수 있고, 생성 사진이라 두 장이 정말 같은 꼬리라는 보장도 없다
+ *   far  = 그린 꼬리 끝과 가이드 꼬리 끝 사이 거리(눈 폭 비율)가 이 값을 넘으면 '많이 달라요'. '비슷해요' 의 기준은 따로 두지 않고 PARAMS.tol.wingShort(5.5%)를 쓴다 — far 는 그 두 배.
+ *     가이드 꼬리 길이(12%)보다 조금 짧게 잡았다: 꼬리를 못 찾은 눈(끝 사이 거리 = 가이드 길이)이 식으로도 '많이' 쪽이다
+ *   zero = 이 거리에서 점수가 0 (far 의 두 배)
  */
-export const LINER_WING = { closedRatio: 0.73 };
+export const LINER_WING = { closedRatio: 0.73, far: 0.11, zero: 0.22 };
 
 export type WingLength = "long" | "ok" | "short" | "none";
+/** 가이드와 비슷한가 — 비슷해요 · 조금 달라요 · 많이 달라요. 점수로는 80 이상 · 50 이상 · 그 아래 */
+export type WingMatch = "similar" | "slight" | "far";
 
 export interface LinerWingEye {
   /** 눈 뜬 장 · 눈 감은 장에서 잰 꼬리 (눈 감은 쌍이 없으면 closed 는 null) */
   open: FanTip;
   closed: FanTip | null;
-  /** 가이드 꼬리 길이 (눈 폭 비율, 눈 뜬 맨얼굴 기준) */
+  /** 가이드 꼬리의 길이 (눈 폭 비율) · 각도 (도, FanTip.deg 와 같은 틀). 눈 뜬 맨얼굴 기준 */
   guide: number;
-  /** 길다 · 맞다 · 짧다 · 없음. 판정하지 않았으면 null (눈 감은 쌍이 없고 '길다' 가 아닐 때) */
+  guideDeg: number;
+  /** 길다 · 맞다 · 짧다 · 없음 — 덧붙이는 말의 길이 쪽. 판정하지 않았으면 null (눈 감은 쌍이 없고 눈 뜬 장에서 '길다' 가 아닐 때) */
   length: WingLength | null;
   /** 판정에 쓴 꼬리 길이 — 눈 뜬 눈 기준 (눈 감은 장에서 잰 값은 closedRatio 로 나눈 것). 판정하지 않았으면 null */
   drawn: number | null;
+  /** 판정에 쓴 각도 차 (도, 그린 것 − 가이드 · 위가 +). 각도를 보지 않았으면 null (눈 뜬 장에서 꼬리를 못 찾았다) */
+  dDeg: number | null;
+  /** 그린 꼬리 끝과 가이드 꼬리 끝 사이의 거리 (눈 폭 비율) — 길이 차와 각도 차가 같이 들어간다. 꼬리가 없으면 가이드 길이. 판정하지 않았으면 null */
+  off: number | null;
+  /** 이 눈의 단계 (눈머리 넘김으로 내린 것까지). 판정하지 않았으면 null */
+  match: WingMatch | null;
   /** 눈머리 쪽에서 잰 선 */
   innerOpen: FanTip;
   innerClosed: FanTip | null;
   /** 눈머리 너머로 나간 길이 (눈 폭 비율, 눈 감은 장). 안 넘겼으면 0, 판정하지 않았으면 null */
   innerOver: number | null;
+  /** 이 눈의 미세 맞춤(눈꼬리 · 눈머리, 두 장) 중 범위 끝에 걸린 것이 있나 — 판정은 그대로 하고 표시만 한다 */
+  edge: boolean;
 }
 
 export interface LinerWingOptions {
@@ -980,24 +994,44 @@ export interface LinerWingOptions {
   register?: boolean;
 }
 
+const WING_BAND: Record<WingMatch, readonly [number, number]> = { similar: [80, 100], slight: [50, 79], far: [0, 49] };
+const wingMatchOf = (off: number, near: number): WingMatch => (off <= near ? "similar" : off <= LINER_WING.far ? "slight" : "far");
 /**
- * 라이너 꼬리 채점 (실험) — **꼬리 길이 · 좌우 꼬리 길이 차 · 눈머리 넘김**만 본다 (결정 2026-10-05). 눈꺼풀 위의 선(두께 · 끊김 · 시작 자리)은 채점하지 않는다.
- * 두 장의 역할 (조사 2026-10-05 · liner_wing.mjs, 그린 사진 20눈):
- *   '길다'              = 눈 뜬 장 — 가이드보다 긴 꼬리는 눈 뜬 장에서도 잡히고, 가이드가 눈 뜬 눈 기준이라 길이를 그대로 견준다
- *   '맞다 · 짧다 · 없음' = 눈 감은 장 — 가이드 길이 이하의 꼬리는 눈 뜬 장에서 자주 놓친다(꼬리 뿌리 자리가 맨얼굴에서 원래 어둡다). 감은 눈은 그 자리가 밝다.
- *                         다만 같은 꼬리도 감은 눈에서는 가파르고 짧게 재져서(뜬 눈 -11~10도 · 22~34%, 감은 눈 39~51도 · 18~25%) closedRatio 로 환산해 견준다
- *   좌우 길이 차         = 두 눈 다 찾은 장으로 — 눈 뜬 장 먼저, 아니면 눈 감은 장(환산)
- *   눈머리 넘김          = 눈 감은 장 (짧은 선이라 꼬리의 '맞다 · 짧다' 와 같은 처지로 본 가정 — 넘긴 사진이 없어 어느 장이 나은지 모른다)
- * 눈 감은 쌍이 없으면(null · 둘째 쌍이 눈 감은 장이 아님) '길다' 와 좌우 차만 판정한다.
- * 진단 코드는 꼬리가 짧다 · 없다(LINER_WING_SHORT_R/L)만 codes 에, 새 지적(LINER_WING_LONG_R/L · LINER_INNER_OVER_R/L · LINER_WING_LR_LEN)은 metrics.endCodes 에.
- * 점수는 지금 채점과 같은 자(scoreForm)의 꼬리 길이 감점 + 눈머리를 넘긴 만큼(linerEndsResult 와 같은 식). 허용 폭 안('맞다')은 깎지 않는다.
- *   꼬리 감점의 상한이 20점이라 꼬리가 아무리 길어도 80점이다 — 채점 범위가 꼬리로 좁아진 데 맞춘 점수 식은 아직 정하지 않았다.
- * 아무 선도 못 찾으면 present = false — 꼬리 없이 눈꺼풀에만 그린 것과 안 그린 것을 여기서는 못 가른다 (눈꺼풀 위는 안 본다).
- * 한계: 따로 찍은 맨얼굴 쌍에서는 그린 것이 없는데도 꼬리를 읽는다 (같은 자리에서 다시 찍은 4눈 중 1눈 · 다른 날 8눈 중 4눈).
- *   같은 자리 쌍의 가짜는 미세 맞춤이 범위 끝에 걸린 눈(FanTip.reg.edge)에서만 났다 — 얼굴 점 맞춤이 범위(±3%)보다 크게 어긋난 눈이다. eval/samples/shape/README.md
+ * 끝 사이 거리 → 점수. 0 = 100, near = 80, far = 50, zero = 0 을 곧게 잇는다 — 길수록 · 벗어날수록 끝없이 내려간다 (전에는 꼬리 감점 상한 때문에 80점에서 멈췄다).
+ * 단계의 점수 구간 안으로 자른다: 반올림한 점수와, 좌우 차 · 눈머리 넘김으로 한 칸 내린 단계가 화면의 접기(80 · 50)와 어긋나지 않게
+ */
+function wingScore(off: number, match: WingMatch, near: number): number {
+  const W = LINER_WING, s = off <= near ? 100 - (20 * off) / near : off <= W.far ? 80 - (30 * (off - near)) / (W.far - near) : 50 - (50 * (off - W.far)) / (W.zero - W.far);
+  return Math.min(WING_BAND[match][1], Math.max(WING_BAND[match][0], Math.round(s)));
+}
+
+/**
+ * 라이너 꼬리 채점 (실험) — 판정은 **가이드와 비슷한가** 하나다 (결정 2026-10-06): 비슷해요 · 조금 달라요 · 많이 달라요.
+ * 눈꼬리와 눈머리만 본다. 눈꺼풀 위의 선(두께 · 끊김 · 시작 자리)은 쓰지 않는다. 확인 사진은 눈 뜬 장 · 눈 감은 장 둘 다 받는다.
+ * 눈마다 값 하나: **그린 꼬리 끝과 가이드 꼬리 끝 사이의 거리**(눈 폭 비율, LinerWingEye.off) = √(길이 차² + (2·√(그린 길이 · 가이드 길이)·sin(각도 차 / 2))²).
+ *   거리 ≤ tol.wingShort → 비슷해요, ≤ LINER_WING.far → 조금 달라요, 그 위 → 많이 달라요. 점수도 이 값에서 (wingScore) — decide 로 접은 맞음 · 조금 · 많이가 세 단계와 같다.
+ * 가이드는 눈 뜬 눈 기준인데 같은 꼬리도 눈 감은 장에서는 가파르고 짧게 재진다 (뜬 눈 -11~10도 · 22~34%, 감은 눈 39~51도 · 18~25%, liner_wing.mjs). 그래서 장마다 쓰는 것이 다르다:
+ *   길이 = 눈 뜬 장에서 가이드 + 허용 폭보다 길게 잡혔으면 그 값을 그대로 (가이드보다 긴 꼬리는 눈 뜬 장에서도 잡힌다).
+ *          아니면 눈 감은 장의 길이 ÷ closedRatio — 가이드 길이 이하의 꼬리는 눈 뜬 장에서 자주 놓친다(꼬리 뿌리 자리가 맨얼굴에서 원래 어둡다, 12눈 중 4눈만 잡힘). 감은 눈은 그 자리가 밝다
+ *   각도 = **눈 뜬 장에서 꼬리를 찾았을 때만**, 그 끝의 각도 − 가이드 각도. 눈 감은 장의 각도는 쓰지 않는다 — 눈꺼풀이 내려와 40도쯤 가파르게 재지고 그 양을 환산할 근거가 없다.
+ *          눈 뜬 장에서 못 찾았으면 각도 차 0 으로 친다 (길이만 견준다). 못 본 것을 '다르다' 로 치지 않는 쪽
+ *   없음 = 눈 감은 장에서 꼬리를 못 찾은 눈 (눈 뜬 장에서 '길다' 도 아님) → 많이 달라요. 끝 사이 거리는 가이드 길이로 친다 (끝이 눈꼬리에 있는 셈).
+ *          눈 뜬 장에만 짧게 잡힌 것은 꼬리로 치지 않는다 — 맨얼굴의 가짜 꼬리가 '비슷해요' 가 되는 것을 막는 쪽
+ *   눈 감은 쌍이 없으면(null · 둘째 쌍이 눈 감은 장이 아님) 눈 뜬 장에서 '길다' 인 눈만 판정한다. 판정한 눈이 없으면 점수도 단계도 없다 — 안 본 것을 '비슷해요' 로 치지 않는다
+ * 전체 단계 = 판정한 눈 중 **더 다른 눈**의 것 (값도 큰 쪽). 한쪽만 꼬리가 없어도 가이드와 많이 다르다.
+ * 눈머리 넘김(눈 감은 장, LINER_ENDS.innerOver 넘게) · 좌우 길이 차(두 눈 다 찾은 장으로 — 눈 뜬 장 먼저, tol.lrDiff 넘게)는 끝 사이 거리에 넣지 않는다 (가이드 꼬리 끝과 견줄 값이 아니다).
+ *   대신 '비슷해요' 였으면 **한 칸 내려** '조금 달라요' 로, 이미 달랐으면 말만 덧붙인다 → '비슷해요' 에는 지적이 붙지 않는다.
+ * 덧붙이는 말(어느 쪽으로 다른가)은 단계와 따로다 — 가짜 꼬리에서는 말이 틀릴 수 있다. '비슷해요' 가 아닌 눈에만 붙인다:
+ *   없어요 · 짧아요 = LINER_WING_SHORT_R/L, 위로 · 아래로 = LINER_WING_HIGH/LOW_R/L (codes — 문장이 이미 있는 코드),
+ *   길어요 = LINER_WING_LONG_R/L, 눈머리를 넘겼어요 = LINER_INNER_OVER_R/L, 좌우가 달라요 = LINER_WING_LR_LEN (metrics.endCodes — 새 지적).
+ *   길이 쪽 · 각도 쪽 중 혼자서 허용 폭을 넘는 것은 다 붙이고, 둘 다 못 넘는데 합쳐서 넘었으면 큰 쪽 하나
+ * 아무 선도 못 찾으면 present = false — 꼬리 없이 눈꺼풀에만 그린 것과 안 그린 것을 여기서는 못 가른다 (눈꺼풀 위는 안 본다). 안 그린 얼굴의 정답은 '가이드와 달라요' 라 어느 쪽이든 '비슷해요' 는 아니다.
+ * 미세 맞춤이 범위 끝에 걸린 눈(FanTip.reg.edge)도 그대로 판정한다. 그 눈은 얼굴 점 맞춤이 범위(±3%)보다 크게 어긋났을 수 있어 표시만 남긴다 (LinerWingEye.edge · metrics.edge).
+ * 한계: 따로 찍은 맨얼굴 쌍에서는 그린 것이 없는데도 꼬리를 읽는다 (같은 자리에서 다시 찍은 4눈 중 1눈 · 다른 날 8눈 중 4눈) — 단계가 '달라요' 면 맞는 답이다.
+ *   가이드대로 그린 실제 사진이 없어 '가이드대로 그렸는데 달라요' 가 얼마나 나오는지는 모른다. eval/samples/shape/README.md
  */
 export function scoreLinerWing(open: LinerFramePair, closed: LinerFramePair | null, guide: GuideSource, opts: LinerWingOptions = {}, p: ScoreParams = PARAMS): PartScore {
-  const g = guide("liner", open.base).liner, codes: PartScore["codes"] = [], endCodes: string[] = [];
+  const g = guide("liner", open.base).liner, codes: PartScore["codes"] = [], endCodes: string[] = [], near = p.tol.wingShort;
   if (!g) return { present: false, score: null, codes, lrIndex: null, metrics: { endCodes } };
   const sides = ["R", "L"] as const;
   const shut = closed && sides.every((k) => eyeClosed(closed.base.lm, k) && eyeClosed(closed.cur.lm, k)) ? closed : null;
@@ -1008,34 +1042,47 @@ export function scoreLinerWing(open: LinerFramePair, closed: LinerFramePair | nu
   };
   const fans = (q: LinerFramePair, k: Side): { wing: FanTip; inner: FanTip } => ({ wing: fan(q, k, "outer"), inner: fan(q, k, "inner") });
   const eye = (k: Side): LinerWingEye => {
-    const o = fans(open, k), c = shut ? fans(shut, k) : null, guideLen = wingLenOf(open.base, g.wing[k]);
-    const seen = c?.wing.found ? c.wing.r / LINER_WING.closedRatio : 0;
-    const long = o.wing.found && o.wing.r > guideLen + p.tol.wingShort;
-    const length: WingLength | null = long ? "long" : !c ? null : !c.wing.found ? "none" : seen < guideLen - p.tol.wingShort ? "short" : "ok";
+    const o = fans(open, k), c = shut ? fans(shut, k) : null, w = g.wing[k], guideLen = wingLenOf(open.base, w);
+    // 가이드 꼬리의 각도를 꼬리 끝과 같은 틀(눈머리→눈꼬리 축, 위가 +)로
+    const x = eyeAxes(open.base, k, "outer", open.base.unit.eye), dx = w[1].x - w[0].x, dy = w[1].y - w[0].y;
+    const guideDeg = (Math.atan2(dx * x.n.x + dy * x.n.y, dx * x.a.x + dy * x.a.y) * 180) / Math.PI;
+    const seen = c?.wing.found ? c.wing.r / LINER_WING.closedRatio : 0, longOpen = o.wing.found && o.wing.r > guideLen + near;
+    const length: WingLength | null = longOpen ? "long" : !c ? null : !c.wing.found ? "none" : seen < guideLen - near ? "short" : seen > guideLen + near ? "long" : "ok";
+    const drawn = longOpen ? o.wing.r : c ? seen : null, tail = length !== null && length !== "none";
+    const dDeg = tail && o.wing.found ? o.wing.deg - guideDeg : null;
+    const off = !tail ? (length ? guideLen : null) : Math.hypot(drawn! - guideLen, 2 * Math.sqrt(drawn! * guideLen) * Math.sin((Math.abs(dDeg ?? 0) * Math.PI) / 360));
+    const innerOver = c ? (c.inner.found ? c.inner.r : 0) : null, m = off === null ? null : length === "none" ? "far" : wingMatchOf(off, near);
     return {
-      open: o.wing, closed: c?.wing ?? null, guide: guideLen, length, drawn: long ? o.wing.r : c ? seen : null,
-      innerOpen: o.inner, innerClosed: c?.inner ?? null, innerOver: c ? (c.inner.found ? c.inner.r : 0) : null,
+      open: o.wing, closed: c?.wing ?? null, guide: guideLen, guideDeg, length, drawn, dDeg, off,
+      match: m === "similar" && (innerOver ?? 0) > LINER_ENDS.innerOver ? "slight" : m,
+      innerOpen: o.inner, innerClosed: c?.inner ?? null, innerOver,
+      edge: [o.wing, o.inner, c?.wing, c?.inner].some((t) => !!t?.reg?.edge),
     };
   };
-  const per = { R: eye("R"), L: eye("L") };
-  // 좌우 길이 차 (R − L, 눈 뜬 눈 기준): 두 눈 다 찾은 장에서만 — 한쪽만 찾은 것은 '없음' 지적이 맡는다
+  const per = { R: eye("R"), L: eye("L") }, edge = sides.some((k) => per[k].edge);
+  // 좌우 길이 차 (R − L, 눈 뜬 눈 기준): 두 눈 다 찾은 장에서만 — 한쪽만 찾은 것은 '없음' 이 맡는다
   const lrLen = per.R.open.found && per.L.open.found ? per.R.open.r - per.L.open.r
     : per.R.closed?.found && per.L.closed?.found ? (per.R.closed.r - per.L.closed.r) / LINER_WING.closedRatio : null;
   const present = sides.some((k) => per[k].open.found || !!per[k].closed?.found || (per[k].innerOver ?? 0) > 0);
-  if (!present) return { present, score: null, codes, lrIndex: null, metrics: { wing: per, lrLen, endCodes } };
+  if (!present) return { present, score: null, codes, lrIndex: null, metrics: { wing: per, lrLen, endCodes, off: null, match: null, edge } };
   for (const k of sides) {
     const e = per[k];
-    if (e.length === "short" || e.length === "none") codes.push(`LINER_WING_SHORT_${k}`);
-    else if (e.length === "long") endCodes.push(`LINER_WING_LONG_${k}`);
+    if (e.match === null || e.match === "similar") continue;
+    if (e.length === "none") codes.push(`LINER_WING_SHORT_${k}`);
+    else {
+      const dLen = e.drawn! - e.guide, arc = Math.sqrt(Math.max(0, e.off! ** 2 - dLen ** 2)), apart = e.off! > near;
+      if (Math.abs(dLen) > near || (apart && arc <= near && Math.abs(dLen) >= arc)) { if (dLen < 0) codes.push(`LINER_WING_SHORT_${k}`); else endCodes.push(`LINER_WING_LONG_${k}`); }
+      if (arc > near || (apart && Math.abs(dLen) <= near && arc > Math.abs(dLen))) codes.push(`LINER_WING_${e.dDeg! > 0 ? "HIGH" : "LOW"}_${k}`);
+    }
     if ((e.innerOver ?? 0) > LINER_ENDS.innerOver) endCodes.push(`LINER_INNER_OVER_${k}`);
   }
   // 허용 폭은 꼬리 높이 차용 값(tol.lrDiff)을 길이 차에 그대로 쓴다 — 가정값, 골든 세트로 맞춘다
-  if (lrLen !== null && Math.abs(lrLen) > p.tol.lrDiff) endCodes.push("LINER_WING_LR_LEN");
-  const avg = (f: (e: LinerWingEye) => number): number => (f(per.R) + f(per.L)) / 2;
-  // 길이 차는 눈마다 크기로 — 부호째 평균하면 한쪽은 길고 한쪽은 없을 때 서로 지워진다
-  const form = scoreForm({ coverage: 1, overflow: 0, wingDelta: avg((e) => (e.length === null || e.length === "ok" ? 0 : Math.abs((e.drawn ?? 0) - e.guide))) });
-  const innerPen = Math.min(20, (avg((e) => Math.max(0, (e.innerOver ?? 0) - LINER_ENDS.innerOver)) / ENDS_UNIT) * 8);
-  // 길이를 판정한 눈이 없으면(눈 감은 쌍이 없고 '길다' 도 아님) 점수를 내지 않는다 — 안 본 것을 '맞다' 로 치지 않는다
-  const judged = sides.some((k) => per[k].length !== null);
-  return { present, score: judged ? Math.round(Math.max(0, form - innerPen)) : null, codes, lrIndex: null, metrics: { wing: per, lrLen, endCodes } };
+  const lrOver = lrLen !== null && Math.abs(lrLen) > p.tol.lrDiff;
+  if (lrOver) endCodes.push("LINER_WING_LR_LEN");
+  // 판정한 눈 중 더 다른 눈이 전체다 — 평균하면 한쪽은 가이드대로이고 한쪽은 없을 때 '조금' 으로 묽어진다
+  const judged = sides.map((k) => per[k]).filter((e) => e.match !== null);
+  if (!judged.length) return { present, score: null, codes, lrIndex: null, metrics: { wing: per, lrLen, endCodes, off: null, match: null, edge } };
+  const rank: readonly WingMatch[] = ["similar", "slight", "far"], off = Math.max(...judged.map((e) => e.off!));
+  const worst = rank[Math.max(...judged.map((e) => rank.indexOf(e.match!)))]!, match: WingMatch = worst === "similar" && lrOver ? "slight" : worst;
+  return { present, score: wingScore(off, match, near), codes, lrIndex: null, metrics: { wing: per, lrLen, endCodes, off, match, edge } };
 }
