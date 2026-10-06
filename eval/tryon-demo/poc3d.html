@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>화장 템플릿 3D 매핑 POC</title>
+<style>
+  :root { --line:#2a2f3a; --sub:#8b94a7; --key:#1e7bff }
+  * { box-sizing:border-box }
+  body { margin:0; background:#12151c; color:#e8ecf3; font:15px/1.5 -apple-system,"Apple SD Gothic Neo",sans-serif }
+  header { display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:12px 18px; background:#171b24; border-bottom:1px solid var(--line) }
+  header h1 { font-size:16px; margin:0 10px 0 0 }
+  button, select { font:inherit; padding:7px 13px; border:1px solid var(--line); border-radius:8px; background:#1e232e; color:inherit; cursor:pointer }
+  button.key { background:var(--key); border-color:var(--key); color:#fff }
+  button.on { background:#7a3b2e; border-color:#7a3b2e; color:#fff }
+  #status { padding:6px 18px; font-size:13px; color:var(--sub) }
+  main { max-width:1180px; margin:0 auto; padding:14px 18px 40px }
+  .row { display:flex; flex-wrap:wrap; gap:16px; align-items:flex-start }
+  .stage { flex:1 1 560px; min-width:300px; background:#000; border-radius:12px; overflow:hidden }
+  .stage canvas { width:100%; display:block; transform:scaleX(-1) }
+  video { display:none }
+  .side { flex:0 0 290px }
+  .card { background:#171b24; border:1px solid var(--line); border-radius:10px; padding:12px; margin-bottom:10px }
+  .card h2 { font-size:12px; margin:0 0 8px; color:var(--sub); font-weight:600 }
+  .card canvas { width:100%; display:block; border-radius:6px; background:#0c0f14 }
+  .note { font-size:12.5px; color:var(--sub); line-height:1.75 }
+  .note b { color:#e8ecf3 }
+</style>
+</head>
+<body>
+<header>
+  <h1>화장 템플릿 3D 매핑</h1>
+  <label style="font-size:13px;color:#8b94a7">룩
+    <select id="look">
+      <option value="kr_la">a 가는 캣아이 · 속눈썹 분리</option>
+      <option value="kr_lb" selected>b 굵은 윙 볼륨 · 속눈썹 분리</option>
+      <option value="kr_lc">c 둥근 돌리 · 속눈썹 분리</option>
+    </select>
+  </label>
+  <button id="btnCam" class="key">카메라 켜기</button>
+  <button id="btnDepth">깊이 끄기 (2D로)</button>
+  <button id="btnMesh">그물 보기</button>
+  <button id="btnDiag">진단: 전부 켬</button>
+      <button id="btnBare">화장 끄기</button>
+</header>
+<div id="status">불러오는 중…</div>
+<main>
+  <div class="row">
+    <div class="stage"><canvas id="gl"></canvas></div>
+    <div class="side">
+      <div class="card">
+        <h2>템플릿 — 표준 얼굴 판에 그린 화장</h2>
+        <div id="tplView" style="display:flex;gap:8px">
+          <div style="text-align:center"><canvas id="tplMul"></canvas><div class="note">곱하기</div></div>
+          <div style="text-align:center"><canvas id="tplSoft"></canvas><div class="note">소프트라이트</div></div>
+          <div style="text-align:center"><canvas id="tplLip"></canvas><div class="note">입술 마스크</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>세기 조절</h2>
+        <div style="display:flex;flex-direction:column;gap:10px;font-size:13px">
+          <label>곱하기 — 섀도·블러셔·윤곽·라이너
+            <input id="sMul" type="range" min="0" max="2" step="0.05" value="1" style="width:100%">
+            <span id="sMulV">1.00</span>
+          </label>
+          <label>밝힘 — 톤업·눈 밑·콧대
+            <input id="sSoft" type="range" min="0" max="2" step="0.05" value="1.25" style="width:100%">
+            <span id="sSoftV">1.25</span>
+          </label>
+          <label>입술
+            <input id="sLip" type="range" min="0" max="1" step="0.05" value="0.55" style="width:100%">
+            <span id="sLipV">0.55</span>
+          </label>
+          <label>머리카락 갱신 — 작을수록 빠르게 따라옴 (무거워짐)
+            <input id="sHair" type="range" min="1" max="30" step="1" value="9" style="width:100%">
+            <span id="sHairV">9</span>
+          </label>
+          <label>마스크 섞기 — 클수록 부드럽지만 늦게 따라옴
+            <input id="sSm" type="range" min="0" max="0.9" step="0.05" value="0.50" style="width:100%">
+            <span id="sSmV">0.50</span>
+          </label>
+          <label>눈 아래 — 분홍 기 · 애교살 그림자 선
+            <input id="sEyeM" type="range" min="0" max="2" step="0.05" value="0.70" style="width:100%">
+            <span id="sEyeMV">0.70</span>
+          </label>
+          <label>눈두덩 섀도 — 쌍꺼풀 라인 위까지
+            <input id="sEyeL" type="range" min="0" max="2" step="0.05" value="0.80" style="width:100%">
+            <span id="sEyeLV">0.80</span>
+          </label>
+          <label>애교살 밝힘
+            <input id="sEyeS" type="range" min="0" max="2" step="0.05" value="0.60" style="width:100%">
+            <span id="sEyeSV">0.60</span>
+          </label>
+          <label>볼터치 — 눈 바로 아래
+            <input id="sBlush" type="range" min="0" max="2" step="0.05" value="1" style="width:100%">
+            <span id="sBlushV">1.00</span>
+          </label>
+          <label>물광 — 광대·콧대·코끝·턱만 밝힌다
+            <input id="sGlow" type="range" min="0" max="2" step="0.05" value="1.10" style="width:100%">
+            <span id="sGlowV">1.10</span>
+          </label>
+          <label>입술 입체감 — 윤곽은 어둡게, 가운데는 광
+            <input id="sLipD" type="range" min="0" max="1.2" step="0.05" value="0.80" style="width:100%">
+            <span id="sLipDV">0.80</span>
+          </label>
+          <label>오버립 — 0 끔 · 1 중간 · 2 강
+            <input id="sOver" type="range" min="0" max="2" step="1" value="1" style="width:100%">
+            <span id="sOverV">1</span>
+          </label>
+          <label>눈썹 모양 — 0 그대로 · 1 일자 · 2 아치형 · 3 올린
+            <input id="sBrow" type="range" min="0" max="3" step="1" value="1" style="width:100%">
+            <span id="sBrowV">1</span>
+          </label>
+          <label>눈썹 다듬기 세기
+            <input id="sBrowA" type="range" min="0" max="1.5" step="0.05" value="1.10" style="width:100%">
+            <span id="sBrowAV">1.10</span>
+          </label>
+          <label>턱 깎기 — 얼굴형을 실제로 줄인다
+            <input id="sSlimJ" type="range" min="0" max="0.35" step="0.005" value="0.18" style="width:100%">
+            <span id="sSlimJV">0.18</span>
+          </label>
+          <label>광대 좁히기
+            <input id="sSlimC" type="range" min="0" max="0.25" step="0.005" value="0.10" style="width:100%">
+            <span id="sSlimCV">0.10</span>
+          </label>
+          <label>윗속눈썹 길이 — 눈 가로폭 대비
+            <input id="sLashU" type="range" min="0" max="0.6" step="0.01" value="0.30" style="width:100%">
+            <span id="sLashUV">0.30</span>
+          </label>
+          <label>아랫라이너 세기 — 눈 중간부터 눈꼬리까지
+            <input id="sLashLN" type="range" min="0" max="1.5" step="0.05" value="0.65" style="width:100%">
+            <span id="sLashLNV">0.65</span>
+          </label>
+          <label>아랫쪽 위치 — 음수면 눈 쪽으로 올라온다
+            <input id="sLashOfs" type="range" min="-0.06" max="0.06" step="0.002" value="0" style="width:100%">
+            <span id="sLashOfsV">0.000</span>
+          </label>
+          <label>아랫속눈썹 길이
+            <input id="sLashL" type="range" min="0" max="0.3" step="0.01" value="0.14" style="width:100%">
+            <span id="sLashLV">0.14</span>
+          </label>
+</div>
+        <p class="note">0 이면 꺼지고 1 이 기본, 2 는 두 배입니다. 카메라를 켠 뒤 움직여 보세요.</p>
+      </div>
+      <div class="card">
+        <h2>무엇을 보나</h2>
+        <p class="note">
+          이 판 한 장이 <b>모든 얼굴에 공통</b>으로 쓰입니다. 468개 점마다 이 판 위의 자리가
+          정해져 있어서, 얼굴이 움직여도 화장은 같은 자리에 붙어 있습니다.<br><br>
+          <b>깊이 끄기</b>를 눌러 2D로 바꾼 뒤 <b>고개를 좌우로 크게 돌려</b> 보세요.
+          2D에서는 코가 반대쪽 뺨을 가리지 못해 화장이 콧등 위로 떠 보이고 옆면이 늘어납니다.
+          깊이를 켜면 앞면이 뒷면을 가려 얼굴에 붙어 있습니다.<br><br>
+          <b>그물 보기</b>로 삼각형이 얼굴을 어떻게 덮는지 확인할 수 있습니다.
+        </p>
+      </div>
+    </div>
+  </div>
+</main>
+<video id="video" playsinline muted></video>
+<script type="module" src="./poc3d.js"></script>
+</body>
+</html>

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>화장 층 추출 — 전후 사진에서 화장만 뽑기</title>
+<style>
+  :root { --line:#2a2f3a; --sub:#8b94a7; --key:#1e7bff }
+  * { box-sizing:border-box }
+  body { margin:0; background:#12151c; color:#e8ecf3; font:15px/1.5 -apple-system,"Apple SD Gothic Neo",sans-serif }
+  header { display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:12px 18px; background:#171b24; border-bottom:1px solid var(--line) }
+  header h1 { font-size:16px; margin:0 12px 0 0 }
+  button { font:inherit; padding:7px 13px; border:1px solid var(--line); border-radius:8px; background:#1e232e; color:inherit; cursor:pointer }
+  button.key { background:var(--key); border-color:var(--key); color:#fff }
+  #status { padding:6px 18px; font-size:13px; color:var(--sub) }
+  main { max-width:1300px; margin:0 auto; padding:14px 18px 40px }
+  .row { display:grid; grid-template-columns:repeat(4,1fr); gap:12px }
+  @media (max-width:1000px){ .row{ grid-template-columns:repeat(2,1fr) } }
+  .card { background:#171b24; border:1px solid var(--line); border-radius:10px; padding:10px }
+  .card h2 { font-size:12px; margin:0 0 8px; color:var(--sub); font-weight:600 }
+  .card canvas { width:100%; display:block; border-radius:6px; background:#0c0f14 }
+  .chips { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; font-size:12px; color:var(--sub) }
+  .chip { display:flex; align-items:center; gap:6px; background:#171b24; border:1px solid var(--line); border-radius:20px; padding:4px 11px }
+  .chip i { width:13px; height:13px; border-radius:50%; display:inline-block }
+  .note { font-size:12.5px; color:var(--sub); line-height:1.75; margin-top:12px }
+  .note b { color:#e8ecf3 }
+</style>
+</head>
+<body>
+<header>
+  <h1>화장 층 추출</h1>
+  <label style="font-size:13px;color:#8b94a7">재료 <select id="pair" style="font:inherit;padding:6px 10px;border:1px solid #2a2f3a;border-radius:8px;background:#1e232e;color:#e8ecf3"></select></label>
+  <button id="run" class="key">다시 뽑기</button>
+  <button id="apply">내 얼굴에 씌워 보기</button>
+  <button id="save">템플릿 내려받기</button>
+  <button id="cam" class="key">카메라로 실시간 보기</button>
+  <button id="bare">화장 끄기</button>
+</header>
+<div id="status">불러오는 중…</div>
+<main>
+  <div class="card" id="liveCard" style="margin-bottom:14px; display:none">
+    <h2>실시간 — 뽑아낸 화장을 내 얼굴에</h2>
+    <canvas id="live" style="max-width:720px; margin:0 auto"></canvas>
+  </div>
+  <div class="row">
+    <div class="card"><h2>① 맨얼굴</h2><canvas id="cBare"></canvas></div>
+    <div class="card"><h2>② 화장한 얼굴</h2><canvas id="cMake"></canvas></div>
+    <div class="card"><h2>③ 맨얼굴에 맞춰 정렬한 ②</h2><canvas id="cAlign"></canvas></div>
+    <div class="card"><h2>④ 뽑아낸 화장만</h2><canvas id="cLayer"></canvas></div>
+  </div>
+  <div class="chips" id="colors"></div>
+  <div class="row" style="margin-top:14px">
+    <div class="card"><h2>⑤ 표준 얼굴 판 (템플릿)</h2><canvas id="cUV"></canvas></div>
+    <div class="card"><h2>⑥ 내 맨얼굴</h2><canvas id="cMine"></canvas></div>
+    <div class="card" style="grid-column:span 2"><h2>⑦ 내 얼굴에 씌운 결과</h2><canvas id="cOut"></canvas></div>
+  </div>
+  <p class="note">
+    ③은 ②를 ①의 얼굴 점에 맞춰 <b>같은 위치·각도·표정으로 변형</b>한 것입니다. 이렇게 맞춘 뒤 빼야
+    "얼굴이 움직인 차이"가 아니라 <b>화장만</b> 남습니다.<br>
+    ④는 검은 배경 위에 화장만 떠 있는 그림입니다. 조명과 피부톤은 두 사진에 똑같이 들어 있어 빼는 과정에서 사라집니다.<br>
+    ⑤는 그 화장을 <b>표준 얼굴 판</b>에 편 것으로, 이 판 하나면 누구 얼굴에든 씌울 수 있습니다.
+  </p>
+</main>
+<video id="video" playsinline muted style="display:none"></video>
+<script type="module">
+  // 브라우저가 옛 코드를 캐시에 붙들고 있으면 고친 내용이 반영되지 않는다.
+  // 주소 뒤에 파일이 바뀐 시각을 붙여 항상 최신을 받게 한다.
+  const r = await fetch("./extract.js", { method: "HEAD", cache: "no-store" });
+  const v = encodeURIComponent(r.headers.get("last-modified") || Date.now());
+  await import(`./extract.js?v=${v}`);
+</script>
+</body>
+</html>

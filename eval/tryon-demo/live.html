@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>실시간 화장 — 소다 방식</title>
+<style>
+  :root { --line:#2a2f3a; --sub:#8b94a7; --key:#1e7bff }
+  * { box-sizing:border-box }
+  body { margin:0; background:#12151c; color:#e8ecf3; font:15px/1.5 -apple-system,"Apple SD Gothic Neo",sans-serif }
+  header { display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:12px 18px; background:#171b24; border-bottom:1px solid var(--line) }
+  header h1 { font-size:16px; margin:0 10px 0 0 }
+  button, select { font:inherit; padding:7px 13px; border:1px solid var(--line); border-radius:8px; background:#1e232e; color:inherit; cursor:pointer }
+  button.key { background:var(--key); border-color:var(--key); color:#fff }
+  button.on { background:#2b6b3f; border-color:#2b6b3f; color:#fff }
+  #status { padding:6px 18px; font-size:13px; color:var(--sub) }
+  main { max-width:1180px; margin:0 auto; padding:14px 18px 40px }
+  .row { display:flex; flex-wrap:wrap; gap:16px; align-items:flex-start }
+  .stage { flex:1 1 560px; min-width:300px; background:#000; border-radius:12px; overflow:hidden; position:relative }
+  .stage canvas { width:100%; display:block }
+  .stage canvas.mirror { transform:scaleX(-1) }
+  video { display:none }
+  .side { flex:0 0 290px }
+  .card { background:#171b24; border:1px solid var(--line); border-radius:10px; padding:12px; margin-bottom:10px }
+  .card h2 { font-size:12px; margin:0 0 8px; color:var(--sub); font-weight:600; letter-spacing:.02em }
+  .card label { display:flex; gap:8px; align-items:center; font-size:13px; color:var(--sub); margin-top:7px }
+  .card label input[type=range] { flex:1 }
+  .card label b { width:38px; text-align:right; color:#e8ecf3; font-weight:600 }
+  .steps { font-size:12.5px; color:var(--sub); line-height:1.8 }
+  .steps b { color:#e8ecf3 }
+</style>
+</head>
+<body>
+<header>
+  <h1>실시간 화장</h1>
+  <label style="font-size:13px;color:#8b94a7">룩 <select id="look"></select></label>
+  <button id="btnCam" class="key">카메라 켜기</button>
+  <button id="btnPhoto">내 얼굴 사진</button>
+  <button id="btnBare">화장 끄기</button>
+</header>
+<div id="status">카메라를 켜거나 '내 얼굴 사진'을 눌러 보세요.</div>
+<main>
+  <div class="row">
+    <div class="stage"><canvas id="out"></canvas></div>
+    <div class="side">
+      <div class="card">
+        <h2>① 바탕 만들기</h2>
+        <label>피부 보정 <input id="smooth" type="range" min="0" max="100" value="55"><b id="smoothV">0.55</b></label>
+        <label>톤·색감 <input id="tone" type="range" min="0" max="100" value="30"><b id="toneV">0.30</b></label>
+      </div>
+      <div class="card">
+        <h2>② 화장</h2>
+        <label>전체 진하기 <input id="master" type="range" min="0" max="150" value="100"><b id="masterV">100%</b></label>
+        <label>번짐 <input id="feather" type="range" min="1" max="40" value="14"><b id="featherV">14</b></label>
+        <label>입술 광택 <input id="gloss" type="range" min="0" max="100" value="40"><b id="glossV">0.40</b></label>
+      </div>
+      <div class="card">
+        <h2>처리 순서</h2>
+        <p class="steps">
+          <b>①</b> 피부 보정 — 잡티·모공만 줄이고 윤곽은 지킴<br>
+          <b>②</b> 화장 — 색은 옮기고 <b>밝기는 부위별 한도만큼만</b><br>
+          <b>③</b> 톤 통일 — 칠한 곳과 안 칠한 곳을 같은 색으로 묶음
+        </p>
+      </div>
+    </div>
+  </div>
+</main>
+<video id="video" playsinline muted></video>
+<script type="module" src="./live.js"></script>
+</body>
+</html>

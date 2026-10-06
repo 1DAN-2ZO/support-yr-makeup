@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>화장 렌더링 비교 — 지금 방식 vs 논문 방식</title>
+<style>
+  * { box-sizing:border-box }
+  body { margin:0; background:#f6f7f9; color:#1d2330; font:15px/1.5 -apple-system,"Apple SD Gothic Neo",sans-serif }
+  header { display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:12px 20px; background:#fff; border-bottom:1px solid #e3e6eb }
+  header h1 { font-size:17px; margin:0 12px 0 0 }
+  select, button { font:inherit; padding:6px 12px; border:1px solid #e3e6eb; border-radius:8px; background:#fff }
+  #status { padding:6px 20px; font-size:13px; color:#6b7384 }
+  main { max-width:1280px; margin:0 auto; padding:14px 20px 40px }
+  .cols { display:grid; grid-template-columns:repeat(3,1fr); gap:12px }
+  @media (max-width:900px){ .cols{ grid-template-columns:1fr } }
+  .col { background:#fff; border:1px solid #e3e6eb; border-radius:10px; padding:10px }
+  .col h2 { font-size:13px; margin:0 0 8px; color:#6b7384 }
+  .col canvas { width:100%; display:block; border-radius:6px; background:#000 }
+  .knobs { display:flex; flex-wrap:wrap; gap:14px; margin-top:12px; background:#fff; border:1px solid #e3e6eb; border-radius:10px; padding:10px 14px }
+  .knobs label { display:flex; gap:8px; align-items:center; font-size:13px; color:#6b7384 }
+  .note { font-size:12.5px; color:#6b7384; line-height:1.6; margin-top:10px }
+</style>
+</head>
+<body>
+<header>
+  <h1>화장 렌더링 비교</h1>
+  <label>룩 <select id="look"></select></label>
+  <button id="zoomLip">입술 확대</button>
+  <button id="zoomEye">눈 확대</button>
+  <button id="zoomFull">전체</button>
+</header>
+<div id="status">불러오는 중…</div>
+<main>
+  <div class="cols">
+    <div class="col"><h2>① 맨얼굴</h2><canvas id="c0"></canvas></div>
+    <div class="col"><h2>② 지금 방식 (색을 덮어 칠하기)</h2><canvas id="c1"></canvas></div>
+    <div class="col"><h2>③ 새 방식 (밝기 유지 + 질감 복원)</h2><canvas id="c2"></canvas></div>
+  </div>
+  <div class="knobs">
+    <label>밝기 유지 <input id="keep" type="range" min="0" max="100" value="65"><b id="keepV">0.65</b></label>
+    <label>잔무늬 되돌리기 <input id="detail" type="range" min="0" max="150" value="40"><b id="detailV">0.40</b></label>
+    <label>번짐 폭 <input id="feather" type="range" min="1" max="30" value="8"><b id="featherV">8</b></label>
+    <label>광택 <input id="gloss" type="range" min="0" max="100" value="35"><b id="glossV">0.35</b></label>
+    <label>전체 진하기 <input id="master" type="range" min="0" max="150" value="100"><b id="masterV">100%</b></label>
+  </div>
+  <p class="note">
+    ③은 논문에서 나온 네 가지를 넣은 것입니다 —
+    <b>원본 밝기를 지키고 색만 바꾸기</b> · <b>선형 색공간에서 섞기</b> ·
+    <b>원본의 주름·광택을 화장 위로 되돌리기</b> · <b>경계에서 안쪽으로 진해지는 두께</b>.
+    ②와 ③의 입술 주름이 살아 있는지, 경계가 자연스러운지를 보세요.
+  </p>
+</main>
+<script type="module" src="./compare.js"></script>
+</body>
+</html>

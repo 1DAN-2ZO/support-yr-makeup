@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>화장 필터 실시간 확인</title>
+<style>
+  :root { --ink:#1d2330; --sub:#6b7384; --line:#e3e6eb; --card:#fff; --key:#1e7bff }
+  * { box-sizing: border-box }
+  body { margin:0; background:#f6f7f9; color:var(--ink); font:15px/1.5 -apple-system,"Apple SD Gothic Neo",sans-serif }
+  header { display:flex; flex-wrap:wrap; gap:12px; align-items:center; padding:12px 20px; background:var(--card); border-bottom:1px solid var(--line) }
+  header h1 { font-size:17px; margin:0 14px 0 0 }
+  button { font:inherit; padding:7px 14px; border:1px solid var(--line); border-radius:8px; background:var(--card); cursor:pointer }
+  button.key { background:var(--key); border-color:var(--key); color:#fff }
+  main { max-width:1100px; margin:0 auto; padding:16px 20px 40px }
+  .row { display:flex; flex-wrap:wrap; gap:14px; align-items:flex-start }
+  .stage { position:relative; flex:1 1 520px; min-width:320px; background:#000; border-radius:12px; overflow:hidden }
+  .stage canvas, .stage video { width:100%; display:block; transform:scaleX(-1) }
+  .stage video { position:absolute; inset:0; opacity:0 }
+  .side { flex:0 0 260px }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:10px }
+  .card h2 { font-size:13px; margin:0 0 6px; color:var(--sub); font-weight:600 }
+  .pair { display:flex; gap:6px } .pair img { width:50%; border-radius:6px }
+  label.line { display:flex; gap:8px; align-items:center; font-size:13px; color:var(--sub); margin-top:6px }
+  #status { font-size:13px; color:var(--sub); padding:6px 20px }
+  .note { font-size:12px; color:var(--sub); line-height:1.5 }
+</style>
+</head>
+<body>
+<header>
+  <h1>화장 필터 실시간 확인</h1>
+  <label class="line">화장 사진
+    <select id="pair"></select>
+  </label>
+  <button id="btnCam" class="key">카메라 켜기</button>
+  <button id="btnToggle" disabled>화장 끄기</button>
+</header>
+<div id="status">카메라를 켜면 얼굴에 화장이 실시간으로 얹힙니다.</div>
+<main>
+  <div class="row">
+    <div class="stage"><canvas id="gl"></canvas><video id="video" playsinline muted></video></div>
+    <div class="side">
+      <div class="card"><h2>쓰는 화장 (맨얼굴 → 화장)</h2><div class="pair"><img id="imgBare"><img id="imgMake"></div><p class="note" id="pairNote"></p></div>
+      <div class="card"><h2>구운 화장 층</h2><img id="imgBaked" style="width:100%;background:#eee;border-radius:6px"></div>
+      <div class="card">
+        <label class="line">진하기 <input id="alpha" type="range" min="0" max="100" value="100"><span id="alphaVal">100%</span></label>
+        <p class="note">이 화장은 <b>다른 사람 얼굴</b>에서 떼어낸 것이라 위치가 조금 어긋날 수 있어요. 보려는 건 <b>움직일 때 얼굴에 붙어 있는지</b>예요 — 고개를 좌우로 돌리고, 웃고, 눈을 감았다 떠 보세요.</p>
+      </div>
+    </div>
+  </div>
+</main>
+<script type="module" src="./demo.js"></script>
+</body>
+</html>

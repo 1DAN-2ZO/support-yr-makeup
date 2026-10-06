@@ -1,0 +1,142 @@
+{
+  "version": 2,
+  "note": "룩을 사진이 아니라 '숫자'로 적는 양식. SNOW 같은 상용 필터가 쓰는 방식이다. color=칠할 색, alpha=진하기(0~1), blur=번짐(얼굴 너비 대비 비율), blend=합성 방식, gloss=윤기(입술), reach=눈두덩을 눈썹 쪽으로 얼마나 넓힐지(0~1).",
+  "blendNote": "color = 원본의 밝기(주름·광택)는 그대로 두고 색만 바꾼다. 화장 대부분이 이쪽이다. multiply = 실제로 어두워져야 하는 곳(눈썹)에만 쓴다.",
+  "parts": [
+    "lip",
+    "shadow",
+    "cheek",
+    "brow"
+  ],
+  "looks": [
+    {
+      "id": "pink_daily",
+      "name": "분홍 데일리",
+      "items": {
+        "lip": {
+          "color": "#c4586d",
+          "alpha": 0.72,
+          "blur": 0.006,
+          "blend": "color",
+          "gloss": 0.35
+        },
+        "shadow": {
+          "color": "#b3707e",
+          "alpha": 0.45,
+          "blur": 0.03,
+          "blend": "color",
+          "reach": 0.5
+        },
+        "cheek": {
+          "color": "#d2707d",
+          "alpha": 0.3,
+          "blur": 0.07,
+          "blend": "color"
+        },
+        "brow": {
+          "color": "#8a7461",
+          "alpha": 0.3,
+          "blur": 0.006,
+          "blend": "multiply"
+        }
+      }
+    },
+    {
+      "id": "coral_doll",
+      "name": "코랄 돌리 (참조 사진 기준)",
+      "note": "눈두덩을 넓게 덮는 코랄 분홍 + 가운데가 진한 그라데이션 입술 + 촉촉한 광택. 색은 참조 사진을 보고 잡은 시작값이라 사진 파일로 다시 뽑아 맞춰야 한다.",
+      "items": {
+        "lip": {
+          "color": "#d9626b",
+          "alpha": 0.75,
+          "blur": 0.01,
+          "blend": "color",
+          "gloss": 0.5
+        },
+        "shadow": {
+          "color": "#e08f93",
+          "alpha": 0.62,
+          "blur": 0.04,
+          "blend": "color",
+          "reach": 0.6
+        },
+        "cheek": {
+          "color": "#e8a5a5",
+          "alpha": 0.42,
+          "blur": 0.08,
+          "blend": "color"
+        },
+        "brow": {
+          "color": "#6b4f3f",
+          "alpha": 0.35,
+          "blur": 0.006,
+          "blend": "multiply"
+        }
+      }
+    },
+    {
+      "id": "nude_soft",
+      "name": "누드 톤 (연하게)",
+      "items": {
+        "lip": {
+          "color": "#b37a6b",
+          "alpha": 0.55,
+          "blur": 0.006,
+          "blend": "color",
+          "gloss": 0.25
+        },
+        "shadow": {
+          "color": "#a8837a",
+          "alpha": 0.32,
+          "blur": 0.03,
+          "blend": "color",
+          "reach": 0.45
+        },
+        "cheek": {
+          "color": "#c08b80",
+          "alpha": 0.22,
+          "blur": 0.07,
+          "blend": "color"
+        },
+        "brow": {
+          "color": "#90796a",
+          "alpha": 0.24,
+          "blur": 0.006,
+          "blend": "multiply"
+        }
+      }
+    },
+    {
+      "id": "red_bold",
+      "name": "레드 립 (진하게)",
+      "items": {
+        "lip": {
+          "color": "#a8243a",
+          "alpha": 0.85,
+          "blur": 0.005,
+          "blend": "color",
+          "gloss": 0.4
+        },
+        "shadow": {
+          "color": "#a06c6c",
+          "alpha": 0.35,
+          "blur": 0.03,
+          "blend": "color",
+          "reach": 0.45
+        },
+        "cheek": {
+          "color": "#bd5f68",
+          "alpha": 0.26,
+          "blur": 0.07,
+          "blend": "color"
+        },
+        "brow": {
+          "color": "#7d6653",
+          "alpha": 0.34,
+          "blur": 0.006,
+          "blend": "multiply"
+        }
+      }
+    }
+  ]
+}

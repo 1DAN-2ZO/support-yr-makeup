@@ -1,0 +1,23 @@
+<!doctype html><meta charset="utf-8"><body style="margin:0;background:#222">
+<div id="s" style="color:#fff;font:14px system-ui;padding:8px">준비 중…</div>
+<script>
+const NAMES = ["natural","winged","drop","extend"];
+const W = 2072, H = 2768;
+window.pngs = {};
+(async () => {
+  for (const n of NAMES) {
+    const txt = await fetch(`liner-${n}.svg`).then(r => r.text());
+    const url = URL.createObjectURL(new Blob([txt], {type: "image/svg+xml"}));
+    const img = new Image();
+    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+    const cv = document.createElement("canvas");
+    cv.width = W; cv.height = H;
+    const c = cv.getContext("2d");
+    c.clearRect(0, 0, W, H);          // 배경 투명 유지
+    c.drawImage(img, 0, 0, W, H);
+    window.pngs[n] = cv.toDataURL("image/png");
+    URL.revokeObjectURL(url);
+  }
+  document.getElementById("s").textContent = "완료 " + Object.keys(window.pngs).length + "장";
+})();
+</script></body>

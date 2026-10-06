@@ -1,0 +1,43 @@
+# 올리지 않는 것 — 용량이 크거나 개인 사진이 들어 있다.
+# (gitignore 는 줄 끝 주석을 못 읽는다. 설명은 반드시 따로 줄로)
+
+# 테스트용 얼굴 사진·onnx (13MB)
+data/
+
+# 표준 얼굴 판 원본 (9.3MB)
+board/
+
+# 머리카락 분할 모델 (16MB) — README 대로 따로 받는다
+models/
+
+*.bak
+*.bak[0-9]
+
+# 지금 쓰는 룩 3개가 부르는 판만 올린다
+drawn/*
+!drawn/kr-v3aN-mul.png
+!drawn/kr-v3bN-mul.png
+!drawn/kr-v3cN-mul.png
+!drawn/kr-soft.png
+!drawn/lip-over0.png
+!drawn/lip-over1.png
+!drawn/lip-over2.png
+!drawn/eye-under.png
+!drawn/eye-lid.png
+!drawn/eye-soft.png
+!drawn/glow-soft.png
+!drawn/blush-mul.png
+!drawn/brow-straight.png
+!drawn/brow-arch.png
+!drawn/brow-raised.png
+
+lash/*
+!lash/v3a-up.png
+!lash/v3a-low.png
+!lash/v3a-lowliner.png
+!lash/v3b-up.png
+!lash/v3b-low.png
+!lash/v3b-lowliner.png
+!lash/v3c-up.png
+!lash/v3c-low.png
+!lash/v3c-lowliner.png
