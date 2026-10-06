@@ -150,13 +150,19 @@ export interface ExtractOptions {
   readonly skinMap: boolean;
   readonly chroma: boolean;
   readonly chromaL: number;
+  /**
+   * adaptive: 얼굴 전체의 색 차 분포(대부분은 화장 아닌 피부)에서 중앙값 + adaptiveK × 퍼짐(MAD)을 넘는 것만 화장 —
+   * AI 가 피부를 많이 바꾼 사진일수록 문턱이 저절로 올라간다 (2026-10-06 실사진: 블러셔 · 섀도 자리가 통째로 잡혔다)
+   */
+  readonly adaptive: boolean;
+  readonly adaptiveK: number;
 }
 
 export const EXTRACT: ExtractOptions = {
   minDeltaE: { lip: 4, brow: 4, liner: 6, shadow: 3, underShadow: 3, cheek: 3, rest: 4 },
   edge: 0.3, peakPct: 0.98, minPixels: 30,
   linerMaxL: 40, linerDarker: 30, contourDL: 3,
-  blur: false, blurRatio: 0.04, skinMap: false, chroma: false, chromaL: 0.4,
+  blur: false, blurRatio: 0.04, skinMap: false, chroma: false, chromaL: 0.4, adaptive: false, adaptiveK: 3,
 };
 
 /** 가로 · 세로 상자 흐림 (반경 r). 투명(AI 사진이 닿지 않은 빈칸) 픽셀은 섞지 않는다 */
@@ -185,33 +191,51 @@ export function boxBlur(im: RgbaImage, r: number): RgbaImage {
   return { data: out, w, h };
 }
 
-/** 화장 안 하는 자리들 — 이마 위 가운데 · 미간 위 · 콧등 · 턱, 얼굴 바깥 넷(얼굴 옆 · 턱 옆에서 코 쪽으로 12% 들어온 곳) */
-function skinRefPoints(lm: readonly Pt[]): Pt[] {
-  const mid = (a: number, b: number, t: number): Pt => ({ x: lm[a]!.x + (lm[b]!.x - lm[a]!.x) * t, y: lm[a]!.y + (lm[b]!.y - lm[a]!.y) * t });
-  return [lm[151]!, lm[9]!, lm[6]!, lm[199]!, mid(234, 1, 0.12), mid(454, 1, 0.12), mid(172, 1, 0.12), mid(397, 1, 0.12)];
-}
-
-/** 피부 변화 지도 — 자리마다 (화장 − 맨얼굴) Lab 중앙값, 픽셀마다 거리 가중 평균. 못 재면 null */
+/**
+ * 피부 변화 지도 (skinMap) — 얼굴을 눈 폭 20% 칸으로 나눠 칸마다 (화장 − 맨얼굴) Lab 중앙값을 재고, 칸마다 반지름 눈 폭 1.5배 안
+ * 칸들의 중앙값을 그 자리의 '피부 변화' 로 본다 → 넓고 고르게 변한 피부(베이스 · AI 보정)는 빠지고 주변과 다른 덩어리(화장)만 남는다.
+ * 블러셔 · 입술 · 섀도는 그 범위의 절반보다 작아 중앙값에 안 끌려간다. 처음엔 화장 안 하는 여덟 점으로만 이었는데
+ * 실사진에서 AI 가 이마 · 코 · 볼을 곳곳 다르게 밝혀 다 못 뺐다 (2026-10-06)
+ */
 function skinShiftMap(bare: RgbaImage, made: RgbaImage, lm: readonly Pt[], eyeW: number): ((x: number, y: number) => Lab) | null {
-  const r = Math.max(2, Math.round(0.08 * eyeW)), med = (v: number[]) => { v.sort((a, b) => a - b); return v[v.length >> 1]!; };
-  const samples: { p: Pt; d: Lab }[] = [];
-  for (const p of skinRefPoints(lm)) {
+  const xs = lm.map((p) => p.x), ys = lm.map((p) => p.y);
+  const cell = Math.max(4, Math.round(0.2 * eyeW));
+  const x0 = Math.max(0, Math.floor(Math.min(...xs) - cell)), y0 = Math.max(0, Math.floor(Math.min(...ys) - cell));
+  const x1 = Math.min(bare.w - 1, Math.ceil(Math.max(...xs) + cell)), y1 = Math.min(bare.h - 1, Math.ceil(Math.max(...ys) + cell));
+  const gw = Math.max(1, Math.ceil((x1 - x0 + 1) / cell)), gh = Math.max(1, Math.ceil((y1 - y0 + 1) / cell));
+  const med = (v: number[]) => { v.sort((a, b) => a - b); return v[v.length >> 1]!; };
+  const cellD: (Lab | null)[] = new Array(gw * gh).fill(null);
+  const step = Math.max(1, Math.round(cell / 6));
+  for (let gy = 0; gy < gh; gy++) for (let gx = 0; gx < gw; gx++) {
     const L: number[] = [], A: number[] = [], B: number[] = [];
-    for (let y = Math.round(p.y) - r; y <= Math.round(p.y) + r; y++) for (let x = Math.round(p.x) - r; x <= Math.round(p.x) + r; x++) {
-      if (x < 0 || y < 0 || x >= bare.w || y >= bare.h || (made.data[(y * made.w + x) * 4 + 3] ?? 255) < 250) continue;
+    for (let y = y0 + gy * cell; y < Math.min(y1 + 1, y0 + (gy + 1) * cell); y += step) for (let x = x0 + gx * cell; x < Math.min(x1 + 1, x0 + (gx + 1) * cell); x += step) {
+      if ((made.data[(y * made.w + x) * 4 + 3] ?? 255) < 250) continue;
       const b = labAt(bare, x, y), m = labAt(made, x, y);
       L.push(m.L - b.L); A.push(m.a - b.a); B.push(m.b - b.b);
     }
-    if (L.length >= 5) samples.push({ p, d: { L: med(L), a: med(A), b: med(B) } });
+    if (L.length >= 3) cellD[gy * gw + gx] = { L: med(L), a: med(A), b: med(B) };
   }
-  if (!samples.length) return null;
-  return (x, y) => {
-    let sw = 0, l = 0, a = 0, b = 0;
-    for (const s of samples) {
-      const w = 1 / ((s.p.x - x) ** 2 + (s.p.y - y) ** 2 + 1);
-      sw += w; l += w * s.d.L; a += w * s.d.a; b += w * s.d.b;
+  if (!cellD.some(Boolean)) return null;
+  const rc = Math.max(1, Math.ceil((1.5 * eyeW) / cell));
+  const bg: Lab[] = new Array(gw * gh);
+  for (let gy = 0; gy < gh; gy++) for (let gx = 0; gx < gw; gx++) {
+    const L: number[] = [], A: number[] = [], B: number[] = [];
+    for (let dy = -rc; dy <= rc; dy++) for (let dx = -rc; dx <= rc; dx++) {
+      if (dx * dx + dy * dy > rc * rc || gx + dx < 0 || gx + dx >= gw || gy + dy < 0 || gy + dy >= gh) continue;
+      const c = cellD[(gy + dy) * gw + (gx + dx)];
+      if (!c) continue;
+      L.push(c.L); A.push(c.a); B.push(c.b);
     }
-    return { L: l / sw, a: a / sw, b: b / sw };
+    bg[gy * gw + gx] = L.length ? { L: med(L), a: med(A), b: med(B) } : { L: 0, a: 0, b: 0 };
+  }
+  // 칸 가운데 사이를 겹선형으로 잇는다
+  return (x, y) => {
+    const fx = Math.min(gw - 1, Math.max(0, (x - x0) / cell - 0.5)), fy = Math.min(gh - 1, Math.max(0, (y - y0) / cell - 0.5));
+    const ix = Math.floor(fx), iy = Math.floor(fy), tx = fx - ix, ty = fy - iy;
+    const at = (i: number, j: number) => bg[Math.min(gh - 1, j) * gw + Math.min(gw - 1, i)]!;
+    const a = at(ix, iy), b = at(ix + 1, iy), c = at(ix, iy + 1), d = at(ix + 1, iy + 1);
+    const mix = (k: keyof Lab) => (a[k] * (1 - tx) + b[k] * tx) * (1 - ty) + (c[k] * (1 - tx) + d[k] * tx) * ty;
+    return { L: mix("L"), a: mix("a"), b: mix("b") };
   };
 }
 
@@ -235,7 +259,8 @@ function zones(lm: readonly Pt[]): { list: Zone[]; exclude: Pt[][] } {
   const list: Zone[] = [{ part: "lip", side: null, poly: scaleAbout(LM.lipsOuter.map(P), 1.15) }];
   const exclude: Pt[][] = [];
   const sides = [{ side: "R" as Side, eye: LM.eyeA, brow: LM.browA }, { side: "L" as Side, eye: LM.eyeB, brow: LM.browB }];
-  for (const { side, brow } of sides) list.push({ part: "brow", side, poly: scaleAbout([...brow.upper.map(P), ...[...brow.lower].reverse().map(P)], 1.35) });
+  // 눈썹 둘레 — 1.35 배로 잡으니 이마 피부까지 들어왔다 (실사진 2026-10-06)
+  for (const { side, brow } of sides) list.push({ part: "brow", side, poly: scaleAbout([...brow.upper.map(P), ...[...brow.lower].reverse().map(P)], 1.2) });
   for (const { side, eye, brow } of sides) {
     const o = P(eye.outer), i = P(eye.inner), ew = Math.hypot(o.x - i.x, o.y - i.y) || 1;
     const out = { x: (o.x - i.x) / ew, y: (o.y - i.y) / ew };
@@ -261,7 +286,8 @@ function zones(lm: readonly Pt[]): { list: Zone[]; exclude: Pt[][] } {
     const z = cheekZone(lm, side);
     list.push({ part: "cheek", side, poly: [z.f.from(z.a0, z.b0), z.f.from(z.a1, z.b0), z.f.from(z.a1, z.b1), z.f.from(z.a0, z.b1)] });
   }
-  list.push({ part: "contour", side: null, poly: FACE_OVAL.map(P) });   // 얼굴 나머지 — 쉐딩 · 하이라이트를 함께 본다
+  // 얼굴 나머지 — 쉐딩 · 하이라이트를 함께 본다. 윤곽 가장자리(머리선 · 배경)는 빼려고 안쪽으로 8% 줄인다
+  list.push({ part: "contour", side: null, poly: scaleAbout(FACE_OVAL.map(P), 0.92) });
   return { list, exclude };
 }
 
@@ -273,6 +299,23 @@ export function extractAll(bare0: RgbaImage, made0: RgbaImage, lm: readonly Pt[]
   const { w, h } = bare, flat = toneShift(bare, made, lm);
   const map = opts.skinMap ? skinShiftMap(bare, made, lm, eyeW) : null;
   const shiftAt = (x: number, y: number): Lab => (map ? map(x, y) : flat);
+  // adaptive: 얼굴 상자 안 색 차 분포 — 대부분이 화장 아닌 피부라 중앙값 + K × 퍼짐(MAD × 1.4826) 이 '피부 변화' 의 윗선
+  let floor = 0;
+  if (opts.adaptive) {
+    const xs = lm.map((p) => p.x), ys = lm.map((p) => p.y), st = Math.max(1, Math.round(eyeW / 20)), v: number[] = [];
+    for (let y = Math.max(0, Math.floor(Math.min(...ys))); y <= Math.min(bare.h - 1, Math.ceil(Math.max(...ys))); y += st) {
+      for (let x = Math.max(0, Math.floor(Math.min(...xs))); x <= Math.min(bare.w - 1, Math.ceil(Math.max(...xs))); x += st) {
+        if ((made.data[(y * made.w + x) * 4 + 3] ?? 255) < 250) continue;
+        const sh = shiftAt(x, y), m = labAt(made, x, y);
+        v.push(deltaE(labAt(bare, x, y), { L: m.L - sh.L, a: m.a - sh.a, b: m.b - sh.b }));
+      }
+    }
+    if (v.length) {
+      v.sort((a, b) => a - b);
+      const m = v[v.length >> 1]!, dev = v.map((d) => Math.abs(d - m)).sort((a, b) => a - b), mad = dev[dev.length >> 1]! * 1.4826;
+      floor = m + opts.adaptiveK * mad;
+    }
+  }
   const taken = new Uint8Array(w * h), parts: PartMask[] = [];
   const { list, exclude } = zones(lm);
   const inside = (x: number, y: number, polys: readonly Pt[][]) => polys.some((q) => pointInPoly(x, y, q));
@@ -286,6 +329,8 @@ export function extractAll(bare0: RgbaImage, made0: RgbaImage, lm: readonly Pt[]
         const i = y * w + x;
         if (taken[i] || (made.data[i * 4 + 3] ?? 255) < 250 || !pointInPoly(x, y, z.poly) || inside(x, y, exclude)) continue;
         const sh = shiftAt(x, y), b = labAt(bare, x, y), m0 = labAt(made, x, y), m = { L: m0.L - sh.L, a: m0.a - sh.a, b: m0.b - sh.b };
+        // 얼굴 나머지(쉐딩 · 하이라이트)에서 아주 어두운 픽셀은 머리카락 · 그늘 — 화장으로 안 본다
+        if (z.part === "contour" && Math.min(b.L, m0.L) < 25) continue;
         const dL = m.L - b.L, d = colorZone ? Math.hypot(opts.chromaL * dL, m.a - b.a, m.b - b.b) : deltaE(b, m);
         px.push({ i, d, dL, L: m.L });
       }
@@ -294,9 +339,11 @@ export function extractAll(bare0: RgbaImage, made0: RgbaImage, lm: readonly Pt[]
     const key = z.part === "contour" ? "rest" : z.part;
     const sorted = px.map((p) => p.d).sort((a, b) => a - b);
     const peak = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * opts.peakPct))]!;
-    if (peak < opts.minDeltaE[key as keyof typeof opts.minDeltaE]) continue;
+    // adaptive 의 윗선은 색 위주(chroma)로 잰 부위에는 밝기를 줄여 잰 만큼 같이 줄인다
+    const fl = colorZone ? floor * opts.chromaL : floor;
+    if (peak < opts.minDeltaE[key as keyof typeof opts.minDeltaE] || (fl > 0 && peak < fl)) continue;
     // 라이너는 '어두운 선' 이 기준이라 가장 진한 곳 비율을 안 쓴다 — 원래 속눈썹 위에 겹친 선은 색 차가 작다 (시험 X13)
-    const th = z.part === "liner" ? opts.minDeltaE.liner : Math.max(opts.minDeltaE[key as keyof typeof opts.minDeltaE], peak * opts.edge);
+    const th = Math.max(z.part === "liner" ? opts.minDeltaE.liner : Math.max(opts.minDeltaE[key as keyof typeof opts.minDeltaE], peak * opts.edge), fl);
     const dark = (p: (typeof px)[number]) => p.L <= opts.linerMaxL || p.dL <= -opts.linerDarker;
     const pick = (keep: (p: (typeof px)[number]) => boolean, part: ExtractPart) => {
       const on = px.filter((p) => p.d >= th && keep(p));

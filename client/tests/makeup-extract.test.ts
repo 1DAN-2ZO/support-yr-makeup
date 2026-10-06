@@ -212,8 +212,28 @@ describe("화장 떼기 — AI 피부 변화 거르기 (스위치)", () => {
     expect(total(extractAll(BARE.im, made, LMS, { ...EXTRACT, blur: true }))).toBeLessThan(EXTRACT.minPixels * 2);
   });
 
-  it("Y4 셋 다 켜도 부위 화장은 그대로 뗀다 — 입술 · 라이너 · 블러셔", () => {
-    const all = { ...EXTRACT, blur: true, skinMap: true, chroma: true };
+  it("Y6 skinMap — AI 가 이마 · 코를 넓게 밝히면(얼굴 곳곳 다른 톤 변화), 켜면 하이라이트로 안 본다 · 끄면 넓게 잡는다", () => {
+    // 이마 가운데 ~ 코끝을 중심으로 반지름 170px 안을 가운데일수록 +28 밝게 (부드러운 넓은 변화)
+    const glow = image((x, y) => { const c = naturalPaint(x, y) ?? SKIN, d = Math.hypot(x - 300, y - 220) / 170; return d < 1 ? add(c, 28 * (1 - d * d)) : c; });
+    const hl = (r: ReturnType<typeof extractAll>) => r.parts.filter((p) => p.part === "highlight" || p.part === "contour" || p.part === "cheek").reduce((s2, p) => s2 + p.count, 0);
+    expect(hl(extractAll(smooth, glow, LMS))).toBeGreaterThan(500);
+    expect(hl(extractAll(smooth, glow, LMS, { ...EXTRACT, skinMap: true }))).toBeLessThan(EXTRACT.minPixels * 3);
+  });
+
+  it("Y7 adaptive — 얼굴 전체에 중간 크기 얼룩(흐려도 안 지워지는 피부 변화)이 있으면, 켜면 얼룩은 안 떼고 입술은 뗀다", () => {
+    // 20px 주기 얼룩 ±16 (흐림 반경 4px 로는 안 지워진다)
+    const blot = (x: number, y: number) => Math.round(16 * Math.sin(x / 6.4) * Math.sin(y / 6.4));
+    const bare = image((x, y) => naturalPaint(x, y) ?? SKIN);
+    const madeL = image((x, y) => lipPaint(x, y) ?? add(naturalPaint(x, y) ?? SKIN, blot(x, y)));
+    const lip = (r: ReturnType<typeof extractAll>) => r.parts.filter((p) => p.part === "lip").reduce((s2, p) => s2 + p.count, 0);
+    const off = extractAll(bare, madeL, LMS, { ...EXTRACT, blur: true }), on = extractAll(bare, madeL, LMS, { ...EXTRACT, blur: true, adaptive: true });
+    expect(total(off) - lip(off)).toBeGreaterThan(1000);
+    expect(total(on) - lip(on)).toBeLessThan(EXTRACT.minPixels * 3);
+    expect(lip(on)).toBeGreaterThan(1000);
+  });
+
+  it("Y4 다 켜도 부위 화장은 그대로 뗀다 — 입술 · 라이너 · 블러셔", () => {
+    const all = { ...EXTRACT, blur: true, skinMap: true, chroma: true, adaptive: true };
     const nat = (extra?: Paint) => image((x, y) => extra?.(x, y) ?? naturalPaint(x, y));
     const bare = nat();
     const cnt = (r: ReturnType<typeof extractAll>, part: ExtractPart) => r.parts.filter((p) => p.part === part).reduce((s, p) => s + p.count, 0);

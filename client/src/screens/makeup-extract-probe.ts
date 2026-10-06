@@ -20,7 +20,7 @@ const $ = <T extends HTMLElement>(id: string): T => {
 };
 
 const bareIn = $<HTMLInputElement>("bare"), madeIn = $<HTMLInputElement>("made"), heat = $<HTMLInputElement>("heat");
-const optBlur = $<HTMLInputElement>("optBlur"), optMap = $<HTMLInputElement>("optMap"), optChroma = $<HTMLInputElement>("optChroma");
+const optBlur = $<HTMLInputElement>("optBlur"), optMap = $<HTMLInputElement>("optMap"), optChroma = $<HTMLInputElement>("optChroma"), optAdaptive = $<HTMLInputElement>("optAdaptive");
 const cvOnly = $<HTMLCanvasElement>("cvOnly"), cvBare = $<HTMLCanvasElement>("cvBare"), cvMade = $<HTMLCanvasElement>("cvMade");
 const statusEl = $("status"), partsEl = $("parts");
 
@@ -157,12 +157,12 @@ async function extract(): Promise<void> {
   if (!last) return;
   setStatus("떼는 중…");
   await new Promise((r) => setTimeout(r, 0));
-  const opts = { ...EXTRACT, blur: optBlur.checked, skinMap: optMap.checked, chroma: optChroma.checked };
+  const opts = { ...EXTRACT, blur: optBlur.checked, skinMap: optMap.checked, chroma: optChroma.checked, adaptive: optAdaptive.checked };
   const t0 = performance.now(), res = extractAll(last.bare, last.made, last.lm, opts), ms = Math.round(performance.now() - t0);
   last.parts = res.parts;
   drawPartList(res.parts);
   render();
-  const sw = [optBlur.checked && "①", optMap.checked && "②", optChroma.checked && "③"].filter(Boolean).join(" ") || "없음";
+  const sw = [optBlur.checked && "①", optMap.checked && "②", optChroma.checked && "③", optAdaptive.checked && "④"].filter(Boolean).join(" ") || "없음";
   setStatus(`${last.info} · 떼기 ${ms}ms · 켠 거르기: ${sw} · 부위를 눌러 켜고 끄기`);
 }
 
@@ -173,4 +173,4 @@ async function load(input: HTMLInputElement): Promise<ImageBitmap | null> {
 bareIn.addEventListener("change", async () => { bareImg = await load(bareIn); void run(); });
 madeIn.addEventListener("change", async () => { madeImg = await load(madeIn); void run(); });
 heat.addEventListener("change", render);
-for (const o of [optBlur, optMap, optChroma]) o.addEventListener("change", () => void extract());
+for (const o of [optBlur, optMap, optChroma, optAdaptive]) o.addEventListener("change", () => void extract());
