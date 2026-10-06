@@ -7,8 +7,8 @@
     <title>화장 입히고 떼기 POC — 당화응</title>
     <!--
       [dev 전용] 화장 입히고 떼기 POC (2026-10-06) — 한 페이지에서
-        ① 맨얼굴(웹캠 · 파일) → ② 참고 화장 사진 → ③ AI 가 내 얼굴에 입히기(Stable-Makeup 데모 서버 127.0.0.1:7860) → ④ 부위별로 떼기.
-      AI 서버는 poc/look-tryon/server-bench/app_demo.py 를 켜 둔다. 사진은 이 컴퓨터 안에서만 쓰고 저장소에 남기지 않는다.
+        ① 맨얼굴(웹캠 · 파일) → ② 참고 화장 사진 → ③ AI 가 내 얼굴에 입히기(Stable-Makeup 7860 또는 FLUX.2 klein 4B 7861) → ④ 부위별로 떼기.
+      AI 서버는 poc/look-tryon/server-bench/app_demo.py 또는 app_klein.py 를 켜 둔다 (그래픽카드 12GB 라 하나씩). 사진은 이 컴퓨터 안에서만 쓰고 저장소에 남기지 않는다.
     -->
     <style>
       :root { color-scheme: light dark; --line: #8884; }
@@ -41,7 +41,7 @@
   </head>
   <body>
     <h1>화장 입히고 떼기 POC</h1>
-    <p class="note">① 맨얼굴 → ② 따라 하고 싶은 화장 사진 → ③ AI 가 내 얼굴에 입히기 → ④ 부위별로 떼기. AI 서버(127.0.0.1:7860)가 켜져 있어야 ③ 버튼이 돌아가요 — 없으면 AI 결과 파일을 직접 올려도 돼요.</p>
+    <p class="note">① 맨얼굴 → ② 따라 하고 싶은 화장 사진 → ③ AI 가 내 얼굴에 입히기 → ④ 부위별로 떼기. 고른 AI 서버(Stable-Makeup 7860 · FLUX.2 klein 7861)가 켜져 있어야 ③ 버튼이 돌아가요 — 없으면 AI 결과 파일을 직접 올려도 돼요.</p>
 
     <div class="cards">
       <div class="card">
@@ -71,7 +71,15 @@
         <h3>③ AI 가 입힌 내 얼굴</h3>
         <canvas id="madeView" class="thumb"></canvas>
         <div class="bar">
-          <label>진하기 <input id="guide" type="range" min="1.05" max="3" step="0.05" value="1.6" /> <span id="guideVal">1.6</span></label>
+          <label title="FLUX.2 klein: 눈두덩 · 볼 · 입술만 다시 그려 얼굴형 · 피부는 원본 그대로 (poc/look-tryon/server-bench/app_klein.py, 7861)">AI 모델
+            <select id="model">
+              <option value="sm">Stable-Makeup (7860)</option>
+              <option value="klein">FLUX.2 klein 4B (7861)</option>
+            </select>
+          </label>
+        </div>
+        <div class="bar">
+          <label><span id="guideName">진하기</span> <input id="guide" type="range" min="1.05" max="3" step="0.05" value="1.6" /> <span id="guideVal">1.6</span></label>
           <label>단계 <input id="steps" type="number" min="4" max="30" value="8" style="width:3.5em" /></label>
           <label title="같은 seed 로 맨얼굴 · 화장을 그려 두 그림의 차이로 화장만 뗀다">seed <input id="seed" type="number" value="1234" style="width:5em" /></label>
         </div>

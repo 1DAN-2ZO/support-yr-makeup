@@ -2,7 +2,8 @@
  * [dev 전용] 화장 입히고 떼기 POC (makeup-extract-probe.html, 2026-10-06) — 한 페이지에서 다 (사용자):
  *  ① 맨얼굴: 웹캠 3초 찍기(가만히 있는 장 몇 개 중앙값 — core/snapshot) 또는 파일
  *  ② 참고 화장 사진: 파일
- *  ③ AI 가 내 얼굴에 입히기: Stable-Makeup 데모 서버(127.0.0.1:7860, poc/look-tryon/server-bench/app_demo.py)의 REST API —
+ *  ③ AI 가 내 얼굴에 입히기: Stable-Makeup 데모 서버(127.0.0.1:7860, poc/look-tryon/server-bench/app_demo.py) 또는
+ *     FLUX.2 klein 4B 서버(127.0.0.1:7861, app_klein.py — 눈두덩 · 볼 · 입술만 다시 그림)의 REST API —
  *     사진은 base64 로 보내고 결과 파일을 받아온다 (서버가 localhost 를 CORS 로 허용) · 또는 결과 파일을 직접
  *  ④ 떼기: 얼굴 점으로 두 사진 겹치기(튀는 점 무시한 아핀) → core/makeup-extract extractAll →
  *     뗀 화장만(회색 바탕 + AI 색) · 맨얼굴 · AI 사진 위 부위별 색 테두리 · 부위 켜고 끄기 · 피부 변화 거르기 스위치
@@ -26,8 +27,15 @@ const $ = <T extends HTMLElement>(id: string): T => {
   return el as T;
 };
 
-/** AI 서버 (Gradio 5 REST) */
-const AI_SERVER = "http://127.0.0.1:7860";
+/**
+ * AI 서버 (Gradio REST) — 모델마다 서버 · 기본값. 둘 다 run(얼굴, 참고, steps, 진하기, 원본 크기 유지, seed) 모양.
+ * klein 의 '진하기' 는 칠할 영역(눈두덩 · 볼 · 입술)을 얼마나 다시 그릴지(strength) — 그냥 두 장을 넣으면 참고 인물 얼굴로 바뀌어서 영역만 다시 그린다
+ */
+const MODELS = {
+  sm: { url: "http://127.0.0.1:7860", steps: 8, guide: { name: "진하기", min: 1.05, max: 3, step: 0.05, value: 1.6 } },
+  klein: { url: "http://127.0.0.1:7861", steps: 4, guide: { name: "강도", min: 0.5, max: 1, step: 0.05, value: 0.7 } },
+} as const;
+type ModelId = keyof typeof MODELS;
 const COUNTDOWN_MS = 3000;
 
 const video = $<HTMLVideoElement>("v");
@@ -37,6 +45,7 @@ const aiBtn = $<HTMLButtonElement>("aiBtn"), madeSave = $<HTMLButtonElement>("ma
 const bareFile = $<HTMLInputElement>("bareFile"), refFile = $<HTMLInputElement>("refFile"), madeFile = $<HTMLInputElement>("madeFile");
 const bareMsg = $("bareMsg"), refMsg = $("refMsg"), madeMsg = $("madeMsg");
 const guide = $<HTMLInputElement>("guide"), guideVal = $("guideVal"), steps = $<HTMLInputElement>("steps"), seedIn = $<HTMLInputElement>("seed");
+const modelSel = $<HTMLSelectElement>("model"), guideName = $("guideName");
 const aiBareView = $<HTMLCanvasElement>("aiBareView"), aiBareSave = $<HTMLButtonElement>("aiBareSave"), aiBareMsg = $("aiBareMsg");
 const heat = $<HTMLInputElement>("heat");
 const optBlur = $<HTMLInputElement>("optBlur"), optMap = $<HTMLInputElement>("optMap"), optChroma = $<HTMLInputElement>("optChroma"), optAdaptive = $<HTMLInputElement>("optAdaptive");
@@ -241,14 +250,23 @@ refFile.addEventListener("change", async () => {
 
 let aiBusy = false;
 guide.addEventListener("input", () => { guideVal.textContent = Number(guide.value).toFixed(2); });
+const model = (): (typeof MODELS)[ModelId] => MODELS[modelSel.value as ModelId] ?? MODELS.sm;
+modelSel.addEventListener("change", () => {
+  const m = model();
+  steps.value = String(m.steps);
+  guideName.textContent = m.guide.name;
+  Object.assign(guide, { min: String(m.guide.min), max: String(m.guide.max), step: String(m.guide.step), value: String(m.guide.value) });
+  guideVal.textContent = m.guide.value.toFixed(2);
+});
 
-/** Gradio 5 REST: POST /gradio_api/call/predict → event_id → GET 같은 주소/event_id 의 SSE 에서 complete 줄 */
+/** Gradio REST: POST /gradio_api/call/predict → event_id → GET 같은 주소/event_id 의 SSE 에서 complete 줄 */
 async function callAi(bare: HTMLCanvasElement, ref: HTMLCanvasElement, seed: number): Promise<{ img: HTMLCanvasElement; note: string }> {
   const fd = (c: HTMLCanvasElement) => ({ url: c.toDataURL("image/png"), meta: { _type: "gradio.FileData" } });
+  const md = model(), AI_SERVER = md.url;
   const r = await fetch(`${AI_SERVER}/gradio_api/call/predict`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ data: [fd(bare), fd(ref), Number(steps.value) || 8, Number(guide.value) || 1.6, true, seed] }),
+    body: JSON.stringify({ data: [fd(bare), fd(ref), Number(steps.value) || md.steps, Number(guide.value) || md.guide.value, true, seed] }),
   });
   if (!r.ok) throw new Error(`AI 서버 응답 ${r.status}`);
   const { event_id: id } = (await r.json()) as { event_id: string };
@@ -272,21 +290,30 @@ aiBtn.addEventListener("click", async () => {
   const seed = Math.round(Number(seedIn.value));
   const t0 = performance.now();
   try {
-    // 같은 seed 로 두 번: ① 참고 = 내 맨얼굴 (AI 가 그린 맨얼굴 — 비교 기준) ② 참고 = 화장 사진
-    setMsg(aiBareMsg, "AI 가 맨얼굴을 그리는 중… (1/2)");
-    setMsg(madeMsg, "기다리는 중… (2/2)");
-    const a = await callAi(bareCv, bareCv, seed);
-    aiBareCv = a.img;
-    preview(aiBareView, aiBareCv);
-    setMsg(aiBareMsg, `seed ${seed} · ${a.note}`);
-    setMsg(madeMsg, "AI 가 화장을 입히는 중… (2/2)");
+    // klein 은 칠할 영역(눈두덩 · 볼 · 입술) 밖이 원본 그대로라 원래 맨얼굴과 바로 비교한다 — 참고 = 내 맨얼굴로 그려도
+    // '화장을 입혀라' 지시라 화장이 들어가 AI 맨얼굴이 안 된다 (2026-10-06 확인)
+    const pair = modelSel.value !== "klein";
+    if (pair) {
+      // 같은 seed 로 두 번: ① 참고 = 내 맨얼굴 (AI 가 그린 맨얼굴 — 비교 기준) ② 참고 = 화장 사진
+      setMsg(aiBareMsg, "AI 가 맨얼굴을 그리는 중… (1/2)");
+      setMsg(madeMsg, "기다리는 중… (2/2)");
+      const a = await callAi(bareCv, bareCv, seed);
+      aiBareCv = a.img;
+      preview(aiBareView, aiBareCv);
+      setMsg(aiBareMsg, `seed ${seed} · ${a.note}`);
+    } else {
+      aiBareCv = null;
+      preview(aiBareView, null);
+      setMsg(aiBareMsg, "FLUX.2 klein 은 칠할 영역 밖이 원본 그대로라 AI 맨얼굴 없이 원래 맨얼굴과 바로 비교해요");
+    }
+    setMsg(madeMsg, `AI 가 화장을 입히는 중…${pair ? " (2/2)" : ""}`);
     const { img, note } = await callAi(bareCv, refCv, seed);
     madeCv = img;
     preview(madeView, madeCv);
-    setMsg(madeMsg, `두 장 ${((performance.now() - t0) / 1000).toFixed(1)}초 · seed ${seed} · ${note}`);
+    setMsg(madeMsg, `${pair ? "두 장" : "한 장"} ${((performance.now() - t0) / 1000).toFixed(1)}초 · seed ${seed} · ${note}`);
     void maybeExtract();
   } catch (e) {
-    setMsg(madeMsg, `${e instanceof Error ? e.message : String(e)} — AI 서버(127.0.0.1:7860)가 켜져 있나요?`, true);
+    setMsg(madeMsg, `${e instanceof Error ? e.message : String(e)} — AI 서버(${model().url})가 켜져 있나요?`, true);
   } finally {
     aiBusy = false;
     refreshButtons();
