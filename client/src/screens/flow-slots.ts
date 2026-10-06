@@ -7,6 +7,8 @@ import type { ScreenId } from "@core/screens";
 import { nextGuidePart } from "@core/screens";
 import { PART_NAME } from "@core/score";
 import type { PartId } from "@core/types";
+import { colorPalette } from "./color-palette";
+import { DEMO_REF_COLORS } from "./ref-demo";
 import type { Screen, ScreenContext } from "./shell";
 
 export interface SlotSpec {
@@ -139,10 +141,15 @@ function answerPhotoCard(): HTMLElement {
 }
 
 function guideMock(part: PartId): HTMLElement {
-  const color = SAMPLE_COLOR[part];
+  const sample = SAMPLE_COLOR[part];
+  // 참고 사진에서 읽은 색이 있으면 그걸 쓴다 — 팔레트 화면과 같은 색을 말해야 한다.
+  // 없는 부위(쉐딩)나 사진에서 못 읽은 부위는 견본 값으로 둔다
+  const read = part === "contour" ? undefined : DEMO_REF_COLORS[part];
+  const hex = read?.hex ?? sample.hex;
+  const name = read ? `${read.match.family} 계열` : sample.name;
   const card = document.createElement("div");
   card.className = "slot-guide-card";
-  card.style.setProperty("--slot-color", color.hex);
+  card.style.setProperty("--slot-color", hex);
   card.innerHTML = `
     <div class="slot-guide-photo">
       <span class="slot-guide-line one"></span>
@@ -151,7 +158,7 @@ function guideMock(part: PartId): HTMLElement {
     </div>
     <div class="slot-color">
       <span aria-hidden="true"></span>
-      <div><strong>${color.name}</strong><p>${color.copy}</p></div>
+      <div><strong>${name}</strong><p>${sample.copy}</p></div>
     </div>
   `;
   return card;
@@ -225,6 +232,8 @@ export function slotScreen<S>(spec: SlotSpec): Screen<S> {
             coach("정답사진이 완성됐어요. 이제 부위별로 따라 해볼게요"),
             title("정답사진 완성", "이 사진을 기준으로 화장 가이드가 만들어져요"),
             answerPhotoCard(),
+            // 색조 팔레트 — 지금은 더미. 업로드가 붙으면 analyzeRefPhoto() 결과로 바꾼다
+            colorPalette(DEMO_REF_COLORS, { step: "2.", title: "참고 사진의 색조 팔레트", note: "올려 주신 사진에서 읽은 색이에요" }),
             action(ctx as ScreenContext<unknown>, "다음 · 화장 가이드 보기", spec.next),
           );
         };

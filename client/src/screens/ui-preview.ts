@@ -10,8 +10,10 @@ import { mutableJobSource } from "../core/look-jobs";
 import { LOOKS } from "../core/looks";
 import type { CaptureBundle, JobStatus, LookJob, PartId, PartResult, Versions } from "../core/types";
 import { doneScreen } from "./done";
+import { colorPalette } from "./color-palette";
 import { fullRenderScreen } from "./fullrender";
 import { guideScreen } from "./guide";
+import { DEMO_REF_COLORS } from "./ref-demo";
 import { looksScreen } from "./looks";
 import { processingScreen } from "./processing";
 import { resultScreen } from "./result";
@@ -65,6 +67,14 @@ const ctx = (screen: string): ScreenContext<null> => ({
 let lookId: string | null = "edgy";
 
 const SCREENS: Record<string, () => Promise<Screen<null>>> = {
+  "색조 팔레트": async () => ({
+    mount(c) {
+      const wrap = document.createElement("div");
+      wrap.className = "slot slot-answer";
+      wrap.append(colorPalette(DEMO_REF_COLORS, { step: "2.", title: "참고 사진의 색조 팔레트", note: "올려 주신 사진에서 읽은 색이에요" }));
+      c.root.append(wrap);
+    },
+  }),
   "서버 처리": async () => processingScreen<null>({ jobs: mutableJobSource(LOOKS.map((l) => ({ ...job(l.id, "running", 0) }))) }),
   "2 화장": async () => looksScreen<null>({ getLookId: () => lookId, setLookId: (id) => { lookId = id; } }),
   "2-b 완성 예상": async () => fullRenderScreen<null>({ getLookId: () => lookId }),
