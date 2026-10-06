@@ -15,6 +15,10 @@ export interface Outline {
   polys: Pt[][];
   /** 열린 선 */
   lines: Pt[][];
+  /** 퍼지는 방향 표시 — 시작점 (화면 3·4 만, core/spread-marks). 화면 5 는 없음 (정의서 5-1) */
+  dots?: Pt[];
+  /** 퍼지는 방향 표시 — 화살표 [시작, 끝] (화면 3·4 만) */
+  arrows?: Pt[][];
 }
 
 export function guideOutline(partId: PartId, lm: readonly Pt[], g: PartGeometry): Outline {

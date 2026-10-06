@@ -51,8 +51,9 @@ const scored = (score: number, extra: Partial<ScoreOutcome> = {}): ScoreOutcome 
 });
 
 describe("F1 화면·부위 순서", () => {
-  it("화면 순서 11개, 부위 순서 = 룩 5부위 + 쉐딩", () => {
-    expect(SCREENS).toHaveLength(11);
+  it("화면 16개 (옛 흐름 11 + 새 흐름 5 — 2026-10-06), 부위 순서 = 룩 5부위 + 쉐딩", () => {
+    expect(SCREENS).toHaveLength(16);
+    expect(SCREENS).toEqual(expect.arrayContaining(["answer", "partguide", "attempt", "feedback", "save"]));
     expect(PART_ORDER).toEqual([...LOOK_PART_IDS, "contour"]);
   });
 });

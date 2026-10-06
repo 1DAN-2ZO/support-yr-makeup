@@ -103,8 +103,8 @@ describe("껍데기", () => {
     expect(seen).toContain("screen_enter:capture");
   });
 
-  it("진행 칩은 부위 화면에서만 보이고, 누르면 그 부위 완성본으로 간다", () => {
-    const { shell, session, chipsRoot } = setup({ screen: "guide", currentPart: "brow" });
+  it("진행 칩은 부위 화면에서만 보이고, 누르면 그 부위 가이드로 간다 (새 흐름 — 2026-10-06)", () => {
+    const { shell, session, chipsRoot } = setup({ screen: "partguide", currentPart: "brow" });
     shell.render();
     expect(chipsRoot.hidden).toBe(false);
     expect(chipsRoot.querySelectorAll("button")).toHaveLength(6);
@@ -114,28 +114,28 @@ describe("껍데기", () => {
     expect(lip).toBeDefined();
     lip?.click();
     expect(session.currentPart).toBe("lip");
-    expect(session.screen).toBe("guide");
+    expect(session.screen).toBe("partguide");
 
     shell.go("looks");
     expect(chipsRoot.hidden).toBe(true);
   });
 
   it("방향이 안 맞으면 안내가 뜬다", () => {
-    const { shell, hintRoot } = setup({ screen: "live", currentPart: "liner" });
+    const { shell, hintRoot } = setup({ screen: "partguide", currentPart: "liner" });
     shell.render();
     expect(hintRoot.hidden).toBe(false);
     expect(hintRoot.textContent).toBe("폰을 가로로 돌리세요");
   });
 
   it("방향을 모르면(null — 옛 브라우저 · 주소 ?norotate) 안내를 안 띄운다", () => {
-    const { shell, hintRoot } = setup({ screen: "live", currentPart: "liner" }, () => null);
+    const { shell, hintRoot } = setup({ screen: "partguide", currentPart: "liner" }, () => null);
     shell.render();
     expect(hintRoot.hidden).toBe(true);
     expect(hintRoot.textContent).toBe("");
   });
 
-  it("부위 화면이 아니면(리뷰 등) 마지막 부위가 남아 있어도 방향 안내를 안 띄운다 (#169 3번)", () => {
-    const { shell, hintRoot } = setup({ screen: "review", currentPart: "liner" });
+  it("부위 화면이 아니면(피드백 등) 마지막 부위가 남아 있어도 방향 안내를 안 띄운다 (#169 3번)", () => {
+    const { shell, hintRoot } = setup({ screen: "feedback", currentPart: "liner" });
     shell.render();
     expect(hintRoot.hidden).toBe(true);
     expect(hintRoot.textContent).toBe("");

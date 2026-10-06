@@ -68,13 +68,23 @@ export function placePins(cur: readonly Pt[], pins: readonly Pin[], tris: readon
 export interface PinnedOutline {
   polys: Pin[][];
   lines: Pin[][];
+  dots?: Pin[];
+  arrows?: Pin[][];
 }
 
 /** 테두리(다각형·선)를 모양 그대로 그물에 붙인다 */
 export function pinOutline(o: Outline, base: readonly Pt[], tris: readonly Triangle[] = FACE_TRIANGLES): PinnedOutline {
-  return { polys: o.polys.map((s) => pinPoints(base, s, tris)), lines: o.lines.map((s) => pinPoints(base, s, tris)) };
+  return {
+    polys: o.polys.map((s) => pinPoints(base, s, tris)), lines: o.lines.map((s) => pinPoints(base, s, tris)),
+    ...(o.dots ? { dots: pinPoints(base, o.dots, tris) } : {}),
+    ...(o.arrows ? { arrows: o.arrows.map((s) => pinPoints(base, s, tris)) } : {}),
+  };
 }
 
 export function placeOutline(p: PinnedOutline, cur: readonly Pt[], tris: readonly Triangle[] = FACE_TRIANGLES): Outline {
-  return { polys: p.polys.map((s) => placePins(cur, s, tris)), lines: p.lines.map((s) => placePins(cur, s, tris)) };
+  return {
+    polys: p.polys.map((s) => placePins(cur, s, tris)), lines: p.lines.map((s) => placePins(cur, s, tris)),
+    ...(p.dots ? { dots: placePins(cur, p.dots, tris) } : {}),
+    ...(p.arrows ? { arrows: p.arrows.map((s) => placePins(cur, s, tris)) } : {}),
+  };
 }

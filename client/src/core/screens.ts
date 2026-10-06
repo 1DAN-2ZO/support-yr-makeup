@@ -2,23 +2,42 @@
  * 화면 순서·이름·방향 — 순수 함수. DOM 을 모른다.
  * 껍데기(shell.ts)와 각 모듈의 화면이 함께 쓴다.
  *
- * 화면 담당 (work-split-modules-v6.md §0-2):
- *   1 동의·촬영 ①  ·  2·2-b ⑥  ·  3·4 ②  ·  5·5-b ③  ·  6 ⑥  ·  껍데기 ⑥
+ * 화면 담당 — 새 흐름 (2026-10-06, docs/service-definition-v6.md 맨 위 표):
+ *   1 동의·촬영 ①  ·  2·3 참고 사진·정답사진 ①②④ 한 덩어리(prep — 각자 다른 방식으로 구현해 보는 중)  ·  4 부위 가이드 ②  ·
+ *   6 피드백 ③  ·  5 시도사진 · 7 저장·공유 · 껍데기 ⑥ (UI 는 ⑤)
  */
 
 import type { PartId, PartStatus } from "./types";
 import { PART_IDS } from "./types";
 // 화면 목록·이름은 ① 의 flow.ts 가 정본이다 (세션이 먼저 쓴다). 여기서 다시 정의하지 않는다.
-import { SCREENS, SCREEN_NAME, type ScreenId } from "./flow";
+import { SCREEN_NAME, type ScreenId } from "./flow";
 
 export { SCREEN_NAME };
 export type { ScreenId };
 
-/** 기본 진행 순서 = flow.ts 의 SCREENS. 진행 칩·뒤로가기는 이 순서가 아니라 세션 상태를 본다 */
-export const SCREEN_ORDER: readonly ScreenId[] = SCREENS;
+/**
+ * 진행 순서 — 새 흐름 (2026-10-06). 맨얼굴 촬영 → 참고 사진·정답사진 → [부위 가이드] × 부위 → 시도사진 → 피드백 → 저장·공유 → 끝.
+ * 부위마다 중간 확인(실시간 테두리 · 결과)은 없다. 옛 흐름 화면은 SCREENS 에 남아 있지만 이 순서에는 없다
+ */
+export const SCREEN_ORDER: readonly ScreenId[] = ["consent", "capture", "answer", "partguide", "attempt", "feedback", "save", "done"];
 
-/** 어느 모듈이 그 화면을 만드는가. 껍데기가 "아직 안 붙음"을 표시할 때 쓴다 */
-export const SCREEN_OWNER: Record<ScreenId, "capture" | "guide" | "score" | "app"> = {
+/** 옛 흐름에서 빠진 화면 → 가까운 새 화면. 앱을 다시 켰을 때 옛 화면에 멈춘 세션을 옮긴다 */
+const RETIRED: Partial<Record<ScreenId, ScreenId>> = {
+  processing: "answer", looks: "answer", fullrender: "answer",
+  guide: "partguide", live: "partguide", result: "partguide",
+  review: "feedback",
+};
+
+/** 새 흐름의 화면으로 — 옛 흐름 화면이면 가까운 새 화면, 아니면 그대로 */
+export function inNewFlow(s: ScreenId): ScreenId {
+  return RETIRED[s] ?? s;
+}
+
+/**
+ * 어느 모듈이 그 화면을 만드는가. 껍데기가 "아직 안 붙음"을 표시할 때 쓴다.
+ * prep = ①·②·④ 한 덩어리 (맨얼굴 사진 다음부터 정답사진까지)
+ */
+export const SCREEN_OWNER: Record<ScreenId, "capture" | "guide" | "score" | "app" | "prep"> = {
   consent: "capture",
   denied: "capture",
   capture: "capture",
@@ -30,10 +49,21 @@ export const SCREEN_OWNER: Record<ScreenId, "capture" | "guide" | "score" | "app
   result: "score",
   review: "app",
   done: "app",
+  answer: "prep",
+  partguide: "guide",
+  attempt: "app",
+  feedback: "score",
+  save: "app",
 };
 
-/** 부위 6개를 도는 화면 (진행 칩이 보인다) */
-export const PART_SCREENS = ["guide", "live", "result"] as const satisfies readonly ScreenId[];
+/** 부위를 도는 화면 (진행 칩이 보인다) — 새 흐름은 부위 가이드 하나 */
+export const PART_SCREENS = ["partguide"] as const satisfies readonly ScreenId[];
+
+/** 부위 가이드 순서 — 부위마다 확인받지 않으니 상태와 상관없이 정해진 순서대로. 마지막이면 null (→ 시도사진) */
+export function nextGuidePart(after: PartId | null): PartId | null {
+  const i = after ? PART_IDS.indexOf(after) : -1;
+  return PART_IDS[i + 1] ?? null;
+}
 
 export function isPartScreen(s: ScreenId): boolean {
   return (PART_SCREENS as readonly ScreenId[]).includes(s);

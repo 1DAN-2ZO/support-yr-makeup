@@ -14,6 +14,10 @@ import type { PersonalPlan } from "./personalize";
 
 // ---------- 화면 순서 ----------
 
+/**
+ * 화면 이름 전부. 진행 순서는 core/screens.ts 의 SCREEN_ORDER (2026-10-06 새 흐름).
+ * processing ~ review 는 옛 흐름 화면 — 새 흐름에서 빠졌지만 코드는 남아 있다 (screens.inNewFlow 가 새 화면으로 돌린다)
+ */
 export const SCREENS = [
   "consent",
   "denied",
@@ -26,6 +30,12 @@ export const SCREENS = [
   "result",
   "review",
   "done",
+  // 새 흐름 (2026-10-06) — docs/service-definition-v6.md
+  "answer",
+  "partguide",
+  "attempt",
+  "feedback",
+  "save",
 ] as const;
 export type ScreenId = (typeof SCREENS)[number];
 
@@ -33,14 +43,19 @@ export const SCREEN_NAME: Record<ScreenId, string> = {
   consent: "1 동의",
   denied: "이용 불가",
   capture: "1 촬영",
-  processing: "서버 처리",
-  looks: "2 화장",
-  fullrender: "2-b 전체 완성 예상",
-  guide: "3 완성본",
-  live: "4 실시간 테두리",
-  result: "5 결과",
-  review: "6 전체 리뷰",
+  processing: "서버 처리 (옛 흐름)",
+  looks: "2 화장 (옛 흐름)",
+  fullrender: "2-b 전체 완성 예상 (옛 흐름)",
+  guide: "3 완성본 (옛 흐름)",
+  live: "4 실시간 테두리 (옛 흐름)",
+  result: "5 결과 (옛 흐름)",
+  review: "6 전체 리뷰 (옛 흐름)",
   done: "끝",
+  answer: "2·3 참고 사진 · 정답사진",
+  partguide: "4 부위 가이드",
+  attempt: "5 시도사진",
+  feedback: "6 피드백",
+  save: "7 저장 · 공유",
 };
 
 /** 부위 순서 = 룩 5부위 + 쉐딩·하이라이트(고정 마지막) */
