@@ -65,7 +65,6 @@ export const CAPTURE_TEXT = {
   doneCoach: "이상한 사진이 있으면 그 사진만 다시 찍을 수 있어요",
   retake: "다시 찍기",
   go: "화장 고르러 가기",
-  devSkip: "촬영 건너뛰기",
 } as const;
 
 function isShotData(v: unknown): v is ShotData {
@@ -203,16 +202,6 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
         };
         drawProgress();
         wrap.append(logo, title, step, stage, line, hint, progress);
-        if (import.meta.env.DEV) {
-          const skip = el("button", "capture-dev-skip", CAPTURE_TEXT.devSkip);
-          skip.type = "button";
-          skip.addEventListener("click", () => {
-            ctx.log.log({ name: "button", button: "capture_dev_skip" });
-            stopCamera();
-            ctx.go(deps.next);
-          });
-          wrap.append(skip);
-        }
 
         let lmk: FaceLandmarker | null = null;
         let stream: MediaStream | null = null;

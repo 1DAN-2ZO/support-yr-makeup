@@ -50,14 +50,6 @@ body {
   background: var(--bg);
   overflow: hidden;
 }
-#app::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 9999;
-  border: 3px solid #111;
-  pointer-events: none;
-}
 .screen { flex: 1; padding: 14px 16px 20px; }
 /* POC 공용: 제목·버튼 */
 .screen h1 { font-size: 18px; font-weight: var(--weight-title); margin: 6px 0 4px; }
@@ -575,6 +567,11 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   transform: rotate(45deg);
 }
 .splash-logo { font-size: 72px; }
+/* 스플래시는 글자가 72px 이라 하트도 원래 크기로 — 다른 화면은 30px 기준 11x10 */
+.splash-logo i { width: 16px; height: 14px; }
+.splash-logo i::after { width: 9px; height: 14px; }
+.splash-logo i::before { left: 7px; }
+
 
 /* 화면 안의 작은 로고 — .nudy-logo 기본값(큰 로고) 뒤에 와야 먹는다 */
 .looks-logo,
@@ -1506,21 +1503,6 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   background: #eee7eb;
 }
 .cam-progress li.on { background: #ff9bac; }
-.capture-dev-skip {
-  display: block;
-  width: min(68%, 260px);
-  min-height: 42px;
-  margin: 14px auto 0;
-  border: 1px solid #ffd4dc;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.86);
-  color: #ff8296;
-  font: inherit;
-  font-size: 14px;
-  font-weight: var(--weight-strong);
-  cursor: pointer;
-  box-shadow: 0 8px 20px rgba(255, 137, 155, 0.1);
-}
 .capture-done-screen {
   width: 100%;
   min-height: 100dvh;
