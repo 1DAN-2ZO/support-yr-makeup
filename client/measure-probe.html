@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <title>얼굴 측정 확인 — 당화응</title>
+    <!--
+      [dev 전용] 논문 기술 A(얼굴 측정, client/src/core/face-measure.ts)를 실제 웹캠에서 확인한다.
+      앱 흐름과 상관없는 독립 페이지다. 사진은 저장하지 않고, 복사 버튼은 숫자만 복사한다.
+    -->
+    <style>
+      :root { color-scheme: light dark; --line: #8884; }
+      body { margin: 0; padding: 16px; font: 14px/1.5 system-ui, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; background: Canvas; color: CanvasText; }
+      h1 { font-size: 18px; margin: 0 0 4px; }
+      .note { margin: 0 0 12px; opacity: .75; font-size: 13px; }
+      .wrap { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+      .stage { flex: 1 1 480px; max-width: 720px; }
+      /* 거울처럼 보이게 뒤집는다. 선만 캔버스에 그리고 글씨는 표에 둔다 — 글씨까지 뒤집히지 않게 */
+      canvas { width: 100%; height: auto; transform: scaleX(-1); border-radius: 8px; background: #000; }
+      .panel { flex: 1 1 420px; }
+      .buttons { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 12px; }
+      button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line); background: ButtonFace; color: ButtonText; cursor: pointer; }
+      table { border-collapse: collapse; width: 100%; }
+      th, td { border-bottom: 1px solid var(--line); padding: 5px 6px; text-align: left; vertical-align: top; }
+      td.v { font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; }
+      td.ref { font-size: 12px; opacity: .75; }
+      #status { font-size: 13px; margin: 6px 0; }
+      .warn { color: #d9480f; font-weight: 600; }
+      .legend span { display: inline-block; margin-right: 10px; font-size: 12px; }
+      .legend i { display: inline-block; width: 10px; height: 3px; vertical-align: middle; margin-right: 4px; }
+    </style>
+  </head>
+  <body>
+    <h1>얼굴 측정 확인</h1>
+    <p class="note">논문 기술 A. 맨얼굴로 카메라를 정면으로 봐 주세요. 화면은 거울처럼 보이며, 표의 R은 <b>본인의 오른쪽 눈</b>(화면에서 왼쪽)입니다.</p>
+    <div class="wrap">
+      <div class="stage">
+        <canvas id="cv" width="1280" height="720"></canvas>
+        <div class="legend">
+          <span><i style="background:#fff"></i>눈동자 선(얼굴 수평)</span>
+          <span><i style="background:#22d3ee"></i>눈 축</span>
+          <span><i style="background:#facc15"></i>윗눈꺼풀</span>
+          <span><i style="background:#4ade80"></i>아랫눈꺼풀</span>
+          <span><i style="background:#e879f9"></i>눈썹 중심선</span>
+          <span><i style="background:#9ca3af"></i>얼굴 폭·높이</span>
+          <span><i style="background:#fb923c"></i>개인화 라이너 윤곽</span>
+          <span><i style="background:#6b7280"></i>기존 꼬리(30°) 비교용</span>
+        </div>
+        <video id="v" autoplay playsinline muted hidden></video>
+      </div>
+      <div class="panel">
+        <div class="buttons">
+          <button id="start" type="button">카메라 시작</button>
+          <button id="freeze" type="button" disabled>값 고정</button>
+          <button id="copy" type="button" disabled>값 복사</button>
+        </div>
+        <div class="buttons">
+          <label>라이너 스타일
+            <select id="style">
+              <option value="auto">자동 (규칙)</option>
+              <option value="winged">Winged — 날개 15°</option>
+              <option value="extend">Extend — 눈 축 연장</option>
+              <option value="drop">Drop — 눈꼬리 선 따라감</option>
+            </select>
+          </label>
+          <label>룩 설정
+            <select id="adapt">
+              <option value="correct">보정 (처진 눈 → Extend)</option>
+              <option value="follow">따라감 (처진 눈 → Drop)</option>
+            </select>
+          </label>
+        </div>
+        <div id="status">카메라 시작을 눌러 주세요.</div>
+        <table>
+          <thead><tr><th>측정</th><th>값 (최근 15프레임 중앙값)</th><th>논문 기준</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+    <script type="module" src="/src/screens/measure-probe.ts"></script>
+  </body>
+</html>

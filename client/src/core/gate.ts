@@ -10,7 +10,8 @@
  *   조명 색 차이는 막지 않고 준비 문구에 안내만 덧붙인다. 절대 밝기(너무 어둡거나 밝음)는 사진 자체가 안 돼서 막는다.
  *
  * 측정은 화면 1 과 같은 코드를 쓴다: 각도 capture-measure · 선명·이마 색 frame-measure · 가림 occlusion.foreheadStep.
- * 표정 차(expr_diff, #27): 맨얼굴 때 표정과의 차(core/expression.exprDiff). 맨얼굴 값이 없으면 건너뛴다 (① #177 전).
+ * 표정 차(expr_diff, #27): 맨얼굴 때 표정과의 차(core/expression.exprDiff). 맨얼굴 값은 ① Baseline.expression(#177 → #226) —
+ * 촬영 때 정면 눈 뜸 장에서 재고, 앱을 다시 켜면 저장한 쌩얼에서 다시 잰다. 못 쟀으면(null) 조건을 건너뛴다.
  */
 
 import { yawFromLandmarks } from "./capture-measure";
@@ -26,7 +27,7 @@ export interface LiveLimits {
   /** 정면 한계(°) */
   yaw: number;
   pitch: number;
-  /** 기준 사진과의 각도 차 한계(°). 넘으면 정합이 감당 못 한다 (tech-review 화면 4 실기기 1차) */
+  /** 기준 사진과의 각도 차 한계(°). 넘으면 정합이 감당 못 한다 (tech-review 화면 4 실기기 1차 8·6 → #235 완화 12·10, 가정값) */
   dYaw: number;
   dPitch: number;
   /** 표정 차(블렌드셰이프 0~1 중 가장 크게 달라진 양) 한계. 가정값 — 촬영 세션(#58)에서 확정 */
@@ -37,12 +38,15 @@ export interface LiveLimits {
   brightMax: number;
   colorTol: number;
   stableFrames: number;
+  /** 기다리면 넘어가도 되는 조건(softFail)에 이만큼(ms) 막혀 있으면 확인받기를 켠다 (#235, 가정값) */
+  softMs: number;
 }
 
-/** 선명·밝기·색·안정은 화면 1 과 같은 값 (flow.ts CAPTURE_LIMITS 주석 "화면 4 게이트와 값을 맞춘다") */
+/** 선명·밝기 절대값은 화면 1 과 같은 값 (flow.ts CAPTURE_LIMITS 주석 "화면 4 게이트와 값을 맞춘다"). 그 뒤를 막지 않게 완화한 것(#209·#235)은 따로 적었다 */
 export const LIVE_LIMITS: LiveLimits = {
   rollMax: ROLL_MAX,
-  yaw: 15, pitch: 10, dYaw: 8, dPitch: 6, exprTol: 0.35,
+  // 기준 각도 차 12·10 (#235: 8·6 은 폰을 가로로 들면 자주 막혔다. 채점이 미세 정렬 + 크게 어긋나면 확인만으로 처리, #43)
+  yaw: 15, pitch: 10, dYaw: 12, dPitch: 10, exprTol: 0.35,
   sharpMin: CAPTURE_LIMITS.sharpMin,
   // 밝기 차이는 채점과 같은 한계 — 채점이 이마 밝기 비율로 보정(lightCorr)하고, 넘으면 확인만(조명)으로 처리한다.
   // 화면 4 가 더 빡빡하면 채점까지 가지도 못한다 (#209 ⑥ 결정: 첫 촬영은 빡빡하게, 그 뒤는 막지 않게). 절대 밝기(min·max)는 그대로
@@ -51,7 +55,9 @@ export const LIVE_LIMITS: LiveLimits = {
   brightMax: CAPTURE_LIMITS.brightMax,
   // 조명 색 차이는 막지 않고 안내만 (#209) — 이 값을 넘으면 준비 문구에 한 마디 덧붙인다
   colorTol: CAPTURE_LIMITS.colorTol,
-  stableFrames: CAPTURE_LIMITS.stableFrames,
+  // 화면 1(5)보다 짧게 (#235) — 확인받기 뒤 여러 장을 모아 중앙값 + 가린 장 제외라 누르는 순간 완벽할 필요가 없다
+  stableFrames: 2,
+  softMs: 3000,
 };
 
 /** 화면 4 문구. 화면 1 과 같은 조건은 같은 말 */
@@ -60,11 +66,21 @@ export const GATE_TEXT = {
   angle: SHOT_TEXT.front,
   // 눈 부위는 가로 화면에서만 한다 (팀 협의, 정의서 3-2) — 세로면 막는다
   toLandscape: "폰을 가로로 돌려 주세요",
+  /** 입술·볼·쉐딩은 세로에서만 (2026-10-01) — 맨얼굴과 같은 자세. 가로면 카메라가 옆이라 얼굴이 돌아간 것으로 찍힌다(#239) */
+  toPortrait: "폰을 세로로 돌려 주세요",
   // 자동 회전이 꺼진 채 가로로 돌리면 화면은 세로 그대로이고 영상 속 얼굴만 눕는다 (#204)
   autoRotate: "화면이 안 돌아갔어요. 화면 자동 회전을 켜 주세요",
   // 세로 부위(입술·볼·쉐딩)에서 얼굴이 누웠으면 폰을 가로로 들고 있는 것
   holdPortrait: "폰을 세로로 들어 주세요",
   pose: "처음 찍을 때와 같은 각도로 봐 주세요",
+  // 정면·기준 각도 차는 **어느 쪽으로** 고치면 되는지 말한다 (폰 시험 2026-09-30: 가로로 들면 카메라가 옆이라
+  // 화면만 보고 있어도 얼굴이 15° 쯤 돌아간 것으로 찍힌다 → "조금만 정면으로" 로는 뭘 해야 할지 모른다).
+  // 좌우는 화면 1 과 같은 기준: 거울 기준 yaw 가 + 면 "왼쪽으로" 돌려야 준다 (flow.ts left_45 = yaw 음수 = "고개를 왼쪽으로")
+  turnLeft: "얼굴을 왼쪽으로 살짝 돌려 주세요",
+  turnRight: "얼굴을 오른쪽으로 살짝 돌려 주세요",
+  // 위아래: pitch 가 + 면 코끝이 내려간 것(숙임) → 들어야 준다
+  tiltUp: "고개를 살짝 들어 주세요",
+  tiltDown: "고개를 살짝 숙여 주세요",
   expr: "처음 찍을 때처럼 편한 표정으로 있어 주세요",
   eyes: "양쪽 눈이 보이게 해 주세요",
   part: "부위가 다 보이게 해 주세요",
@@ -121,7 +137,7 @@ export function poseOf(lm: readonly Pt[]): { yaw: number; pitch: number } {
  * 기준 각도 차를 강체 점으로 (#28). 옛 방식(poseOf)은 턱 끝(152)·얼굴 옆을 써서 입을 벌리면 숙인 것으로 잡혔다.
  * 양 눈꼬리(33·263)를 자로 삼아 코끝(4)이 그 선에서 옆·아래로 얼마나 옮겨 갔나를 눈꼬리 거리로 나눈다 →
  * 크기·기울기·위치에 안 흔들린다. 도로 바꾸는 계수 k = (코끝이 눈꼬리 면에서 나온 깊이) ÷ (눈꼬리 거리), 작은 각 근사.
- * k 는 **옛 방식(poseOf)의 눈금에 맞춘 값** — 게이트 한계(dYaw 8 · dPitch 6)가 옛 눈금으로 폰에서 정한 값이라서.
+ * k 는 **옛 방식(poseOf)의 눈금에 맞춘 값** — 게이트 한계(처음 dYaw 8 · dPitch 6, #235 에서 12 · 10)가 옛 눈금으로 폰에서 정한 값이라서.
  * 2026-09-29 PC 웹캠 `?pose` 보정(입 다물고 끄덕·돌리기): yaw 0.462(439점) · pitch 1.112(333점)·1.31(538점) → 가중 평균 1.23.
  * (처음 어림 0.35 는 실제 각도 기준이었는데, 옛 pitch 눈금이 눌려 있어 3배 차이) 폰 시험 때 한 번 더 확인.
  *
@@ -175,11 +191,20 @@ export function evaluateGate(partId: PartId, m: LiveMeasure, limits: LiveLimits 
   }
   // 눈썹·라이너·섀도우는 양쪽 눈을 한 화면에 크게 담아야 해서 가로에서만 (팀 협의 2026-09-30, 정의서 3-2)
   if (m.screen === "portrait" && EYE_PARTS.includes(partId)) return fail("angle", GATE_TEXT.toLandscape);
+  // 나머지(입술·볼·쉐딩)는 세로에서만 — 섀도우 다음 입술로 넘어갈 때 가로 그대로 하지 않게 (2026-10-01)
+  if (m.screen === "landscape" && !EYE_PARTS.includes(partId)) return fail("angle", GATE_TEXT.toPortrait);
   // NaN·Infinity 는 비교가 전부 false 라 모든 조건을 통과해 버린다 (정의서 3-5 "깨진 측정값")
   if (!measureFinite(m)) return fail("face", GATE_TEXT.face);
-  if (Math.abs(m.yaw) > limits.yaw || Math.abs(m.pitch) > limits.pitch) return fail("angle", GATE_TEXT.angle);
-  const pd = m.poseDiff ?? (typeof m.baseYaw === "number" && typeof m.basePitch === "number" ? { yaw: m.yaw - m.baseYaw, pitch: m.pitch - m.basePitch } : null);
-  if (pd && (Math.abs(pd.yaw) > limits.dYaw || Math.abs(pd.pitch) > limits.dPitch)) return fail("pose_diff", GATE_TEXT.pose);
+  if (Math.abs(m.yaw) > limits.yaw) return fail("angle", m.yaw > 0 ? GATE_TEXT.turnLeft : GATE_TEXT.turnRight);
+  if (Math.abs(m.pitch) > limits.pitch) return fail("angle", m.pitch > 0 ? GATE_TEXT.tiltUp : GATE_TEXT.tiltDown);
+  // 기준 각도 차: 강체 차(poseDiff)는 이미지 좌표(코끝이 이미지 오른쪽이면 +)라 거울 기준으로 부호를 바꿔 방향을 정한다
+  const pd = m.poseDiff
+    ? { yaw: m.poseDiff.yaw, pitch: m.poseDiff.pitch, mirrorYaw: -m.poseDiff.yaw }
+    : typeof m.baseYaw === "number" && typeof m.basePitch === "number"
+      ? { yaw: m.yaw - m.baseYaw, pitch: m.pitch - m.basePitch, mirrorYaw: m.yaw - m.baseYaw }
+      : null;
+  if (pd && Math.abs(pd.yaw) > limits.dYaw) return fail("pose_diff", pd.mirrorYaw > 0 ? GATE_TEXT.turnLeft : GATE_TEXT.turnRight);
+  if (pd && Math.abs(pd.pitch) > limits.dPitch) return fail("pose_diff", pd.pitch > 0 ? GATE_TEXT.tiltUp : GATE_TEXT.tiltDown);
   if (typeof m.exprDiff === "number" && m.exprDiff > limits.exprTol) return fail("expr_diff", GATE_TEXT.expr);
   if (m.partVisible === false) return fail("visible", EYE_PARTS.includes(partId) ? GATE_TEXT.eyes : GATE_TEXT.part);
   // 이마 급변 = 무엇이든 얼굴을 가림 (#144) — 손·브러시·머리카락 무엇이든, 수단이 아니라 상태 (#155)
@@ -201,6 +226,20 @@ export function evaluateGate(partId: PartId, m: LiveMeasure, limits: LiveLimits 
   }
   if (stableCount < limits.stableFrames) return fail("stable", GATE_TEXT.stable);
   return { ok: true, firstFail: null, text: colorOff ? GATE_TEXT.readyColor : GATE_TEXT.ready, stableCount };
+}
+
+/** 같은 angle 이라도 이건 기다려도 안 넘어간다 — 부위별 화면 방향(팀 협의) · 자동 회전 */
+const HARD_ANGLE: readonly string[] = [GATE_TEXT.toLandscape, GATE_TEXT.toPortrait, GATE_TEXT.autoRotate, GATE_TEXT.holdPortrait];
+
+/**
+ * 기다리면 확인받기를 켜 주는 조건인가 (#235, #209 원칙 "첫 촬영은 빡빡하게, 화면 4 는 채점에 필요한 최소한만").
+ * 정면 각도·기준 각도 차는 채점이 미세 정렬하고 크게 어긋나면 확인만(#43), 안정은 확인받기 뒤 여러 장 중앙값 + 가린 장 제외로 채점이 처리한다.
+ * 나머지(얼굴 없음·부위 밖·가림·표정·선명·밝기)는 찍어도 채점 못 하는 사진이라 기다려도 막는다
+ */
+export function softFail(g: GateResult): boolean {
+  if (g.ok) return false;
+  if (g.firstFail === "pose_diff" || g.firstFail === "stable") return true;
+  return g.firstFail === "angle" && !HARD_ANGLE.includes(g.text);
 }
 
 /**

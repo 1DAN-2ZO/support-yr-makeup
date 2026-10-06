@@ -30,18 +30,46 @@ export interface LinerPlan {
 }
 
 /**
- * 처진 눈으로 볼 여유 구간(°). α − β 가 이보다 커야 처진 눈이다.
- * 실측에서 고개를 움직이면 눈꼬리 각이 약 ±2° 흔들렸다 — 그 흔들림으로 스타일이 뒤집히지 않게.
- * 논문 값이 아니라 우리 가정값이다. 사용자 실험(#84)으로 확인한다.
+ * 처진 눈 = 양쪽 눈꼬리 기울기 평균이 이 값보다 작은 눈 — 눈꼬리가 앞머리보다 "덜 올라간" 눈.
+ * 임상의 down-slanting(0° 미만, 바깥이 더 낮음)보다 넓다.
+ *
+ * 2026-10-01 바꿈 (시험): 전에는 ILoveEye 2022 의 α > β (+2° 여유)로 봤다. 그런데 α > β 는 윗눈꺼풀이
+ * 아랫눈꺼풀보다 높게 굽은 정도(평균 약 2.6배)를 재서 눈꼬리 방향과 상관없이 대부분 참이 된다 —
+ * FFHQ-Makeup 동양인 정면 30장 중 21장이 처진 눈(눈꼬리 기울기는 30장 모두 +), 논문 예시 그림(Fig.4b)도 α−β ≈ 12°.
+ * 윗눈꺼풀 꼭대기 점이 159·158 중 어느 쪽에 잡히느냐로 α−β 가 약 12° 뒤집히기도 했다.
+ *
+ * 5° = Lee 2020 (JKAOMS) 의 class I 경계 (docs/research/papers/개인화 근거):
+ * - Lee 2020 (한국인 76명, 13~38세): 0~5° 를 class I 로 따로 묶음(76명 중 14명, 평균 3.2°),
+ *   5° 넘으면 class II(다수, 매력적인 한국 얼굴 8.87° 도 여기), 0° 미만은 class III("늙고 피곤해 보임", 0명)
+ * - Jung 2020 (AAPS, 한국 20대 여성 120명): 8.4° ± 2.9° · 8.8° ± 3.0° → 5° 는 평균 − 1.2 SD, 아래 약 10~12%
+ * - 다만 class I 이 "처진 눈으로 보인다"고 한 논문은 없다 — 사람 표시로 확인했다 (2026-10-01, eval/vlm/droop_label.py):
+ *   같은 30장을 사람이 처진 눈 7 · 아님 20 · 애매 3 으로 표시 → 눈꼬리 기울기가 가장 잘 가렸다(AUC 0.73).
+ *   5° 에서 27장 중 22장 맞음 — 표시에 가장 잘 맞춘 4° (23장)와 한 장 차이라, 표본에 맞춘 값 대신 논문 경계를 쓴다.
+ *   α−β 는 AUC 0.54(무작위 수준).
+ * 처진 눈은 "아래로 기운 눈"(임상 0° 미만 — 30장 중 0장)이 아니라 "평균보다 덜 올라간 눈"이다 (이 30장 평균 6.7°).
+ * - 재는 방법이 다르다(논문: 표준 정면 사진에서 사람이 눈꼬리를 찍음, 우리: MediaPipe 33·133 / 263·362 점, 롤 보정).
+ *   이 30장 평균이 6.7° 로 한국 논문보다 약 2° 낮아, 같은 눈이라도 우리 값이 낮게 나올 수 있다.
+ * 표시 1명 · FFHQ-Makeup 사진 27장이라 팀원 실제 사진으로 다시 맞춘다 (#84).
+ * 기울기가 높은데 처진 눈으로 보이는 얼굴(윗꺼풀 피부가 눈꼬리를 덮는 모양)은 얼굴 점으로 잡히지 않는다 — 7장 중 3장.
  */
-export const DROOP_MARGIN_DEG = 2;
+export const DROOP_TILT_DEG = 5;
 
-/** 양쪽 눈의 α − β 평균. 한 스타일로 양쪽을 같이 그리므로 평균으로 본다 */
+/** 양쪽 눈꼬리 기울기 평균(°, 바깥이 높으면 +). 한 스타일로 양쪽을 같이 그리므로 평균으로 본다 */
+export function tiltDeg(m: FaceMeasure): number {
+  return (m.eye.R.tiltDeg + m.eye.L.tiltDeg) / 2;
+}
+
+/** 처진 눈인가 — 라이너 규칙·관문(drop)·VLM 선택지가 같이 쓴다 */
+export function isDroopy(m: FaceMeasure): boolean {
+  return tiltDeg(m) < DROOP_TILT_DEG;
+}
+
+/** 양쪽 눈의 α − β 평균 (ILoveEye). 처진 눈 판정에는 더 쓰지 않는다 — 참고값 */
 export function droopDeg(m: FaceMeasure): number {
   return (m.eye.R.alphaDeg - m.eye.R.betaDeg + (m.eye.L.alphaDeg - m.eye.L.betaDeg)) / 2;
 }
 
-const isDown = (m: FaceMeasure): boolean => droopDeg(m) > DROOP_MARGIN_DEG;
+const isDown = isDroopy;
 
 const reasonOf = (m: FaceMeasure, style: LinerStyle): LinerReason =>
   !isDown(m) ? "not_down" : style === "drop" ? "down_follow" : "down_correct";
@@ -167,6 +195,37 @@ export interface PersonalPlan {
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const inRange = (v: unknown, [lo, hi]: readonly [number, number]): v is number => typeof v === "number" && Number.isFinite(v) && v >= lo && v <= hi;
+
+/**
+ * 표준 계획 — 모두에게 같은 계획. **앱은 지금 이것만 쓴다** (2026-10-05 결정).
+ *
+ * 얼굴에 맞추는 일(자리 · 크기)은 얼굴 점이 이미 한다 — 같은 화장 모양을 그 사람 얼굴 점 위에 놓으면 눈이 길면 라이너도 길고,
+ * 눈두덩이 넓으면 섀도도 넓다. 그 위에 얼굴을 재서 모양까지 바꾸던 규칙(resolvePlan: 처진 눈이면 꼬리를 곧게 · 눈두덩으로 섀도 높이 ·
+ * 얇은 윗입술이면 오버라인)은 더하는 것이 작고 근거가 약해(처진 눈 5° = 평가자 1명 · 27장, VLM 은 규칙과 구별 안 됨 — docs/reports/vlm-personalization-retrospective.md)
+ * 뺐다. 화면의 "개인화" 단계와 문구도 같이 뺐다.
+ *
+ * 값은 resolvePlan 이 "바꿀 것 없음" 으로 본 얼굴(처진 눈 아님 · 눈두덩 표준 · 윗입술 충분)이 받던 계획 그대로 — 대부분의 얼굴은
+ * 테두리 · 채점 기준이 전과 같다 (standard-plan.test SP2). 달라지는 것은 그 세 규칙에 걸리던 얼굴뿐.
+ * 얼굴형은 화장 모양 규칙이 아니라 쉐딩 · 하이라이트 자리(F-04)라 그대로 둔다 — ⑤ 모델이 확신할 때만 (resolvePlan 과 같은 판단).
+ * resolvePlan · VLM 흐름(vlm-flow)은 지우지 않았다 — 실험(eval/vlm)이 쓰고, 다시 붙일 때 쓴다.
+ */
+export function standardPlan(faceShape?: FaceShape | null): PersonalPlan {
+  const shape = faceShape && faceShape.method === "model" && faceShape.confidence >= FACESHAPE_TRUST ? faceShape.label : null;
+  const adj = shape ? JKSC_BROW_ADJUST_MM[shape] : { height: 0, glabella: 0 };
+  return {
+    faceShape: shape,
+    liner: { plan: { style: "winged", reason: "not_down" }, source: "rule" },
+    linerThick: { scale: 1, source: "rule" },
+    brow: { faceShape: shape, source: "rule", heightMm: adj.height * BROW_ADJUST_SCALE + 0, glabellaMm: adj.glabella * BROW_ADJUST_SCALE + 0, arch: archOf(shape) },
+    lip: { overline: 0, source: "rule" },
+    blush: { position: "standard", size: 1, source: "rule" },
+    highlight: { tZone: true, source: "rule" },
+    shadow: { range: 1, source: "rule" },
+    intensity: {},
+    rationale: {},
+    rejected: [],
+  };
+}
 
 /**
  * 개인화 계획. 규칙값을 먼저 세우고, VLM 제안(믿지 않는 JSON)은 항목별로 측정·규칙과 대조해 받거나 거절한다.

@@ -14,11 +14,11 @@ const pending: FaceShape = { label: "oval", confidence: 0, method: "rule", versi
 
 describe("partCard", () => {
   it("V1 룩 부위: 근거는 룩의 한 줄, 필요한 것은 그 부위 제품에서 '눈 · ' 머리를 뗀 것", () => {
-    const smoky = LOOKS.find((l) => l.products.some((p) => p.includes("블랙 젤 라이너")))!;
-    const c = partCard("liner", smoky, null);
+    const edgy = LOOKS.find((l) => l.products.some((p) => p.includes("블랙 젤 라이너")))!;
+    const c = partCard("liner", edgy, null);
     expect(c.title).toBe("아이라이너");
-    expect(c.rationale).toBe(smoky.rationale.liner);
-    expect(c.need).toBe("지금 필요한 것: 블랙 젤 라이너 + 각진 브러시");   // 정의서 3-6 예시 그대로
+    expect(c.rationale).toBe(edgy.rationale.liner);
+    expect(c.need).toBe("지금 필요한 것: 블랙 젤 라이너");   // 정의서 3-6 예시 모양 (look-v0.2 세미 스모키)
   });
 
   it("V2 모든 룩·부위에서 제품 순서 = partOrder", () => {

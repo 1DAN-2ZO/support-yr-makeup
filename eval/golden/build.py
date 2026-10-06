@@ -7,9 +7,9 @@
 
 넣는 곳   $DHE_DATA_DIR/golden/raw/<person_id>/bare.jpg                  맨얼굴 (한 사람에 한 장)
           $DHE_DATA_DIR/golden/raw/<person_id>/<부위>[_<화장>][_<메모>].jpg  화장 사진 (부위마다)
-          예) p01/bare.jpg · p01/liner_smoky.jpg · p01/liner_smoky_off.jpg · p01/lip.jpg
+          예) p01/bare.jpg · p01/liner_edgy.jpg · p01/liner_edgy_off.jpg · p01/lip.jpg
           - 부위: brow · liner · lip · shadow · cheek (manifest parts)
-          - 화장: rules/looks.json 의 id (daily·smoky…). 없으면 null → 채점기가 기본 화장으로 잰다
+          - 화장: rules/looks.json 의 id (daily·edgy…). 없으면 null → 채점기가 기본 화장으로 잰다
           - 메모: 아무 말 (off·test2 등) — 같은 부위를 여러 장 찍을 때 이름이 겹치지 않게
           - person_id 는 이름 대신 p01 같은 번호로 (결과 표에 남는다)
 만드는 것 $DHE_DATA_DIR/golden/work/<person_id>/<이름>.png · .lm.json  — 채점기가 읽는 PNG 와 얼굴 점 478개
@@ -49,7 +49,7 @@ def look_ids() -> set[str]:
 
 
 def parse_name(stem: str, parts: list[str], looks: set[str]) -> tuple[str, str | None, str] | None:
-    """liner_smoky_off → (liner, smoky, off). 부위가 아니면 None (bare 등)"""
+    """liner_edgy_off → (liner, edgy, off). 부위가 아니면 None (bare 등)"""
     bits = stem.split("_")
     if bits[0] not in parts:
         return None
@@ -115,7 +115,15 @@ def build(data: Path, detect: Detect, parts: list[str], looks: set[str]) -> tupl
             if name is None:
                 problems.append(f"이름을 모름(부위로 시작해야 함): {src.relative_to(data)}")
                 continue
-            part, look, _tag = name
+            part, look, tag = name
+            if look is None and tag:
+                # 옛 id(look-v0.1 smoky 등)·오타면 채점기가 기본 화장으로 잰다
+                # 조용히 넘기지 않고 알린다. 사진은 넣는다
+                ids = "·".join(sorted(looks))
+                problems.append(
+                    f"화장 id 로 못 알아봄 — '{tag}' 를 메모로 봤어요 "
+                    f"(화장이면 {ids} 중 하나): {src.relative_to(data)}"
+                )
             mk = prepare(src, work, data, detect)
             if isinstance(mk, str):
                 problems.append(mk)

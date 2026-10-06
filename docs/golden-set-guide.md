@@ -40,12 +40,26 @@
 $DHE_DATA_DIR/golden/raw/
   p01/
     bare.jpg                 맨얼굴 (꼭 하나)
-    liner_smoky.jpg          <부위>_<화장>.jpg   — 화장은 rules/looks.json 의 id (daily·smoky…)
-    liner_smoky_off.jpg      <부위>_<화장>_<메모>.jpg — 같은 부위를 여러 장 찍을 때 (메모는 아무 말)
+    liner_edgy.jpg           <부위>_<화장>.jpg   — 화장은 rules/looks.json 의 id (아래 표)
+    liner_edgy_off.jpg       <부위>_<화장>_<메모>.jpg — 같은 부위를 여러 장 찍을 때 (메모는 아무 말)
     lip.jpg                  화장 이름을 모르면 빼도 됨 (채점기가 기본 화장으로 잰다)
   p02/
     ...
 ```
+
+화장 id (look-v0.2, 2026-09-30 확정 #133) — 파일 이름에는 **영문 id** 를 쓴다
+
+| id | 화장 | id | 화장 |
+|---|---|---|---|
+| `chic` | 어른 여자 | `street` | 힙스터 |
+| `edgy` | 세미 스모키 | `lovely` | 러블리 |
+| `autumn` | 가을 | `daily` | 출근/학생 |
+| `pure` | 청순 | `kitsch` | 키치/하이틴 |
+| `idol` | 아이돌 | `neutral` | 뉴트럴 |
+
+옛 id(`smoky` · `coral` 등 look-v0.1)는 더 이상 없다. 목록에 없는 말은 **메모**로 보고, 시험지를 만들 때 "화장 id 로 못 알아봄" 으로 알려 준다 — 그 사진은 채점기가 기본 화장(`edgy`)으로 잰다.
+
+- 마스카라는 채점하지 않는다. 뉴트럴 라이너처럼 피부와 가까운 색은 채점이 '확인만' 으로 뺀다 — 라벨을 달아도 채점 비교에서 빠진다
 
 JPG·PNG 둘 다 된다. 폰 사진의 회전 정보는 도구가 알아서 반영한다.
 

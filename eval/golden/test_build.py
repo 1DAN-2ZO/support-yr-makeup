@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from eval.golden.build import apply_labels, build, check, parse_name, read_labels, write_labels  # noqa: E402
 
 PARTS = ["brow", "liner", "lip", "shadow", "cheek"]
-LOOKS = {"daily", "smoky"}
+LOOKS = {"daily", "edgy"}
 
 
 def fake_detect(path: Path):
@@ -36,7 +36,7 @@ def photo(path: Path, color=(200, 160, 140), exif_rotate: bool = False) -> None:
 
 
 def test_이름에서_부위_화장_메모를_읽는다():
-    assert parse_name("liner_smoky_off", PARTS, LOOKS) == ("liner", "smoky", "off")
+    assert parse_name("liner_edgy_off", PARTS, LOOKS) == ("liner", "edgy", "off")
     assert parse_name("lip", PARTS, LOOKS) == ("lip", None, "")
     assert parse_name("brow_test2", PARTS, LOOKS) == ("brow", None, "test2")
     assert parse_name("bare", PARTS, LOOKS) is None
@@ -45,7 +45,7 @@ def test_이름에서_부위_화장_메모를_읽는다():
 def test_사진_폴더에서_시험지를_만든다(tmp_path: Path):
     raw = tmp_path / "golden" / "raw"
     photo(raw / "p01" / "bare.jpg")
-    photo(raw / "p01" / "liner_smoky.jpg", (60, 40, 40))
+    photo(raw / "p01" / "liner_edgy.jpg", (60, 40, 40))
     photo(raw / "p01" / "lip_off.png", (180, 60, 80))
     photo(raw / "p02" / "liner.jpg")  # 맨얼굴이 없다
     photo(raw / "p03" / "bare.jpg")
@@ -53,16 +53,28 @@ def test_사진_폴더에서_시험지를_만든다(tmp_path: Path):
     photo(raw / "p03" / "hello.jpg")  # 부위로 시작하지 않는다
 
     items, problems = build(tmp_path, fake_detect, PARTS, LOOKS)
-    assert [it["id"] for it in items] == ["p01_liner_smoky", "p01_lip_off"]
+    assert [it["id"] for it in items] == ["p01_liner_edgy", "p01_lip_off"]
     it = items[0]
-    assert it["part"] == "liner" and it["look"] == "smoky" and it["person_id"] == "p01"
+    assert it["part"] == "liner" and it["look"] == "edgy" and it["person_id"] == "p01"
     # 채점기가 읽는 PNG 와 얼굴 점, data_dir 기준 상대 경로
-    assert it["bare"] == "golden/work/p01/bare.png" and it["makeup"] == "golden/work/p01/liner_smoky.png"
+    assert it["bare"] == "golden/work/p01/bare.png" and it["makeup"] == "golden/work/p01/liner_edgy.png"
     assert len(json.loads((tmp_path / it["makeup_lm"]).read_text(encoding="utf-8"))) == 478
     assert len(it["sha256"]["bare"]) == 64 and it["label"] is None
     assert any("p02" in p and "맨얼굴" in p for p in problems)
     assert any("얼굴을 못 찾음" in p for p in problems)
     assert any("hello" in p for p in problems)
+
+
+def test_화장_id_로_못_알아본_이름은_메모로_넣되_알려_준다(tmp_path: Path):
+    # 옛 id(look-v0.1 smoky)·오타면 채점기가 기본 화장으로 잰다 — 조용히 넘기면 안 된다 (look-v0.2)
+    raw = tmp_path / "golden" / "raw"
+    photo(raw / "p01" / "bare.jpg")
+    photo(raw / "p01" / "liner_smoky.jpg")
+    photo(raw / "p01" / "lip_off.jpg")
+    items, problems = build(tmp_path, fake_detect, PARTS, LOOKS)
+    assert [it["look"] for it in items] == [None, None]  # 사진은 그대로 넣는다
+    assert any("smoky" in p and "화장 id" in p for p in problems)
+    assert any("off" in p and "화장 id" in p for p in problems)
 
 
 def test_폰_사진의_회전_정보를_픽셀에_반영한다(tmp_path: Path):

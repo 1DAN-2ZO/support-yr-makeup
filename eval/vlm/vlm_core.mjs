@@ -8,9 +8,10 @@
  * op:
  *   measure  {lm}                                  → FaceMeasure
  *   prompt   {m, look, variant, faceShape?}         → 문자열 (A = 앱 프롬프트 그대로, B 말만, C 숫자만, D 측정값 없음)
- *   schema   {}                                     → JSON 스키마 (제약 디코딩용, 관문과 같은 허용값)
+ *   schema   {variant?, m?}                         → JSON 스키마 (제약 디코딩용, 관문과 같은 허용값. E·F 는 얼굴마다 좁힌다)
  *   gate     {m, raw, faceShape?}                   → {ok, parsed, rejected, decisions}
  *   rule     {m, faceShape?}                        → 규칙만으로 만든 계획 (결정 + 근거)
+ *   plan     {m, raw?}                              → 렌더러용 계획 전체 (raw 없으면 규칙, 있으면 관문 거친 VLM)
  *   flips    {m, faceShape?}                        → [{name, field, m, ruleBefore, ruleAfter}]
  *   looks    {}                                     → 화장 id 목록 (rules/looks.json)
  *
@@ -77,12 +78,13 @@ const out = reqs.map((q) => {
     switch (q.op) {
       case "measure": return core.measure(q.lm);
       case "prompt": return core.prompt(q.m, q.look, q.variant, q.faceShape ?? null);
-      case "schema": return core.schema();
+      case "schema": return core.schema(q.variant ?? "A", q.m);
       case "gate": {
         const g = core.gate(q.m, q.raw, q.faceShape ?? null);
         return { ok: g.ok, parsed: g.parsed, rejected: g.rejected, decisions: g.decisions, rationale: g.plan.rationale };
       }
       case "rule": return core.rulePlan(q.m, q.faceShape ?? null);
+      case "plan": return core.fullPlan(q.m, q.raw);
       case "flips": return core.flips(q.m, q.faceShape ?? null);
       case "looks": return core.lookIds();
       default: return { error: `모르는 op: ${q.op}` };

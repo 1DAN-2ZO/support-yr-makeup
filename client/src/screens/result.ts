@@ -13,8 +13,11 @@
 
 import type { RgbaImage } from "../core/color";
 import type { ScoreOutcome } from "../core/flow";
+import { scaleLm } from "../core/crop";
 import { guideOutline } from "../core/overlay";
 import { frameOf, type HairMask } from "../core/sampling";
+import { mustRotate, rotateText, nowOrientation } from "../core/orientation-lock";
+import type { Orientation } from "../core/screens";
 import { scoreBundle, type GuideSource } from "../core/score-part";
 import { PARAMS, PART_NAME } from "../core/score";
 import type { Baseline, CaptureBundle, PartId, PartStatus } from "../core/types";
@@ -27,6 +30,8 @@ export interface ResultDeps {
   getCapture: (part: PartId) => CaptureBundle | null;
   /** 고른 룩 기준의 가이드 (② guides.ts, 그 전엔 guide-poc.ts) */
   guide: () => GuideSource;
+  /** 고른 화장의 이 부위 색 (rules/looks.json). 피부와 너무 가까우면 확인만(subtle) — 안 주면 전과 같다 */
+  templateColor?: (part: PartId) => readonly [number, number, number] | null;
   /** 세션 반영 (①의 applyResult / applySkip / nextPart) */
   apply: (part: PartId, outcome: ScoreOutcome) => void;
   skip: (part: PartId) => void;
@@ -40,6 +45,8 @@ export interface ResultDeps {
    * 앞머리·옆머리 칸을 채점에서 뺀다. 안 주거나 null 이면 전과 같이 (docs/research/hair-skin-2026-09-29)
    */
   hairMask?: (im: RgbaImage) => Promise<HairMask | null>;
+  /** 지금 화면 방향 — 테스트에서 바꿔 끼운다 (기본 orientation 미디어 쿼리). 눈 부위는 가로, 나머지는 세로에서만 (② 팀 협의). 모르면 null */
+  orientation?: () => Orientation | null;
   /** 마스크를 이만큼만 기다린다 (ms). 처음엔 모델을 내려받는데, 폰 네트워크가 멈추면 "채점 중…" 에 영영 서 있게 된다 */
   hairTimeoutMs?: number;
   /** 개발용(?tune): 판정 근거 숫자를 한 줄로 — 밝기 차·머리카락 가림·정렬·쓴 장 수. 사용자 화면엔 안 나온다 */
@@ -97,6 +104,11 @@ export function resultScreen<S>(deps: ResultDeps): Screen<S> {
         return;
       }
       wrap.append(line("result-part", PART_NAME[part]));
+      // 눈 부위는 가로, 나머지는 세로에서만 (팀 협의 2026-09-30 · 10-01) — 방향이 틀리면 채점도 안 돌리고 안내만. 돌리면 껍데기가 다시 그린다 (②)
+      if (mustRotate(part, (deps.orientation ?? nowOrientation)())) {
+        wrap.append(line("rotate-lock", rotateText(part)));
+        return;
+      }
 
       const baseline = deps.getBaseline(), bundle = deps.getCapture(part);
       if (!baseline?.bareImage || !bundle || !bundle.frames.length || bundle.pts.length !== bundle.frames.length) {
@@ -134,8 +146,12 @@ export function resultScreen<S>(deps: ResultDeps): Screen<S> {
           const late = new Promise<null>((r) => setTimeout(() => r(null), deps.hairTimeoutMs ?? HAIR_TIMEOUT_MS));
           const [bareHair, ...hairs] = await Promise.all([bareIm, ...ims].map((im) => Promise.race([hairOf(im).catch(() => null), late])));
           if (!alive) return;
-          const base = frameOf(bareIm, baseline.lm, bareHair ?? undefined);
-          const b = scoreBundle(part, base, ims.map((im, i) => ({ im, pts: bundle.pts[i]!, occluded: bundle.handOverlap[i] ?? null, ...(hairs[i] ? { hair: hairs[i] } : {}) })), guide);
+          // 점은 촬영 크기 좌표다 — 쌩얼 사진 크기로 맞춘다. 쌩얼은 이제 원본 크기로 저장해 보통 배율 1 이지만(#240), 예전 세션은
+          // 긴 변 1024 로 줄인 사진이다 (폰 시험 2026-09-30: 안 맞춰서 엉뚱한 자리를 읽어
+          // 쌩얼끼리인데 눈썹 70점 · 가짜 "밝기가 달라요". 화면 3 guide.ts 와 같은 scaleLm)
+          const baseLm = scaleLm(baseline.lm, { w: baseline.w, h: baseline.h }, { w: bareIm.w, h: bareIm.h });
+          const base = frameOf(bareIm, baseLm, bareHair ?? undefined);
+          const b = scoreBundle(part, base, ims.map((im, i) => ({ im, pts: bundle.pts[i]!, occluded: bundle.handOverlap[i] ?? null, ...(hairs[i] ? { hair: hairs[i] } : {}) })), guide, { templateColor: deps.templateColor?.(part) ?? null });
           outcome = b.outcome;
           if (b.pick !== null && b.cur) drawOverlay(canvas, bundle.frames[b.pick]!, ims[b.pick]!, guideOutline(part, b.cur.lm, guide(part, b.cur)));
           ctx.log.log({ name: "score", part, status: outcome.decision === "scored" ? "passed" : "check_only", check_reason: outcome.checkReason, ms: Math.round(performance.now() - t0) });

@@ -21,9 +21,10 @@ import { SHOTS, burstShot, burstStep, nextShot, shotGate, startBurst, type Burst
 import { foreheadStep, startForeheadTrack } from "@core/occlusion";
 import type { Baseline, FaceShape, Pt } from "@core/types";
 import type { ScreenId } from "@core/screens";
-import { applyCameraLocks, applyUltraWideZoom, bindVisibility, requestWakeLock, type WakeLockSentinelLike } from "./camera-locks";
+import { ALL_LOCKS, applyCameraLocks, applyUltraWideZoom, bindVisibility, releaseCameraLocks, requestWakeLock, type WakeLockSentinelLike } from "./camera-locks";
+import { startFrameLoop } from "./camera-loop";
 import { foreheadLabOf, grabFrame, sharpnessOf } from "./frame-measure";
-import { encodeForStore } from "./image-encode";
+import { BARE_MAX_SIDE, encodeForStore } from "./image-encode";
 import { createLandmarker } from "./landmarker";
 import type { Screen, ScreenContext } from "./shell";
 
@@ -216,7 +217,7 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
         let lmk: FaceLandmarker | null = null;
         let stream: MediaStream | null = null;
         let wake: WakeLockSentinelLike | null = null;
-        let raf = 0;
+        let stopLoop = (): void => {};
         let run: RunState = startRun(shots(), performance.now());
         let fj = startForeheadTrack();
         let lostSince: number | null = null;
@@ -227,9 +228,9 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
         let burstWait = false;
 
         stopCamera = () => {
-          cancelAnimationFrame(raf);
-          raf = 0;
-          stream?.getTracks().forEach((t) => t.stop());
+          stopLoop();
+          // 잠금을 풀고 끈다 — PC 웹캠은 잠금을 기기에 저장해서 다음에 열 때 남는다 (#267)
+          for (const t of stream?.getTracks() ?? []) void releaseCameraLocks(t as unknown as Parameters<typeof releaseCameraLocks>[0]).finally(() => t.stop());
           stream = null;
           void wake?.release().catch(() => {});
           wake = null;
@@ -255,24 +256,31 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
           await video.play();
           const track = stream.getVideoTracks()[0];
           if (track) {
-            // 자동 노출이 자리 잡은 뒤 잠근다 (1-3·1-8). 안 되는 기기는 보정으로만
-            await new Promise((r) => setTimeout(r, 1500));
-            await applyCameraLocks(track as unknown as Parameters<typeof applyCameraLocks>[0]);
+            const tl = track as unknown as Parameters<typeof applyCameraLocks>[0];
+            // 앞 세션·다른 화면이 남긴 잠금부터 푼다 (#267: PC 웹캠이 하얗게·파랗게 고정된 채 남음)
+            await releaseCameraLocks(tl);
+            // 기본은 아무것도 안 잠근다 (DEFAULT_LOCKS, #267). 비교용 주소 ?lock=all · wb · wbfocus
+            const lockMode = new URLSearchParams(location.search).get("lock");
+            const only = lockMode === "all" ? ALL_LOCKS : lockMode === "wb" ? (["whiteBalanceMode"] as const) : lockMode === "wbfocus" ? (["whiteBalanceMode", "focusMode"] as const) : undefined;
+            if (only) {
+              await new Promise((r) => setTimeout(r, 1500));   // 자동이 자리 잡은 뒤 잠근다
+              await applyCameraLocks(tl, only);
+            }
             await applyUltraWideZoom(track as unknown as Parameters<typeof applyUltraWideZoom>[0]);
           }
           wake = await requestWakeLock(navigator.wakeLock as unknown as Parameters<typeof requestWakeLock>[0]);
-          if (!live()) { void wake?.release().catch(() => {}); return; }
+          // 기다리는 사이 떠나거나 숨었으면(stopCamera) 루프를 켜지 않는다
+          if (!live() || !stream) { void wake?.release().catch(() => {}); return; }
           run = startRun(shots(), performance.now());
           setStep();
-          raf = requestAnimationFrame(frame);
+          // 카메라 새 장면에만 얼굴을 찾는다 (#245 — 전에는 화면 그리기마다라 같은 장면을 두세 번)
+          stopLoop = startFrameLoop(video, frame);
         }
 
-        function frame(): void {
+        function frame(now: number): void {
           if (!live() || !lmk || !stream) return;
-          raf = requestAnimationFrame(frame);
           const shot = run.shot;
           if (busy || video.readyState < 2 || (!shot && !burstWait)) return;
-          const now = performance.now();
           const sw = video.videoWidth, sh = video.videoHeight;
           const res: FaceLandmarkerResult = lmk.detectForVideo(video, now);
           const raw = res.faceLandmarks[0];
@@ -394,7 +402,7 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
         } else {
           deps.setBaseline(buildBaseline(input));
         }
-        const blob = encodeForStore(d.cv).then((e) => e.blob);
+        const blob = encodeForStore(d.cv, BARE_MAX_SIDE).then((e) => e.blob);   // 원본 크기 (#240)
         deps.saveBare(blob)
           .then(async () => {
             const bare = await blob;

@@ -21,7 +21,7 @@ export function faceSquare(lm: readonly Pt[]): { x: number; y: number; side: num
 }
 
 /**
- * 얼굴 점이 잰 크기(from)와 사진 크기(to)가 다를 때 — 쌩얼은 긴 변 1024 로 줄여 저장하지만 점은 촬영 프레임 좌표다
+ * 얼굴 점이 잰 크기(from)와 사진 크기(to)가 다를 때 — 예전 세션의 쌩얼은 긴 변 1024 로 줄여 저장됐고(지금은 원본 크기, #240) 점은 촬영 프레임 좌표다
  * (#179 리뷰: 안 맞추면 폰 세로 사진에서 상자가 1.9배 커지고 아래로 밀렸다). 화면 3(guide.ts)과 같은 scaleLm
  */
 export function faceSquareIn(lm: readonly Pt[], from: { w: number; h: number }, to: { w: number; h: number }): { x: number; y: number; side: number } {
