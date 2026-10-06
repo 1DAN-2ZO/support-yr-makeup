@@ -571,16 +571,12 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   transform: rotate(45deg);
 }
 .splash-logo { font-size: 72px; }
-/* 스플래시는 글자가 72px 이라 하트도 원래 크기로 — 다른 화면은 30px 기준 11x10 */
-.splash-logo i { width: 16px; height: 14px; }
-.splash-logo i::after { width: 9px; height: 14px; }
-.splash-logo i::before { left: 7px; }
+/* 스플래시 글자는 72px — 30px 로고(11x10)와 같은 비율로 2.4 배 키운다 */
+.splash-logo i { width: 26.4px; height: 24px; }
+.splash-logo i::before,
+.splash-logo i::after { width: 14.88px; height: 24px; }
+.splash-logo i::before { left: 11.52px; }
 
-
-/* 화면 안의 작은 로고 — .nudy-logo 기본값(큰 로고) 뒤에 와야 먹는다 */
-.looks-logo,
-
-.looks-logo i,
 
 @keyframes splash-in {
   from { opacity: 0; transform: scale(0.96); }
