@@ -4,7 +4,7 @@
  * 옅게 퍼진 화장은 AI 가 바꾼 피부 변화와 크기가 비슷해서다. 넓게 평균 내서 숫자 몇 개만 정하면 조각나도 안정적이다.
  *  - 블러셔: 볼 자리(얼굴 옆선에서 안쪽)에서 주변보다 진한 곳의 무게 중심 · 퍼짐 → 타원
  *  - 아이섀도: 눈꺼풀 → 눈썹 아랫선 세로 줄 여럿을 훑어 색 차가 절반으로 떨어지는 높이 → 띠
- *  - 아이라이너: 속눈썹 선 위 어두운 띠 두께 · 눈꼬리 밖으로 나간 꼬리 끝 → 선 + 꼬리
+ *  - 아이라이너: 속눈썹 선 위 어두운 띠 두께 · 띠가 시작하는 자리 · 눈꼬리 밖으로 선을 따라간 꼬리 끝 → 선 + 꼬리
  * 못 읽으면(그 부위를 AI 가 거의 안 그림) 기본 틀(템플릿 가이드)로 채우고 fromPhoto = false.
  * 색 차 기준(거르기 스위치)은 떼기와 같은 makeup-extract diffField.
  */
@@ -42,11 +42,12 @@ export interface FitPart {
  *   (실사진: 얼굴 옆선을 따라 세로로 긴 타원이 잡혔다, 시험 F10) ·
  * shadowMaxT · shadowDarkL: 섀도 높이는 눈썹 아랫선의 이 비율까지만, 화장 사진에서 이보다 어두운 픽셀(눈썹 털 · 라이너)은 빼고 잰다
  *   (실사진: AI 가 눈썹을 진하고 두껍게 바꿔 섀도가 눈썹까지 올라갔다, 시험 F11) ·
- * minPixels: 덩어리가 이보다 작으면 못 읽음 · shadowSteps: 섀도 세로 줄을 나눌 칸 · linerMaxThick · wingMax: 라이너 두께 · 꼬리를 찾는 거리(눈 폭 배수). 눈대중 시작값
+ * minPixels: 덩어리가 이보다 작으면 못 읽음 · shadowSteps: 섀도 세로 줄을 나눌 칸 · linerMaxThick · wingMax: 라이너 두께 · 꼬리를 찾는 거리(눈 폭 배수) ·
+ * wingNear: 꼬리를 따라갈 때 바로 앞 칸 높이에서 위아래 이 px 안만 본다 · startGap: 라이너 시작점을 찾을 때 이만큼(눈 폭 비율) 끊기면 거기가 시작. 눈대중 시작값
  */
 export const FIT = {
   blushShrink: 0.08, blushEdge: 0.3, blushMinL: 35, blushMaxDarker: 15, blushMinRed: 1.5, blushMinAspect: 0.4, blushMaxTilt: 45, blushMaxR: 1.2,
-  minPixels: 40, shadowSteps: 25, shadowSkip: 0.12, shadowMaxT: 0.9, shadowDarkL: 45, linerMaxThick: 0.2, wingMax: 0.7,
+  minPixels: 40, shadowSteps: 25, shadowSkip: 0.12, shadowMaxT: 0.9, shadowDarkL: 45, linerMaxThick: 0.2, wingMax: 0.7, wingNear: 3, startGap: 0.1,
 } as const;
 
 const NO_IMAGE = { data: new Uint8ClampedArray(0), w: 0, h: 0 };
@@ -136,7 +137,7 @@ function fitShadow(f: DiffField, lm: readonly Pt[], side: Side, opts: ExtractOpt
   return { poly, fromPhoto: true, params: { height } };
 }
 
-/** 라이너 — 속눈썹 선 위 어두운 띠의 두께(가운데 줄들의 중앙값) + 눈꼬리 밖으로 이어진 어두운 꼬리의 끝 */
+/** 라이너 — 속눈썹 선 위 어두운 띠의 두께(가운데 줄들의 중앙값) + 띠가 시작하는 자리 + 눈꼬리 밖으로 선을 따라간 꼬리의 끝 */
 function fitLiner(f: DiffField, lm: readonly Pt[], side: Side, opts: ExtractOptions): Omit<FitPart, "part" | "side"> | null {
   const P = (i: number): Pt => lm[i]!, eye = side === "R" ? LM.eyeA : LM.eyeB;
   const o = P(eye.outer), i0 = P(eye.inner), ew = Math.hypot(o.x - i0.x, o.y - i0.y) || 1;
@@ -150,28 +151,56 @@ function fitLiner(f: DiffField, lm: readonly Pt[], side: Side, opts: ExtractOpti
     const q = f.at(x, y);
     return !!q && q.d >= Math.max(opts.minDeltaE.liner, f.floor) && (q.L <= opts.linerMaxL || q.dL <= -opts.linerDarker);
   };
-  // 두께: 가운데 줄마다 속눈썹 선에서 위로 처음 3px 안에서 시작하는 어두운 길이 (1px 끊김은 이어 본다)
-  const maxT = FIT.linerMaxThick * ew, thick: number[] = [];
-  for (let k = 2; k < lid.length - 2; k++) {
+  // 띠: 속눈썹 선 한 점에서 위로 처음 3px 안에서 시작하는 어두운 길이 (1px 끊김은 이어 본다). 없으면 null
+  const maxT = FIT.linerMaxThick * ew;
+  const band = (p: Pt): number | null => {
     let start = -1, end = -1, gap = 0;
     for (let s = 0; s <= maxT; s += 0.5) {
-      if (dark(add(lid[k]!, up, s))) { if (start < 0) { if (s > 3) break; start = s; } end = s; gap = 0; }
+      if (dark(add(p, up, s))) { if (start < 0) { if (s > 3) break; start = s; } end = s; gap = 0; }
       else if (start >= 0 && ++gap > 2) break;
     }
-    if (start >= 0) thick.push(end - start + 0.5);
+    return start >= 0 ? end - start + 0.5 : null;
+  };
+  // 두께: 가운데 줄들의 중앙값
+  const thick: number[] = [];
+  for (let k = 2; k < lid.length - 2; k++) { const b = band(lid[k]!); if (b !== null) thick.push(b); }
+  // 시작점: 눈꼬리에서 눈머리 쪽으로 속눈썹 선을 0.5px 씩 따라가며 띠가 있는 마지막 자리 (눈 폭 × startGap 끊기면 끝).
+  // 틀은 늘 눈머리부터 그려서 눈 가운데부터 칠한 AI 라이너보다 길었다 (실사진, 시험 F14)
+  let run = 0, seen = 0, end: Pt | null = null, endJ = 0;
+  walk: for (let j = 1; j < lid.length; j++) {
+    const a = lid[j - 1]!, b = lid[j]!, len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    for (let u = 0.5; u <= len; u += 0.5) {
+      const p = mix(a, b, u / len);
+      if (band(p) !== null) { end = p; endJ = j; seen = run + u; } else if (run + u - seen > FIT.startGap * ew) break walk;
+    }
+    run += len;
   }
-  // 꼬리: 눈꼬리에서 바깥으로 0.5px 씩 — 그 자리에서 위아래로 훑어 어두운 곳이 있으면 이어 간다 (3px 끊기면 끝)
-  let lastS = 0, lastV = 0, gap = 0;
-  for (let s = 0; s <= FIT.wingMax * ew; s += 0.5) {
-    const vs: number[] = [];
-    for (let v = -0.05 * ew; v <= 0.35 * ew; v += 0.5) if (dark(add(add(o, out, s), up, v))) vs.push(v);
-    if (vs.length) { lastS = s; lastV = vs.reduce((x, y) => x + y, 0) / vs.length; gap = 0; } else if (++gap > 6) break;
-  }
-  const hasLine = thick.length * 2 >= lid.length - 4, hasWing = lastS >= 0.04 * ew;
-  if (!hasLine && !hasWing) return null;
+  const cut = [lid[0]!, ...lid.slice(1, endJ), ...(end ? [end] : [])];
+  const hasLine = thick.length * 2 >= lid.length - 4;
   const t = hasLine ? median(thick) : 0.03 * ew;
+  // 꼬리: 눈꼬리에서 바깥으로 0.5px 씩 '선을 따라' 간다 — 바로 앞 칸 높이 위아래 wingNear(px) 안의 어두운 줄만 잇는다.
+  // 넓게 훑었더니 꼬리 위로 뻗은 바깥 속눈썹 · 섀도 끝까지 꼬리로 붙어 실제보다 길었다 (실사진, 시험 F14).
+  // 그 줄이 선이 아니라 넓은 덩어리(라이너 두께 × 2 + 2px 넘게)면 섀도라 꼬리가 아니다 (시험 F15). 3px 끊기면 끝
+  const at = (s: number, v: number) => dark(add(add(o, out, s), up, v));
+  const runAt = (s: number, v0: number): { lo: number; hi: number } | null => {
+    let seed: number | null = null;
+    for (let d = 0; d <= FIT.wingNear && seed === null; d += 0.5) seed = at(s, v0 - d) ? v0 - d : at(s, v0 + d) ? v0 + d : null;
+    if (seed === null) return null;
+    const cap = 2 * FIT.linerMaxThick * ew;
+    let lo = seed, hi = seed;
+    while (seed - lo < cap && at(s, lo - 0.5)) lo -= 0.5;
+    while (hi - seed < cap && at(s, hi + 0.5)) hi += 0.5;
+    return { lo, hi };
+  };
+  let lastS = 0, lastV = t / 2, gap = 0;
+  for (let s = 0; s <= FIT.wingMax * ew; s += 0.5) {
+    const r = runAt(s, lastV);
+    if (r && r.hi - r.lo <= 2 * t + 2) { lastS = s; lastV = (r.lo + r.hi) / 2; gap = 0; } else if (++gap > 6) break;
+  }
+  const hasWing = lastS >= 0.04 * ew;
+  if (!hasLine && !hasWing) return null;
   const tip = hasWing ? add(add(o, out, lastS), up, lastV) : o;
-  const poly = [...lid, ...[...lid].reverse().map((p) => add(p, up, t)), ...(hasWing ? [tip] : [])];
+  const poly = [...cut, ...[...cut].reverse().map((p) => add(p, up, t)), ...(hasWing ? [tip] : [])];
   const angle = (Math.atan2(lastV, Math.max(1e-6, lastS)) * 180) / Math.PI;
   return { poly, fromPhoto: true, params: { thickness: t / ew, tipX: tip.x, tipY: tip.y, wingLen: lastS / ew, wingAngle: hasWing ? angle : 0 } };
 }

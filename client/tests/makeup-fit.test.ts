@@ -150,17 +150,18 @@ describe("모양 숫자 재기 — 아이섀도", () => {
 });
 
 describe("모양 숫자 재기 — 아이라이너", () => {
-  /** 속눈썹 선 위 5px 두께 + 꼬리 끝(눈꼬리에서 바깥 · 위로) */
-  function linerWith(tip: Record<"R" | "L", Pt>): Paint {
-    const paths = (["R", "L"] as const).map((s) => [...eyeOf(s).upper.map(P).reverse(), tip[s]]);
-    const near = (x: number, y: number, a: Pt, b: Pt) => {
-      const dx = b.x - a.x, dy = b.y - a.y, t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy || 1)));
-      return Math.hypot(x - a.x - t * dx, y - a.y - t * dy);
-    };
+  /** 점 (x, y) 와 선분 a-b 사이 거리 */
+  const nearSeg = (x: number, y: number, a: Pt, b: Pt) => {
+    const dx = b.x - a.x, dy = b.y - a.y, t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+    return Math.hypot(x - a.x - t * dx, y - a.y - t * dy);
+  };
+  /** 속눈썹 선 위 5px 두께 + 꼬리 끝(눈꼬리에서 바깥 · 위로). upto: 눈꼬리부터 윗눈꺼풀 점 몇 개까지 칠할지 (9 = 눈머리까지) */
+  function linerWith(tip: Record<"R" | "L", Pt>, upto = 9): Paint {
+    const paths = (["R", "L"] as const).map((s) => [...eyeOf(s).upper.slice(0, upto).map(P).reverse(), tip[s]]);
     return (x, y) => {
       for (const path of paths) for (let i = 1; i < path.length; i++) {
         const a = { x: path[i - 1]!.x, y: path[i - 1]!.y - 3 }, b = { x: path[i]!.x, y: path[i]!.y - 3 };
-        if (near(x, y, a, b) <= 2.5) return INK;
+        if (nearSeg(x, y, a, b) <= 2.5) return INK;
       }
       return null;
     };
@@ -189,6 +190,68 @@ describe("모양 숫자 재기 — 아이라이너", () => {
     for (const s of ["R", "L"] as const) {
       const f = get(r, "liner", s);
       expect(Math.hypot(f.params.tipX! - tips[s].x, f.params.tipY! - (tips[s].y - 3)), s).toBeLessThan(5);
+    }
+  });
+
+  it("F14 눈 가운데부터 시작하는 라이너 + 꼬리 위로 뻗은 바깥 속눈썹 가닥 — 시작점과 꼬리 끝을 진짜 라이너 자리로", () => {
+    // 라이너: 윗눈꺼풀 가운데(9점 중 5번째) → 눈꼬리 → 꼬리 끝. 속눈썹 가닥: 눈꼬리 라이너 윗선에 붙어서 바깥 · 위로 30° 40px (1px 굵기) —
+    // 꼬리(약 24°)보다 조금 가팔라서 처음 몇 px 은 꼬리와 붙어 있다가 갈라진다
+    const half = linerWith(tips, 5);
+    const withLash: Paint = (x, y) => {
+      for (const [o, sgn] of [[P(LM.eyeA.outer), -1], [P(LM.eyeB.outer), 1]] as const) {
+        const a = { x: o.x, y: o.y - 5 }, b = { x: o.x + sgn * 40 * Math.cos(Math.PI / 6), y: o.y - 5 - 40 * Math.sin(Math.PI / 6) };
+        if (nearSeg(x, y, a, b) <= 0.6) return INK;
+      }
+      return half(x, y);
+    };
+    const r = fitMakeup(bare, nat(withLash), LMS, G);
+    for (const s of ["R", "L"] as const) {
+      const f = get(r, "liner", s);
+      expect(f.fromPhoto, s).toBe(true);
+      expect(Math.hypot(f.params.tipX! - tips[s].x, f.params.tipY! - (tips[s].y - 3)), `${s} 꼬리 끝 (${f.params.tipX?.toFixed(0)}, ${f.params.tipY?.toFixed(0)})`).toBeLessThan(5);
+      expectStartsMidLid(f, s);
+    }
+  });
+
+  /** 테두리가 윗눈꺼풀 가운데 점(9점 중 5번째)까지는 오고, 눈머리 쪽(눈 폭 25% 안)은 비어 있다 */
+  function expectStartsMidLid(f: ReturnType<typeof get>, s: "R" | "L") {
+    const eye = eyeOf(s), inner = P(eye.inner), mid = P(eye.upper[4]!), ew = Math.hypot(P(eye.outer).x - inner.x, P(eye.outer).y - inner.y);
+    const nearestToInner = Math.min(...f.poly.map((p) => Math.hypot(p.x - inner.x, p.y - inner.y)));
+    expect(nearestToInner / ew, `${s} 눈머리 쪽은 비어 있어야 (가장 가까운 점 ${(nearestToInner / ew).toFixed(2)} 눈 폭)`).toBeGreaterThan(0.25);
+    const nearestToMid = Math.min(...f.poly.map((p) => Math.hypot(p.x - mid.x, p.y - mid.y)));
+    expect(nearestToMid, `${s} 가운데 점까지 와야 (가장 가까운 점 ${nearestToMid.toFixed(1)}px)`).toBeLessThan(4);
+  }
+
+  it("F16 라이너 중간이 조금(4px) 끊겨도 시작점은 진짜 시작 — AI 그림은 선이 흐리게 끊기기도 한다", () => {
+    const half = linerWith(tips, 5);
+    const xs = (["R", "L"] as const).map((s) => P(eyeOf(s).upper[2]!).x);
+    const broken: Paint = (x, y) => (xs.some((c) => Math.abs(x - c) < 2) ? null : half(x, y));
+    const r = fitMakeup(bare, nat(broken), LMS, G);
+    for (const s of ["R", "L"] as const) expectStartsMidLid(get(r, "liner", s), s);
+  });
+
+  it("F17 눈머리 근처에 떨어진 어두운 점은 라이너 시작이 아니다 — 시작점은 선이 끊긴 자리", () => {
+    const half = linerWith(tips, 5);
+    const dots = (["R", "L"] as const).map((s) => { const p = P(eyeOf(s).upper[7]!); return { x: p.x, y: p.y - 3 }; });
+    const dotted: Paint = (x, y) => (dots.some((d) => Math.hypot(x - d.x, y - d.y) <= 2.5) ? INK : half(x, y));
+    const r = fitMakeup(bare, nat(dotted), LMS, G);
+    for (const s of ["R", "L"] as const) expectStartsMidLid(get(r, "liner", s), s);
+  });
+
+  it("F15 꼬리 끝에 붙은 진한 섀도 덩어리는 꼬리가 아니다 — 선이 아니라 넓은 덩어리면 거기서 꼬리 끝", () => {
+    const base = linerWith(tips);
+    // 꼬리 끝 바깥 · 위에 진한 타원 (가로 반지름 10, 세로 9) — 꼬리 끝 근처에서 꼬리와 겹친다
+    const blob: Paint = (x, y) => {
+      for (const [o, sgn] of [[P(LM.eyeA.outer), -1], [P(LM.eyeB.outer), 1]] as const) {
+        const cx = o.x + sgn * 28, cy = o.y - 20;
+        if (((x - cx) / 10) ** 2 + ((y - cy) / 9) ** 2 <= 1) return INK;
+      }
+      return base(x, y);
+    };
+    const r = fitMakeup(bare, nat(blob), LMS, G);
+    for (const s of ["R", "L"] as const) {
+      const f = get(r, "liner", s);
+      expect(Math.hypot(f.params.tipX! - tips[s].x, f.params.tipY! - (tips[s].y - 3)), `${s} 꼬리 끝 (${f.params.tipX?.toFixed(0)}, ${f.params.tipY?.toFixed(0)})`).toBeLessThan(5);
     }
   });
 
