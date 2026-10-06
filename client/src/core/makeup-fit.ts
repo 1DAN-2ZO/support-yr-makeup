@@ -63,7 +63,7 @@ function ellipsePts(c: Pt, rx: number, ry: number, deg: number, n = 28): Pt[] {
 }
 
 /** 블러셔 — 볼 자리에서 주변(자리 안 중앙값 + 2 × 퍼짐)보다 붉어진 곳 → 그 덩어리 모멘트로 타원. 블러셔 모양이 아니면 못 읽음 */
-function fitCheek(f: DiffField, lm: readonly Pt[], side: Side, opts: ExtractOptions): Omit<FitPart, "part" | "side"> | null {
+function fitCheek(f: DiffField, lm: readonly Pt[], side: Side): Omit<FitPart, "part" | "side"> | null {
   const z = cheekZone(lm, side), wid = z.a1 - z.a0;
   const a0 = side === "R" ? z.a0 + FIT.blushShrink * wid : z.a0, a1 = side === "R" ? z.a1 : z.a1 - FIT.blushShrink * wid;
   const corners = [z.f.from(a0, z.b0), z.f.from(a1, z.b0), z.f.from(a1, z.b1), z.f.from(a0, z.b1)];
@@ -187,7 +187,7 @@ export function fitMakeup(bare: RgbaImage, made: RgbaImage, lm: readonly Pt[], f
   const fbLinerPoly = fbLiner ? linerOutline(frame, fbLiner.thick, fbLiner.wing) : null;
   const out: FitPart[] = [];
   for (const side of ["R", "L"] as const) {
-    const c = fitCheek(field, lm, side, opts);
+    const c = fitCheek(field, lm, side);
     out.push(c ? { part: "cheek", side, ...c } : { part: "cheek", side, poly: [...(fbCheek?.[side] ?? [])], fromPhoto: false, params: {} });
     const s = fitShadow(field, lm, side, opts);
     out.push(s ? { part: "shadow", side, ...s } : { part: "shadow", side, poly: [...(fbShadow?.[side] ?? [])], fromPhoto: false, params: {} });
