@@ -36,7 +36,8 @@ const camBtn = $<HTMLButtonElement>("camBtn"), snapBtn = $<HTMLButtonElement>("s
 const aiBtn = $<HTMLButtonElement>("aiBtn"), madeSave = $<HTMLButtonElement>("madeSave");
 const bareFile = $<HTMLInputElement>("bareFile"), refFile = $<HTMLInputElement>("refFile"), madeFile = $<HTMLInputElement>("madeFile");
 const bareMsg = $("bareMsg"), refMsg = $("refMsg"), madeMsg = $("madeMsg");
-const guide = $<HTMLInputElement>("guide"), guideVal = $("guideVal"), steps = $<HTMLInputElement>("steps");
+const guide = $<HTMLInputElement>("guide"), guideVal = $("guideVal"), steps = $<HTMLInputElement>("steps"), seedIn = $<HTMLInputElement>("seed");
+const aiBareView = $<HTMLCanvasElement>("aiBareView"), aiBareSave = $<HTMLButtonElement>("aiBareSave"), aiBareMsg = $("aiBareMsg");
 const heat = $<HTMLInputElement>("heat");
 const optBlur = $<HTMLInputElement>("optBlur"), optMap = $<HTMLInputElement>("optMap"), optChroma = $<HTMLInputElement>("optChroma"), optAdaptive = $<HTMLInputElement>("optAdaptive");
 const cvOnly = $<HTMLCanvasElement>("cvOnly"), cvBare = $<HTMLCanvasElement>("cvBare"), cvMade = $<HTMLCanvasElement>("cvMade");
@@ -57,8 +58,14 @@ const on = new Set<ExtractPart>(PARTS.map((p) => p.id));
 
 /** 원본 크기 그림 (저장 · AI 보내기 · 떼기에 쓴다) */
 let bareCv: HTMLCanvasElement | null = null, refCv: HTMLCanvasElement | null = null, madeCv: HTMLCanvasElement | null = null;
+/** AI 가 그린 맨얼굴 (참고 = 내 맨얼굴, 같은 seed) — 비교 기준 */
+let aiBareCv: HTMLCanvasElement | null = null;
 let imageLm: Promise<FaceLandmarker> | null = null;
-let last: { bare: RgbaImage; made: RgbaImage; lm: Pt[]; parts: PartMask[]; fit: FitPart[]; crop: { x: number; y: number; w: number; h: number }; info: string } | null = null;
+type Crop = { x: number; y: number; w: number; h: number };
+/**
+ * bare: 비교 기준(AI 맨얼굴 또는 원래 맨얼굴) · made: 그 자리에 맞춘 AI 화장 · orig: 원래 맨얼굴 · toOrig: 기준 → 원래 맨얼굴 좌표 (가이드를 옮겨 그린다)
+ */
+let last: { bare: RgbaImage; made: RgbaImage; lm: Pt[]; parts: PartMask[]; fit: FitPart[]; crop: Crop; orig: RgbaImage; origCrop: Crop; toOrig: (p: Pt) => Pt; info: string } | null = null;
 
 const setStatus = (text: string, warn = false): void => { statusEl.innerHTML = warn ? `<span class="warn">${text}</span>` : text; };
 const setMsg = (el: HTMLElement, text: string, warn = false): void => { el.innerHTML = warn ? `<span class="warn">${text}</span>` : text; };
@@ -108,6 +115,7 @@ function save(c: HTMLCanvasElement | null, name: string): void {
 
 function refreshButtons(): void {
   bareSave.disabled = !bareCv;
+  aiBareSave.disabled = !aiBareCv;
   madeSave.disabled = !madeCv;
   aiBtn.disabled = !bareCv || !refCv || aiBusy;
 }
@@ -235,12 +243,12 @@ let aiBusy = false;
 guide.addEventListener("input", () => { guideVal.textContent = Number(guide.value).toFixed(2); });
 
 /** Gradio 5 REST: POST /gradio_api/call/predict → event_id → GET 같은 주소/event_id 의 SSE 에서 complete 줄 */
-async function callAi(bare: HTMLCanvasElement, ref: HTMLCanvasElement): Promise<{ img: HTMLCanvasElement; note: string }> {
+async function callAi(bare: HTMLCanvasElement, ref: HTMLCanvasElement, seed: number): Promise<{ img: HTMLCanvasElement; note: string }> {
   const fd = (c: HTMLCanvasElement) => ({ url: c.toDataURL("image/png"), meta: { _type: "gradio.FileData" } });
   const r = await fetch(`${AI_SERVER}/gradio_api/call/predict`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ data: [fd(bare), fd(ref), Number(steps.value) || 8, Number(guide.value) || 1.6, true] }),
+    body: JSON.stringify({ data: [fd(bare), fd(ref), Number(steps.value) || 8, Number(guide.value) || 1.6, true, seed] }),
   });
   if (!r.ok) throw new Error(`AI 서버 응답 ${r.status}`);
   const { event_id: id } = (await r.json()) as { event_id: string };
@@ -261,13 +269,21 @@ aiBtn.addEventListener("click", async () => {
   if (!bareCv || !refCv) return;
   aiBusy = true;
   refreshButtons();
-  setMsg(madeMsg, "AI 가 화장을 입히는 중… (처음엔 조금 더 걸려요)");
+  const seed = Math.round(Number(seedIn.value));
   const t0 = performance.now();
   try {
-    const { img, note } = await callAi(bareCv, refCv);
+    // 같은 seed 로 두 번: ① 참고 = 내 맨얼굴 (AI 가 그린 맨얼굴 — 비교 기준) ② 참고 = 화장 사진
+    setMsg(aiBareMsg, "AI 가 맨얼굴을 그리는 중… (1/2)");
+    setMsg(madeMsg, "기다리는 중… (2/2)");
+    const a = await callAi(bareCv, bareCv, seed);
+    aiBareCv = a.img;
+    preview(aiBareView, aiBareCv);
+    setMsg(aiBareMsg, `seed ${seed} · ${a.note}`);
+    setMsg(madeMsg, "AI 가 화장을 입히는 중… (2/2)");
+    const { img, note } = await callAi(bareCv, refCv, seed);
     madeCv = img;
     preview(madeView, madeCv);
-    setMsg(madeMsg, `${((performance.now() - t0) / 1000).toFixed(1)}초 · ${note}`);
+    setMsg(madeMsg, `두 장 ${((performance.now() - t0) / 1000).toFixed(1)}초 · seed ${seed} · ${note}`);
     void maybeExtract();
   } catch (e) {
     setMsg(madeMsg, `${e instanceof Error ? e.message : String(e)} — AI 서버(127.0.0.1:7860)가 켜져 있나요?`, true);
@@ -282,10 +298,15 @@ madeFile.addEventListener("change", async () => {
   madeCv = await canvasOfFile(f);
   preview(madeView, madeCv);
   setMsg(madeMsg, `${madeCv.width}×${madeCv.height}`);
+  // 직접 올린 AI 결과는 같은 seed 로 그린 맨얼굴이 없다 → 원래 맨얼굴과 비교
+  aiBareCv = null;
+  preview(aiBareView, null);
+  setMsg(aiBareMsg, "직접 올린 AI 결과 — 원래 맨얼굴과 비교해요");
   refreshButtons();
   void maybeExtract();
 });
 madeSave.addEventListener("click", () => save(madeCv, "nudy-ai"));
+aiBareSave.addEventListener("click", () => save(aiBareCv, "nudy-ai-bare"));
 
 // ---------- ④ 떼기 ----------
 
@@ -322,7 +343,7 @@ function labelMap(parts: readonly PartMask[], n: number): Uint8Array {
 }
 
 /** 자른 자리(crop)만 새 캔버스로. 배경 그리기 → 부위 테두리(두께 lw) */
-function compose(cv: HTMLCanvasElement, w: number, crop: NonNullable<typeof last>["crop"], lab: Uint8Array, pixel: (i: number) => [number, number, number] | null) {
+function compose(cv: HTMLCanvasElement, w: number, crop: Crop, lab: Uint8Array, pixel: (i: number) => [number, number, number] | null) {
   cv.width = crop.w; cv.height = crop.h;
   const g = cv.getContext("2d")!, id = g.createImageData(crop.w, crop.h), lw = Math.max(1, Math.round(crop.w / 450));
   for (let y = 0; y < crop.h; y++) for (let x = 0; x < crop.w; x++) {
@@ -374,24 +395,40 @@ function drawPartList(parts: readonly PartMask[]): void {
   }));
 }
 
-/** 맨얼굴 · AI 결과가 다 있으면 겹치고 뗀다 */
+const baseMode = (): "ai" | "bare" => ((document.querySelector('input[name="base"]:checked') as HTMLInputElement | null)?.value === "bare" ? "bare" : "ai");
+
+/** 얼굴 점 상자 + 여백 12% */
+function faceCrop(lm: readonly Pt[], w: number, h: number): Crop {
+  const xs = lm.map((p) => p.x), ys = lm.map((p) => p.y), mx = (Math.max(...xs) - Math.min(...xs)) * 0.12, my = (Math.max(...ys) - Math.min(...ys)) * 0.12;
+  const x0 = Math.max(0, Math.floor(Math.min(...xs) - mx)), y0 = Math.max(0, Math.floor(Math.min(...ys) - my));
+  return { x: x0, y: y0, w: Math.min(w, Math.ceil(Math.max(...xs) + mx)) - x0, h: Math.min(h, Math.ceil(Math.max(...ys) + my)) - y0 };
+}
+
+/**
+ * 비교 기준(AI 가 그린 맨얼굴 — 없으면 원래 맨얼굴)과 AI 화장을 겹치고 뗀다.
+ * AI 맨얼굴 기준이면 두 그림이 AI 가 바꾼 피부 · 톤 · 윤곽을 똑같이 가져 차이엔 화장만 남는다 (사용자 제안 2026-10-06)
+ */
 async function maybeExtract(): Promise<void> {
   if (!bareCv || !madeCv) return;
+  const base = baseMode() === "ai" && aiBareCv ? aiBareCv : bareCv, baseName = base === bareCv ? "원래 맨얼굴" : "AI 가 그린 맨얼굴";
   setStatus("얼굴 점을 찾는 중…");
-  const [bl, ml] = await Promise.all([lmOf(bareCv), lmOf(madeCv)]);
-  if (!bl || !ml) { setStatus(!bl ? "맨얼굴 사진에서 얼굴을 못 찾았어요" : "AI 화장 사진에서 얼굴을 못 찾았어요", true); return; }
-  // 두 사진 겹치기: 얼굴 점 468개로 아핀 — 튀는 점은 무시 (AI 가 윤곽을 조금 바꿔도)
+  const [bl, ml, ol] = await Promise.all([lmOf(base), lmOf(madeCv), base === bareCv ? Promise.resolve(null) : lmOf(bareCv)]);
+  if (!bl || !ml) { setStatus(!bl ? `${baseName}에서 얼굴을 못 찾았어요` : "AI 화장 사진에서 얼굴을 못 찾았어요", true); return; }
+  // 두 사진 겹치기: 얼굴 점 468개로 아핀 — 튀는 점은 무시
   const ids = Array.from({ length: 468 }, (_, i) => i);
   const t = robustAffine(ids.map((i) => ml[i]!), ids.map((i) => bl[i]!), 1);
   if (!t) { setStatus("두 사진을 겹치지 못했어요", true); return; }
   const resid = ids.reduce((s, i) => s + Math.hypot(applyAffine(t, ml[i]!).x - bl[i]!.x, applyAffine(t, ml[i]!).y - bl[i]!.y), 0) / ids.length;
-  const bare = rgbaOf(bareCv), made = rgbaOf(aligned(madeCv, t, bareCv.width, bareCv.height));
-  // 얼굴 둘레만 크게 — 얼굴 점 상자 + 여백 12%
-  const xs = bl.map((p) => p.x), ys = bl.map((p) => p.y), mx = (Math.max(...xs) - Math.min(...xs)) * 0.12, my = (Math.max(...ys) - Math.min(...ys)) * 0.12;
-  const x0 = Math.max(0, Math.floor(Math.min(...xs) - mx)), y0 = Math.max(0, Math.floor(Math.min(...ys) - my));
-  const crop = { x: x0, y: y0, w: Math.min(bare.w, Math.ceil(Math.max(...xs) + mx)) - x0, h: Math.min(bare.h, Math.ceil(Math.max(...ys) + my)) - y0 };
+  const bare = rgbaOf(base), made = rgbaOf(aligned(madeCv, t, base.width, base.height));
+  // 가이드를 원래 맨얼굴 위에도 — 기준 → 원래 맨얼굴 얼굴 점 아핀
+  const orig = base === bareCv ? bare : rgbaOf(bareCv);
+  const tb = ol ? robustAffine(ids.map((i) => bl[i]!), ids.map((i) => ol[i]!), 1) : null;
+  const toOrig = tb ? (p: Pt): Pt => applyAffine(tb, p) : (p: Pt): Pt => p;
   const eyeW = Math.hypot(bl[33]!.x - bl[133]!.x, bl[33]!.y - bl[133]!.y);
-  last = { bare, made, lm: bl, parts: [], fit: [], crop, info: `겹치기 오차 평균 ${resid.toFixed(1)}px (눈 폭의 ${((resid / eyeW) * 100).toFixed(1)}%)` };
+  last = {
+    bare, made, lm: bl, parts: [], fit: [], crop: faceCrop(bl, bare.w, bare.h), orig, origCrop: faceCrop(ol ?? bl, orig.w, orig.h), toOrig,
+    info: `비교 기준: ${baseName} · 겹치기 오차 평균 ${resid.toFixed(1)}px (눈 폭의 ${((resid / eyeW) * 100).toFixed(1)}%)`,
+  };
   await extract();
 }
 
@@ -413,7 +450,7 @@ async function extract(): Promise<void> {
 }
 
 /** 가이드 그리기 — 사진(자른 자리) 위에 부위 색 테두리. 사진에서 읽음 = 실선, 기본 틀 = 점선 */
-function drawFit(cv: HTMLCanvasElement, im: RgbaImage, crop: NonNullable<typeof last>["crop"], fit: readonly FitPart[]): void {
+function drawFit(cv: HTMLCanvasElement, im: RgbaImage, crop: Crop, fit: readonly FitPart[], map: (p: Pt) => Pt = (p) => p): void {
   cv.width = crop.w; cv.height = crop.h;
   const g = cv.getContext("2d")!, id = g.createImageData(crop.w, crop.h);
   for (let y = 0; y < crop.h; y++) for (let x = 0; x < crop.w; x++) {
@@ -428,9 +465,10 @@ function drawFit(cv: HTMLCanvasElement, im: RgbaImage, crop: NonNullable<typeof 
     g.strokeStyle = `rgb(${c.join(",")})`;
     g.lineWidth = lw;
     g.setLineDash(f.fromPhoto ? [] : [lw * 3, lw * 2]);
+    const pts = f.poly.map(map);
     g.beginPath();
-    g.moveTo(f.poly[0]!.x - crop.x, f.poly[0]!.y - crop.y);
-    for (const p of f.poly.slice(1)) g.lineTo(p.x - crop.x, p.y - crop.y);
+    g.moveTo(pts[0]!.x - crop.x, pts[0]!.y - crop.y);
+    for (const p of pts.slice(1)) g.lineTo(p.x - crop.x, p.y - crop.y);
     g.closePath();
     g.stroke();
   }
@@ -438,7 +476,7 @@ function drawFit(cv: HTMLCanvasElement, im: RgbaImage, crop: NonNullable<typeof 
 
 function renderFit(): void {
   if (!last) return;
-  drawFit(cvFitBare, last.bare, last.crop, last.fit);
+  drawFit(cvFitBare, last.orig, last.origCrop, last.fit, last.toOrig);
   drawFit(cvFitMade, last.made, last.crop, last.fit);
   const side = (s: "R" | "L") => (s === "R" ? "사진 왼쪽" : "사진 오른쪽");
   const n = (v: number | undefined, k = 1) => (v === undefined ? "-" : (v * k).toFixed(0));
@@ -453,5 +491,6 @@ function renderFit(): void {
 
 heat.addEventListener("change", render);
 for (const o of [optBlur, optMap, optChroma, optAdaptive]) o.addEventListener("change", () => void extract());
-preview(bareView, null); preview(refView, null); preview(madeView, null);
+for (const r of document.querySelectorAll<HTMLInputElement>('input[name="base"]')) r.addEventListener("change", () => void maybeExtract());
+preview(bareView, null); preview(refView, null); preview(madeView, null); preview(aiBareView, null);
 refreshButtons();

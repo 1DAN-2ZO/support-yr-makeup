@@ -121,7 +121,7 @@ def paste_back(original, result512, box):
     return Image.fromarray(np.clip(base, 0, 255).astype(np.uint8))
 
 
-def run(id_image, makeup_image, steps, guidance_scale, keep_size=True):
+def run(id_image, makeup_image, steps, guidance_scale, keep_size=True, seed=1234):
     if id_image is None or makeup_image is None:
         raise gr.Error("얼굴 사진(id_image)과 룩 참조 사진(makeup_image)을 둘 다 업로드하세요.")
 
@@ -148,6 +148,8 @@ def run(id_image, makeup_image, steps, guidance_scale, keep_size=True):
         pipe=pipe,
         guidance_scale=guidance_scale,
         num_inference_steps=int(steps),
+        # 같은 seed 면 같은 잡음에서 그린다 — 맨얼굴을 참고로 한 번 더 그려 두 그림의 차이로 화장만 떼려고 (당화응 ② 2026-10-06)
+        seed=int(seed) if seed is not None and seed >= 0 else None,
     )
     torch.cuda.synchronize()
     dt = time.perf_counter() - t0
@@ -164,7 +166,7 @@ def run(id_image, makeup_image, steps, guidance_scale, keep_size=True):
 
 id_examples = sorted((SM_DIR / "test_imgs/id").glob("*.jpg"))
 makeup_examples = sorted((SM_DIR / "test_imgs/makeup").glob("*.jpg"))
-examples = [[str(id_examples[0]), str(makeup_examples[0]), 8, 1.6, True]] if id_examples and makeup_examples else None
+examples = [[str(id_examples[0]), str(makeup_examples[0]), 8, 1.6, True, 1234]] if id_examples and makeup_examples else None
 
 demo = gr.Interface(
     fn=run,
@@ -174,6 +176,7 @@ demo = gr.Interface(
         gr.Slider(minimum=4, maximum=30, value=8, step=1, label="DDIM steps (8 = 벤치마크 권장값, 2.55초 / 10 step은 3.15초로 3초 예산 초과)"),
         gr.Slider(minimum=1.01, maximum=5.0, value=1.6, step=0.05, label="makeup_guidance_scale (1.05~1.15 옅은 화장, 2+ 진한 화장)"),
         gr.Checkbox(value=True, label="원본 크기 유지 — 얼굴만 정사각형으로 잘라 입히고 원본에 다시 붙이기"),
+        gr.Number(value=1234, precision=0, label="seed (같은 값이면 같은 잡음에서 그림 · -1 이면 매번 무작위)"),
     ],
     outputs=[
         gr.Image(type="pil", label="결과"),

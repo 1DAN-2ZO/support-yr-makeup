@@ -62,11 +62,18 @@
         <div id="refMsg" class="msg">정면에 가깝고 화장이 잘 보이는 사진</div>
       </div>
       <div class="card">
+        <h3>③-0 AI 가 그린 맨얼굴 (비교용)</h3>
+        <canvas id="aiBareView" class="thumb"></canvas>
+        <div class="bar"><button id="aiBareSave" type="button" disabled>저장</button></div>
+        <div id="aiBareMsg" class="msg">참고 사진 자리에 내 맨얼굴을 넣고 같은 seed 로 한 번 더 그려요 — AI 가 바꾼 피부 · 톤 · 윤곽을 똑같이 갖게 해서, 차이엔 화장만 남게</div>
+      </div>
+      <div class="card">
         <h3>③ AI 가 입힌 내 얼굴</h3>
         <canvas id="madeView" class="thumb"></canvas>
         <div class="bar">
           <label>진하기 <input id="guide" type="range" min="1.05" max="3" step="0.05" value="1.6" /> <span id="guideVal">1.6</span></label>
           <label>단계 <input id="steps" type="number" min="4" max="30" value="8" style="width:3.5em" /></label>
+          <label title="같은 seed 로 맨얼굴 · 화장을 그려 두 그림의 차이로 화장만 뗀다">seed <input id="seed" type="number" value="1234" style="width:5em" /></label>
         </div>
         <div class="bar">
           <button id="aiBtn" class="main" type="button" disabled>AI 화장 입히기</button>
@@ -78,6 +85,11 @@
     </div>
 
     <h2>④ 떼기</h2>
+    <div class="bar">
+      <b>비교 기준</b>
+      <label><input type="radio" name="base" value="ai" checked /> AI 가 그린 맨얼굴 (추천)</label>
+      <label><input type="radio" name="base" value="bare" /> 원래 맨얼굴</label>
+    </div>
     <div class="bar" title="AI 가 피부까지 바꿀 때 거르기 — 하나씩 켜 보며 비교">
       <b>피부 변화 거르기</b>
       <label><input id="optBlur" type="checkbox" checked /> ① 잡티·모공 무시</label>
@@ -91,8 +103,8 @@
     <h2>⑤ 가이드 (모양 숫자로) — 블러셔 · 섀도 · 라이너</h2>
     <p class="note">구역(틀)은 고정하고 크기 · 위치 숫자만 AI 사진에서 읽어요. 실선 = 사진에서 읽음, 점선 = 못 읽어서 기본 틀.</p>
     <div class="row">
-      <figure><figcaption>맨얼굴 위 가이드</figcaption><canvas id="cvFitBare"></canvas></figure>
-      <figure><figcaption>AI 사진 위 같은 가이드</figcaption><canvas id="cvFitMade"></canvas></figure>
+      <figure><figcaption>원래 맨얼굴 위 가이드</figcaption><canvas id="cvFitBare"></canvas></figure>
+      <figure><figcaption>AI 화장 위 같은 가이드</figcaption><canvas id="cvFitMade"></canvas></figure>
     </div>
     <div id="fitInfo" class="msg" style="white-space:pre-line;font-size:13px;margin-top:6px"></div>
     <h2>떼어낸 픽셀 (참고)</h2>
