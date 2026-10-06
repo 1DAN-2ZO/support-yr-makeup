@@ -46,6 +46,14 @@ body {
   background: var(--bg);
   overflow: hidden;
 }
+#app::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 9999;
+  border: 3px solid #111;
+  pointer-events: none;
+}
 .screen { flex: 1; padding: 14px 16px 20px; }
 /* POC 공용: 제목·버튼 */
 .screen h1 { font-size: 18px; font-weight: var(--weight-title); margin: 6px 0 4px; }
@@ -93,6 +101,162 @@ button:disabled { opacity: 0.45; cursor: default; }
 .placeholder { padding: 24px 0; }
 .placeholder .muted, .muted { color: var(--muted); font-size: 13px; }
 code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; }
+
+/* 새 흐름 자리 화면 — 진짜 화면이 붙기 전까지 쓰는 누디 톤 슬롯 */
+.screen:has(.slot) {
+  padding: 0;
+  background: #f7f7f7;
+}
+.slot {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 100dvh;
+  padding: calc(18px + env(safe-area-inset-top)) 18px calc(22px + env(safe-area-inset-bottom));
+  background:
+    linear-gradient(180deg, #fff 0%, #fff7f9 48%, #fff 100%);
+  color: #454852;
+}
+.slot-logo {
+  align-self: flex-start;
+  color: #ff9bac;
+  font-size: 30px;
+  opacity: 0.92;
+  text-shadow: none;
+}
+.slot-logo i {
+  width: 11px;
+  height: 10px;
+}
+.slot-coach {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 22px 0 20px;
+}
+.slot-coach img {
+  flex: 0 0 auto;
+  width: 54px;
+  height: 54px;
+  object-fit: contain;
+  filter: drop-shadow(0 7px 15px rgba(96, 57, 67, 0.12));
+}
+.slot-coach div {
+  position: relative;
+  flex: 1;
+  padding: 10px 15px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #60636d;
+  font-size: 13px;
+  font-weight: var(--weight-strong);
+  line-height: 1.25;
+  box-shadow: 0 8px 22px rgba(91, 63, 70, 0.09);
+}
+.slot-coach div::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 50%;
+  width: 13px;
+  height: 13px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.96);
+  transform: translateY(-50%) rotate(45deg);
+}
+.slot-coach i {
+  position: absolute;
+  right: 7px;
+  top: -7px;
+  width: 11px;
+  height: 10px;
+  transform: rotate(-14deg);
+}
+.slot-coach i::before,
+.slot-coach i::after {
+  content: "";
+  position: absolute;
+  width: 7px;
+  height: 10px;
+  border-radius: 999px 999px 0 0;
+  background: #ff9bac;
+}
+.slot-coach i::before {
+  left: 4px;
+  transform: rotate(-45deg);
+  transform-origin: 50% 100%;
+}
+.slot-coach i::after {
+  left: 0;
+  transform: rotate(45deg);
+  transform-origin: 50% 100%;
+}
+.slot h1 {
+  margin: 0 0 6px;
+  color: #3f4148;
+  font-size: 25px;
+  font-weight: var(--weight-title);
+  line-height: 1.14;
+}
+.slot-owner {
+  margin: 0;
+  color: #8c8f98;
+  font-size: 13px;
+  font-weight: var(--weight-regular);
+}
+.slot-list {
+  display: grid;
+  gap: 10px;
+  margin: 22px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.slot-list li {
+  padding: 14px 15px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.78);
+  color: #565963;
+  font-size: 14px;
+  font-weight: var(--weight-strong);
+  line-height: 1.38;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.64),
+    0 10px 25px rgba(89, 61, 68, 0.08);
+}
+.slot-color {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 12px 15px;
+  border-radius: 18px;
+  background: #fff;
+  color: #565963;
+  box-shadow: 0 10px 24px rgba(89, 61, 68, 0.08);
+}
+.slot-color span {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border: 3px solid rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+  background: var(--slot-color);
+  box-shadow: 0 5px 12px rgba(72, 45, 52, 0.12);
+}
+.slot-color strong {
+  font-size: 14px;
+  font-weight: var(--weight-strong);
+}
+.slot > button.primary {
+  width: 78%;
+  min-height: 56px;
+  margin: auto auto 0;
+  border-radius: 999px;
+  background: #ff8fa1;
+  font-size: 18px;
+  font-weight: var(--weight-title);
+  box-shadow: 0 12px 28px rgba(255, 137, 155, 0.2);
+}
 
 /* 화면 2 · 2-b (모듈 6) */
 .row { display: flex; gap: 8px; margin-top: 16px; }

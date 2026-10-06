@@ -10,6 +10,7 @@ import type { Look } from "@core/looks";
 import type { PersonalPlan } from "@core/personalize";
 import type { HairMask } from "@core/sampling";
 import type { Pt } from "@core/types";
+import { LASHES } from "./lash-assets";
 import { MakeupGl } from "./makeup-gl";
 import { paintLookOf, paintMakeup } from "./makeup-paint";
 
@@ -30,7 +31,7 @@ export function paintCompleted(d: Drawable, lm: readonly Pt[], look: Look, plan:
   const mul = mk(), col = mk(), light = mk(), off = mk();
   const gm = mul.getContext("2d"), gc = col.getContext("2d"), gli = light.getContext("2d");
   if (!gm || !gc || !gli) return null;
-  paintMakeup({ mul: gm, col: gc, light: gli }, off, lm, paintLookOf(look), plan, plan.liner.plan.style);
+  paintMakeup({ mul: gm, col: gc, light: gli }, off, lm, paintLookOf(look), plan, plan.liner.plan.style, LASHES);   // 마스카라는 불러 뒀으면 (#250)
 
   const glCanvas = document.createElement("canvas");
   let gl: MakeupGl;

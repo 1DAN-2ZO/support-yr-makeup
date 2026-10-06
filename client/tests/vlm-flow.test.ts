@@ -4,6 +4,7 @@ import { measureFace } from "@core/face-measure";
 import { LOOKS } from "@core/looks";
 import { resolvePlan } from "@core/personalize";
 import { PROMPT_VER, planWithVlm, retryPrompt, vlmSchema } from "@core/vlm-flow";
+import { allowedChoices } from "@core/vlm-prompt";
 import { LMS } from "./helpers/synth-face";
 
 const m = measureFace(LMS);
@@ -46,12 +47,17 @@ describe("VLM 개인화 흐름", () => {
     await expect(planWithVlm(m, look, null, ask)).rejects.toThrow("서버 없음");
   });
 
-  it("F5 스키마는 관문 허용값과 같다 — 결정 필드가 근거 문장보다 앞", () => {
-    const s = vlmSchema() as { properties: Record<string, unknown>; required: string[] };
+  it("F5 스키마(형식 E) — 관찰 → 근거 → 결정 순서, 숫자는 선택지, 이 얼굴에서 관문이 받아 주는 값만", () => {
+    type P = { properties: Record<string, { properties?: Record<string, { enum?: unknown[] }> }>; required: string[] };
+    const s = vlmSchema(m) as P;
     const keys = Object.keys(s.properties);
-    expect(keys.indexOf("liner")).toBeLessThan(keys.indexOf("rationale"));
-    expect(keys.at(-1)).toBe("rationale");
-    expect(PROMPT_VER).toMatch(/^vlm-prompt-v\d+/);
+    expect(keys.slice(0, 3)).toEqual(["observation", "rationale", "liner"]);
+    // llama.cpp 는 required 키만 순서를 고정한다 — 모두 required (진하기는 칸은 있고 안의 부위는 바꿀 것만)
+    expect(s.required).toEqual(keys);
+    expect(s.properties.shadow!.properties!.range!.enum).toEqual(allowedChoices(m).shadow);
+    expect(s.properties.linerThick!.properties!.scale!.enum).toEqual([0.8, 0.9, 1, 1.1, 1.2]);
+    expect(JSON.stringify(s)).not.toMatch(/"minimum"|"maximum"/);   // 소수 범위는 llama.cpp 가 강제하지 않는다
+    expect(PROMPT_VER).toBe("vlm-prompt-v5");
   });
   it("F6 다시 묻다가 실패하면(시간 초과·붐빔) 첫 답(관문을 거친 계획)을 쓴다 — 버리지 않는다 (#179 리뷰)", async () => {
     const ask = vi.fn().mockResolvedValueOnce(bad).mockRejectedValueOnce(new Error("시간 초과"));

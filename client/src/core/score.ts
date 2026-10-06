@@ -11,7 +11,7 @@
 
 import scoreRules from "../../../rules/score.json";
 import type { Lab } from "./color";
-import { deltaE } from "./color";
+import { deltaE, rgbToLab } from "./color";
 import type { ScoreOutcome } from "./flow";
 import { RIGID_IDS } from "./landmarks";
 import type { CheckReason, PartId, PartResult, Pt } from "./types";
@@ -64,6 +64,12 @@ export interface ScoreParams {
    * 합성 얼굴: 노란·파란 불빛의 맨얼굴이 "L" 이면 눈썹·라이너·입술 66~70점, "sclera" 면 화장 없음 (color-corr.test)
    */
   colorCorr: "L" | "sclera";
+  /**
+   * 템플릿 색이 피부와 얼마나 다른지 볼 때, 실제로 발리는 비율 (가정값). 차이 × 이 값이 부위 검출 기준보다 작으면 확인만(subtle)
+   */
+  subtleCover: number;
+  /** 맨얼굴 그 부위 칸 중 이 비율 이상에서 화장이 보일 것 같아야 채점한다 (가정값). 못 미치면 확인만(subtle) */
+  subtleMinFrac: number;
   /** 목표 지수 밴드. 룩 템플릿 값이 우선이고, 없으면 확인만 */
   band: Partial<Record<IntensityPartId, Band>>;
   tol: {
@@ -144,6 +150,7 @@ export const CHECK_REASON_SHORT: Record<CheckReason, string> = {
   occluded: "앞머리나 손이 가리고 있어요.",
   no_baseline: "맨얼굴 사진이 없어 비교할 수 없어요.",
   no_band: "이 화장은 아직 진하기 기준이 없어요.",
+  subtle: "이 화장은 색이 피부와 가까워 사진으로 가르기 어려워요.",
   contour: "확인하고 넘어가세요.",
 };
 
@@ -155,6 +162,7 @@ export const CHECK_ACTION: Record<Exclude<CheckReason, "contour">, string> = {
   occluded: "치우고 다시 확인받아 주세요",
   no_baseline: "거울로 보고 넘어가세요",
   no_band: "거울로 보고 넘어가세요",
+  subtle: "거울로 보고 넘어가세요",
 };
 
 /** 화면 5 "확인만" 한 줄 = 이유 + 할 일. 쉐딩은 이유만 */
@@ -533,6 +541,23 @@ export interface DecideContext {
   alignResidual?: number;
   /** 부위가 머리카락에 가린 비율 (0~1, 두 사진·좌우 중 큰 쪽). 머리카락 마스크가 있을 때만 */
   hairFrac?: number;
+  /** 템플릿 색을 이 사람 맨얼굴 그 부위에 발랐을 때 예상 색 차이 (templateContrast). 템플릿 색을 줬을 때만 */
+  templateDeltaE?: number;
+}
+
+/** 부위 검출 기준 — 형태 부위는 ΔE 임계, 강도 부위는 유무 임계 */
+function presenceThreshold(partId: PartId, p: ScoreParams): number | null {
+  if (partId === "liner" || partId === "brow" || partId === "lip") return p.dEThresh[partId];
+  if (partId === "shadow" || partId === "cheek") return p.tPresent[partId];
+  return null;
+}
+
+/**
+ * 템플릿 색을 이 피부에 발랐을 때 예상되는 색 차이 — 피부와 색 차이 × 발리는 비율(subtleCover).
+ * 템플릿 진하기(alpha)는 쓰지 않는다: 화면에 그릴 때의 투명도라 사람이 바르는 양과 다르다
+ */
+export function templateContrast(skin: Lab, color: readonly [number, number, number], p: ScoreParams = PARAMS): number {
+  return p.subtleCover * deltaE(skin, rgbToLab(color[0], color[1], color[2]));
 }
 
 export interface Decision {
@@ -547,6 +572,9 @@ export function decide(partId: PartId, res: Pick<PartScore, "present" | "score">
   if (ctx.noFace) return checkOnly("align");
   if (ctx.alignResidual !== undefined && ctx.alignResidual > p.alignMax) return checkOnly("align");
   if (partId === "contour") return checkOnly("contour");
+  // 색이 피부와 가까운 화장 — 무엇을 그렸든 사진으로는 못 가른다. 다시 찍어도 같으니 가림·조명보다 먼저 (결정 2026-09-30)
+  const need = presenceThreshold(partId, p);
+  if (typeof ctx.templateDeltaE === "number" && need !== null && ctx.templateDeltaE < need) return checkOnly("subtle");
   // 가림 (#155 — 손·머리카락 무엇이든)
   if (typeof ctx.hairFrac === "number" && ctx.hairFrac > p.hairMax) return checkOnly("occluded");
   if (typeof ctx.lightShift === "number" && Math.abs(ctx.lightShift) > p.lightTol) return checkOnly("lighting");

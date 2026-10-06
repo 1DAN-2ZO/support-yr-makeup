@@ -52,7 +52,8 @@ export interface ShellOptions<S> {
   /** 화면 전환 요청. 세션을 실제로 바꾸는 건 호출측(①의 flow) */
   setScreen: (to: ScreenId) => void;
   setPart: (p: PartId) => void;
-  orientation?: () => Orientation;
+  /** 모르면(null — 옛 브라우저 · 주소 ?norotate) 방향 안내를 안 띄운다 */
+  orientation?: () => Orientation | null;
 }
 
 export function createShell<S>(opts: ShellOptions<S>) {
@@ -76,7 +77,7 @@ export function createShell<S>(opts: ShellOptions<S>) {
 
   function goPart(part: PartId): void {
     opts.setPart(part);
-    opts.setScreen("guide"); // 진행 칩은 언제나 완성본부터 (F-04)
+    opts.setScreen("partguide"); // 진행 칩은 그 부위 가이드로 (새 흐름 2026-10-06)
     render();
   }
 
@@ -134,8 +135,8 @@ export function createShell<S>(opts: ShellOptions<S>) {
   function renderHint(part: PartId | null): void {
     const host = opts.hintRoot;
     if (!host) return;
-    const now = opts.orientation?.() ?? "portrait";
-    const hint = orientationHint(part, now);
+    const now = opts.orientation ? opts.orientation() : "portrait";
+    const hint = now ? orientationHint(part, now) : null;
     host.hidden = hint === null;
     host.textContent = hint ?? "";
   }

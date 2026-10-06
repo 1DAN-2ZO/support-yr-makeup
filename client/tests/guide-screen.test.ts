@@ -5,6 +5,7 @@ import { createLogger, memorySink } from "@core/log";
 import { LOOKS } from "@core/looks";
 import type { Versions } from "@core/types";
 import { GUIDE_TEXT, guideScreen, type GuideDeps } from "@screens/guide";
+import { rotateText } from "@core/orientation-lock";
 import type { ScreenContext } from "@screens/shell";
 
 const ver: Versions = { app: "test", score: "s", look: "l", faceshape: "f", transfer: "t" };
@@ -142,5 +143,33 @@ describe("화면 3", () => {
     await flush();
     expect(paint).toHaveBeenCalledTimes(1);
     expect((paint.mock.calls[0] as unknown[])[4] ?? null).toBeNull();
+  });
+
+  it("GS9 눈 부위를 세로로 보면 내용 대신 '가로로 돌려 주세요' 만 — 그림도 안 연다 (팀 협의)", async () => {
+    const toBitmap = vi.fn();
+    const { root, ctx, deps } = setup({ getBaseline: () => baseline, toBitmap, orientation: () => "portrait" });
+    guideScreen<null>(deps).mount(ctx);
+    await flush();
+    expect(root.textContent).toContain(rotateText("liner"));
+    expect(Array.from(root.querySelectorAll("button")).some((b) => b.textContent === GUIDE_TEXT.start)).toBe(false);
+    expect(toBitmap).not.toHaveBeenCalled();
+  });
+
+  it("GS10 세로 부위는 세로로 보면 그대로", () => {
+    const { root, ctx, deps } = setup({ getPart: () => "lip", orientation: () => "portrait" });
+    guideScreen<null>(deps).mount(ctx);
+    expect(root.textContent).not.toContain(rotateText("lip"));
+    expect(Array.from(root.querySelectorAll("button")).some((b) => b.textContent === GUIDE_TEXT.start)).toBe(true);
+  });
+
+  it("GS11 세로 부위를 가로로 보면 내용 대신 '세로로 돌려 주세요' 만 — 그림도 안 연다 (2026-10-01)", async () => {
+    const toBitmap = vi.fn();
+    const { root, ctx, deps } = setup({ getPart: () => "lip", getBaseline: () => baseline, toBitmap, orientation: () => "landscape" });
+    guideScreen<null>(deps).mount(ctx);
+    await flush();
+    expect(root.textContent).toContain(rotateText("lip"));
+    expect(rotateText("lip")).toBe("폰을 세로로 돌려 주세요");
+    expect(Array.from(root.querySelectorAll("button")).some((b) => b.textContent === GUIDE_TEXT.start)).toBe(false);
+    expect(toBitmap).not.toHaveBeenCalled();
   });
 });

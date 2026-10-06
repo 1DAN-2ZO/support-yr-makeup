@@ -15,7 +15,7 @@ import { LM, at } from "./landmarks";
 import type { HairMask, SampleFrame } from "./sampling";
 import { frameOf, sampleBrow, sampleForehead, sampleLiner, sampleLip, sampleRegion } from "./sampling";
 import type { Band, DecideContext, LightCorr, LinerStrip, PartScore, RegionGrid, ScoreParams, Side, SimilarityFit } from "./score";
-import { PARAMS, alignToBaseline, colorShiftCorr, browResult, compareLinerEye, compareLip, compareRegion, intensityIndex, intensityResult, lightCorr, linerResult, makeupBiasPx, noCorr, oneLiner, toOutcome } from "./score";
+import { PARAMS, alignToBaseline, colorShiftCorr, similarityFit, browResult, compareLinerEye, compareLip, compareRegion, intensityIndex, intensityResult, lightCorr, linerResult, makeupBiasPx, noCorr, oneLiner, templateContrast, toOutcome } from "./score";
 import type { ScoreOutcome } from "./flow";
 import type { CheckReason, PartId, Pt } from "./types";
 
@@ -36,7 +36,7 @@ export interface PartGeometry {
     /** 개인화: 윗입술 가운데를 올리는 양 (윗입술 두께 비율). 채점은 아직 쓰지 않는다 — 화면 테두리(lipOutline)만 */
     upperOverline?: number;
   };
-  /** 섀도우·볼터치 영역 다각형, 좌우 하나씩 */
+  /** 섀도우·볼터치 영역 다각형, 좌우 하나씩. 섀도 눈꼬리 연장(shadow.tailExtend)이 있는 화장은 꼬리까지 한 모양 (#30 · #284) */
   regions?: Record<Side, readonly Pt[]>;
   /**
    * 쉐딩 화면: 얼굴형 규칙(contourOutline)이 낸 밴드 배열 그대로. 좌우 구분 없이, 한쪽에 여러 개, 가운데 밴드(콧대·이마 위·턱 끝)도 섞여 있다.
@@ -59,8 +59,31 @@ const MAKEUP_IDS: readonly number[] = [...LM.lipsOuter, ...LM.eyeA.upper, ...LM.
 
 /** 확인받기 프레임을 기준 좌표계에 맞춘다: 재검출 랜드마크 대신 기준 랜드마크를 안정 점으로 옮겨 쓴다 */
 export function alignedFrame(base: SampleFrame, im: RgbaImage, detectedLm: readonly Pt[], hair?: HairMask): { frame: SampleFrame; fit: SimilarityFit; biasPx: number } {
-  const { lm, fit } = alignToBaseline(base.lm, detectedLm);
+  const { lm: whole, fit } = alignToBaseline(base.lm, detectedLm);
+  const lm = refineParts(whole, detectedLm);
   return { frame: frameOf(im, lm, hair), fit, biasPx: makeupBiasPx(lm, detectedLm, MAKEUP_IDS) };
+}
+
+/**
+ * 부위별로 한 번 더 맞춘다 (2026-09-30 폰 시험). 쌩얼(세로·아래에서)과 확인받기(가로·위에서)는 원근이 달라서
+ * 얼굴 전체를 안정 점으로 한 번에 옮기면 눈 점이 16px 아래(눈알 위)로 가 화면 5 정답 테두리가 눈동자에 떴다.
+ *  - 눈: 화장에 덜 밀리는 점(앞·뒤 끝·아랫눈꺼풀·눈동자)으로 맞춰 그 눈 전부에 — 라이너는 윗눈꺼풀 점을 위로 밀 수 있어서 빼고 맞춘다
+ *  - 눈썹: 눈썹 점끼리 — 원근이 바뀌면 눈과 눈썹 사이 거리가 달라져 눈 기준으로는 못 맞춘다
+ * 좌우 따로. 폰 사진 재현: 윗눈꺼풀 어긋남 16.6 → 3.6px (align-refine.test)
+ */
+function refineParts(aligned: readonly Pt[], detected: readonly Pt[]): Pt[] {
+  const lm = aligned.map((p) => ({ ...p }));
+  const move = (key: readonly number[], apply: readonly number[]): void => {
+    const k = [...new Set(key)].filter((i) => aligned[i] && detected[i]);
+    if (k.length < 3) return;
+    const f = similarityFit(k.map((i) => aligned[i]!), k.map((i) => detected[i]!));
+    for (const i of new Set(apply)) if (aligned[i]) lm[i] = f.apply(aligned[i]!);
+  };
+  for (const [eye, brow] of [[LM.eyeA, LM.browA], [LM.eyeB, LM.browB]] as const) {
+    move([eye.outer, eye.inner, ...eye.lower, ...eye.iris], [...eye.upper, ...eye.lower, ...eye.iris]);
+    move([...brow.upper, ...brow.lower], [...brow.upper, ...brow.lower]);
+  }
+  return lm;
 }
 
 export interface ScorePartOptions {
@@ -70,6 +93,8 @@ export interface ScorePartOptions {
   baseAsym?: number;
   /** alignedFrame() 의 fit.residual. metrics.alignResidual 로 남긴다 */
   alignResidual?: number;
+  /** 고른 화장의 이 부위 색 (rules/looks.json). 주면 맨얼굴 그 부위 색과 비교해 너무 가까우면 확인만(subtle) */
+  templateColor?: readonly [number, number, number] | null;
 }
 
 export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, guide: GuideSource, opts: ScorePartOptions = {}, p: ScoreParams = PARAMS): { result: PartScore; ctx: DecideContext } {
@@ -82,12 +107,17 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
   const ctx: DecideContext = lit ? { lightShift: lit.shift } : {};
   // 정렬 잔차는 눈 폭으로 나눠 해상도와 상관없게 (#43)
   if (opts.alignResidual !== undefined && cur.unit.eye > 0) ctx.alignResidual = opts.alignResidual / cur.unit.eye;
+  // 화장 색과 비교할 맨얼굴 색 — **그 부위 자리**에서 모은다 (아래 가지마다). 이마로 보면 앞머리가 덮었을 때
+  // 머리카락 색과 비교해 검은 라이너도 '피부와 가깝다' 가 됐다 (FFHQ 30명: 눈썹 52 · 라이너 68 / 300, 2026-10-01)
+  const bareRef: Lab[] = [];
 
   let result: PartScore;
   if (partId === "liner") {
     const gb = linerOf(guide, base);
     const eye = (s: Side) => {
       const sb = sampleLiner(base, s, gb.wing[s], gb.thick);
+      // 가이드 선보다 위쪽 칸 = 눈꺼풀 피부 (선 자리는 원래 속눈썹이 있어 어둡다)
+      for (const row of sb.lab) row.forEach((c, j) => { if ((sb.meta.offs[j] ?? 0) > sb.meta.thick) bareRef.push(c); });
       const strip = (f: SampleFrame) => { const g = linerOf(guide, f); return sampleLiner(f, s, g.wing[s], g.thick); };
       // 눈을 뜨고 있으면 선 아래는 눈알(시선에 따라 바뀜) — 정렬 비용에서도 뺀다 (compareLinerEye 와 같은 칸)
       const cost = (f: SampleFrame) => stripCost(sb, strip(f), corr, p.tol.band);
@@ -96,6 +126,7 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
     result = linerResult({ R: eye("R"), L: eye("L") }, opts.baseAsym ?? 0, p);
   } else if (partId === "brow") {
     const gb = sampleBrow(base);
+    gb.lab.forEach((c, i) => { if (gb.meta.inside[i]) bareRef.push(c); });   // 맨얼굴 눈썹 자리 (털 + 피부)
     const cost = (f: SampleFrame) => meanLighter(gb.lab, sampleBrow(f).lab, corr);
     const gc = sampleBrow(register(cur, cost));
     result = browResult(compareRegion(gb, gc, corr, p.dEThresh.brow));
@@ -103,7 +134,10 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
     if (hf !== null) ctx.hairFrac = hf;
   } else if (partId === "lip") {
     const lc = sampleLip(cur, lipOf(guide, cur).offset);
-    result = compareLip(sampleLip(base, lipOf(guide, base).offset), lc, corr, p);
+    const lb = sampleLip(base, lipOf(guide, base).offset);
+    result = compareLip(lb, lc, corr, p);
+    // 맨얼굴 입술 안쪽 (경계는 피부가 섞인다)
+    for (const row of lb.lab) row.forEach((c, j) => { if ((lb.meta.offs[j] ?? 0) < -p.tol.lipOut) bareRef.push(c); });
     // 입술 색 (조화 보정, #35): 경계에서 안쪽으로 떨어진 칸만 — 경계는 피부가 섞인다
     const inner = lc.lab.flatMap((row) => row.filter((_, j) => (lc.meta.offs[j] ?? 0) < -p.tol.lipOut));
     const ab = meanAb(inner);
@@ -114,6 +148,7 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
     const halves = partId === "shadow";
     const side = (s: Side) => {
       const b = sampleRegion(base, regionOf(guide, partId, base, s), s, halves), c = sampleRegion(cur, regionOf(guide, partId, cur, s), s, halves);
+      if (b) bareRef.push(b.part);   // 맨얼굴 그 영역 피부
       if (!b || !c) return { delta: 0, index: 0, dir: 0, color: null as Lab | null };   // 영역이 사진 밖 → 화장 없음으로 (확인만)
       if (b.hidden !== undefined || c.hidden !== undefined) ctx.hairFrac = Math.max(ctx.hairFrac ?? 0, b.hidden ?? 0, c.hidden ?? 0);
       const dir = b.outer && b.inner && c.outer && c.inner ? deltaE(b.outer, corr(c.outer)) - deltaE(b.inner, corr(c.inner)) : 0;
@@ -134,6 +169,15 @@ export function scorePart(partId: PartId, base: SampleFrame, cur: SampleFrame, g
     }
   }
   if (opts.alignResidual !== undefined) result.metrics.alignResidual = opts.alignResidual;
+  // 화장 색이 맨얼굴 그 부위 색과 가까운지 (subtle). 칸마다 예상 색 차이를 내고, **칸의 subtleMinFrac 만큼은 보여야** 채점한다
+  // = 위에서부터 그 비율 자리의 값을 남긴다. 눈썹처럼 털·피부가 섞인 자리는 피부 칸에서 보이면 채점된다 (중앙값으로 보면
+  // 털 색 눈썹이 전부 빠졌다). 부위에서 못 모았으면 이마, 그것도 없으면 판단 안 함
+  const color = opts.templateColor;
+  if (color) {
+    const cells = bareRef.length ? bareRef : foreBase ? [foreBase] : [];
+    const d = cells.map((c) => templateContrast(c, color, p)).sort((x, y) => y - x);
+    if (d.length) ctx.templateDeltaE = d[Math.min(d.length - 1, Math.floor(d.length * p.subtleMinFrac))]!;
+  }
   return { result, ctx };
 }
 

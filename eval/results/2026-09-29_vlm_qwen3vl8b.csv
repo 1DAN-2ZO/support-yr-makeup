@@ -1,0 +1,2 @@
+model,s0_n,s0_broken,vram_peak_mb,s1_best,s1_p95_ms,s2_Ac_p95_ms,s2_Ac_schema,s2_Ac_gate,s2_Au_p95_ms,s2_Au_schema,s2_Au_gate,s2_Bc_p95_ms,s2_Bc_schema,s2_Bc_gate,s2_Cc_p95_ms,s2_Cc_schema,s2_Cc_gate,s2_Dc_p95_ms,s2_Dc_schema,s2_Dc_gate,s2_best,s2_Ac_mode_max,s2_Au_mode_max,s2_Bc_mode_max,s2_Cc_mode_max,s2_Dc_mode_max,s3_worst_field,s3_restart_same,s3_perturb_same,s4_follow
+qwen3vl8b,100,0,11121,512px/300tok,3006,3071,1.0,0.283,3087,1.0,1.0,2835,1.0,0.817,2833,1.0,0.733,2774,1.0,0.9,D,1.0,1.0,1.0,1.0,1.0,1.0,1.0,0.9833333333333333,0.345

@@ -15,6 +15,10 @@ export interface Outline {
   polys: Pt[][];
   /** 열린 선 */
   lines: Pt[][];
+  /** 퍼지는 방향 표시 — 시작점 (화면 3·4 만, core/spread-marks). 화면 5 는 없음 (정의서 5-1) */
+  dots?: Pt[];
+  /** 퍼지는 방향 표시 — 화살표 [시작, 끝] (화면 3·4 만) */
+  arrows?: Pt[][];
 }
 
 export function guideOutline(partId: PartId, lm: readonly Pt[], g: PartGeometry): Outline {
@@ -41,6 +45,7 @@ export function guideOutline(partId: PartId, lm: readonly Pt[], g: PartGeometry)
       break;
     case "shadow":
     case "cheek":
+      // 섀도 눈꼬리 연장(#30)은 영역(regions)에 이미 이어 붙어 있다 — 채점과 같은 모양 (personal-guide planGuide)
       if (g.regions) polys.push([...g.regions.R], [...g.regions.L]);
       break;
     case "contour":

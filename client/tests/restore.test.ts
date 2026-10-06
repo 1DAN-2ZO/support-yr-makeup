@@ -69,6 +69,11 @@ describe("planRestore", () => {
     expect(b).toMatchObject({ lm: [{ x: 540, y: 960 }], unit: { eye: 130, lip: 220, face: 620 }, foreheadL: 66, scleraLab: { a: 1, b: 2 }, w: 1080, h: 1920 });
   });
 
+  it("R5c 쌩얼을 원본 크기로 저장하면(#240) 찾은 랜드마크를 그대로 쓴다 (배율 1)", () => {
+    const b = rebuildBaseline(roundTrip(afterCapture()).baseline!, { lm: [{ x: 540, y: 960 }], w: 1080, h: 1920 }, null);
+    expect(b.lm).toEqual([{ x: 540, y: 960 }]);
+  });
+
   it("R5b 표정(expression)은 draft 에 없고, 복원 때 쌩얼 사진에서 다시 잰 값으로 채운다 (#177)", () => {
     const d = roundTrip(afterCapture());
     expect(d.baseline).not.toHaveProperty("expression");

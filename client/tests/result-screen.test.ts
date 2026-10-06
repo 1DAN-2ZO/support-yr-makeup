@@ -9,8 +9,9 @@ import { createLogger, memorySink } from "@core/log";
 import { CHECK_REASON_TEXT, hasDigit } from "@core/score";
 import type { Baseline, CaptureBundle, PartId, Versions } from "@core/types";
 import { resultScreen, type ResultDeps } from "@screens/result";
+import { rotateText } from "@core/orientation-lock";
 import type { ScreenContext } from "@screens/shell";
-import { LMS, SHADE, guide, image, linerPaint, regionPaint } from "./helpers/synth-face";
+import { LMS, SHADE, guide, image, linerPaint, naturalPaint, over, regionPaint } from "./helpers/synth-face";
 
 const ver: Versions = { app: "test", score: "score-v0.1", look: "look-v0.1", faceshape: "faceshape-rule-v1", transfer: "transfer-stub-v0" };
 
@@ -112,6 +113,17 @@ describe("화면 5 — 부위 결과", () => {
     expect(hasDigit(root.textContent ?? "")).toBe(false);   // 그 밖의 글에는 숫자가 없다
   });
 
+  it("RC1 고른 화장 색이 피부와 가까우면(뉴트럴 라이너 같은) '더 바르라' 가 아니라 '피부와 가까워 가르기 어려움' — 화장 색을 채점에 넘긴다", async () => {
+    const i = (Math.round(LMS[151]!.y) * bareIm.w + Math.round(LMS[151]!.x)) * 4;   // 이마 피부 한 점
+    const skin = [bareIm.data[i]!, bareIm.data[i + 1]!, bareIm.data[i + 2]!] as [number, number, number];
+    const templateColor = vi.fn(() => skin);
+    const { root, events } = setup("lip", bareIm, { templateColor });
+    await scored(root);
+    expect(templateColor).toHaveBeenCalledWith("lip");
+    expect(root.querySelector(".result-say")?.textContent).toBe(CHECK_REASON_TEXT.subtle);
+    expect(events.find((e) => e.name === "score")).toMatchObject({ status: "check_only", check_reason: "subtle" });
+  });
+
   it("맨얼굴 그대로(화장 없음): '확인만' + 이유, 다음을 누르면 check_only 로 반영", async () => {
     const { root, events, session } = setup("lip", bareIm);
     await scored(root);
@@ -187,6 +199,21 @@ describe("화면 5 — 머리카락 마스크", () => {
     expect(root.querySelector(".result-say")?.textContent).toBe(CHECK_REASON_TEXT.occluded);
   });
 
+  it("RS1 쌩얼을 줄여 저장했어도(점은 촬영 크기) 점을 사진 크기로 맞춰 잰다 — 전엔 엉뚱한 자리를 읽어 가짜 '밝기가 달라요'", async () => {
+    // 촬영은 1200×1200, 저장한 쌩얼은 600×600 (앱은 긴 변 1024 로 줄여 저장한다)
+    // 속눈썹이 있는 자연 맨얼굴 — 엉뚱한 자리를 읽으면 살색이 아닌 값이 섞여 결과가 달라진다
+    const natural = new FakeBitmap(image(naturalPaint)) as unknown as ImageBitmap;
+    const same = (): Baseline => ({ ...baseline(), bareImage: natural });
+    const big = (): Baseline => ({ ...same(), lm: LMS.map((p) => ({ x: p.x * 2, y: p.y * 2 })), w: 1200, h: 1200 });
+    const drawn = image(over(linerPaint(), naturalPaint));
+    const ref = setup("liner", drawn, { getBaseline: same });
+    await scored(ref.root);
+    const want = ref.root.querySelector(".result-score")?.textContent;
+    const { root } = setup("liner", drawn, { getBaseline: big });
+    await scored(root);
+    expect(root.querySelector(".result-score")?.textContent).toBe(want);
+  });
+
   it("RT1 tune 이면 판정 근거 숫자(밝기 차·한계·쓴 장 수)를 한 줄로 보여 준다 — 폰에서 '밝기가 달라요' 원인 가리기", async () => {
     const { root } = setup("liner", image(linerPaint()), { tune: true });
     await scored(root);
@@ -233,5 +260,34 @@ describe("화면 5 — 머리카락 마스크", () => {
     const { root } = setup("liner", image(linerPaint()), { hairMask: async () => null });
     await scored(root);
     expect(Number(root.querySelector(".result-num")?.textContent)).toBeGreaterThan(0);
+  });
+});
+
+// 눈 부위는 화면 5 도 가로에서만 (팀 협의 2026-09-30) — 세로면 채점도 안 돌리고 안내만
+describe("화면 5 방향 잠금", () => {
+  it("RL1 라이너를 세로로 보면 '가로로 돌려 주세요' 만, 채점(사진 읽기)은 안 한다", async () => {
+    const toRgba = vi.fn(async (src: ImageBitmap | Blob) => (src as unknown as FakeBitmap).im);
+    const { root } = setup("liner", image(linerPaint()), { orientation: () => "portrait", toRgba });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(root.textContent).toContain(rotateText("liner"));
+    expect(toRgba).not.toHaveBeenCalled();
+    expect(root.querySelectorAll("button")).toHaveLength(0);
+  });
+
+  it("RL2 입술은 세로로 보면 채점한다", async () => {
+    const toRgba = vi.fn(async (src: ImageBitmap | Blob) => (src as unknown as FakeBitmap).im);
+    const { root } = setup("lip", image(), { orientation: () => "portrait", toRgba });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(root.textContent).not.toContain(rotateText("lip"));
+    expect(toRgba).toHaveBeenCalled();
+  });
+
+  it("RL3 입술을 가로로 보면 '세로로 돌려 주세요' 만, 채점은 안 한다 (2026-10-01)", async () => {
+    const toRgba = vi.fn(async (src: ImageBitmap | Blob) => (src as unknown as FakeBitmap).im);
+    const { root } = setup("lip", image(), { orientation: () => "landscape", toRgba });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(root.textContent).toContain(rotateText("lip"));
+    expect(toRgba).not.toHaveBeenCalled();
+    expect(root.querySelectorAll("button")).toHaveLength(0);
   });
 });

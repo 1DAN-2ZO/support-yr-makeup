@@ -7,13 +7,13 @@
  *   stderr  진행·요약 (stdout 은 JSON 만)
  *
  * 항목 하나 (양식은 eval/golden/manifest.json item_fields — ⑤ 와 2026-09-22 합의. 경로는 data_dir 기준 상대 경로):
- *   { "id": "ffhq_0001_liner", "person_id": "ffhq_0001", "part": "liner", "look": "smoky",
+ *   { "id": "ffhq_0001_liner", "person_id": "ffhq_0001", "part": "liner", "look": "edgy",
  *     "bare": "ffhq/0001_bare.png", "makeup": "ffhq/0001_makeup.png",
  *     "bare_lm": "ffhq/0001_bare.lm.json", "makeup_lm": "ffhq/0001_makeup.lm.json",
  *     "sha256": { "bare": "…", "makeup": "…" }, "label": "ok" }
  *   - 사진은 PNG. 랜드마크는 MediaPipe 478점 JSON — [{x,y}] 또는 [[x,y]], 픽셀 또는 0~1 정규화 둘 다 받는다
  *     (전부 0~1 이면 정규화로 보고 사진 크기를 곱한다). Node 에서는 MediaPipe 가 안 돌아서 ⑤ 가 파이썬으로 뽑는다
- *   - look: rules/looks.json 의 id. 라이너 두께 등 잣대가 룩을 따라간다. 비어 있으면 기본 룩(smoky)으로 재고 행의 look 에 적는다
+ *   - look: rules/looks.json 의 id. 라이너 두께 등 잣대가 룩을 따라간다. 비어 있으면 기본 룩(edgy — 세미 스모키)으로 재고 행의 look 에 적는다
  *   - sha256: 있으면 사진 파일 지문을 대조한다. 다르면 그 행은 error (사진이 바뀐 것)
  *   - label: ok | slight | off (3단계, #64). 없으면 null
  *
@@ -35,10 +35,10 @@ const ROOT = resolve(HERE, "..", "..");
 const CLIENT = join(ROOT, "client");
 const require = createRequire(pathToFileURL(join(CLIENT, "package.json")));
 
-/** 룩 템플릿 전이라 시험지의 look 이 비어 있을 때 재는 룩 (⑤ 와 합의). 결과 행 look 에 그대로 적힌다 */
-const DEFAULT_LOOK = "smoky";
+/** 시험지의 look 이 비어 있을 때 재는 룩 (⑤ 와 합의 — 옛 smoky → look-v0.2 세미 스모키). 결과 행 look 에 그대로 적힌다 */
+const DEFAULT_LOOK = "edgy";
 const LOOKS = JSON.parse(readFileSync(join(ROOT, "rules", "looks.json"), "utf8")).looks;
-function lookParts(id) {
+export function lookParts(id) {
   const look = LOOKS.find((l) => l.id === id);
   if (!look) throw new Error(`rules/looks.json 에 없는 룩: ${id}`);
   return look.parts;
@@ -46,7 +46,7 @@ function lookParts(id) {
 
 /** 점수(0~100) → 사람 판정 3단계. 초안 — E-1 첫 결과를 보고 ⑤ 와 정한다 */
 const FOLD = { ok: 80, slight: 50 };
-function foldLabel(score) {
+export function foldLabel(score) {
   if (score >= FOLD.ok) return "ok";
   if (score >= FOLD.slight) return "slight";
   return "off";
@@ -63,9 +63,10 @@ function stampFiles() {
 }
 
 /** client/src/core 를 하나의 ESM 으로 묶는다. 소스가 안 바뀌었으면 캐시를 그대로 쓴다 */
-async function loadCore() {
+export async function loadCore() {
   const stamp = createHash("sha1");
   for (const f of stampFiles()) stamp.update(readFileSync(join(ROOT, f)));
+  stamp.update(readFileSync(fileURLToPath(import.meta.url)));   // 묶는 목록(이 파일)이 바뀌어도 다시 묶는다
   const out = join(CLIENT, "node_modules", ".cache", "dhe-score-cli", `core-${stamp.digest("hex").slice(0, 12)}.mjs`);
   if (!existsSync(out)) {
     const esbuild = require("esbuild");
@@ -77,6 +78,7 @@ async function loadCore() {
           'export { frameOf } from "./src/core/sampling";',
           'export { lookGuide } from "./src/core/guides";',
           'export { SCORE_VERSION } from "./src/core/score";',
+          'export { LM } from "./src/core/landmarks";',   // 합성 세트(eval/samples/paint_levels.mjs)가 부위 점 번호를 쓴다
         ].join("\n"),
         resolveDir: CLIENT,
         loader: "ts",
@@ -140,11 +142,20 @@ function scoreItem(core, guides, item, dataDir) {
   const bareIm = readPng(barePath);
   const makeIm = readPng(makePath);
   const base = core.frameOf(bareIm, readLandmarks(at(need(item, "bare_lm")), bareIm));
-  const { frame, fit, biasPx } = core.alignedFrame(base, makeIm, readLandmarks(at(need(item, "makeup_lm")), makeIm));
-  const { result, ctx } = core.scorePart(part, base, frame, guide, { alignResidual: fit.residual });
+  return { look, ...judge(core, guide, part, look, base, makeIm, readLandmarks(at(need(item, "makeup_lm")), makeIm)) };
+}
+
+/**
+ * 맨얼굴 프레임(base)과 화장 사진 한 장 → 판정. 앱 화면 5 와 같은 순서(정렬 → 채점 → 확인만 판단 → 3단계).
+ * 합성 세트(eval/samples/paint_levels.mjs)도 이 함수를 쓴다 — 평가마다 판정이 달라지면 안 된다
+ */
+export function judge(core, guide, part, look, base, makeIm, makeLm) {
+  const { frame, fit, biasPx } = core.alignedFrame(base, makeIm, makeLm);
+  // 앱 화면 5 와 같게 화장 색을 넘긴다 — 피부와 가까우면 확인만(subtle). 쉐딩은 룩 색이 없다
+  const templateColor = part === "contour" ? null : lookParts(look)[part]?.color ?? null;
+  const { result, ctx } = core.scorePart(part, base, frame, guide, { alignResidual: fit.residual, templateColor });
   const d = core.decide(part, result, ctx);
   return {
-    look,
     pred: d.status === "scored" ? foldLabel(d.score) : null,
     score: d.score,
     status: d.status,
@@ -196,7 +207,10 @@ async function main() {
   process.stderr.write(`score_cli: ${out.length}개 — 점수 ${scored} · 확인만 ${checkOnly} · 오류 ${errors} · 룩 ${looks || "-"}\n`);
 }
 
-main().catch((e) => {
-  process.stderr.write(`score_cli 실패: ${e?.stack ?? e}\n`);
-  process.exit(1);
-});
+// 직접 실행했을 때만 돈다 — 다른 도구가 judge · loadCore 를 가져다 쓸 수 있게
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  main().catch((e) => {
+    process.stderr.write(`score_cli 실패: ${e?.stack ?? e}\n`);
+    process.exit(1);
+  });
+}

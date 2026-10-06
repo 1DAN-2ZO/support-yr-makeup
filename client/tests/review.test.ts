@@ -167,7 +167,7 @@ describe("쉐딩·하이라이트, 진행 중, 한 줄 평", () => {
 });
 
 describe("기록 (로드맵용)", () => {
-  const mk = (i: number, parts: PartResult[], lookId = "smoky", foreheadL = 60) =>
+  const mk = (i: number, parts: PartResult[], lookId = "edgy", foreheadL = 60) =>
     makeRecord({ id: `r${i}`, date: `2026-09-${String(i).padStart(2, "0")}T10:00:00`, lookId, lookName: lookId, parts, template: NO_HARM, lightingRef: { foreheadL } });
   const brow60 = () => [P("brow", "passed", 60)];
 

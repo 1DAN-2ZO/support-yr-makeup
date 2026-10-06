@@ -14,6 +14,10 @@ import type { PersonalPlan } from "./personalize";
 
 // ---------- 화면 순서 ----------
 
+/**
+ * 화면 이름 전부. 진행 순서는 core/screens.ts 의 SCREEN_ORDER (2026-10-06 새 흐름).
+ * processing ~ review 는 옛 흐름 화면 — 새 흐름에서 빠졌지만 코드는 남아 있다 (screens.inNewFlow 가 새 화면으로 돌린다)
+ */
 export const SCREENS = [
   "consent",
   "denied",
@@ -26,6 +30,12 @@ export const SCREENS = [
   "result",
   "review",
   "done",
+  // 새 흐름 (2026-10-06) — docs/service-definition-v6.md
+  "answer",
+  "partguide",
+  "attempt",
+  "feedback",
+  "save",
 ] as const;
 export type ScreenId = (typeof SCREENS)[number];
 
@@ -33,14 +43,19 @@ export const SCREEN_NAME: Record<ScreenId, string> = {
   consent: "1 동의",
   denied: "이용 불가",
   capture: "1 촬영",
-  processing: "서버 처리",
-  looks: "2 화장",
-  fullrender: "2-b 전체 완성 예상",
-  guide: "3 완성본",
-  live: "4 실시간 테두리",
-  result: "5 결과",
-  review: "6 전체 리뷰",
+  processing: "서버 처리 (옛 흐름)",
+  looks: "2 화장 (옛 흐름)",
+  fullrender: "2-b 전체 완성 예상 (옛 흐름)",
+  guide: "3 완성본 (옛 흐름)",
+  live: "4 실시간 테두리 (옛 흐름)",
+  result: "5 결과 (옛 흐름)",
+  review: "6 전체 리뷰 (옛 흐름)",
   done: "끝",
+  answer: "2·3 참고 사진 · 정답사진",
+  partguide: "4 부위 가이드",
+  attempt: "5 시도사진",
+  feedback: "6 피드백",
+  save: "7 저장 · 공유",
 };
 
 /** 부위 순서 = 룩 5부위 + 쉐딩·하이라이트(고정 마지막) */
@@ -61,8 +76,6 @@ export interface ShotSpec {
 export const SHOTS: readonly ShotSpec[] = [
   { id: "front_open", name: "정면 · 눈 뜸", yaw: [-10, 10], eyes: "open" },
   { id: "front_closed", name: "정면 · 눈 감음", yaw: [-10, 10], eyes: "closed" },
-  { id: "left_45", name: "왼쪽 45°", yaw: [-60, -22], eyes: "open" },
-  { id: "right_45", name: "오른쪽 45°", yaw: [22, 60], eyes: "open" },
 ];
 
 /**
@@ -74,14 +87,14 @@ export const CAPTURE_GUIDE = {
   title: "카메라 준비",
   lines: [
     "앞머리를 넘겨서 이마가 다 보이게 해 주세요",
-    "머리카락을 귀 뒤로 넘겨서 양쪽 귀가 다 보이게 해 주세요",
+    "머리카락이나 손이 얼굴을 가리지 않게 해 주세요",
     "안경을 쓰셨다면 벗어 주세요",
   ],
   button: "카메라 켜기",
 } as const;
 
-/** 서버(법선 정밀화)로 보내는 3장. 눈 감음 장은 폰에만 남는다 (F-01) */
-export const SERVER_SHOTS: readonly ShotId[] = ["front_open", "left_45", "right_45"];
+/** 새 흐름은 서버 개인화를 하지 않는다. 정면 눈 뜬 사진만 후속 화면 기준으로 쓴다 */
+export const SERVER_SHOTS: readonly ShotId[] = ["front_open"];
 
 /** 촬영 조건 한계. 화면 4 게이트(gate.ts, 1-9)와 값을 맞춘다 */
 export interface CaptureLimits {
@@ -106,9 +119,16 @@ export interface CaptureLimits {
   eyeMinPx: number;
   /** 이마 a*·b* 가 첫 장 대비 이만큼 넘게 돌면 "조명 색이 바뀜" (1-9). 임계는 1-4 실측으로 확정, 지금은 가정값 */
   colorTol: number;
+  /**
+   * 45° 장 전용 밝기·색 허용 차. 고개를 돌리면 이마에 빛이 닿는 각도가 바뀌어 정면끼리보다 크게 흔들린다 (노출 잠금과 무관).
+   * 2026-09-30 1차 실측(15회, 폰 4종, 비정상 1회 제외): 정면 두 장 최대 밝기 7.5·색 4.1 / **45° 최대 밝기 11.6·색 8.0**.
+   * 규칙 "정상 최대 × 1.5" → 정면 12·6 (그대로), 45° 18·12. 내일(#215) 사람 2·3 조명 3종으로 검증 후 확정
+   */
+  brightTol45: number;
+  colorTol45: number;
   stableFrames: number;
 }
-export const CAPTURE_LIMITS: CaptureLimits = { pitch: 10, sharpMin: 150, brightTol: 12, brightMin: 40, brightMax: 85, eyeMinPx: 80, colorTol: 6, stableFrames: 5 };
+export const CAPTURE_LIMITS: CaptureLimits = { pitch: 10, sharpMin: 150, brightTol: 12, brightMin: 40, brightMax: 85, eyeMinPx: 80, colorTol: 6, brightTol45: 18, colorTol45: 12, stableFrames: 5 };
 
 /** 촬영 조건 문구. 숫자 없이 한 줄 (기능 정의서 F-01) */
 export const SHOT_TEXT = {
@@ -185,6 +205,7 @@ export function shotGate(shotId: ShotId, m: ShotMeasure, limits: CaptureLimits =
   const shot = SHOTS.find((s) => s.id === shotId);
   if (!shot) throw new Error(`알 수 없는 촬영 장: ${shotId}`);
   const stableCount = m.stableCount ?? 0;
+  const side = shotId === "left_45" || shotId === "right_45";   // 45° 장은 밝기·색 허용 차가 넓다 (brightTol45·colorTol45)
   const fail = (firstFail: GateFail, key: ShotTextKey): GateResult => ({ ok: false, firstFail, text: SHOT_TEXT[key], stableCount });
 
   if (!m.faceDetected) return fail("face", "none");
@@ -216,12 +237,13 @@ export function shotGate(shotId: ShotId, m: ShotMeasure, limits: CaptureLimits =
   if (typeof m.foreheadL === "number" && m.foreheadL > limits.brightMax) return fail("bright", "bright_high");
   if (typeof m.baselineL === "number" && typeof m.foreheadL === "number") {
     const d = m.foreheadL - m.baselineL;
-    if (d < -limits.brightTol) return fail("bright", "bright_low");
-    if (d > limits.brightTol) return fail("bright", "bright_high");
+    const tol = side ? limits.brightTol45 : limits.brightTol;
+    if (d < -tol) return fail("bright", "bright_low");
+    if (d > tol) return fail("bright", "bright_high");
   }
   if (m.foreheadAb && m.baselineAb) {
     const dab = Math.hypot(m.foreheadAb.a - m.baselineAb.a, m.foreheadAb.b - m.baselineAb.b);
-    if (dab > limits.colorTol) return fail("color", "color");
+    if (dab > (side ? limits.colorTol45 : limits.colorTol)) return fail("color", "color");
   }
   if (stableCount < limits.stableFrames) return fail("stable", "stable");
   return { ok: true, firstFail: null, text: SHOT_TEXT.ready, stableCount };

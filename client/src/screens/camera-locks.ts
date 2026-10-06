@@ -31,23 +31,67 @@ export interface LockReport {
   maxWidth: number | null;
   maxHeight: number | null;
   label: string;
+  /** 잠금이 던진 오류 (항목 → 메시지). 기기별 원인 추적용 */
+  errors?: Partial<Record<"whiteBalanceMode" | "exposureMode" | "focusMode", string>>;
 }
+
+/** 카메라가 지금 실제로 쓰는 값 (진단용). 없는 항목은 빠진다 */
+export function camSnapshot(track: TrackLike): Record<string, unknown> {
+  const s = track.getSettings ? track.getSettings() : {};
+  const keep = ["exposureMode", "exposureTime", "iso", "exposureCompensation", "whiteBalanceMode", "colorTemperature", "focusMode", "focusDistance", "zoom", "width", "height", "frameRate"];
+  return Object.fromEntries(keep.filter((k) => s[k] !== undefined).map((k) => [k, s[k]]));
+}
+
+type LockKey = "whiteBalanceMode" | "exposureMode" | "focusMode";
+
+/**
+ * 기본으로 잠그는 항목 — **아무것도 잠그지 않는다** (2026-10-01 #267). 카메라는 자동 그대로, 조명 차이는 이마·흰자 기준과 촬영 조건이 막는다.
+ * 기기가 알려 주는 "지금 값" 을 믿을 수 없는 경우가 계속 나왔다:
+ *  - S26 Ultra: 자동일 때 늘 노출 33ms·ISO 250·색온도 0·초점 0 (가짜) → 노출 잠금이 오히려 흔들림 (9/30 A/B, 정면 L* 차 켬 +7.5·+4.8 / 끔 0.0·+0.3)
+ *  - Windows 크롬 웹캠: 색온도를 실제와 다르게 알려 줘서 색 고정을 걸면 화면이 파래짐 (② 웹캠·팀원 웹캠, #267)
+ * 잠그지 않아도 색 흔들림은 기준 안 (S26 B 회차 dAB ≤ 3.2, 정면 기준 6). iPhone 은 원래 잠금이 안 되는데도 잘 찍혔다. 정의서도 웹은 exposureLocked=false.
+ * 비교용으로 ALL_LOCKS 나 항목을 직접 넘길 수 있다 (주소 ?lock=all|wb|wbfocus).
+ */
+export const DEFAULT_LOCKS: readonly LockKey[] = [];
+/** 비교 시험용 — 전부 잠금 (?lock=all) */
+export const ALL_LOCKS: readonly LockKey[] = ["whiteBalanceMode", "exposureMode", "focusMode"];
+
+/**
+ * 'manual' 로 바꿀 때 **지금 값을 같이 넘기는** 칸. 'manual' 만 보내면 Android Chrome 은 기본 노출 시간·색온도로 바꿔
+ * 화면이 하얗게 날아간다 (2026-09-30 Android 실기기: 켜고 1.5초 뒤 확 밝아짐). 지금 값을 못 읽으면 잠그지 않는다
+ */
+const LOCK_VALUE: Record<"whiteBalanceMode" | "exposureMode" | "focusMode", readonly string[]> = {
+  exposureMode: ["exposureTime", "iso", "exposureCompensation"],
+  whiteBalanceMode: ["colorTemperature"],
+  focusMode: ["focusDistance"],
+};
 
 /**
  * 기준 촬영 4장 동안 색이 안 흔들리게 WB·노출·초점을 'manual' 로 잠근다.
- * 순서: 1) 'continuous' 로 두고 안정될 시간을 준 뒤(호출 쪽) 2) 이 함수로 'manual' 전환.
- * manual 이 지원 목록에 없으면 건너뛴다. applyConstraints 가 throw 하면 failed.
+ * 순서: 1) 'continuous' 로 두고 안정될 시간을 준 뒤(호출 쪽) 2) 이 함수로 'manual' 전환 — **그 순간의 값(getSettings)을 그대로 고정**.
+ * manual 이 지원 목록에 없거나, 지금 값을 못 읽으면(노출 시간·색온도) 건너뛴다. applyConstraints 가 throw 하면 failed.
  */
-export async function applyCameraLocks(track: TrackLike): Promise<LockReport> {
+export async function applyCameraLocks(track: TrackLike, only: readonly LockKey[] = DEFAULT_LOCKS): Promise<LockReport> {
   const caps: CameraCaps = track.getCapabilities ? track.getCapabilities() : {};
   const capsSupported = !!track.getCapabilities;
+  const errors: NonNullable<LockReport["errors"]> = {};
   const tryLock = async (key: "whiteBalanceMode" | "exposureMode" | "focusMode"): Promise<LockReport["whiteBalance"]> => {
+    if (!only.includes(key)) return "unsupported";
     const modes = caps[key];
     if (!modes || !modes.includes("manual")) return "unsupported";
+    const now = track.getSettings ? track.getSettings() : {};
+    const values: Record<string, unknown> = {};
+    // 0 은 "모름" — S26 Ultra 는 자동일 때 colorTemperature·focusDistance 를 0 으로 알려 주고, 0 을 넘기면 범위 밖으로 거절된다 (2026-09-30)
+    for (const k of LOCK_VALUE[key]) { const v = now[k]; if (typeof v === "number" && Number.isFinite(v) && (v > 0 || k === "exposureCompensation")) values[k] = v; }
+    // 노출은 노출 시간, WB 는 색온도를 꼭 알아야 한다 — 모르면 'manual' 이 기본값으로 튄다
+    if (key === "exposureMode" && !("exposureTime" in values)) return "unsupported";
+    if (key === "whiteBalanceMode" && !("colorTemperature" in values)) return "unsupported";
+    if (key === "focusMode" && !("focusDistance" in values)) return "unsupported";
     try {
-      await track.applyConstraints({ advanced: [{ [key]: "manual" }] });
+      await track.applyConstraints({ advanced: [{ [key]: "manual", ...values }] });
       return "locked";
-    } catch {
+    } catch (e) {
+      errors[key] = String(e).slice(0, 120);
       return "failed";
     }
   };
@@ -59,10 +103,14 @@ export async function applyCameraLocks(track: TrackLike): Promise<LockReport> {
     maxWidth: caps.width?.max ?? null,
     maxHeight: caps.height?.max ?? null,
     label: track.label ?? "",
+    ...(Object.keys(errors).length ? { errors } : {}),
   };
 }
 
-/** 잠금을 다시 자동으로 (촬영이 끝나면) */
+/**
+ * 잠금을 다시 자동으로. **카메라를 켤 때(앞 세션·다른 화면이 남긴 잠금 풀기)와 끌 때 둘 다** 부른다 (#267).
+ * PC 웹캠은 설정을 기기에 저장해서, 안 풀면 다음에 열어도 잠긴 채(하얗게·파랗게) 시작한다
+ */
 export async function releaseCameraLocks(track: TrackLike): Promise<void> {
   const caps: CameraCaps = track.getCapabilities ? track.getCapabilities() : {};
   const adv: Record<string, string>[] = [];

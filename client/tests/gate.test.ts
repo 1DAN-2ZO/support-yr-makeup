@@ -1,7 +1,7 @@
 // 화면 4 품질 게이트 (2-1 셋째 조각, #21) 검증
 // 정의서 3-3·3-7: 안 맞는 조건 하나만 한 줄, 숫자 없음. 순서 = 얼굴 → 정면 → 기준 각도 차 → 부위 보임 → 가림 → 선명 → 밝기 → 색 → 안정
 import { describe, expect, it } from "vitest";
-import { GATE_TEXT, LIVE_LIMITS, evaluateGate, gateStep, poseOf, type LiveMeasure } from "@core/gate";
+import { GATE_TEXT, LIVE_LIMITS, evaluateGate, gateStep, poseOf, softFail, type LiveMeasure } from "@core/gate";
 import { yawFromLandmarks } from "@core/capture-measure";
 import { CAPTURE_LIMITS } from "@core/flow";
 import { PARAMS } from "@core/score";
@@ -20,7 +20,7 @@ const good = (over: { [K in keyof LiveMeasure]?: LiveMeasure[K] | undefined } = 
 };
 
 describe("evaluateGate", () => {
-  it("V1 다 맞고 5프레임 안정이면 통과 — '확인받을 준비 됨'", () => {
+  it("V1 다 맞고 안정 프레임 수를 채우면 통과 — '확인받을 준비 됨'", () => {
     const r = evaluateGate("liner", good());
     expect(r).toEqual({ ok: true, firstFail: null, text: GATE_TEXT.ready, stableCount: 5 });
     expect(r.text).toBe("확인받을 준비 됨");
@@ -37,10 +37,14 @@ describe("evaluateGate", () => {
     expect(evaluateGate("liner", good({ sharpness: Infinity })).firstFail).toBe("face");
   });
 
-  it("V4 정면이 아니면 angle — 어두운 것보다 먼저 말한다", () => {
-    const r = evaluateGate("liner", good({ yaw: 30, foreheadL: 20 }));
+  it("V4 정면이 아니면 angle — 어두운 것보다 먼저, **어느 쪽으로** 돌리면 되는지 말한다 (폰 시험 2026-09-30)", () => {
+    const r = evaluateGate("liner", good({ yaw: 30, baseYaw: 30, foreheadL: 20 }));
     expect(r.firstFail).toBe("angle");
-    expect(r.text).toBe("조금만 정면으로");
+    // 방향은 화면 1 과 같은 기준: yaw 가 + 면 "왼쪽으로" (flow.ts left_45 = yaw 음수 = "고개를 왼쪽으로")
+    expect(r.text).toBe(GATE_TEXT.turnLeft);
+    expect(evaluateGate("liner", good({ yaw: -30, baseYaw: -30 })).text).toBe(GATE_TEXT.turnRight);
+    expect(evaluateGate("lip", good({ pitch: 12, basePitch: 12 })).text).toBe(GATE_TEXT.tiltUp);
+    expect(evaluateGate("lip", good({ pitch: -12, basePitch: -12 })).text).toBe(GATE_TEXT.tiltDown);
   });
 
   it("V4b 얼굴이 45° 넘게 누우면(자동 회전 꺼짐) 가장 먼저 — 눈 부위는 '자동 회전을 켜', 세로 부위는 '세로로 들어' (#204)", () => {
@@ -63,6 +67,14 @@ describe("evaluateGate", () => {
     for (const p of ["lip", "cheek", "contour"] as const) expect(evaluateGate(p, good({ screen: "portrait" })).ok).toBe(true);
   });
 
+  it("V4d 입술·볼·쉐딩은 세로 화면에서만 — 가로면 '폰을 세로로 돌려 주세요' 로 막는다 (2026-10-01)", () => {
+    for (const p of ["lip", "cheek", "contour"] as const) {
+      const r = evaluateGate(p, good({ screen: "landscape" }));
+      expect(r.firstFail).toBe("angle");
+      expect(r.text).toBe(GATE_TEXT.toPortrait);
+    }
+  });
+
   it("V5 정면 한계: yaw ±15°, pitch ±10°", () => {
     expect(evaluateGate("lip", good({ yaw: 14, baseYaw: 14 })).ok).toBe(true);
     expect(evaluateGate("lip", good({ yaw: -16, baseYaw: -16 })).firstFail).toBe("angle");
@@ -70,19 +82,32 @@ describe("evaluateGate", () => {
     expect(evaluateGate("lip", good({ pitch: 11, basePitch: 11 })).firstFail).toBe("angle");
   });
 
-  it("V6 기준 사진과 각도가 yaw 8° · pitch 6° 넘게 다르면 pose_diff. 기준이 없으면 건너뛴다", () => {
-    expect(evaluateGate("liner", good({ yaw: 9 })).firstFail).toBe("pose_diff");
-    expect(evaluateGate("liner", good({ pitch: -7 })).firstFail).toBe("pose_diff");
-    expect(evaluateGate("liner", good({ yaw: 7, pitch: 5 })).ok).toBe(true);
-    expect(evaluateGate("liner", good({ yaw: 9, baseYaw: undefined, basePitch: undefined })).ok).toBe(true);
-    expect(evaluateGate("liner", good({ yaw: 9 })).text).toBe("처음 찍을 때와 같은 각도로 봐 주세요");
+  it("V6 기준 사진과 각도가 yaw 12° · pitch 10° 넘게 다르면 pose_diff (#235: 8° · 6° 에서 완화). 기준이 없으면 건너뛴다", () => {
+    expect(evaluateGate("liner", good({ yaw: 13 })).firstFail).toBe("pose_diff");
+    // 위아래는 기준이 정면이면 절대 각도(10°)가 먼저 걸리니, 기준을 숙인 채로
+    expect(evaluateGate("liner", good({ pitch: 0, basePitch: 11 })).firstFail).toBe("pose_diff");
+    expect(evaluateGate("liner", good({ yaw: 11, pitch: 9 })).ok).toBe(true);
+    expect(evaluateGate("liner", good({ pitch: 0, basePitch: 9 })).ok).toBe(true);
+    expect(evaluateGate("liner", good({ yaw: 13, baseYaw: undefined, basePitch: undefined })).ok).toBe(true);
+    expect(evaluateGate("liner", good({ yaw: 13 })).text).toBe(GATE_TEXT.turnLeft);
+    expect(evaluateGate("liner", good({ yaw: -13 })).text).toBe(GATE_TEXT.turnRight);
+    expect(evaluateGate("liner", good({ pitch: 0, basePitch: -11 })).text).toBe(GATE_TEXT.tiltUp);
+    expect(evaluateGate("liner", good({ pitch: 0, basePitch: 11 })).text).toBe(GATE_TEXT.tiltDown);
+  });
+
+  it("V6c 강체 각도 차(이미지 좌표, 코끝이 이미지 오른쪽이면 +)는 거울 기준으로 바꿔 방향을 말한다", () => {
+    expect(evaluateGate("liner", good({ poseDiff: { yaw: -13, pitch: 0 } })).text).toBe(GATE_TEXT.turnLeft);
+    expect(evaluateGate("liner", good({ poseDiff: { yaw: 13, pitch: 0 } })).text).toBe(GATE_TEXT.turnRight);
+    expect(evaluateGate("liner", good({ poseDiff: { yaw: 0, pitch: 11 } })).text).toBe(GATE_TEXT.tiltUp);
+    expect(evaluateGate("liner", good({ poseDiff: { yaw: 0, pitch: -11 } })).firstFail).toBe("pose_diff");
+    expect(evaluateGate("liner", good({ poseDiff: { yaw: 11, pitch: -9 } })).ok).toBe(true);
   });
 
   it("V6b 표정이 맨얼굴 때와 많이 다르면 expr_diff — 각도 차 다음, 부위 보임보다 먼저 (#27)", () => {
     const r = evaluateGate("lip", good({ exprDiff: LIVE_LIMITS.exprTol + 0.01, partVisible: false }));
     expect(r.firstFail).toBe("expr_diff");
     expect(r.text).toBe("처음 찍을 때처럼 편한 표정으로 있어 주세요");
-    expect(evaluateGate("lip", good({ exprDiff: LIVE_LIMITS.exprTol + 0.01, yaw: 9 })).firstFail).toBe("pose_diff");
+    expect(evaluateGate("lip", good({ exprDiff: LIVE_LIMITS.exprTol + 0.01, yaw: 13 })).firstFail).toBe("pose_diff");
     expect(evaluateGate("lip", good({ exprDiff: LIVE_LIMITS.exprTol })).ok).toBe(true);
     expect(evaluateGate("lip", good({ exprDiff: undefined })).ok).toBe(true);
   });
@@ -131,19 +156,47 @@ describe("evaluateGate", () => {
     expect(off.text).toBe(GATE_TEXT.readyColor);
     expect(evaluateGate("liner", good({ foreheadAb: { a: 12, b: 16 + LIVE_LIMITS.colorTol - 1 } })).text).toBe(GATE_TEXT.ready);
     // 다른 조건에 걸려 있으면 그 문구가 먼저
-    expect(evaluateGate("liner", good({ foreheadAb: { a: 12, b: 30 }, stableCount: 2 })).firstFail).toBe("stable");
+    expect(evaluateGate("liner", good({ foreheadAb: { a: 12, b: 30 }, stableCount: 1 })).firstFail).toBe("stable");
   });
 
-  it("V13 안정 5프레임 전에는 '잠시만 그대로'", () => {
-    const r = evaluateGate("liner", good({ stableCount: 4 }));
+  it("V13 안정 2프레임 전에는 '잠시만 그대로' (#235: 5 에서 완화 — 확인받기 뒤 여러 장을 모아서 누르는 순간 완벽할 필요 없음)", () => {
+    expect(LIVE_LIMITS.stableFrames).toBe(2);
+    const r = evaluateGate("liner", good({ stableCount: 1 }));
     expect(r.firstFail).toBe("stable");
     expect(r.text).toBe("잠시만 그대로");
-    expect(r.stableCount).toBe(4);
+    expect(r.stableCount).toBe(1);
+    expect(evaluateGate("liner", good({ stableCount: 2 })).ok).toBe(true);
   });
 
   it("V14 없는 측정값은 그 조건을 건너뛴다", () => {
     const r = evaluateGate("liner", { faceDetected: true, yaw: 0, pitch: 0, stableCount: 5 });
     expect(r.ok).toBe(true);
+  });
+});
+
+describe("softFail", () => {
+  it("W1 기다리면 확인받기를 켜 주는 조건은 정면 각도·기준 각도 차·안정뿐 (#235) — 채점이 스스로 처리하는 것", () => {
+    const soft = (over: Parameters<typeof good>[0], part: "liner" | "lip" = "liner") => softFail(evaluateGate(part, good(over)));
+    expect(soft({ yaw: 16, baseYaw: 16 })).toBe(true);        // 정면 각도
+    expect(soft({ pitch: 11, basePitch: 11 })).toBe(true);
+    expect(soft({ yaw: 13 })).toBe(true);                      // 기준 각도 차
+    expect(soft({ stableCount: 1 })).toBe(true);               // 안정
+  });
+
+  it("W2 찍어도 채점 못 하는 사진은 아무리 기다려도 막는다 — 얼굴 없음·부위 밖·가림·표정·선명·밝기 · 가로 돌리기·자동 회전(팀 협의)", () => {
+    const soft = (over: Parameters<typeof good>[0], part: "liner" | "lip" = "liner") => softFail(evaluateGate(part, good(over)));
+    expect(soft({ faceDetected: false })).toBe(false);
+    expect(soft({ screen: "portrait" })).toBe(false);          // 눈 부위 세로 → 가로로 돌려
+    expect(soft({ roll: 80 })).toBe(false);                    // 누운 얼굴 → 자동 회전
+    expect(soft({ roll: 80 }, "lip")).toBe(false);             // 세로로 들어 주세요
+    expect(soft({ screen: "landscape" }, "lip")).toBe(false);  // 입술을 가로 → 세로로 돌려
+    expect(soft({ partVisible: false })).toBe(false);
+    expect(soft({ occluded: true })).toBe(false);
+    expect(soft({ exprDiff: 1 }, "lip")).toBe(false);
+    expect(soft({ sharpness: 10 })).toBe(false);
+    expect(soft({ foreheadL: 95, baselineL: 95 })).toBe(false); // 절대 밝기
+    expect(soft({ foreheadL: 62 + LIVE_LIMITS.brightTol + 1 })).toBe(false); // 밝기 차
+    expect(softFail(evaluateGate("liner", good()))).toBe(false); // 통과는 막힌 게 아님
   });
 });
 
@@ -158,7 +211,7 @@ describe("gateStep", () => {
       oks.push(r.gate.ok);
     }
     expect(stable).toBe(5);
-    expect(oks).toEqual([false, false, false, false, false, false, false, true]);
+    expect(oks).toEqual([false, true, false, false, true, true, true, true]);
   });
 
   it("S2 넘긴 stableCount 는 무시하고 스스로 센다", () => {

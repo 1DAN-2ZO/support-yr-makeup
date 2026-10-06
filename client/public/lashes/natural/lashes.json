@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "design": "photo-natural",
+  "note": "reference/eyelash/natural/front 참고 사진 기반. lower는 참고 사진이 없어 수동 자산(임시). scripts/gen_photo_lash.py가 만든다. 숫자는 1차 추정치 — 실기기로 다시 맞춘다.",
+  "uMin": 0,
+  "uMax": 1,
+  "textures": {
+    "up": {
+      "file": "upper-up.png",
+      "vMin": -0.0975,
+      "vMax": 0.34
+    },
+    "mid": {
+      "file": "upper-mid.png",
+      "vMin": -0.1426,
+      "vMax": 0.34
+    },
+    "down": {
+      "file": "upper-down.png",
+      "vMin": -0.4735,
+      "vMax": 0.1265
+    },
+    "lower": {
+      "file": "lower.png",
+      "vMin": -0.04,
+      "vMax": 0.2
+    }
+  }
+}

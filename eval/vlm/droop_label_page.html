@@ -1,0 +1,74 @@
+<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width, initial-scale=1"><title>처진 눈 표시</title>
+<!-- droop_label.py --sheet 가 문항을 채운다. 사진이 들어가므로 만든 파일은 DHE_DATA_DIR 에만 둔다 -->
+<style>
+:root { --bg:#f6f7f5; --paper:#fff; --fg:#1c2320; --muted:#5b6661; --line:#d9dfdb; --accent:#2f6b5a; --soft:#e3efe9; }
+@media (prefers-color-scheme: dark) { :root { --bg:#141816; --paper:#1b201e; --fg:#e4e9e6; --muted:#9aa6a0; --line:#2e3633; --accent:#7cc1aa; --soft:#1f3029; color-scheme: dark; } }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.6 "Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif; }
+.wrap { max-width:1000px; margin:0 auto; padding:0 16px 80px; }
+h1 { font-size:24px; margin:24px 0 8px; }
+.guide { background:var(--paper); border:1px solid var(--line); border-radius:10px; padding:12px 18px; margin:12px 0 16px; }
+.bar { position:sticky; top:0; z-index:5; background:var(--bg); border-bottom:1px solid var(--line); padding:10px 0; display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; }
+.bar input { font:inherit; padding:4px 8px; border:1px solid var(--line); border-radius:6px; background:var(--paper); color:var(--fg); }
+.bar .prog { flex:1 1 200px; height:8px; background:var(--line); border-radius:99px; overflow:hidden; }
+.bar .prog i { display:block; height:100%; width:0; background:var(--accent); }
+section { background:var(--paper); border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin:12px 0; }
+section.done { border-color:var(--accent); }
+section h2 { font-size:15px; margin:0 0 8px; } .id { color:var(--muted); font-weight:400; font-family:Consolas,monospace; }
+.row { display:grid; grid-template-columns:200px 1fr; gap:12px; align-items:center; }
+.row img { width:100%; border-radius:8px; display:block; }
+.pick { display:flex; gap:8px; justify-content:center; margin-top:10px; flex-wrap:wrap; }
+.pick label { border:1px solid var(--line); border-radius:8px; padding:8px 20px; cursor:pointer; user-select:none; }
+.pick input { margin-right:6px; }
+.pick label:has(input:checked) { border-color:var(--accent); background:var(--soft); font-weight:600; }
+button { font:inherit; padding:8px 14px; border-radius:8px; border:1px solid var(--accent); background:var(--accent); color:var(--paper); cursor:pointer; }
+@media (max-width:620px) { .row { grid-template-columns:1fr; } .row .whole { max-width:180px; } }
+</style>
+<div class=wrap>
+<h1>처진 눈 표시</h1>
+<div class=guide>
+  <p>사진마다 얼굴과 두 눈 확대가 있습니다. <b>처진 눈으로 보이는지</b> 골라 주세요. 눈꼬리 각도·윗꺼풀 모양·전체 인상 무엇으로 판단해도 됩니다 — 평소 "처진 눈" 이라고 부를 눈인지만. 모르겠으면 <b>애매</b>. 모두 {{COUNT}}장, 5분 정도.</p>
+  <p>다 하면 맨 아래 <b>결과 파일 받기</b>. 입력은 자동 저장됩니다.</p>
+</div>
+<div class=bar><label>이름 <input id=who autocomplete=off></label><span id=count>0 / {{COUNT}}</span><span class=prog><i id=bar></i></span></div>
+{{CARDS}}
+<p><button id=save>결과 파일 받기</button></p>
+</div>
+<script>
+const KEY = 'droop-label';
+const secs = [...document.querySelectorAll('section[data-id]')];
+function collect() {
+  const labels = {};
+  secs.forEach((s) => { const c = s.querySelector('input:checked'); labels[s.dataset.id] = c ? c.value : null; });
+  return { who: document.getElementById('who').value.trim(), labels };
+}
+function refresh() {
+  const r = collect();
+  let done = 0;
+  secs.forEach((s) => { const ok = !!r.labels[s.dataset.id]; s.classList.toggle('done', ok); done += ok; });
+  document.getElementById('count').textContent = done + ' / ' + secs.length;
+  document.getElementById('bar').style.width = (100 * done / secs.length) + '%';
+  try { localStorage.setItem(KEY, JSON.stringify(r)); } catch (e) {}
+}
+try {
+  const r = JSON.parse(localStorage.getItem(KEY) || 'null');
+  if (r) {
+    document.getElementById('who').value = r.who || '';
+    for (const [k, v] of Object.entries(r.labels || {})) {
+      if (!v) continue;
+      const x = document.querySelector('input[name="' + k + '"][value="' + v + '"]');
+      if (x) x.checked = true;
+    }
+  }
+} catch (e) {}
+refresh();
+document.addEventListener('change', refresh);
+document.addEventListener('input', refresh);
+document.getElementById('save').addEventListener('click', () => {
+  const r = collect();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(r, null, 1)], { type: 'application/json' }));
+  a.download = 'labels-' + (r.who || 'noname') + '.json';
+  document.body.appendChild(a); a.click(); a.remove();
+});
+</script>
