@@ -78,7 +78,7 @@ export function partGuideSlot<S>(deps: PartGuideSlotDeps): Screen<S> {
       if (!part) return;
       const box = frame(ctx as ScreenContext<unknown>, `4 부위 가이드 — ${PART_NAME[part]}`, "②", [
         "정답사진을 이 부위로 자른 정지 사진",
-        "그 위에 점 · 선 — 어디에, 얼마나 그릴지 (③ 의 부위별 떠내기)",
+        "그 위에 점 · 선 — 어디에, 얼마나 그릴지 (①②④ 가 정답사진에서 떠낸 부위별 칠한 자리)",
       ]);
       const next = nextGuidePart(part);
       box.append(nextButton(next ? `다음 — ${PART_NAME[next]}` : "다음 — 시도사진 찍기", () => {
