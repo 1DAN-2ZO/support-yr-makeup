@@ -11,6 +11,7 @@ import { LOOKS } from "../core/looks";
 import type { CaptureBundle, JobStatus, LookJob, PartId, PartResult, Versions } from "../core/types";
 import { doneScreen } from "./done";
 import { colorPalette } from "./color-palette";
+import { slotScreen } from "./flow-slots";
 import { fullRenderScreen } from "./fullrender";
 import { guideScreen } from "./guide";
 import { DEMO_REF_COLORS } from "./ref-demo";
@@ -67,6 +68,9 @@ const ctx = (screen: string): ScreenContext<null> => ({
 let lookId: string | null = "edgy";
 
 const SCREENS: Record<string, () => Promise<Screen<null>>> = {
+  "참고 사진 올리기": async () => slotScreen<null>({
+    title: "참고 사진 · 정답사진", owner: "⑤", todo: [], next: "partguide",
+  }),
   "색조 팔레트": async () => ({
     mount(c) {
       const wrap = document.createElement("div");

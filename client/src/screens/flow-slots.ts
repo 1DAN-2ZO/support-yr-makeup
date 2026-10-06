@@ -8,7 +8,11 @@ import { nextGuidePart } from "@core/screens";
 import { PART_NAME } from "@core/score";
 import type { PartId } from "@core/types";
 import { colorPalette } from "./color-palette";
+import { analyzeRefPhoto, REF_FAIL_TEXT } from "./ref-analyze";
+import type { RefAnalysis } from "./ref-analyze";
 import { DEMO_REF_COLORS } from "./ref-demo";
+import { getRefColors, setRefColors } from "./ref-store";
+import type { RefFailure } from "./ref-analyze";
 import type { Screen, ScreenContext } from "./shell";
 
 export interface SlotSpec {
@@ -16,6 +20,11 @@ export interface SlotSpec {
   owner: string;
   todo: readonly string[];
   next: ScreenId;
+}
+
+export interface SlotDeps {
+  /** 참고 사진을 재는 함수. 안 주면 진짜 분석기 — 테스트에서 가짜로 바꿔 끼운다 */
+  analyze?: (file: File) => Promise<RefAnalysis | RefFailure>;
 }
 
 export interface PartGuideSlotDeps {
@@ -99,17 +108,39 @@ function resetPage(root: HTMLElement): void {
   root.replaceChildren(logo());
 }
 
-function uploadCard(): HTMLElement {
-  const card = document.createElement("div");
+/**
+ * 참고 사진 업로드. label 로 감싸서 칸 아무 데나 눌러도 사진 고르는 창이 열린다.
+ * 고른 사진은 미리보기로 바꿔 보여 준다 — 서버로 보내지 않는다.
+ */
+function uploadCard(previewUrl: string | null, onPick: (file: File) => void): HTMLElement {
+  const card = document.createElement("label");
   card.className = "slot-upload";
-  card.innerHTML = `
-    <div class="slot-upload-main">
-      <span aria-hidden="true"></span>
-      <strong>참고 사진 업로드</strong>
-      <em>정면 사진이면 가장 좋아요</em>
-    </div>
-  `;
+  card.innerHTML = previewUrl
+    ? `<div class="slot-upload-main has-photo"><img src="${previewUrl}" alt="올린 참고 사진" /><b>다른 사진으로 바꾸기</b></div>`
+    : `<div class="slot-upload-main">
+         <span aria-hidden="true"></span>
+         <strong>참고 사진 업로드</strong>
+         <em>정면 사진이면 가장 좋아요</em>
+       </div>`;
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/*";
+  input.className = "slot-upload-input";
+  input.addEventListener("change", () => {
+    const f = input.files?.[0];
+    if (f) onPick(f);
+  });
+  card.append(input);
   return card;
+}
+
+/** 사진을 못 읽었을 때 한 줄 안내 */
+function uploadWarn(text: string): HTMLElement {
+  const el = document.createElement("p");
+  el.className = "slot-upload-warn";
+  el.setAttribute("role", "status");
+  el.textContent = text;
+  return el;
 }
 
 function loadingCard(): HTMLElement {
@@ -123,11 +154,12 @@ function loadingCard(): HTMLElement {
   return card;
 }
 
-function answerPhotoCard(): HTMLElement {
+function answerPhotoCard(previewUrl?: string): HTMLElement {
   const card = document.createElement("div");
   card.className = "slot-answer-photo";
   card.innerHTML = `
-    <div class="slot-answer-photo-frame">
+    <div class="slot-answer-photo-frame${previewUrl ? " has-ref" : ""}">
+      ${previewUrl ? `<img class="slot-answer-ref" src="${previewUrl}" alt="올린 참고 사진" />` : ""}
       <span class="slot-answer-face" aria-hidden="true"></span>
       <span class="slot-answer-line one" aria-hidden="true"></span>
       <span class="slot-answer-line two" aria-hidden="true"></span>
@@ -144,7 +176,9 @@ function guideMock(part: PartId): HTMLElement {
   const sample = SAMPLE_COLOR[part];
   // 참고 사진에서 읽은 색이 있으면 그걸 쓴다 — 팔레트 화면과 같은 색을 말해야 한다.
   // 없는 부위(쉐딩)나 사진에서 못 읽은 부위는 견본 값으로 둔다
-  const read = part === "contour" ? undefined : DEMO_REF_COLORS[part];
+  // 이번에 올린 사진에서 읽은 색. 없으면(새로고침 등) 견본으로 돌아간다
+  const colors = getRefColors() ?? DEMO_REF_COLORS;
+  const read = part === "contour" ? undefined : colors[part];
   const hex = read?.hex ?? sample.hex;
   const name = read ? `${read.name.text} 계열` : sample.name;
   const card = document.createElement("div");
@@ -193,25 +227,40 @@ function saveCard(): HTMLElement {
   return card;
 }
 
-export function slotScreen<S>(spec: SlotSpec): Screen<S> {
+export function slotScreen<S>(spec: SlotSpec, deps: SlotDeps = {}): Screen<S> {
+  const analyze = deps.analyze ?? analyzeRefPhoto;
   return {
     mount(ctx: ScreenContext<S>) {
       const root = page(`slot-${spec.next === "partguide" ? "answer" : spec.next}`);
-      let loadingTimer: number | null = null;
+      let alive = true;
+      let previewUrl: string | null = null;
       if (spec.next === "partguide") {
-        const renderUpload = () => {
+        let picked: File | null = null;
+        const dropPreview = () => {
+          if (previewUrl) URL.revokeObjectURL(previewUrl);
+          previewUrl = null;
+        };
+        const renderUpload = (warn?: string) => {
           resetPage(root);
+          const apply = button("적용하기", () => {
+            if (!picked) return;
+            ctx.log.log({ name: "button", button: "answer_apply" });
+            void run(picked);
+          });
+          apply.disabled = !picked;
           root.append(
             testMeta(spec.title, spec.owner, spec.todo),
             coach("따라 하고 싶은 화장 사진을 먼저 올려 주세요"),
             title("참고 사진 · 정답사진", "참고 사진을 올리면 정답사진을 만들어드릴게요"),
-            uploadCard(),
-            button("적용하기", () => {
-              ctx.log.log({ name: "button", button: "answer_apply" });
-              renderLoading();
-              loadingTimer = window.setTimeout(renderAnswer, 900);
+            uploadCard(previewUrl, (f) => {
+              dropPreview();
+              picked = f;
+              previewUrl = URL.createObjectURL(f);
+              renderUpload();
             }),
           );
+          if (warn) root.append(uploadWarn(warn));
+          root.append(apply);
         };
         const renderLoading = () => {
           resetPage(root);
@@ -221,19 +270,37 @@ export function slotScreen<S>(spec: SlotSpec): Screen<S> {
             loadingCard(),
           );
         };
-        const renderAnswer = () => {
-          if (loadingTimer !== null) {
-            window.clearTimeout(loadingTimer);
-            loadingTimer = null;
+        /** 사진 한 장을 재서 색조 팔레트까지. 이 폰 안에서만 돈다 */
+        const run = async (file: File): Promise<void> => {
+          renderLoading();
+          let res: RefAnalysis | string;
+          try {
+            res = await analyze(file);
+          } catch {
+            res = "noCanvas";
           }
+          if (!alive) return;
+          if (typeof res === "string") {
+            ctx.log.log({ name: "button", button: `answer_fail:${res}` });
+            renderUpload(REF_FAIL_TEXT[res as keyof typeof REF_FAIL_TEXT]);
+            return;
+          }
+          setRefColors(res.colors);
+          renderAnswer(res);
+        };
+        const renderAnswer = (res: RefAnalysis) => {
           resetPage(root);
+          const read = Object.keys(res.colors).length;
           root.append(
             testMeta(spec.title, spec.owner, spec.todo),
             coach("정답사진이 완성됐어요. 이제 부위별로 따라 해볼게요"),
             title("정답사진 완성", "이 사진을 기준으로 화장 가이드가 만들어져요"),
-            answerPhotoCard(),
-            // 색조 팔레트 — 지금은 더미. 업로드가 붙으면 analyzeRefPhoto() 결과로 바꾼다
-            colorPalette(DEMO_REF_COLORS, { step: "2.", title: "참고 사진의 색조 팔레트", note: "올려 주신 사진에서 읽은 색이에요" }),
+            answerPhotoCard(res.preview),
+            colorPalette(res.colors, {
+              step: "2.",
+              title: "참고 사진의 색조 팔레트",
+              note: read === 5 ? "올려 주신 사진에서 읽은 색이에요" : `올려 주신 사진에서 ${read}개 부위의 색을 읽었어요`,
+            }),
             action(ctx as ScreenContext<unknown>, "다음 · 화장 가이드 보기", spec.next),
           );
         };
@@ -243,7 +310,7 @@ export function slotScreen<S>(spec: SlotSpec): Screen<S> {
           testMeta(spec.title, spec.owner, spec.todo),
           coach("화장을 다 했다면 같은 조건으로 한 번 더 찍어 주세요"),
           title("시도사진 촬영", "눈 뜬 사진과 감은 사진 2장을 자동으로 찍어요"),
-          uploadCard(),
+          uploadCard(null, () => {}),
           action(ctx as ScreenContext<unknown>, "다음 · 피드백 확인하기", spec.next),
         );
       } else {
@@ -257,7 +324,8 @@ export function slotScreen<S>(spec: SlotSpec): Screen<S> {
       }
       ctx.root.append(root);
       return () => {
-        if (loadingTimer !== null) window.clearTimeout(loadingTimer);
+        alive = false;
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
       };
     },
   };

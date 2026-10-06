@@ -1939,3 +1939,60 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
 .color-palette-list li.unread .palette-text strong { color: #b0b0b0; font-weight: 700; font-size: 15px; }
 /* 필터 보관용 — 그림은 안 그리고 defs 만 들고 있다 */
 .palette-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+/* ───────── 참고 사진 업로드 ───────── */
+/* 파일 입력은 숨기고 칸 전체(label)를 누르게 한다 */
+.slot-upload-input {
+  position: absolute;
+  width: 1px; height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.slot-upload { cursor: pointer; }
+.slot-upload-main.has-photo {
+  position: relative;
+  min-height: 268px;
+  padding: 0;
+  overflow: hidden;
+  place-items: stretch;
+}
+.slot-upload-main.has-photo img {
+  width: 100%;
+  height: 100%;
+  min-height: 268px;
+  object-fit: cover;
+  display: block;
+}
+.slot-upload-main.has-photo b {
+  position: absolute;
+  left: 50%; bottom: 14px;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(32, 32, 34, .62);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.slot-upload-warn {
+  margin: 10px 2px 0;
+  padding: 11px 14px;
+  border-radius: 12px;
+  background: #fff1f3;
+  color: #b4475c;
+  font-size: 13px;
+  line-height: 1.5;
+}
+/* 정답사진 자리에 올린 참고 사진을 깔아 둔다 */
+.slot-answer-ref {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  opacity: .9;
+}
+/* 진짜 사진이 있으면 자리표시용 얼굴 도형은 치운다 */
+.slot-answer-photo-frame.has-ref .slot-answer-face,
+.slot-answer-photo-frame.has-ref .slot-answer-line { display: none; }
+.slot-answer-photo-frame.has-ref .slot-answer-ref { opacity: 1; }
