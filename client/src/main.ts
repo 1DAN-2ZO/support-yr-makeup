@@ -49,6 +49,8 @@ import { loadLashes } from "./screens/lash-assets";
 import { reviewScreen, type ReviewDeps } from "./screens/review";
 import { startReviewShot } from "./screens/review-shot";
 import { createShell } from "./screens/shell";
+import { partGuideSlot, saveSlot, slotScreen, type PartGuideSlotDeps, type SaveSlotDeps } from "./screens/flow-slots";
+import { inNewFlow } from "./core/screens";
 
 /** 카메라를 못 여는 환경이면 맨 위에 띄운다. 흐름은 막지 않는다 */
 function showWarning(c: SecureCheck): void {
@@ -102,8 +104,8 @@ async function boot(): Promise<void> {
   // 복원 중에는 모델을 받느라 몇 초 걸린다 — 빈 화면 대신 한 줄 (shell.render 가 지운다)
   el("screen").textContent = "준비하고 있어요…";
   session = await restore(sessionStore, events, session);
-  // 서버 처리 화면(Stable-Makeup 그림 기다리기)은 흐름에서 빠졌다 — 거기서 멈춘 세션은 화장 선택으로
-  if (session.screen === "processing") session = setScreen(session, "looks");
+  // 새 흐름(2026-10-06)에서 빠진 화면에 멈춘 세션은 가까운 새 화면으로 (화장 선택 · 2-b · 부위 화면 · 리뷰 → screens.inNewFlow)
+  if (inNewFlow(session.screen) !== session.screen) session = setScreen(session, inNewFlow(session.screen));
 
   const shell = createShell<Session>({
     root: el("screen"),
@@ -141,6 +143,19 @@ async function boot(): Promise<void> {
   // 끝내기가 지우고 남은 키 수. 0 이어야 한다 (F-11)
   let clearRemaining = 0;
 
+  // 끝내기 — 폰에 남은 사진 · 기록을 다 지운다 (F-11). 새 흐름 7 저장 · 공유와 옛 흐름 리뷰가 같이 쓴다
+  const clearAll = async (): Promise<Awaited<ReturnType<SessionStore["clearAll"]>>> => {
+    await saving;   // 저장 중인 draft·쌩얼이 지운 뒤에 써지지 않게
+    // 로그 저장소를 먼저 닫는다 — 안 닫으면 버퍼·시간 저장이 지운 뒤에 events 키를 다시 만든다
+    await logStore.clear();
+    const r = await sessionStore.clearAll();
+    clearRemaining = r.remaining;
+    return r;
+  };
+
+  // 새 흐름 뼈대 (2026-10-06) — 담당이 진짜 화면을 올리면 여기 등록만 바꾼다 (screens/flow-slots.ts)
+  registerFlowSlots(shell, { getPart: () => session.currentPart, clearAll });
+
   registerAll(
     shell,
     {
@@ -168,8 +183,8 @@ async function boot(): Promise<void> {
       },
       setFaceShapeFrames: (frames) => set({ ...session, faceShapeFrames: frames }),
       events,
-      // 서버 처리 화면 없이 바로 화장 선택 (2026-09-29 — 기다릴 서버 그림이 없다)
-      next: "looks",
+      // 새 흐름 (2026-10-06): 맨얼굴 사진 다음은 참고 사진 · 정답사진
+      next: "answer",
     },
     {
       getLookId: () => session.lookId,
@@ -192,14 +207,7 @@ async function boot(): Promise<void> {
       store: {
         loadImage: (k) => sessionStore.loadImage(k),
         saveImage: (k, b) => sessionStore.saveImage(k, b),
-        async clearAll() {
-          await saving;   // 저장 중인 draft·쌩얼이 지운 뒤에 써지지 않게
-          // 로그 저장소를 먼저 닫는다 — 안 닫으면 버퍼·시간 저장이 지운 뒤에 events 키를 다시 만든다
-          await logStore.clear();
-          const r = await sessionStore.clearAll();
-          clearRemaining = r.remaining;
-          return r;
-        },
+        clearAll,
       },
       // 합산 설정은 전 룩 공통이다 (결정 2026-09-22). 값은 rules/looks.json
       template: SUMMARY_TEMPLATE,
@@ -318,6 +326,37 @@ function registerAll(
   shell.register("guide", guideScreen<Session>(guide));
   shell.register("live", liveScreen<Session>(live));
   // 등록 안 된 화면은 담당 모듈을 알려주는 자리표시가 뜬다
+}
+
+/**
+ * 새 흐름(2026-10-06)의 빈 자리 — 순서는 core/screens.ts SCREEN_ORDER.
+ * 옛 흐름 화면(looks · fullrender · guide · live · result · review)은 registerAll 에 그대로 등록돼 있지만 흐름이 가지 않는다
+ */
+function registerFlowSlots(shell: ReturnType<typeof createShell<Session>>, deps: PartGuideSlotDeps & SaveSlotDeps): void {
+  shell.register("answer", slotScreen<Session>({
+    title: "2 · 3 참고 사진 · 정답사진",
+    owner: "① · ② · ④",
+    todo: [
+      "원하는 화장이 된 정면 사진 업로드 — 못 쓰는 사진이면 이유와 함께 다시 올려 달라고",
+      "참고 사진의 화장을 내 맨얼굴에 옮긴 정답사진 생성 (참고 사진은 만든 뒤 바로 지움)",
+      "정답사진 보여 주기 → 화장하러 가기",
+    ],
+    next: "partguide",
+  }));
+  shell.register("partguide", partGuideSlot<Session>(deps));
+  shell.register("attempt", slotScreen<Session>({
+    title: "5 시도사진",
+    owner: "⑥",
+    todo: ["화장을 다 한 뒤 정면 눈 뜬 사진 · 눈 감은 사진, 자동 촬영"],
+    next: "feedback",
+  }));
+  shell.register("feedback", slotScreen<Session>({
+    title: "6 피드백",
+    owner: "③",
+    todo: ["정답사진 대 시도사진 — 부위별로 어느 부분이 어떻게 됐나 (잘함 / 덜 그림 / 넘침). 점수 없음"],
+    next: "save",
+  }));
+  shell.register("save", saveSlot<Session>(deps));
 }
 
 const NO_DRAFT: readonly ScreenId[] = ["consent", "denied", "done"];
