@@ -111,7 +111,7 @@ function drawView(cv: HTMLCanvasElement, video: HTMLVideoElement, crop: Rect, o:
   if (o) {
     const lw = Math.max(2, W / 400) / s;
     // 고개를 많이 돌리면 먼 쪽 눈 테두리는 흐리게 (live-run alpha, FAR_FADE)
-    strokeOutline(g, alpha ? { polys: o.polys.filter((_, i) => (alpha[i] ?? 1) >= 1), lines: o.lines } : o, lw);
+    strokeOutline(g, alpha ? { ...o, polys: o.polys.filter((_, i) => (alpha[i] ?? 1) >= 1) } : o, lw);
     if (alpha) {
       o.polys.forEach((poly, i) => {
         const a = alpha[i] ?? 1;
