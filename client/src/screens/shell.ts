@@ -77,7 +77,7 @@ export function createShell<S>(opts: ShellOptions<S>) {
 
   function goPart(part: PartId): void {
     opts.setPart(part);
-    opts.setScreen("guide"); // 진행 칩은 언제나 완성본부터 (F-04)
+    opts.setScreen("partguide"); // 진행 칩은 그 부위 가이드로 (새 흐름 2026-10-06)
     render();
   }
 
