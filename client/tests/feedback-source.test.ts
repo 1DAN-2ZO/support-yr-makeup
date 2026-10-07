@@ -5,7 +5,7 @@ import { pointInPoly, type RgbaImage } from "@core/color";
 import { LM } from "@core/landmarks";
 import type { Baseline } from "@core/types";
 import type { AttemptShot, AttemptShots } from "@screens/attempt";
-import { loadFeedback, type FeedbackSourceDeps } from "@screens/feedback-source";
+import { ATTEMPT_DECODE_SIDE, loadFeedback, type FeedbackSourceDeps } from "@screens/feedback-source";
 import { LMS, P, RED, SKIN, image, type Paint, type Rgb } from "./helpers/synth-face";
 
 const lipPoly = LM.lipsOuter.map(P);
@@ -15,7 +15,15 @@ const lips = (k: number): Paint => (x, y) => (pointInPoly(x, y, lipPoly) ? tint(
 // 사진(Blob)마다 풀면 나올 그림을 짝지어 둔다 — 진짜 풀기는 브라우저가 한다
 const pictures = new Map<Blob, RgbaImage>();
 const photo = (p?: Paint): Blob => { const b = new Blob([`p${pictures.size}`]); pictures.set(b, image(p)); return b; };
-const toRgba = vi.fn(async (b: Blob | ImageBitmap): Promise<RgbaImage> => pictures.get(b as Blob)!);
+// 풀 때마다 어느 사진을 · 얼마로 줄여서 · 동시에 몇 장을 풀고 있었는지 적어 둔다
+let decoding = 0, maxDecoding = 0, sides: [Blob, number | undefined][] = [];
+const toRgba = vi.fn(async (b: Blob | ImageBitmap, maxSide?: number): Promise<RgbaImage> => {
+  sides.push([b as Blob, maxSide]);
+  maxDecoding = Math.max(maxDecoding, ++decoding);
+  await Promise.resolve();
+  decoding--;
+  return pictures.get(b as Blob)!;
+});
 
 const W = image().w, H = image().h;
 const baseline = (bare: Blob | null, over: Partial<Baseline> = {}): Baseline => ({
@@ -37,7 +45,7 @@ const deps = (over: Partial<FeedbackSourceDeps> = {}): FeedbackSourceDeps => ({
 });
 
 beforeEach(() => {
-  pictures.clear(); toRgba.mockClear(); urls = []; revoked = [];
+  pictures.clear(); toRgba.mockClear(); urls = []; revoked = []; decoding = 0; maxDecoding = 0; sides = [];
   Object.assign(URL, { createObjectURL: () => { const u = `blob:f${urls.length}`; urls.push(u); return u; }, revokeObjectURL: (u: string) => { revoked.push(u); } });
 });
 afterEach(() => { vi.restoreAllMocks(); });
@@ -105,5 +113,24 @@ describe("피드백 재료 모으기 (loadFeedback)", () => {
     expect(failed.view.feedback.parts.find((p) => p.part === "lip")?.line).toBe("정답과 비슷해요");
     expect(failed.view.movedFailed).toBe(true);
     expect(withMoved.view.movedFailed).toBe(false);
+  });
+
+  it("FS8 시도사진 묶음은 긴 변 1920 으로 줄여서 푼다 — 맨얼굴 · 정답사진 · 옮긴 그림은 서로 같은 크기여야 해서 안 줄인다 (#336 ③ 리뷰: 원본 다섯 장은 폰 메모리에 무겁다)", async () => {
+    expect(ATTEMPT_DECODE_SIDE).toBe(1920);
+    const bare = photo(), answer = photo(lips(0.6)), moved = photo(lips(0.6));
+    const open = [photo(lips(0.6)), photo(lips(0.6)), photo(lips(0.6))];
+    const r = await loadFeedback(deps({ getBaseline: () => baseline(bare), getAnswer: () => ({ image: answer }), getMoved: async () => moved, getAttempt: () => tries(...open) }));
+    expect(r.ok).toBe(true);
+    const sideOf = (b: Blob) => sides.find(([x]) => x === b)![1];
+    expect(open.map(sideOf)).toEqual([1920, 1920, 1920]);
+    expect([bare, answer, moved].map(sideOf)).toEqual([undefined, undefined, undefined]);
+  });
+
+  it("FS9 사진은 한 장씩 푼다 — 한꺼번에 풀면 원본 크기 여러 장이 메모리에 같이 올라간다", async () => {
+    const open = [photo(lips(0.6)), photo(lips(0.6)), photo(lips(0.6)), photo(lips(0.6)), photo(lips(0.6))];
+    const r = await loadFeedback(deps({ getAttempt: () => tries(...open), getMoved: async () => photo(lips(0.6)) }));
+    expect(r.ok).toBe(true);
+    expect(toRgba).toHaveBeenCalledTimes(8);
+    expect(maxDecoding).toBe(1);
   });
 });

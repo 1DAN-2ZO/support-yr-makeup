@@ -168,7 +168,9 @@ async function boot(): Promise<void> {
   const setAnswer = (a: AnswerPhoto | null): void => { answer = a; };
 
   // 6 피드백 재료 (⑥ 연결, #332) — 화면(⑤)은 getFeedback 이 준 것(문장 · 사진 두 장)을 그리기만 한다.
-  // 옮긴 그림(getMoved)은 서버 연결이 붙으면 넣는다 — 그 전에는 라이너 줄만 "볼 수 없었어요"
+  // 옮긴 그림(getMoved)은 아직 넣지 않는다 — 라이너 줄만 "볼 수 없었어요". 넣기 전에 ③ 의 라이너 재기 수정이 먼저다:
+  // 지금 코드는 꼬리를 틀리게 읽어서 getMoved 가 붙으면 틀린 라이너 문장이 화면에 나간다 (#336 ③ 리뷰, 실험 44).
+  // 붙일 때는 옮긴 그림을 기다리는 동안 입술 · 섀도우 · 눈썹을 먼저 재 둔다 (서버가 한 장에 15초쯤)
   const getFeedback = (): Promise<FeedbackLoad> => loadFeedback({ getBaseline: () => session.baseline, getAttempt, getAnswer });
 
   // 개발할 때만: 정답사진 만들기가 붙기 전에도 화면 6 을 돌려 볼 수 있게 콘솔에서 넣는 길 (배포 빌드에는 없다)
