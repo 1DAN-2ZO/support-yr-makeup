@@ -64,6 +64,12 @@ export interface LiveDeps {
   /** 확인받기 묶음을 그 부위에 둔다 (화면 5 가 getCapture 로 읽는다) */
   setCapture: (part: PartId, bundle: CaptureBundle) => void;
   next: ScreenId;
+  /**
+   * 새 흐름(#334): 이 화면은 **보기만** 한다. 주면 버튼이 "이전" 이 되어 늘 눌리고,
+   * 누르면 묶음을 모으지 않고 여기로 돌아간다 (부위 가이드).
+   * 안 주면 옛 흐름 그대로 — 게이트를 통과해야 켜지는 "확인받기" 버튼.
+   */
+  back?: ScreenId;
 }
 
 export const LIVE_TEXT = {
@@ -73,6 +79,7 @@ export const LIVE_TEXT = {
   noBaseline: "맨얼굴 사진이 없어요. 처음 촬영부터 다시 해 주세요",
   toCapture: "촬영하러 가기",
   button: "확인받기",
+  back: "이전",
   capturing: "찍고 있어요. 그대로 있어 주세요",
   failed: "움직여서 못 찍었어요. 다시 눌러 주세요",
 } as const;
@@ -215,9 +222,11 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         });
       }
       const line = el("p", "cam-gate", LIVE_TEXT.loading);
-      const btn = el("button", "primary live-btn", LIVE_TEXT.button);
+      const backTo = deps.back ?? null;
+      const btn = el("button", "primary live-btn", backTo ? LIVE_TEXT.back : LIVE_TEXT.button);
       btn.type = "button";
-      btn.disabled = true;
+      // 이전 버튼은 게이트와 상관없이 늘 눌린다 — 안 그러면 되돌아갈 길이 막힌다
+      btn.disabled = !backTo;
       const row = el("div", "row");
       row.append(btn);
       wrap.append(stage, line, row);
@@ -254,6 +263,11 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
       let collecting = false;
 
       btn.addEventListener("click", () => {
+        if (backTo) {
+          ctx.log.log({ name: "button", button: "live_back" });
+          ctx.go(backTo);
+          return;
+        }
         ctx.log.log({ name: "button", button: "live_check" });
         if (!run.press()) return;
         collecting = true;
@@ -345,7 +359,7 @@ ${j}` : j;
           collecting = false;
           line.textContent = LIVE_TEXT.failed;
           line.classList.remove("ready");
-          btn.disabled = true;
+          if (!backTo) btn.disabled = true;
           return;
         }
         if (collecting) return;
@@ -357,7 +371,7 @@ ${j}` : j;
         line.textContent = r.gate.text;
         line.classList.toggle("ready", r.gate.ok);
         // 각도·안정에 3초 넘게 막히면 문구는 안내 그대로 두고 버튼만 켠다 — 판단은 채점에 (#235)
-        btn.disabled = !r.pressable;
+        if (!backTo) btn.disabled = !r.pressable;
       }
 
       async function start(): Promise<void> {

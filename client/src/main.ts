@@ -356,6 +356,9 @@ async function boot(): Promise<void> {
         set({ ...session, parts: session.parts.map((p) => (p.partId === part ? { ...p, captured: bundle } : p)) });
       },
       next: "result",
+      // 새 흐름(#334): 실시간 가이드는 보기만 한다 — 버튼이 "이전" 이 되어 부위 가이드로 돌아간다.
+      // 묶음을 모아 채점으로 넘어가던 옛 길(next: "result")은 이 설정이 있는 동안 쓰이지 않는다
+      back: "partguide",
     },
     {
       remaining: () => clearRemaining,

@@ -77,6 +77,16 @@ function button(label: string, onClick: () => void): HTMLButtonElement {
   return b;
 }
 
+/** primary 바로 위에 놓는 보조 버튼 (테두리만) — 눌러도 흐름이 끝나지 않는 길 */
+function liveButton(label: string, onClick: () => void): HTMLButtonElement {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "slot-live";
+  b.textContent = label;
+  b.addEventListener("click", onClick);
+  return b;
+}
+
 function page(cls = ""): HTMLElement {
   const el = document.createElement("div");
   el.className = `slot ${cls}`.trim();
@@ -380,10 +390,19 @@ export function partGuideSlot<S>(deps: PartGuideSlotDeps): Screen<S> {
       if (!part) return;
       const next = nextGuidePart(part);
       const root = page("slot-partguide");
+      const guide = guideMock(part);
+      // 실시간 가이드(예전 화면 4 — core/live-run 테두리 엔진)로 보내는 길. #334
+      // 처음에는 사진 가이드가 보인다 — 카메라 권한을 묻지 않고 바로 볼 수 있게.
+      // 카메라 켜고 끄기·잠금 풀기는 그 화면이 알아서 한다 (screens/live.ts)
+      // 가이드 그림 바로 아래 · 색 칸 위 — 그림을 보다가 바로 누르는 자리
+      guide.querySelector(".slot-color")?.before(liveButton("실시간 가이드로 보기", () => {
+        ctx.log.log({ name: "button", button: `slot_live:${part}` });
+        ctx.go("live");
+      }));
       root.append(
         coach("정답사진에서 이 부위만 크게 잘라서 보여드릴게요"),
         title(PART_NAME[part], "점과 선을 기준으로 거울 앞에서 천천히 따라 해 주세요"),
-        guideMock(part),
+        guide,
         button(next ? `다음 — ${PART_NAME[next]}` : "다음 · 시도사진 찍기", () => {
           ctx.log.log({ name: "button", button: `slot_next_part:${next ?? "attempt"}` });
           if (next) ctx.goPart(next);
