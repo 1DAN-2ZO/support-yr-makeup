@@ -83,6 +83,15 @@ describe("화면 6 피드백 문장 (composeFeedback)", () => {
     expect(line({ ...good, cheek: { target: 9, amount: 0.3 } }, "cheek").line).toBe("내 화장에서 변화를 찾지 못했어요");
     expect(line({ ...good, cheek: { target: 9, amount: 0.75 } }, "cheek").line).toBe("정답과 비슷해요");
   });
+  it("C11 입꼬리 옆으로 번졌으면 그쪽을 짚는다 — 정답도 그만큼 나갔으면 말하지 않는다 (실험 42)", () => {
+    const lip = (o: Partial<NonNullable<WholeMeasures["lip"]>>) => line({ ...good, lip: { ...good.lip!, sideR: 0, sideL: 0, sideTargetR: 0, sideTargetL: 0, ...o } }, "lip");
+    expect(lip({ sideR: 0.5 }).line).toBe("오른쪽 입꼬리 옆으로 번졌어요");
+    expect(lip({ sideR: 0.5 }).fix).toBe("입꼬리 바깥을 닦아 정리해 보세요");
+    expect(lip({ sideR: 0.5, sideL: 0.6 }).line).toBe("입꼬리 옆으로 번졌어요");
+    expect(lip({ sideL: 0.5, sideTargetL: 0.4 }).line).toBe("정답과 비슷해요");
+    expect(lip({ sideR: 0.2 }).line).toBe("정답과 비슷해요");   // 안 번진 사진도 ±0.3 흔들린다
+    expect(lip({ sideR: 0.5, amount: 0.02, upper: 0, lower: 0 }).line).toBe("내 화장에서 변화를 찾지 못했어요");
+  });
 });
 
 describe("고치는 방법 (fix) — 방향만 말한다", () => {

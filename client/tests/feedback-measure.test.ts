@@ -57,6 +57,13 @@ describe("사진에서 재서 문장까지 (feedbackWhole)", () => {
     expect(say((x, y) => (y > mid ? lips(0.6)(x, y) : null)).lip!.line).toBe("윗입술이 비었어요");
   });
 
+  it("F1b 입꼬리 옆으로 번지게 바르면 그쪽을 짚는다 — 둘레 띠 전체 평균으로는 묽어져 안 보였다 (실험 42)", () => {
+    const c = P(61), o = P(291), w = Math.hypot(c.x - o.x, c.y - o.y), ax = (c.x - o.x) / w, ay = (c.y - o.y) / w;
+    const smear: Paint = (x, y) => { const u = ((x - c.x) * ax + (y - c.y) * ay) / w, v = (-(x - c.x) * ay + (y - c.y) * ax) / w; return u > 0 && u < 0.2 && Math.abs(v) < 0.1 ? tint(RED, 0.6) : null; };
+    expect(say(over(lips(0.6), smear)).lip!.line).toBe("오른쪽 입꼬리 옆으로 번졌어요");
+    expect(measureWhole({ bare, target, cur: frameOf(image(lips(0.6)), LMS) }).lip!.sideR).toBeCloseTo(0, 1);
+  });
+
   it("F2 정답 그림이 안 건드린 부위는 '정답 화장에서 변화를 찾지 못했어요'", () => {
     const r = say(lips(0.6));
     for (const part of ["brow", "shadow"]) expect(r[part]!.line).toBe("정답 화장에서 변화를 찾지 못했어요");

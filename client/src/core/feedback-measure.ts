@@ -80,6 +80,14 @@ function eyeFrame(f: SampleFrame, k: Side2): { o: Pt; a: Pt; n: Pt; ue: number }
   return { o, a, n: n.y > 0 ? { x: -n.x, y: -n.y } : n, ue };
 }
 
+/** 입꼬리 바깥 네모 (입 폭 비율): 반대쪽 입꼬리에서 멀어지는 쪽으로 near~far, 위아래 ±half — eval/samples/shape/lip_side.mjs (실험 42) */
+const LIP_SIDE = { near: 0.03, far: 0.18, half: 0.1 };
+function lipSideQuad(f: SampleFrame, k: Side2): Pt[] {
+  const c = at(f.lm, k === "R" ? 61 : 291), o = at(f.lm, k === "R" ? 291 : 61), w = Math.hypot(c.x - o.x, c.y - o.y) || 1, a = { x: (c.x - o.x) / w, y: (c.y - o.y) / w };
+  const p = (u: number, v: number): Pt => ({ x: c.x + (a.x * u - a.y * v) * w, y: c.y + (a.y * u + a.x * v) * w });
+  return [p(LIP_SIDE.near, -LIP_SIDE.half), p(LIP_SIDE.far, -LIP_SIDE.half), p(LIP_SIDE.far, LIP_SIDE.half), p(LIP_SIDE.near, LIP_SIDE.half)];
+}
+
 function lipMeasure(fs: Frames): WholeMeasures["lip"] | undefined {
   const all = ringAmount(fs, (f) => [pts(f, LM.lipsOuter)]);
   const scaled = (f: SampleFrame, k: number): Pt[] => growAbout(pts(f, LM.lipsOuter), k), ref = (f: SampleFrame): Zone => ({ in: [scaled(f, 1.9)], out: [scaled(f, 1.45)] });
@@ -90,7 +98,12 @@ function lipMeasure(fs: Frames): WholeMeasures["lip"] | undefined {
   const tn2 = dot3(whole.t, whole.t) || 1, amt = (z: { t: V3; d: V3 } | null): { want: number; got: number } => (z ? { want: dot3(z.t, whole.t) / tn2, got: dot3(z.d, whole.t) / tn2 } : { want: 0, got: 0 });
   const out = amt(change(fs, (f) => ({ in: [scaled(f, 1.25)], out: [scaled(f, 1.05)] }), ref));
   const upper = amt(change(fs, (f) => ({ in: [scaled(f, 1)], keep: (x, y) => !below(f)(x, y) }), ref)), lower = amt(change(fs, (f) => ({ in: [scaled(f, 1)], keep: below(f) }), ref));
-  return { target: all.target, amount: all.amount ?? amt(whole).got, out: out.got, outTarget: out.want, upper: upper.got, lower: lower.got };
+  // 둘레 띠 전체의 평균으로는 한쪽 입꼬리의 번짐이 묽어진다 — 입꼬리 바깥을 좌우 따로
+  const sideR = amt(change(fs, (f) => ({ in: [lipSideQuad(f, "R")] }), ref)), sideL = amt(change(fs, (f) => ({ in: [lipSideQuad(f, "L")] }), ref));
+  return {
+    target: all.target, amount: all.amount ?? amt(whole).got, out: out.got, outTarget: out.want, upper: upper.got, lower: lower.got,
+    sideR: sideR.got, sideL: sideL.got, sideTargetR: sideR.want, sideTargetL: sideL.want,
+  };
 }
 
 /** 눈두덩 구역(눈마다 바깥 · 가운데 · 안쪽 × 아래 · 위)과 그 기준 피부(눈썹 바로 아래 띠 + 눈꼬리 바깥 관자놀이 쪽) */

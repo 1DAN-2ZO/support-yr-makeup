@@ -61,6 +61,8 @@ export const FEEDBACK = {
   cheekNone: 0.6,
   /** 입술선 바깥 띠: 평소 ±0.07, 넘치면 0.5 */
   lipOut: 0.25,
+  /** 입꼬리 바깥 네모(좌우 따로): 실제 화장 시험에서 안 번진 단계 −0.35~0.16, 옆으로 번지게 한 쪽 0.38~0.60 (정답사진 0.01 · 0.02). 한 사람 · 한 번의 번짐으로 잡은 값 (실험 42) */
+  lipSide: 0.3,
   /** 섀도우 눈꼬리 바깥: 정답대로 0.72~0.94 (정답 1.00), 더 빼면 1.18~1.32 */
   shadowOuter: 0.12,
   /** 눈썹 바로 아래 띠: 안 넓힌 것 0.10~0.15, 넓힌 것 0.76 */
@@ -79,8 +81,11 @@ export type FeedbackTone = "ok" | "fix" | "info";
 export interface WholeMeasures {
   /** 사진 조건이 맨얼굴과 달라 판정하지 않는다 (shotCondition): 밝기 · 얼굴 크기 · 고개 각도 */
   condition?: ShotCondition;
-  /** out = 입술선 바깥 띠의 양 · upper / lower = 윗입술 · 아랫입술의 양 */
-  lip?: { target: number; amount: number; out: number; outTarget: number; upper: number; lower: number };
+  /** out = 입술선 바깥 띠의 양 · upper / lower = 윗입술 · 아랫입술의 양 · side = 입꼬리 바깥 네모의 양 (시도 · 정답) */
+  lip?: {
+    target: number; amount: number; out: number; outTarget: number; upper: number; lower: number;
+    sideR?: number; sideL?: number; sideTargetR?: number; sideTargetL?: number;
+  };
   /** higher = 정답이 안 칠한 위쪽 구역까지 칠했다 · outer = 눈꼬리 바깥 구역의 양 */
   shadow?: { target: number; amountR: number; amountL: number; higher: boolean; outer: number; outerTarget: number };
   /** below = 눈썹 바로 아래 띠의 양 */
@@ -146,6 +151,8 @@ export function composeFeedback(m: WholeMeasures): WholeFeedback {
       const p = m.lip, none = p.amount < F.none;
       if (!none && p.upper < F.none && p.lower >= F.weak) says.push(["윗입술이 비었어요", "윗입술에도 발라 보세요"]);
       if (!none && p.lower < F.none && p.upper >= F.weak) says.push(["아랫입술이 비었어요", "아랫입술에도 발라 보세요"]);
+      const smear = (["R", "L"] as const).filter((k) => (p[`side${k}`] ?? 0) - (p[`sideTarget${k}`] ?? 0) > F.lipSide);
+      if (smear.length) says.push([`${smear.length === 1 ? `${side(smear[0]!)} ` : ""}입꼬리 옆으로 번졌어요`, "입꼬리 바깥을 닦아 정리해 보세요"]);
       if (p.out - p.outTarget > F.lipOut) says.push(["입술선 밖으로 나갔어요", "입술선 안쪽으로 정리해 보세요"]);
       if (!says.length && p.amount < F.weak) says.push(["정답보다 옅어요", "한 번 더 덧발라 보세요"]);
       parts.push(pick(part, p.target, says, none ? [NO_MINE, "입술을 발라 보세요"] : undefined));
