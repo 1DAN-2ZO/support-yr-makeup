@@ -20,8 +20,10 @@ import { sampleForehead, type SampleFrame } from "./sampling";
 /**
  * 사진 조건 (실험 37, eval/samples/shape/shot_condition.py): 판정이 맞았던 쌍은 이마 밝기 차 0.7 · 색 차 1.6 · 크기 비 0.93~1.00 · 기울기 차 1도,
  * 틀렸던 쌍은 크기 비 0.82 이하 · 1.44 이상(가짜 라이너 꼬리 · 눈썹 치우침), 색 차 6.8 · 밝기 차 3.1 · 기울기 6도(다른 날 · 다른 곳)
+ * 밝기 · 색은 느슨하게 둔다 (실험 41): 실제 화장 시험에서 30분 사이 이마가 +5~6.6 밝아졌는데(장면 전체 — 조명이나 폰의 노출) 판정은 맞았다.
+ * 주변 피부를 기준으로 재서 이 정도는 견딘다. 처음 값(2.5 · 4.5)은 8단계 중 6단계를 막았고, 판정이 틀렸던 쌍은 밝기를 안 봐도 크기 · 고개 각도에서 다 걸렸다
  */
-export const CONDITION = { light: 2.5, color: 4.5, sizeLo: 0.87, sizeHi: 1.15, roll: 5, turn: 0.08 } as const;
+export const CONDITION = { light: 10, color: 8, sizeLo: 0.87, sizeHi: 1.15, roll: 5, turn: 0.08 } as const;
 
 export type ShotCondition = "light" | "size" | "pose";
 
@@ -45,8 +47,12 @@ export function shotCondition(bare: SampleFrame, cur: SampleFrame): ShotConditio
 }
 
 export const FEEDBACK = {
-  /** 정답 그림의 변화가 이보다 작으면(Lab 거리) 그 부위는 견줄 것이 없다 — 따로 찍은 사진 사이의 잡음이 5~7 */
-  minTarget: 8,
+  /**
+   * 정답 그림의 변화가 이보다 작으면(Lab 거리) 그 부위는 견줄 것이 없다. 부위마다 다르다 — 다시 찍었을 때 그 부위가 흔들리는 크기의 3배쯤:
+   * 실제 화장 시험(실험 38 · 40)의 맨얼굴끼리 흔들림은 입술 1~2 · 섀도우 약 1 · 눈썹 2.3. 모델이 만든 정답사진의 변화는 입술 7.3 · 섀도우 4.6 · 눈썹 4.2 였다
+   * (전에는 전 부위 8 — 얹어 본 진한 화장에 맞춘 값이라 실제 정답사진이 전부 막혔다)
+   */
+  minTarget: { lip: 5, shadow: 3.5, brow: 6, cheek: 6 },
   /** 양이 이 아래면 변화를 못 찾은 것 */
   none: 0.3,
   /** 양이 이 아래면 옅다 — 정답의 절반. 그 위의 차이는 흔들림과 구분되지 않는다 */
@@ -122,7 +128,7 @@ const side = (k: "R" | "L"): string => (k === "R" ? "오른쪽" : "왼쪽");
 
 function pick(part: FeedbackPartId, target: number | null, says: readonly Say[], missing?: Say): FeedbackLine {
   const base = { part, name: NAME[part] };
-  if (target !== null && target < FEEDBACK.minTarget) return { ...base, tone: "info", line: NO_TARGET };
+  if (target !== null && part !== "liner" && target < FEEDBACK.minTarget[part]) return { ...base, tone: "info", line: NO_TARGET };
   if (missing) return { ...base, tone: "fix", line: missing[0], fix: missing[1] };
   if (!says.length) return { ...base, tone: "ok", line: SAME };
   return { ...base, tone: "fix", line: says[0]![0], fix: says[0]![1], ...(says[1] ? { more: says[1][0] } : {}) };

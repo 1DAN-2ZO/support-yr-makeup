@@ -153,3 +153,32 @@ describe("정답사진의 맨얼굴이 따로 있을 때 (targetBare)", () => {
     expect(feedbackWhole({ bare, target: image(lips(0.6)), cur: frameOf(image(lips(0.6)), LMS) }).parts.find((p) => p.part === "lip")!.line).toBe("정답과 비슷해요");
   });
 });
+
+describe("문턱은 부위마다 · 여러 장은 가운데 값으로 (실험 41)", () => {
+  it("M1 정답 변화가 작을 때의 문턱이 부위마다 다르다 — 입술 5 · 섀도우 3.5 · 눈썹 6", () => {
+    const line = (m: WholeMeasures, part: string) => composeFeedback(m).parts.find((p) => p.part === part)!;
+    const lip = { target: 7, amount: 1, out: 0, outTarget: 0, upper: 1, lower: 1 }, shadow = { target: 4.5, amountR: 0.9, amountL: 0.9, higher: false, outer: 1, outerTarget: 1 };
+    const brow = { target: 4.2, amountR: 0.9, amountL: 0.9, below: 0, belowTarget: 0 };
+    expect(line({ lip }, "lip").line).toBe("정답과 비슷해요");
+    expect(line({ lip: { ...lip, target: 4 } }, "lip").line).toBe("정답 화장에서 변화를 찾지 못했어요");
+    expect(line({ shadow }, "shadow").line).toBe("정답과 비슷해요");
+    expect(line({ shadow: { ...shadow, target: 3 } }, "shadow").line).toBe("정답 화장에서 변화를 찾지 못했어요");
+    expect(line({ brow }, "brow").line).toBe("정답 화장에서 변화를 찾지 못했어요");
+    expect(line({ brow: { ...brow, target: 7 } }, "brow").line).toBe("정답과 비슷해요");
+  });
+
+  it("M2 여러 장을 주면 값마다 가운데 값으로 판정한다 — 한두 장이 튀어도 문장이 안 바뀐다", () => {
+    const mid = (P(61).y + P(291).y) / 2, target = image(lips(0.6));
+    // 다섯 장 중 두 장은 입술이 반쯤 지워진 것처럼 찍혔다
+    const curs = [lips(0.6), lips(0.6), lips(0.6), (x: number, y: number) => (y > mid ? lips(0.6)(x, y) : null), () => null].map((p) => frameOf(image(p as Paint), LMS));
+    const r = feedbackWhole({ bare, target, cur: curs }, true).parts.find((p) => p.part === "lip")!;
+    expect(r.line).toBe("정답과 비슷해요");
+    expect(feedbackWhole({ bare, target, cur: curs[4]! }, true).parts.find((p) => p.part === "lip")!.line).toBe("내 화장에서 변화를 찾지 못했어요");
+  });
+
+  it("M3 사진 조건은 여러 장 중 절반 넘게 걸릴 때만 막는다", () => {
+    const target = image(lips(0.6)), ok = frameOf(image(lips(0.6)), LMS), dark = frameOf(image(lips(0.6), 0.45), LMS);
+    expect(feedbackWhole({ bare, target, cur: [ok, ok, dark] }).blocked).toBeUndefined();
+    expect(feedbackWhole({ bare, target, cur: [ok, dark, dark] }).blocked).toMatch(/밝기/);
+  });
+});

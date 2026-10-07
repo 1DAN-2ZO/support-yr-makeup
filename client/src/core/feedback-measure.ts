@@ -107,8 +107,8 @@ function lidZones(f: SampleFrame, k: Side2): { zones: Pt[][]; ref: Zone } {
   return { zones, ref: { in: [[...idx.map((i) => P(i, 0.82)), ...idx.map((i) => P(i, 0.98)).reverse()], temple] } };
 }
 
-/** 칠할 자리로 보는 정답 변화 · 안 칠한 자리 · 넘쳤다 (실험 22 · 28) */
-export const SHADOW_ZONE = { paint: 6, blank: 4, over: 0.4 };
+/** 칠할 자리로 보는 정답 변화 · 안 칠한 자리 · 넘쳤다. 모델이 만든 실제 정답사진의 섀도우는 구역마다 3~5 다 — 얹어 본 화장(12~15)에 맞췄던 6 · 4 로는 칠할 자리가 하나도 안 잡혔다 (실험 40) */
+export const SHADOW_ZONE = { paint: 3, blank: 2, over: 0.4 };
 function shadowMeasure(fs: Frames): WholeMeasures["shadow"] | undefined {
   const all: { side: Side2; t: V3; d: V3 }[] = [];
   for (const k of SIDES2) {
@@ -269,16 +269,40 @@ export interface WholeInput {
    * 주면 정답의 변화는 이것과 견주고, 시도의 변화는 bare 와 견준다. 옮긴 그림(moved)은 여전히 bare 와 겹쳐야 한다
    */
   targetBare?: SampleFrame;
-  /** 시도사진 눈 뜬 장 — 그 사진에서 뽑은 얼굴 점 (실험 21: 맨얼굴 점을 옮겨 쓰는 것보다 낫다) */
-  cur: SampleFrame;
+  /**
+   * 시도사진 눈 뜬 장 — 그 사진에서 뽑은 얼굴 점 (실험 21: 맨얼굴 점을 옮겨 쓰는 것보다 낫다).
+   * 연달아 찍은 여러 장을 주면 장마다 재서 값마다 가운데 값을 쓴다 — 실제 화장 시험에서 한 장씩 판정하면 맨얼굴 5장 중 2장이 틀렸다 (실험 40 · 41)
+   */
+  cur: SampleFrame | readonly SampleFrame[];
   /** 시도사진의 화장을 같은 모델로 맨얼굴에 옮긴 그림 — 맨얼굴과 같은 크기 · 같은 자리. 없으면 라이너는 "이번에는 볼 수 없었어요" */
   moved?: RgbaImage | null;
 }
 
 /** 사진 네 장에서 부위별 값을 잰다 (사진 조건은 보지 않는다 — feedbackWhole 이 먼저 본다) */
+const curs = (i: WholeInput): readonly SampleFrame[] => (Array.isArray(i.cur) ? (i.cur as readonly SampleFrame[]) : [i.cur as SampleFrame]);
+const median = (v: readonly number[]): number => { const a = [...v].sort((x, y) => x - y); return a[(a.length - 1) >> 1]!; };
+/** 장마다 잰 값을 하나로: 숫자는 가운데 값, 참 · 거짓은 절반 넘게 참일 때. 그 부위를 잰 장이 절반이 안 되면 뺀다 */
+function combine<T extends Record<string, number | boolean | null | undefined>>(list: readonly (T | undefined)[]): T | undefined {
+  const got = list.filter((x): x is T => x !== undefined);
+  if (!got.length || got.length * 2 < list.length) return undefined;
+  const out: Record<string, number | boolean | null> = {};
+  for (const k of Object.keys(got[0]!)) {
+    const vs = got.map((g) => g[k]).filter((x) => x !== undefined && x !== null);
+    if (!vs.length) continue;
+    out[k] = typeof vs[0] === "boolean" ? vs.filter(Boolean).length * 2 > vs.length : median(vs as number[]);
+  }
+  return out as T;
+}
+
 export function measureWhole(i: WholeInput): WholeMeasures {
+  const list = curs(i).map((cur) => measureOne(i, cur)), lip = combine(list.map((m) => m.lip)), shadow = combine(list.map((m) => m.shadow)), brow = combine(list.map((m) => m.brow)), cheek = combine(list.map((m) => m.cheek));
+  const liner = list[0]?.liner;   // 옮긴 그림에서 잰다 — 시도사진 장 수와 상관없다
+  return { ...(lip ? { lip } : {}), ...(shadow ? { shadow } : {}), ...(brow ? { brow } : {}), ...(cheek ? { cheek } : {}), ...(liner ? { liner } : {}) };
+}
+
+function measureOne(i: WholeInput, cur: SampleFrame): WholeMeasures {
   // 정답 그림은 그것을 만든 맨얼굴과 겹치므로 얼굴 점도 머리카락 분할도 그 맨얼굴 것을 쓴다
-  const tBare = i.targetBare ?? i.bare, fs: Frames = { bare: i.bare, cur: i.cur, tBare, target: frameOf(i.target, tBare.lm, tBare.hair) };
+  const tBare = i.targetBare ?? i.bare, fs: Frames = { bare: i.bare, cur, tBare, target: frameOf(i.target, tBare.lm, tBare.hair) };
   // 볼은 아직 넘기지 않는다: 볼 다각형 전체의 평균으로는 블러셔가 묽어져 정답 변화가 1.1 로 읽힌다 (파이썬 실험은 정답에서 바뀐 칸에만 무게를 줬다 — 그 자리를 받아야 한다)
   const lip = lipMeasure(fs), shadow = shadowMeasure(fs), brow = browMeasure(fs), cheek = CHEEK_READY ? cheekMeasure(fs) : undefined;
   const liner = i.moved ? { targetR: ridgeTail(tBare, i.target, "R"), targetL: ridgeTail(tBare, i.target, "L"), R: ridgeTail(i.bare, i.moved, "R"), L: ridgeTail(i.bare, i.moved, "L") } : undefined;
@@ -287,8 +311,13 @@ export function measureWhole(i: WholeInput): WholeMeasures {
 
 /** 화면 6 한 번에: 사진 조건 확인 → 부위별로 재기 → 문장 고르기. skipCondition = 조건 확인을 건너뛴다 (평가용) */
 export function feedbackWhole(i: WholeInput, skipCondition = false): WholeFeedback {
-  const condition = skipCondition ? null : shotCondition(i.bare, i.cur);
-  return composeFeedback(condition ? { condition } : measureWhole(i));
+  // 여러 장이면 절반 넘게 걸릴 때만 막는다 (가장 많이 나온 이유로)
+  const hits = skipCondition ? [] : curs(i).map((c) => shotCondition(i.bare, c)).filter((c): c is NonNullable<typeof c> => c !== null);
+  if (hits.length * 2 > curs(i).length) {
+    const count = (r: (typeof hits)[number]): number => hits.filter((h) => h === r).length;
+    return composeFeedback({ condition: [...hits].sort((a, b) => count(b) - count(a))[0]! });
+  }
+  return composeFeedback(measureWhole(i));
 }
 
 export { FEEDBACK };
