@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <title>새 흐름 POC — 당화응</title>
+    <!--
+      [dev 전용] 새 흐름 한 바퀴 POC (2026-10-07, ②) — 서비스 정의서 §6 의 화면 1~7 을 한 페이지에서 차례로:
+        1 맨얼굴 → 2 참고 사진 → 3 정답사진(FLUX.2 klein 4B 127.0.0.1:7861) → 4 부위 가이드(정답사진을 부위로 자른 정지 사진 + 테두리)
+        → 5 시도사진 → 6 피드백(덜 그림 · 넘침, 점수 없음 — ③ 화면이 오기 전 간단 비교) → 7 저장.
+      눈 감은 사진은 POC 에서 뺐다. AI 서버는 poc/look-tryon/server-bench/app_klein.py. 사진은 이 컴퓨터 안에서만 쓴다.
+    -->
+    <style>
+      :root { color-scheme: light dark; --line: #8884; --acc: #e8457a; }
+      body { margin: 0; padding: 16px; font: 15px/1.5 system-ui, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; background: Canvas; color: CanvasText; }
+      main { max-width: 980px; margin: 0 auto; }
+      h1 { font-size: 18px; margin: 0 0 8px; }
+      h2 { font-size: 20px; margin: 4px 0 4px; }
+      .note { margin: 0 0 10px; opacity: .75; font-size: 13px; }
+      #chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 14px; }
+      #chips button { font-size: 13px; padding: 4px 10px; border-radius: 999px; }
+      #chips button.now { background: var(--acc); color: #fff; border-color: var(--acc); font-weight: 700; }
+      section { display: none; }
+      section.now { display: block; }
+      .view { width: 100%; max-width: 480px; aspect-ratio: 3 / 4; background: #000; border-radius: 10px; display: block; }
+      .wide { width: 100%; height: auto; background: #000; border-radius: 10px; display: block; }
+      .bar { display: flex; gap: 8px 12px; flex-wrap: wrap; align-items: center; margin: 10px 0; font-size: 14px; }
+      button { font: inherit; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line); background: ButtonFace; color: ButtonText; cursor: pointer; }
+      button.go { background: var(--acc); color: #fff; border-color: var(--acc); font-weight: 700; }
+      button:disabled { opacity: .45; cursor: default; }
+      .msg { font-size: 13px; min-height: 1.4em; opacity: .85; white-space: pre-line; }
+      .warn { color: #d9480f; font-weight: 600; }
+      .hint { font-size: 15px; margin: 8px 0; }
+      .pair { display: flex; gap: 10px; flex-wrap: wrap; }
+      .pair figure { margin: 0; flex: 1 1 300px; }
+      figcaption { font-size: 13px; opacity: .8; margin-bottom: 4px; }
+      .fb { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin: 0 0 14px; }
+      .fb h3 { margin: 0 0 6px; font-size: 16px; }
+      .fb ul { margin: 6px 0 0; padding-left: 20px; }
+      .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin: 0 3px 0 8px; }
+      .slot { font-size: 12px; opacity: .7; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>새 흐름 POC</h1>
+      <p class="note">맨얼굴 → 참고 사진 → 정답사진 → 부위 가이드 → 시도사진 → 피드백 → 저장. 정답사진은 AI 서버(FLUX.2 klein 4B, 127.0.0.1:7861)가 켜져 있어야 만들어져요 — 없으면 정답사진 파일을 직접 올려도 돼요. 눈 감은 사진은 POC 에서 뺐어요.</p>
+      <nav id="chips"></nav>
+
+      <section data-step="1">
+        <h2>1 맨얼굴</h2>
+        <p class="note">맨얼굴로 정면을 보고 찍어요.</p>
+        <canvas id="bareView" class="view"></canvas>
+        <div class="bar">
+          <button id="bareCam" type="button">카메라 켜기</button>
+          <button id="bareSnap" type="button" disabled>찍기 (3초)</button>
+          <label>또는 파일 <input id="bareFile" type="file" accept="image/*" /></label>
+        </div>
+        <div id="bareMsg" class="msg"></div>
+        <div class="bar"><button id="bareNext" class="go" type="button" disabled>다음 — 참고 사진</button></div>
+      </section>
+
+      <section data-step="2">
+        <h2>2 참고 사진</h2>
+        <p class="note">따라 하고 싶은 화장이 된 정면 사진 한 장 (본인 아니어도 돼요). 정답사진을 만든 뒤에는 지워요.</p>
+        <canvas id="refView" class="view"></canvas>
+        <div class="bar"><label>사진 고르기 <input id="refFile" type="file" accept="image/*" /></label></div>
+        <div id="refMsg" class="msg"></div>
+        <div class="bar">
+          <button id="refBack" type="button">이전</button>
+          <button id="refNext" class="go" type="button" disabled>정답사진 만들기</button>
+        </div>
+      </section>
+
+      <section data-step="3">
+        <h2>3 정답사진</h2>
+        <p class="note">참고 사진의 화장을 내 맨얼굴에 옮긴 그림이에요.</p>
+        <canvas id="madeView" class="view"></canvas>
+        <div id="madeMsg" class="msg"></div>
+        <div class="bar"><label>AI 서버가 없으면 정답사진 파일 <input id="madeFile" type="file" accept="image/*" /></label></div>
+        <div class="bar">
+          <button id="madeBack" type="button">다른 사진 올리기</button>
+          <button id="madeNext" class="go" type="button" disabled>화장하러 가기</button>
+        </div>
+      </section>
+
+      <section data-step="4">
+        <h2 id="guideTitle">4 부위 가이드</h2>
+        <p id="guideHint" class="hint"></p>
+        <canvas id="guideView" class="wide"></canvas>
+        <div class="bar">
+          <label><input type="radio" name="guideBase" value="made" checked /> 정답사진 위</label>
+          <label><input type="radio" name="guideBase" value="bare" /> 내 맨얼굴 위</label>
+        </div>
+        <div id="guideMsg" class="msg"></div>
+        <div class="bar">
+          <button id="guidePrev" type="button">이전</button>
+          <button id="guideNext" class="go" type="button">다음</button>
+        </div>
+      </section>
+
+      <section data-step="5">
+        <h2>5 시도사진</h2>
+        <p class="note">화장을 다 한 뒤 정면을 보고 찍어요.</p>
+        <canvas id="tryView" class="view"></canvas>
+        <div class="bar">
+          <button id="tryCam" type="button">카메라 켜기</button>
+          <button id="trySnap" type="button" disabled>찍기 (3초)</button>
+          <label>또는 파일 <input id="tryFile" type="file" accept="image/*" /></label>
+        </div>
+        <div id="tryMsg" class="msg"></div>
+        <div class="bar">
+          <button id="tryBack" type="button">가이드 다시 보기</button>
+          <button id="tryNext" class="go" type="button" disabled>피드백 보기</button>
+        </div>
+      </section>
+
+      <section data-step="6">
+        <h2>6 피드백</h2>
+        <p class="note legend">정답사진과 내 사진을 나란히 — 점수 없이 부위별로.<i style="background:#ff3b5c"></i>덜 칠한 곳<i style="background:#ffd23f"></i>가이드 밖으로 나간 곳</p>
+        <p class="slot">③ 피드백 화면이 오기 전 POC 용 간단 비교예요 (가이드 대 시도사진에서 뗀 화장).</p>
+        <div id="fbList"></div>
+        <div class="bar">
+          <button id="fbBack" type="button">다시 찍기</button>
+          <button id="fbNext" class="go" type="button">저장하러 가기</button>
+        </div>
+      </section>
+
+      <section data-step="7">
+        <h2>7 저장 · 공유</h2>
+        <p class="note">결과와 피드백을 내 기기에만 저장해요 (서버에는 저장 안 해요).</p>
+        <div class="bar">
+          <button id="saveBtn" class="go" type="button">결과 사진 저장</button>
+          <button id="restart" type="button">끝내기 — 처음부터</button>
+        </div>
+        <div id="saveMsg" class="msg"></div>
+      </section>
+    </main>
+    <video id="v" autoplay playsinline muted hidden></video>
+    <script type="module" src="/src/screens/flow-poc.ts"></script>
+  </body>
+</html>

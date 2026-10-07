@@ -440,7 +440,7 @@ function linerDark(im: RgbaImage, lid: readonly Pt[], f: EyeFrame): { solid: Uin
 }
 
 /** 깎기 — 둘레 (2r+1)² 가 다 칠해진 곳만 남는다 */
-function erode(m: Uint8Array, w: number, h: number, r: number): Uint8Array {
+export function erode(m: Uint8Array, w: number, h: number, r: number): Uint8Array {
   const out = new Uint8Array(w * h);
   for (let y = r; y < h - r; y++) for (let x = r; x < w - r; x++) {
     if (!m[y * w + x]) continue;
@@ -452,7 +452,7 @@ function erode(m: Uint8Array, w: number, h: number, r: number): Uint8Array {
 }
 
 /** 붙이기 — 칠한 곳 둘레 (2r+1)² 를 칠한다 */
-function dilate(m: Uint8Array, w: number, h: number, r: number): Uint8Array {
+export function dilate(m: Uint8Array, w: number, h: number, r: number): Uint8Array {
   const out = new Uint8Array(w * h);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     if (!m[y * w + x]) continue;
