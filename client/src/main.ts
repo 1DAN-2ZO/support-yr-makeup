@@ -50,6 +50,7 @@ import { reviewScreen, type ReviewDeps } from "./screens/review";
 import { startReviewShot } from "./screens/review-shot";
 import { createShell } from "./screens/shell";
 import { attemptScreen, type AttemptShots } from "./screens/attempt";
+import { loadFeedback, type AnswerPhoto, type FeedbackLoad } from "./screens/feedback-source";
 import { partGuideSlot, saveSlot, slotScreen, type PartGuideSlotDeps, type SaveSlotDeps } from "./screens/flow-slots";
 import { inNewFlow } from "./core/screens";
 
@@ -160,8 +161,22 @@ async function boot(): Promise<void> {
   const getAttempt = (): AttemptShots | null => attempt;
   shell.register("attempt", attemptScreen<Session>({ setAttempt: (shots) => { attempt = shots; }, next: "feedback" }));
 
+  // 3 정답사진 — 화면 3(정답사진 만들기 연결, 방식은 #331)이 setAnswer 로 넣는다. 맨얼굴과 같은 크기 · 같은 자리여야 한다
+  // (docs/feedback-input-contract.md). 메모리에만 둔다
+  let answer: AnswerPhoto | null = null;
+  const getAnswer = (): AnswerPhoto | null => answer;
+  const setAnswer = (a: AnswerPhoto | null): void => { answer = a; };
+
+  // 6 피드백 재료 (⑥ 연결, #332) — 화면(⑤)은 getFeedback 이 준 것(문장 · 사진 두 장)을 그리기만 한다.
+  // 옮긴 그림(getMoved)은 서버 연결이 붙으면 넣는다 — 그 전에는 라이너 줄만 "볼 수 없었어요"
+  const getFeedback = (): Promise<FeedbackLoad> => loadFeedback({ getBaseline: () => session.baseline, getAttempt, getAnswer });
+
+  // 개발할 때만: 정답사진 만들기가 붙기 전에도 화면 6 을 돌려 볼 수 있게 콘솔에서 넣는 길 (배포 빌드에는 없다)
+  //   __nudyDev.setAnswer(blob)  ·  await __nudyDev.getFeedback()
+  if (import.meta.env.DEV) (window as unknown as { __nudyDev?: unknown }).__nudyDev = { setAnswer: (image: Blob) => setAnswer({ image }), getFeedback };
+
   // 새 흐름 뼈대 (2026-10-06) — 담당이 진짜 화면을 올리면 여기 등록만 바꾼다 (screens/flow-slots.ts)
-  registerFlowSlots(shell, { getPart: () => session.currentPart, clearAll, getAttempt });
+  registerFlowSlots(shell, { getPart: () => session.currentPart, clearAll, getAttempt, getAnswer, getFeedback });
 
   registerAll(
     shell,
@@ -281,6 +296,7 @@ async function boot(): Promise<void> {
       restart: () => {
         logStore.reopen();
         attempt = null;
+        answer = null;
         set(createSession());
         clearRemaining = 0;
         shell.render();
@@ -340,7 +356,7 @@ function registerAll(
  * 새 흐름(2026-10-06)의 빈 자리 — 순서는 core/screens.ts SCREEN_ORDER.
  * 옛 흐름 화면(looks · fullrender · guide · live · result · review)은 registerAll 에 그대로 등록돼 있지만 흐름이 가지 않는다
  */
-function registerFlowSlots(shell: ReturnType<typeof createShell<Session>>, deps: PartGuideSlotDeps & SaveSlotDeps & { getAttempt: () => AttemptShots | null }): void {
+function registerFlowSlots(shell: ReturnType<typeof createShell<Session>>, deps: PartGuideSlotDeps & SaveSlotDeps & { getAttempt: () => AttemptShots | null; getAnswer: () => AnswerPhoto | null; getFeedback: () => Promise<FeedbackLoad> }): void {
   shell.register("answer", slotScreen<Session>({
     title: "2 · 3 참고 사진 · 정답사진",
     owner: "① · ② · ④",
@@ -357,9 +373,13 @@ function registerFlowSlots(shell: ReturnType<typeof createShell<Session>>, deps:
     owner: "③",
     todo: [
       "정답사진 대 시도사진 — 부위별로 어느 부분이 어떻게 됐나 (잘함 / 덜 그림 / 넘침). 점수 없음",
-      "시도사진은 main.ts 의 getAttempt() — 눈 뜬 장 묶음(5장까지) · 감은 장, 장마다 사진(원본 크기) · 얼굴 점 · 크기 (screens/attempt.ts AttemptShots)",
+      "화면이 받는 것: main.ts 의 getFeedback() — 문장(③ feedbackWhole) · 정답사진 · 시도사진 주소 (screens/feedback-source.ts FeedbackView). 화면은 그리기만 한다 (#332 · 모양 #318)",
     ],
-    status: () => { const a = deps.getAttempt(); return a ? `시도사진 받음 — 눈 뜬 장 ${a.front_open.length}장 · 감은 장 ${a.front_closed.length}장` : "시도사진 없음 — 앱을 다시 켰으면 다시 찍어야 해요"; },
+    status: () => {
+      const a = deps.getAttempt();
+      const shots = a ? `시도사진 받음 — 눈 뜬 장 ${a.front_open.length}장 · 감은 장 ${a.front_closed.length}장` : "시도사진 없음 — 앱을 다시 켰으면 다시 찍어야 해요";
+      return `${shots} / ${deps.getAnswer() ? "정답사진 받음" : "정답사진 없음 (#331)"}`;
+    },
     next: "save",
   }));
   shell.register("save", saveSlot<Session>(deps));
