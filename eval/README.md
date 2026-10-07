@@ -15,7 +15,7 @@ uv run python eval/report.py             # results/*.csv → docs/eval-results-v
 | `faceshape/` | E-2·S-2 규칙 vs 후보 모델 | Python | |
 | `transfer/` | E-3·S-1 시간·ArcFace·부위 ΔE | Python (서버 API 호출) | |
 | `region/` | E-4·S-3 EasyPortrait·Periorbital IoU | Python | jeakeun `poc/datasets-eval` 이식 |
-| `funnel/` | **E-8 사용자 흐름** — 퍼널(화면별 도달률), 동의 거부, 촬영 완주·재촬영, 게이트 첫 실패 분포, 부위 상태·확인만 이유·재확인, 리뷰 도달·저장 클릭, 세션 시간·얼굴 놓침·채점 시간·복원 성공률 | Python. 앱에서 `logStore.exportJsonl()` 로 내보낸 `.jsonl` 을 읽는다 | 집계는 `funnel.py`(순수 함수), 실행은 `run.py` |
+| `funnel/` | **E-8 사용자 흐름** — 퍼널(새 흐름 화면별 도달률), 이탈 위치(끝까지 못 간 세션이 멈춘 화면), 동의 거부, 촬영 완주·재촬영, 게이트 첫 실패 분포, 부위 상태·확인만 이유·재확인, 피드백 도달·저장 클릭, 세션 시간·얼굴 놓침·채점 시간·복원 성공률 | Python. 앱에서 `logStore.exportJsonl()` 로 내보낸 `.jsonl` 을 읽는다 | 집계는 `funnel.py`(순수 함수), 실행은 `run.py` |
 | `gate/` `live/` | E-5·E-6 | Python | |
 | `results/` | `<날짜>_<커밋>_<모델버전>_<골든버전>.csv` | — | 커밋한다 (작음) |
 

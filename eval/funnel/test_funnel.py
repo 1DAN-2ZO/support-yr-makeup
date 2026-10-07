@@ -7,7 +7,13 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from eval.funnel.funnel import aggregate, by_session, parse_jsonl, summarize_session  # noqa: E402
+from eval.funnel.funnel import (  # noqa: E402
+    FUNNEL_SCREENS,
+    aggregate,
+    by_session,
+    parse_jsonl,
+    summarize_session,
+)
 
 VER = {"app": "t", "score": "s", "look": "l", "faceshape": "f", "transfer": "x"}
 
@@ -17,10 +23,10 @@ def ev(sid: str, t: int, name: str, screen: str = "consent", part=None, **kw) ->
 
 
 def full_session(sid: str, *, save: bool = True, end: str = "finish") -> list[dict]:
-    """동의 → 촬영 4장 → 룩 → 부위 → 리뷰까지 끝까지 간 세션"""
+    """동의 → 촬영 4장 → 정답사진 → 부위 가이드 → 시도사진 → 피드백 → 저장까지 끝까지 간 세션 (새 흐름)"""
     out = [ev(sid, 0, "consent", ok=True)]
     t = 1
-    for sc in ["consent", "capture", "looks", "fullrender", "guide", "live", "result", "review"]:
+    for sc in ["consent", "capture", "answer", "partguide", "attempt", "feedback", "save"]:
         out.append(ev(sid, t, "screen_enter", screen=sc))
         t += 1
     for shot in ["front_open", "front_closed", "left_45", "right_45"]:
@@ -42,9 +48,9 @@ def full_session(sid: str, *, save: bool = True, end: str = "finish") -> list[di
         )
         t += 1
     if save:
-        out.append(ev(sid, t, "button", screen="review", button="save_result"))
-    out.append(ev(sid, t + 1, "session_end", screen="review", reason=end, last_screen="review"))
-    out.append(ev(sid, 60_000, "screen_leave", screen="review"))
+        out.append(ev(sid, t, "button", screen="save", button="save_result"))
+    out.append(ev(sid, t + 1, "session_end", screen="save", reason=end, last_screen="save"))
+    out.append(ev(sid, 60_000, "screen_leave", screen="save"))
     return out
 
 
@@ -70,7 +76,7 @@ def test_끝까지_간_세션_요약():
     s = summarize_session(full_session("a"))
     assert s.consented is True
     assert len(s.shots_ok) == 4
-    assert s.furthest == "review"
+    assert s.furthest == "save"
     assert s.saved_result is True
     assert s.end_reason == "finish"
     assert s.part_status["contour"] == "check_only"
@@ -80,14 +86,14 @@ def test_끝까지_간_세션_요약():
 def test_중간에_나간_세션():
     sid = "b"
     events = [ev(sid, 0, "consent", ok=True)]
-    for i, sc in enumerate(["consent", "capture", "looks"]):
+    for i, sc in enumerate(["consent", "capture", "answer"]):
         events.append(ev(sid, i + 1, "screen_enter", screen=sc))
     events.append(
         ev(sid, 9, "capture", screen="capture", shot="front_open", ok=False, retry=1, reason="bright")
     )
     s = summarize_session(events)
-    assert s.furthest == "looks"
-    assert "review" not in s.reached
+    assert s.furthest == "answer"
+    assert "feedback" not in s.reached
     assert s.retries["front_open"] == 1
     assert s.end_reason is None  # 닫기 전에 못 남김
 
@@ -110,7 +116,8 @@ def test_퍼널_비율():
     events += [ev(sid, 0, "consent", ok=True), ev(sid, 1, "screen_enter", screen="capture")]
     m = rows_by_metric(aggregate(events))
     assert m["퍼널 · capture 도달률(%)"] == 100.0
-    assert m["퍼널 · review 도달률(%)"] == round(200 / 3, 1)
+    assert m["퍼널 · feedback 도달률(%)"] == round(200 / 3, 1)
+    assert m["피드백 도달률(%)"] == round(200 / 3, 1)
     assert m["촬영 4장 완주율(%)"] == round(200 / 3, 1)
     assert m["결과 저장 클릭률(%)"] == round(200 / 3, 1)
 
@@ -250,3 +257,43 @@ def test_옛_이름_hand_는_occluded_로_센다():
     assert m["게이트 첫 실패 · occluded(%)"] == 100.0
     assert m["확인만 이유 · occluded(회)"] == 1
     assert "게이트 첫 실패 · hand(%)" not in m
+
+
+def test_이탈_위치는_마지막으로_들어간_화면():
+    """끝(save)까지 못 간 세션이 어느 화면에서 멈췄나 — 비율은 전체 세션 기준, 0 인 화면은 줄을 안 만든다"""
+    events = full_session("a")
+    for sid, upto in [("b", 2), ("c", 2), ("d", 5)]:
+        for i, sc in enumerate(FUNNEL_SCREENS[:upto]):
+            events.append(ev(sid, i, "screen_enter", screen=sc))
+    m = rows_by_metric(aggregate(events))
+    assert m["이탈 위치 · capture(%)"] == 50.0
+    assert m["이탈 위치 · attempt(%)"] == 25.0
+    assert "이탈 위치 · save(%)" not in m  # 끝까지 간 것은 이탈이 아니다
+    assert "이탈 위치 · consent(%)" not in m
+
+
+def test_이탈_위치는_시간순_마지막이_아니라_가장_멀리_간_화면():
+    """뒤로 돌아갔다 나가도 가장 멀리 간 화면으로 센다 — 퍼널 도달률과 같은 기준"""
+    events = [
+        ev("a", i, "screen_enter", screen=sc)
+        for i, sc in enumerate(["consent", "capture", "answer", "capture"])
+    ]
+    m = rows_by_metric(aggregate(events))
+    assert m["이탈 위치 · answer(%)"] == 100.0
+
+
+def test_옛_흐름_화면은_앱이_옮기는_자리로_센다():
+    """옛 로그 — 앱의 inNewFlow(core/screens.ts)와 같은 표:
+    looks·fullrender → answer, guide·live·result → partguide, review → feedback"""
+    events = [
+        ev("a", i, "screen_enter", screen=sc) for i, sc in enumerate(["consent", "capture", "looks", "live"])
+    ]
+    events += [ev("b", i, "screen_enter", screen=sc) for i, sc in enumerate(["consent", "capture", "review"])]
+    assert summarize_session(events[:4]).furthest == "partguide"
+    m = rows_by_metric(aggregate(events))
+    assert m["퍼널 · partguide 도달률(%)"] == 50.0
+    assert m["퍼널 · feedback 도달률(%)"] == 50.0
+
+
+def test_퍼널_화면_순서는_새_흐름():
+    assert FUNNEL_SCREENS == ["consent", "capture", "answer", "partguide", "attempt", "feedback", "save"]
