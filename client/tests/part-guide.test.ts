@@ -3,7 +3,7 @@ import { LM } from "../src/core/landmarks";
 import type { PartMask } from "../src/core/makeup-extract";
 import { LIPS_INNER, partGuides } from "../src/core/part-guide";
 import type { Pt } from "../src/core/types";
-import { INK, LMS, P, eyeOf, image } from "./helpers/synth-face";
+import { BROWN, INK, LMS, P, eyeOf, image } from "./helpers/synth-face";
 
 const W = 600, H = 600;
 function mask(inside: (x: number, y: number) => boolean): Uint8Array {
@@ -398,5 +398,59 @@ describe("부위 가이드 — 꼬리 끝이 높아도 띠는 그대로 (실사�
       const top = Math.min(...poly.filter((p) => Math.abs(p.x - x) < 2.5 && p.y < lidY(x) + 0.5).map((p) => p.y));
       expect(Math.abs(lidY(x) - top - 5), `x ${x}: 띠 높이 ${(lidY(x) - top).toFixed(1)}px (실제 5px)`).toBeLessThan(1.5);
     }
+  });
+});
+
+describe("부위 가이드 — 라이너는 AI 화장 사진의 가장 진한 선으로 (실사진: 차이에 섀도까지 섞여 부풀었다)", () => {
+  const lid = eyeOf("R").upper.map(P);
+  const lidY = (x: number) => { for (let i = 1; i < lid.length; i++) { const a = lid[i - 1]!, b = lid[i]!; if ((x - a.x) * (x - b.x) <= 0 && a.x !== b.x) return a.y + ((b.y - a.y) * (x - a.x)) / (b.x - a.x); } return NaN; };
+
+  it("L9 눈두덩 섀도까지 차이로 잡혀도, 라이너 띠는 실제 검정 선 두께(4px)대로", () => {
+    // AI 화장: 눈두덩 갈색 섀도(눈꺼풀 위 14px) + 검정 라이너(4px). 차이(라이너 부위)는 섀도까지 14px 로 잡혔다고 하자
+    const made = image((x, y) => {
+      const ly = lidY(x);
+      if (!Number.isFinite(ly) || x < 172 || x > 258) return null;
+      if (y <= ly && y >= ly - 4) return INK;
+      if (y < ly - 4 && y >= ly - 14) return BROWN;
+      return null;
+    });
+    const diff = mask((x, y) => x >= 172 && x <= 258 && y <= lidY(x) && y >= lidY(x) - 14);
+    const poly = get(partGuides([part("liner", "R", diff)], LMS, W, H, { made }), "liner", "R")!.polys[0]!;
+    for (const x of [235, 215, 195]) {
+      const top = Math.min(...poly.filter((p) => Math.abs(p.x - x) < 2.5 && p.y < lidY(x) + 0.5).map((p) => p.y));
+      expect(Math.abs(lidY(x) - top - 4), `x ${x}: 띠 높이 ${(lidY(x) - top).toFixed(1)}px (검정 선 4px, 섀도 14px)`).toBeLessThan(1.5);
+    }
+  });
+});
+
+describe("부위 가이드 — 라이너 꼬리 끝은 뾰족하게 (실사진: 끝이 뭉툭하게 잘렸다)", () => {
+  const lid = eyeOf("R").upper.map(P);
+  const lidY = (x: number) => { for (let i = 1; i < lid.length; i++) { const a = lid[i - 1]!, b = lid[i]!; if ((x - a.x) * (x - b.x) <= 0 && a.x !== b.x) return a.y + ((b.y - a.y) * (x - a.x)) / (b.x - a.x); } return NaN; };
+  it("L10 굵고 짧은 꼬리라도 가이드 꼬리 끝은 한 점으로 모인다", () => {
+    const o = P(LM.eyeA.outer);
+    // 눈꼬리에서 바깥 22px 까지 높이 8px 짜리 뭉툭한 꼬리
+    const m = mask((x, y) => (x >= 172 && x <= 258 && y <= lidY(x) && y >= lidY(x) - 6) || (x <= o.x && x >= o.x - 22 && y <= o.y && y >= o.y - 8));
+    const poly = get(partGuides([part("liner", "R", m)], LMS, W, H), "liner", "R")!.polys[0]!;
+    const tipX = Math.min(...poly.map((p) => p.x)), near = poly.filter((p) => p.x < tipX + 3);
+    // 끝에서 3px 안의 테두리 두께 (뾰족하면 작다)
+    const ys = near.map((p) => p.y);
+    expect(Math.max(...ys) - Math.min(...ys), `꼬리 끝 3px 안 두께`).toBeLessThan(3);
+  });
+});
+
+describe("부위 가이드 — 라이너는 띠와 이어진 진한 선만 (실사진: 관자놀이 머리카락까지 꼬리로 잡혔다)", () => {
+  const lid = eyeOf("R").upper.map(P);
+  const lidY = (x: number) => { for (let i = 1; i < lid.length; i++) { const a = lid[i - 1]!, b = lid[i]!; if ((x - a.x) * (x - b.x) <= 0 && a.x !== b.x) return a.y + ((b.y - a.y) * (x - a.x)) / (b.x - a.x); } return NaN; };
+  it("L11 꼬리 자리 끝에 따로 떨어진 진한 것(머리카락)은 꼬리가 아니다", () => {
+    const o = P(LM.eyeA.outer);
+    const made = image((x, y) => {
+      const ly = lidY(x);
+      if (Number.isFinite(ly) && x >= 172 && x <= 258 && y <= ly && y >= ly - 4) return INK;            // 라이너 띠
+      if (x <= o.x - 38 && x >= o.x - 50 && y >= o.y - 14 && y <= o.y + 4) return INK;                     // 떨어진 머리카락
+      return null;
+    });
+    const diff = mask((x, y) => x >= 172 && x <= 258 && y <= lidY(x) && y >= lidY(x) - 4);
+    const poly = get(partGuides([part("liner", "R", diff)], LMS, W, H, { made }), "liner", "R")!.polys[0]!;
+    expect(Math.min(...poly.map((p) => p.x)), "꼬리가 머리카락까지 안 간다").toBeGreaterThan(o.x - 30);
   });
 });

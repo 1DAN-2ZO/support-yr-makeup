@@ -44,12 +44,12 @@ export interface PartGuide {
  * wingMin: 눈꼬리 밖으로 이만큼 넘어야 꼬리 ·
  * taper: 섀도 양 끝에서 이 비율 구간 동안 눈꺼풀로 내려온다 · linerStart · linerMax · linerMin: 라이너 띠는 눈꺼풀에서 이만큼 안에서
  * 시작하는 줄, 두께는 이 사이 · wingMax: 꼬리를 찾는 거리 · wingTrack: 앞 칸 윗선에서 이만큼 안의 줄만 잇는다 · wingN: 꼬리 윗선 칸 수 ·
- * wingBlend: 꼬리 윗선과 볼록하게 이어 다듬는 눈꼬리 쪽 띠 구간
+ * wingBlend: 꼬리 윗선과 볼록하게 이어 다듬는 눈꼬리 쪽 띠 구간 · wingTaper: 꼬리 끝에서 이 비율 구간은 끝으로 곧게 모인다
  * (전부 눈 폭 비율). 눈대중 시작값
  */
 export const PART_GUIDE = {
   mouthOpen: 0.06, profileN: 24, shadowMax: 1.0, underMax: 0.6, browMax: 0.4, minH: 0.03,
-  wingMin: 0.03, taper: 0.2, linerStart: 0.06, linerMax: 0.3, linerMin: 0.015, wingMax: 0.8, wingTrack: 0.06, wingN: 10, wingBlend: 0.2,
+  wingMin: 0.03, taper: 0.2, linerStart: 0.06, linerMax: 0.3, linerMin: 0.015, wingMax: 0.8, wingTrack: 0.06, wingN: 10, wingBlend: 0.2, wingTaper: 0.3,
 } as const;
 
 type SV = { s: number; v: number };
@@ -122,6 +122,12 @@ export function partGuides(parts: readonly PartMask[], lm: readonly Pt[], w: num
 
   // 라이너 (사용자 그림 2026-10-07): 눈머리 → 눈꼬리 눈꺼풀 위 띠는 다 덮되 두께는 실제대로(칸마다 재서 2차 곡선 — 튀는 칸은 눌린다),
   // 꼬리 윗선도 실제 모양대로(눈꼬리 밖 칸마다 따라가며), 아랫선은 눈꼬리 → 꼬리 끝 곧게
+  // AI 화장 사진이 있으면 라이너 영역은 그 사진에서 가장 진한 선 — 맨얼굴과의 차이에는 섀도 · 속눈썹 변화까지 섞여 띠가 부풀었다 (실사진, 시험 L9)
+  if (opts.made) for (const sd of ["R", "L"] as const) {
+    const e = masks.get(`liner:${sd}`);
+    const dm = e ? linerDark(opts.made, lidOf(sd, true), F[sd]) : null;
+    if (e && dm) masks.set(`liner:${sd}`, { m: dm, count: e.count });
+  }
   const linerTop: Partial<Record<Side, Pt[]>> = {};   // 띠 윗선 (눈머리 → 눈꼬리) — 섀도는 이 위에서 시작
   const linerPoly: Partial<Record<Side, Pt[]>> = {};
   both("liner", (inside, f, s) => {
@@ -144,7 +150,8 @@ export function partGuides(parts: readonly PartMask[], lm: readonly Pt[], w: num
     const wingTop = wing.top.slice(1, -1).map((v, k) => {
       const u = (k + 1) / PART_GUIDE.wingN, q = { s: c.s + (wing.sTip - c.s) * u, v: Math.max(v, Math.min(c.v, wing.vTip)) };
       return f.from(q);
-    }).filter((p) => f.to(p).s > c.s);
+    }).filter((p, k) => f.to(p).s > c.s && (k + 1) / PART_GUIDE.wingN <= 1 - PART_GUIDE.wingTaper);
+    // 꼬리 끝 wingTaper 구간은 윗선을 빼서 끝으로 곧게 모이게 — 그대로 두니 끝 바로 앞까지 높다가 꺾여 뭉툭하게 잘렸다 (실사진, 시험 L10)
     // 꼬리 윗선과 눈꼬리 쪽 띠(눈 폭 wingBlend 안)만 위로 볼록하게 이어 만나는 곳의 홈 · 꼬리 윗선 출렁임을 없앤다 (실사진, 시험 L7).
     // 그보다 안쪽 띠는 그대로 — 띠 전체를 볼록하게 이으니 꼬리 끝이 높을 때 눈 가운데까지 곧은 선이 되어 띠가 쐐기로 덮였다 (시험 L8).
     // 그대로 두는 띠의 첫 점까지 넣어 경계가 이어지게 한다
@@ -290,6 +297,68 @@ function convexFromTip(chain: readonly Pt[], f: EyeFrame): Pt[] {
     out.push(p);
   }
   return out;
+}
+
+/**
+ * 라이너 자리(윗눈꺼풀 위 눈 폭 0.3 · 눈꼬리 밖 꼬리 자리)에서 가장 진한 픽셀 — 밝기 오츠로 살 / 어두운 쪽을 나누고, 어두운 쪽을
+ * 한 번 더 나눠 섀도(갈색)와 라이너(검정)를 가른다. 두 번째로 나눈 두 쪽 밝기가 25 넘게 차이 날 때만 (섀도가 없으면 라이너 테두리만 잘려서).
+ * 눈꺼풀 띠 쪽에서 이어진 것만 남긴다
+ */
+function linerDark(im: RgbaImage, lid: readonly Pt[], f: EyeFrame): Uint8Array | null {
+  const sv = lid.map((p) => f.to(p)).sort((a, b) => a.s - b.s);
+  const lidV = (s: number) => {
+    let i = 0;
+    while (i < sv.length - 2 && sv[i + 1]!.s < s) i++;
+    const a = sv[i]!, b = sv[i + 1]!, k = b.s > a.s ? (s - a.s) / (b.s - a.s) : 0;
+    return a.v + (b.v - a.v) * k;
+  };
+  const zone = (q: SV) => (q.s >= sv[0]!.s && q.s <= 0 ? q.v >= lidV(q.s) - 0.03 && q.v <= lidV(q.s) + 0.3 : q.s > 0 && q.s <= 0.6 && q.v >= -0.15 && q.v <= 0.4);
+  const R = Math.ceil(1.3 * f.ew), pix: number[] = [], L: number[] = [];
+  for (let y = Math.max(0, Math.floor(f.o.y - R)); y <= Math.min(im.h - 1, f.o.y + R); y++) {
+    for (let x = Math.max(0, Math.floor(f.o.x - R)); x <= Math.min(im.w - 1, f.o.x + R); x++) {
+      if (!zone(f.to({ x, y }))) continue;
+      const i = (y * im.w + x) * 4;
+      pix.push(y * im.w + x); L.push(0.299 * im.data[i]! + 0.587 * im.data[i + 1]! + 0.114 * im.data[i + 2]!);
+    }
+  }
+  if (pix.length < 20) return null;
+  const t1 = otsu(L), darkL = L.filter((v) => v <= t1);
+  let thr = t1;
+  if (darkL.length >= 10) {
+    const t2 = otsu(darkL), lo = darkL.filter((v) => v <= t2), hi = darkL.filter((v) => v > t2);
+    const mean = (v: number[]) => v.reduce((a, b) => a + b, 0) / (v.length || 1);
+    if (lo.length && hi.length && mean(hi) - mean(lo) > 25) thr = t2;
+  }
+  const dark = new Uint8Array(im.w * im.h);
+  pix.forEach((i, k) => { if (L[k]! <= thr) dark[i] = 1; });
+  // 눈꺼풀 띠 쪽(눈꼬리 안) 진한 픽셀에서 이어진 것만 — 꼬리 자리 끝 관자놀이 머리카락까지 꼬리로 잡혔다 (실사진, 시험 L11)
+  const m = new Uint8Array(im.w * im.h), stack: number[] = [];
+  for (const i of pix) if (dark[i] && f.to({ x: i % im.w, y: Math.floor(i / im.w) }).s <= 0) { m[i] = 1; stack.push(i); }
+  while (stack.length) {
+    const i = stack.pop()!, x = i % im.w, y = (i - x) / im.w;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const nx = x + dx, ny = y + dy, j = ny * im.w + nx;
+      if (nx >= 0 && ny >= 0 && nx < im.w && ny < im.h && dark[j] && !m[j]) { m[j] = 1; stack.push(j); }
+    }
+  }
+  return m;
+}
+
+/** 오츠 문턱 (0~255 밝기) — 두 무리 사이 분산이 가장 큰 자리 */
+function otsu(vals: readonly number[]): number {
+  const hist = new Array<number>(256).fill(0);
+  for (const v of vals) hist[Math.max(0, Math.min(255, Math.round(v)))]!++;
+  const n = vals.length;
+  let sum = 0;
+  for (let i = 0; i < 256; i++) sum += i * hist[i]!;
+  let wB = 0, sB = 0, best = -1, thr = 0;
+  for (let t = 0; t < 256; t++) {
+    wB += hist[t]!; if (!wB || wB === n) continue;
+    sB += t * hist[t]!;
+    const mB = sB / wB, mF = (sum - sB) / (n - wB), between = wB * (n - wB) * (mB - mF) ** 2;
+    if (between > best) { best = between; thr = t; }
+  }
+  return thr;
 }
 
 /** 다각형 둘레(margin px 안)에서 어두운 픽셀 — 밝기 오츠 문턱. 어두운 쪽 · 밝은 쪽이 갈리지 않으면 null */
