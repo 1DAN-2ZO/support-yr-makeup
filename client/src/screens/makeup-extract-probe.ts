@@ -1,6 +1,6 @@
 /**
  * [dev 전용] 화장 입히고 떼기 POC (makeup-extract-probe.html, 2026-10-06) — 한 페이지에서 다 (사용자):
- *  ① 맨얼굴: 웹캠 3초 찍기(가만히 있는 장 몇 개 중앙값 — core/snapshot) 또는 파일
+ *  ① 맨얼굴: 웹캠 3초 뒤 얼굴이 보이는 첫 장을 바로 찍기 (가만히 있는 장을 모으던 것은 웹캠에서 오래 걸려 뺐다, 사용자 2026-10-07) 또는 파일
  *  ② 참고 화장 사진: 파일
  *  ③ AI 가 내 얼굴에 입히기: FLUX.2 klein 4B 서버(127.0.0.1:7861, poc/look-tryon/server-bench/app_klein.py — 눈두덩 · 볼 · 입술만
  *     다시 그려 나머지는 원본 그대로)의 REST API — 사진은 base64 로 보내고 결과 파일을 받아온다 (서버가 localhost 를 CORS 로 허용) · 또는 결과 파일을 직접
@@ -25,7 +25,6 @@ import { createLiveRun } from "@core/live-run";
 import type { Outline } from "@core/overlay";
 import { partGuides, type PartGuide } from "@core/part-guide";
 import { spreadMarks } from "@core/spread-marks";
-import { createSnapshotCollector } from "@core/snapshot";
 import type { Pt } from "@core/types";
 import { startFrameLoop } from "./camera-loop";
 import { createLandmarker } from "./landmarker";
@@ -132,10 +131,9 @@ function refreshButtons(): void {
 
 // ---------- ① 맨얼굴: 웹캠 ----------
 
-type CamMode = "off" | "live" | "countdown" | "collecting";
+type CamMode = "off" | "live" | "countdown" | "shooting";
 let camMode: CamMode = "off", countT0 = 0, stopLoop: (() => void) | null = null;
 let videoLm: FaceLandmarker | null = null;
-const collector = createSnapshotCollector<HTMLCanvasElement>();
 
 function drawLiveThumb(count?: number): void {
   const w = video.videoWidth, h = video.videoHeight;
@@ -169,22 +167,17 @@ function camFrame(now: number): void {
   if (camMode === "countdown") {
     const left = COUNTDOWN_MS - (now - countT0);
     if (left > 0) { drawLiveThumb(Math.ceil(left / 1000)); return; }
-    camMode = "collecting";
-    collector.reset();
-    setMsg(bareMsg, "가만히 있어 주세요…");
+    camMode = "shooting";
   }
   drawLiveThumb();
-  if (camMode !== "collecting" || !videoLm) return;
-  const w = video.videoWidth, h = video.videoHeight;
-  const face = videoLm.detectForVideo(video, now).faceLandmarks[0];
-  const lm: Pt[] | null = face && face.length >= 478 ? face.map((p) => ({ x: p.x * w, y: p.y * h })) : null;
-  const done = collector.push(lm, toCanvas(video, w, h));
-  if (!lm) { setMsg(bareMsg, "얼굴을 찾지 못했어요", true); return; }
-  if (!done) return;
+  if (camMode !== "shooting" || !videoLm) return;
+  // 카운트다운이 끝나면 얼굴이 보이는 첫 장을 바로 찍는다
+  const w = video.videoWidth, h = video.videoHeight, face = videoLm.detectForVideo(video, now).faceLandmarks[0];
+  if (!face || face.length < 478) { setMsg(bareMsg, "얼굴을 찾지 못했어요 — 화면 안에 얼굴을", true); return; }
+  bareCv = toCanvas(video, w, h);
   stopCamera();
-  bareCv = done.image;
   preview(bareView, bareCv);
-  setMsg(bareMsg, `찍었어요 — ${bareCv.width}×${bareCv.height} (가만히 있는 ${5}장 중 가운데)`);
+  setMsg(bareMsg, `찍었어요 — ${bareCv.width}×${bareCv.height}`);
   refreshButtons();
   void maybeExtract();
 }

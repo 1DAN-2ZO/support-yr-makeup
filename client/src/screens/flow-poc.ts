@@ -1,6 +1,6 @@
 /**
  * [dev 전용] 새 흐름 한 바퀴 POC (flow-poc.html, 2026-10-07, ②) — 서비스 정의서 §6 화면 1~7 을 한 화면씩 차례로:
- *  1 맨얼굴: 웹캠 3초(가만히 있는 장 몇 개 중 가운데 — core/snapshot) 또는 파일
+ *  1 맨얼굴: 웹캠 3초 뒤 얼굴이 보이는 첫 장을 바로 찍기 (가만히 있는 장을 모으던 것은 웹캠에서 오래 걸려 뺐다, 사용자 2026-10-07) 또는 파일
  *  2 참고 사진: 파일. 정답사진을 만들면 지운다 (정의서 원칙)
  *  3 정답사진: FLUX.2 klein 4B 서버(127.0.0.1:7861, poc/look-tryon/server-bench/app_klein.py) 또는 파일 →
  *    맨얼굴에 겹쳐(얼굴 점 아핀) 부위별로 떼고(core/makeup-extract) 부위 가이드 모양을 만든다(core/part-guide)
@@ -19,7 +19,6 @@ import { robustAffine, type Affine } from "@core/eye-fit";
 import { FEEDBACK, FEEDBACK_ORDER, guideFeedback, pageOf, type FeedbackPart, type PartFeedback } from "@core/guide-feedback";
 import { EXTRACT, FACE_OVAL, extractAll, type ExtractPart, type PartMask } from "@core/makeup-extract";
 import { partGuides, type PartGuide } from "@core/part-guide";
-import { createSnapshotCollector } from "@core/snapshot";
 import type { Pt } from "@core/types";
 import { startFrameLoop } from "./camera-loop";
 import { createLandmarker } from "./landmarker";
@@ -213,8 +212,7 @@ let videoLm: FaceLandmarker | null = null;
 const cams: { stop: () => void }[] = [];
 
 function camera(view: HTMLCanvasElement, msg: HTMLElement, camBtn: HTMLButtonElement, snapBtn: HTMLButtonElement, onShot: (c: HTMLCanvasElement) => void): void {
-  let mode: "off" | "live" | "countdown" | "collecting" = "off", t0 = 0, stopLoop: (() => void) | null = null;
-  const collector = createSnapshotCollector<HTMLCanvasElement>();
+  let mode: "off" | "live" | "countdown" | "shooting" = "off", t0 = 0, stopLoop: (() => void) | null = null;
   const stop = (): void => {
     if (mode === "off") return;
     stopLoop?.();
@@ -255,19 +253,16 @@ function camera(view: HTMLCanvasElement, msg: HTMLElement, camBtn: HTMLButtonEle
     if (mode === "countdown") {
       const left = COUNTDOWN_MS - (now - t0);
       if (left > 0) { drawLive(Math.ceil(left / 1000)); return; }
-      mode = "collecting";
-      collector.reset();
-      say(msg, "가만히 있어 주세요…");
+      mode = "shooting";
     }
     drawLive();
-    if (mode !== "collecting" || !videoLm) return;
+    if (mode !== "shooting" || !videoLm) return;
+    // 카운트다운이 끝나면 얼굴이 보이는 첫 장을 바로 찍는다
     const w = video.videoWidth, h = video.videoHeight, face = videoLm.detectForVideo(video, now).faceLandmarks[0];
-    const lm: Pt[] | null = face && face.length >= 478 ? face.map((p) => ({ x: p.x * w, y: p.y * h })) : null;
-    const done = collector.push(lm, toCanvas(video, w, h));
-    if (!lm) { say(msg, "얼굴을 찾지 못했어요", true); return; }
-    if (!done) return;
+    if (!face || face.length < 478) { say(msg, "얼굴을 찾지 못했어요 — 화면 안에 얼굴을", true); return; }
+    const shot = toCanvas(video, w, h);
     stop();
-    onShot(done.image);
+    onShot(shot);
   };
   camBtn.addEventListener("click", async () => {
     if (mode !== "off") { stop(); return; }
