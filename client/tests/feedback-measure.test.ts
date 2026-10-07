@@ -126,3 +126,30 @@ describe("눈썹 꼬리 끝 (browTail) — 머리카락 분할이 있어야 잰�
     expect(line({ ...base, tailTargetR: 0.02, tailTargetL: 0.0, tailR: 0.05, tailL: 0.04 }).line).toBe("정답과 비슷해요");
   });
 });
+
+describe("정답사진의 맨얼굴이 따로 있을 때 (targetBare)", () => {
+  // 정답사진은 다른 촬영에서 만들어졌다: 그 촬영의 맨얼굴은 입술이 원래 더 붉게 찍혔다(0.4). 정답은 거기에 0.2 만큼 더 바른 것(0.6)
+  const tBare = frameOf(image(lips(0.4)), LMS), target = image(lips(0.6));
+  const lipLine = (cur: Paint, withBare: boolean) => feedbackWhole({ bare, target, cur: frameOf(image(cur), LMS), ...(withBare ? { targetBare: tBare } : {}) }).parts.find((p) => p.part === "lip")!;
+
+  it("B1 정답의 변화는 정답의 맨얼굴과, 내 화장의 변화는 내 맨얼굴과 견준다", () => {
+    // 내 맨얼굴(입술 0)에 0.2 만큼 발랐다 = 정답이 바른 만큼
+    expect(measureWhole({ bare, target, targetBare: tBare, cur: frameOf(image(lips(0.2)), LMS) }).lip!.amount).toBeCloseTo(1, 0);
+    // 정답의 맨얼굴을 안 주면 두 촬영의 차(0.4)가 정답의 변화에 섞여 3배로 읽히고, 같은 화장이 옅게 나온다
+    expect(measureWhole({ bare, target, cur: frameOf(image(lips(0.2)), LMS) }).lip!.amount).toBeLessThan(0.5);
+    expect(lipLine(() => null, true).tone).not.toBe("ok");
+  });
+
+  it("B2 정답 그림의 꼬리도 정답의 맨얼굴과 견줘 읽는다", () => {
+    // 정답의 맨얼굴에 원래 있는 선(주름)은 꼬리가 아니다
+    const crease = tail("R", 0.2, -20, [150, 110, 95]), tb = frameOf(image(over(crease, lips(0.4))), LMS), t2 = image(over(crease, lips(0.6), tail("L", 0.3)));
+    const m = measureWhole({ bare, target: t2, targetBare: tb, cur: frameOf(image(lips(0.2)), LMS), moved: image(tail("L", 0.3)) });
+    expect(m.liner!.targetR).toBeNull();
+    expect(Math.abs(m.liner!.targetL! - 0.3)).toBeLessThan(0.03);
+    expect(measureWhole({ bare, target: t2, cur: frameOf(image(lips(0.2)), LMS), moved: image(tail("L", 0.3)) }).liner!.targetR).not.toBeNull();   // 안 주면 주름을 꼬리로 읽는다
+  });
+
+  it("B3 안 주면 내 맨얼굴과 겹친다고 본다 (지금까지와 같다)", () => {
+    expect(feedbackWhole({ bare, target: image(lips(0.6)), cur: frameOf(image(lips(0.6)), LMS) }).parts.find((p) => p.part === "lip")!.line).toBe("정답과 비슷해요");
+  });
+});

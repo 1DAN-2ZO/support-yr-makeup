@@ -12,7 +12,6 @@ import { pointInPoly, rgbToLab, type RgbaImage } from "./color";
 import { FEEDBACK, composeFeedback, shotCondition, type WholeFeedback, type WholeMeasures } from "./feedback-whole";
 import { LM, at } from "./landmarks";
 import { frameOf, isHair, labBox, type SampleFrame } from "./sampling";
-import { scoreWhole } from "./score-shape";
 import type { Pt } from "./types";
 
 type V3 = readonly [number, number, number];
@@ -26,7 +25,8 @@ const growAbout = (poly: readonly Pt[], k: number): Pt[] => {
 };
 
 interface Zone { in: readonly (readonly Pt[])[]; out?: readonly (readonly Pt[])[]; keep?: (x: number, y: number) => boolean }
-interface Frames { bare: SampleFrame; target: SampleFrame; cur: SampleFrame }
+/** bare · cur = 내 맨얼굴과 시도사진 (같은 촬영) / tBare · target = 정답사진을 만들 때 쓴 맨얼굴과 정답사진 (서로 겹친다). 한 장으로 다 만들었으면 tBare = bare */
+interface Frames { bare: SampleFrame; cur: SampleFrame; tBare: SampleFrame; target: SampleFrame }
 
 /** 구역 안(out 밖 · keep 을 지나는 칸)의 평균 Lab. 머리카락 칸은 뺀다. 칸이 없으면 null */
 function meanIn(f: SampleFrame, z: Zone): V3 | null {
@@ -45,11 +45,25 @@ function meanIn(f: SampleFrame, z: Zone): V3 | null {
   return n ? [L / n, a / n, b / n] : null;
 }
 
-/** 세 장(맨얼굴 · 정답 · 시도)에서 한 구역의 변화: t = 정답 − 맨얼굴, d = 시도 − 맨얼굴 (각각 구역 − 기준 피부) */
+/**
+ * 한 구역의 변화: t = 정답 − 정답의 맨얼굴, d = 시도 − 내 맨얼굴 (각각 구역 − 기준 피부).
+ * 각자 자기 짝과 견준다 — 정답사진이 다른 촬영에서 만들어졌을 때 두 촬영의 차가 정답의 변화에 섞이지 않게 (실험 39 · 40)
+ */
 function change(fs: Frames, zone: (f: SampleFrame) => Zone, ref: (f: SampleFrame) => Zone): { t: V3; d: V3 } | null {
   const con = (f: SampleFrame): V3 | null => { const a = meanIn(f, zone(f)), b = meanIn(f, ref(f)); return a && b ? sub3(a, b) : null; };
-  const b = con(fs.bare), t = con(fs.target), c = con(fs.cur);
-  return b && t && c ? { t: sub3(t, b), d: sub3(c, b) } : null;
+  const b = con(fs.bare), c = con(fs.cur), tb = con(fs.tBare), t = con(fs.target);
+  return b && c && tb && t ? { t: sub3(t, tb), d: sub3(c, b) } : null;
+}
+
+/**
+ * 부위 전체의 양 — scoreWhole 과 같은 재는 법(부위 − 둘레 1.3~1.8배 띠, avoid 는 띠에서 뺌)을 두 쌍으로.
+ * target = 정답 변화의 크기(Lab 거리), amount = 그 방향으로 바뀐 시도의 크기 ÷ target (잴 수 없으면 null)
+ */
+function ringAmount(fs: Frames, polys: (f: SampleFrame) => Pt[][], avoid: (f: SampleFrame) => Pt[][] = () => []): { target: number; amount: number | null } {
+  const z = change(fs, (f) => ({ in: polys(f) }), (f) => ({ in: polys(f).map((q) => growAbout(q, 1.8)), out: [...polys(f).map((q) => growAbout(q, 1.3)), ...avoid(f)] }));
+  if (!z) return { target: 0, amount: null };
+  const tn2 = dot3(z.t, z.t);
+  return { target: Math.sqrt(tn2), amount: tn2 ? dot3(z.d, z.t) / tn2 : null };
 }
 
 const SIDES2: readonly Side2[] = ["R", "L"];
@@ -67,7 +81,7 @@ function eyeFrame(f: SampleFrame, k: Side2): { o: Pt; a: Pt; n: Pt; ue: number }
 }
 
 function lipMeasure(fs: Frames): WholeMeasures["lip"] | undefined {
-  const all = scoreWhole(fs.bare, fs.target, fs.cur, (f) => ({ polys: [pts(f, LM.lipsOuter)] }));
+  const all = ringAmount(fs, (f) => [pts(f, LM.lipsOuter)]);
   const scaled = (f: SampleFrame, k: number): Pt[] => growAbout(pts(f, LM.lipsOuter), k), ref = (f: SampleFrame): Zone => ({ in: [scaled(f, 1.9)], out: [scaled(f, 1.45)] });
   // 입꼬리(61 · 291)를 잇는 선의 아래쪽인가
   const below = (f: SampleFrame): ((x: number, y: number) => boolean) => { const a = at(f.lm, 61), b = at(f.lm, 291); return (x, y) => ((y - a.y) * (b.x - a.x) - (x - a.x) * (b.y - a.y) > 0) === (b.x > a.x); };
@@ -94,7 +108,7 @@ function lidZones(f: SampleFrame, k: Side2): { zones: Pt[][]; ref: Zone } {
 }
 
 /** 칠할 자리로 보는 정답 변화 · 안 칠한 자리 · 넘쳤다 (실험 22 · 28) */
-const SHADOW_ZONE = { paint: 6, blank: 4, over: 0.4 };
+export const SHADOW_ZONE = { paint: 6, blank: 4, over: 0.4 };
 function shadowMeasure(fs: Frames): WholeMeasures["shadow"] | undefined {
   const all: { side: Side2; t: V3; d: V3 }[] = [];
   for (const k of SIDES2) {
@@ -156,16 +170,16 @@ export function browTail(f: SampleFrame, k: Side2): number | null {
 }
 
 function browMeasure(fs: Frames): WholeMeasures["brow"] | undefined {
-  const reg = (ks: readonly Side2[]) => (f: SampleFrame) => ({ polys: ks.map((k) => browPoly(f, k)), avoid: SIDES2.map((k) => eyePoly(f, k)) });
-  const all = scoreWhole(fs.bare, fs.target, fs.cur, reg(SIDES2)), r = scoreWhole(fs.bare, fs.target, fs.cur, reg(["R"])), l = scoreWhole(fs.bare, fs.target, fs.cur, reg(["L"]));
+  const eyes = (f: SampleFrame): Pt[][] => SIDES2.map((k) => eyePoly(f, k)), of = (ks: readonly Side2[]) => ringAmount(fs, (f) => ks.map((k) => browPoly(f, k)), eyes);
+  const all = of(SIDES2), r = of(["R"]), l = of(["L"]);
   // 눈썹 바로 아래 띠 (아랫선에서 눈 폭의 3~10% 아래). 기준 피부는 눈썹 위 이마 (윗선에서 22~34% 위)
   const band = (line: readonly Pt[], a: number, b: number): Pt[] => [...line.map((p) => ({ x: p.x, y: p.y + a })), ...line.map((p) => ({ x: p.x, y: p.y + b })).reverse()];
   const fore = (f: SampleFrame): Zone => ({ in: SIDES2.map((k) => band(pts(f, browOf(k).upper), -0.34 * f.unit.eye, -0.22 * f.unit.eye)) });
   const core = change(fs, (f) => ({ in: SIDES2.map((k) => browPoly(f, k)) }), fore), below = change(fs, (f) => ({ in: SIDES2.map((k) => band(pts(f, browOf(k).lower), 0.03 * f.unit.eye, 0.1 * f.unit.eye)) }), fore);
   const tn2 = core ? dot3(core.t, core.t) || 1 : 1;
   // 꼬리를 늘린 양 = 그 사진의 꼬리 끝 − 맨얼굴의 꼬리 끝. 세 장 모두 머리카락 분할이 있어야 잰다
-  const ext = (f: SampleFrame, k: Side2): number | null => { const b = browTail(fs.bare, k), v = browTail(f, k); return b === null || v === null ? null : v - b; };
-  const tR = ext(fs.target, "R"), tL = ext(fs.target, "L"), cR = ext(fs.cur, "R"), cL = ext(fs.cur, "L");
+  const ext = (base: SampleFrame, f: SampleFrame, k: Side2): number | null => { const b = browTail(base, k), v = browTail(f, k); return b === null || v === null ? null : v - b; };
+  const tR = ext(fs.tBare, fs.target, "R"), tL = ext(fs.tBare, fs.target, "L"), cR = ext(fs.bare, fs.cur, "R"), cL = ext(fs.bare, fs.cur, "L");
   const tail = tR !== null && tL !== null && cR !== null && cL !== null ? { tailTargetR: tR, tailTargetL: tL, tailR: cR, tailL: cL } : {};
   return { target: all.target, amountR: r.amount ?? 0, amountL: l.amount ?? 0, below: core && below ? dot3(below.d, core.t) / tn2 : 0, belowTarget: core && below ? dot3(below.t, core.t) / tn2 : 0, ...tail };
 }
@@ -173,7 +187,7 @@ function browMeasure(fs: Frames): WholeMeasures["brow"] | undefined {
 /** 볼을 재서 넘길지 — 정답에서 바뀐 자리(①②④ 가 떠낸 칠한 자리)를 받게 되면 켠다 */
 const CHEEK_READY = false;
 function cheekMeasure(fs: Frames): WholeMeasures["cheek"] | undefined {
-  const w = scoreWhole(fs.bare, fs.target, fs.cur, (f) => ({ polys: SIDES2.map((k) => pts(f, CHEEK_IDS[k])), avoid: SIDES2.map((k) => eyePoly(f, k)) }));
+  const w = ringAmount(fs, (f) => SIDES2.map((k) => pts(f, CHEEK_IDS[k])), (f) => SIDES2.map((k) => eyePoly(f, k)));
   return { target: w.target, amount: w.amount ?? 0 };
 }
 
@@ -248,8 +262,13 @@ export function ridgeTail(bare: SampleFrame, im: RgbaImage, k: Side2): number | 
 export interface WholeInput {
   /** 맨얼굴 눈 뜬 장 */
   bare: SampleFrame;
-  /** 정답사진 — 맨얼굴과 같은 크기 · 같은 자리 (맨얼굴의 얼굴 점을 쓴다) */
+  /** 정답사진 — 그것을 만든 맨얼굴(targetBare, 없으면 bare)과 같은 크기 · 같은 자리 */
   target: RgbaImage;
+  /**
+   * 정답사진을 만들 때 쓴 맨얼굴 — bare 와 다른 촬영일 때만 준다 (실험 39: 다른 촬영의 맨얼굴로 만든 정답사진을 bare 와 견주면 두 촬영의 차가 섞인다).
+   * 주면 정답의 변화는 이것과 견주고, 시도의 변화는 bare 와 견준다. 옮긴 그림(moved)은 여전히 bare 와 겹쳐야 한다
+   */
+  targetBare?: SampleFrame;
   /** 시도사진 눈 뜬 장 — 그 사진에서 뽑은 얼굴 점 (실험 21: 맨얼굴 점을 옮겨 쓰는 것보다 낫다) */
   cur: SampleFrame;
   /** 시도사진의 화장을 같은 모델로 맨얼굴에 옮긴 그림 — 맨얼굴과 같은 크기 · 같은 자리. 없으면 라이너는 "이번에는 볼 수 없었어요" */
@@ -258,11 +277,11 @@ export interface WholeInput {
 
 /** 사진 네 장에서 부위별 값을 잰다 (사진 조건은 보지 않는다 — feedbackWhole 이 먼저 본다) */
 export function measureWhole(i: WholeInput): WholeMeasures {
-  // 정답 그림은 맨얼굴과 겹치므로 얼굴 점도 머리카락 분할도 맨얼굴 것을 쓴다
-  const fs: Frames = { bare: i.bare, target: frameOf(i.target, i.bare.lm, i.bare.hair), cur: i.cur };
+  // 정답 그림은 그것을 만든 맨얼굴과 겹치므로 얼굴 점도 머리카락 분할도 그 맨얼굴 것을 쓴다
+  const tBare = i.targetBare ?? i.bare, fs: Frames = { bare: i.bare, cur: i.cur, tBare, target: frameOf(i.target, tBare.lm, tBare.hair) };
   // 볼은 아직 넘기지 않는다: 볼 다각형 전체의 평균으로는 블러셔가 묽어져 정답 변화가 1.1 로 읽힌다 (파이썬 실험은 정답에서 바뀐 칸에만 무게를 줬다 — 그 자리를 받아야 한다)
   const lip = lipMeasure(fs), shadow = shadowMeasure(fs), brow = browMeasure(fs), cheek = CHEEK_READY ? cheekMeasure(fs) : undefined;
-  const liner = i.moved ? { targetR: ridgeTail(i.bare, i.target, "R"), targetL: ridgeTail(i.bare, i.target, "L"), R: ridgeTail(i.bare, i.moved, "R"), L: ridgeTail(i.bare, i.moved, "L") } : undefined;
+  const liner = i.moved ? { targetR: ridgeTail(tBare, i.target, "R"), targetL: ridgeTail(tBare, i.target, "L"), R: ridgeTail(i.bare, i.moved, "R"), L: ridgeTail(i.bare, i.moved, "L") } : undefined;
   return { ...(lip ? { lip } : {}), ...(shadow ? { shadow } : {}), ...(brow ? { brow } : {}), ...(cheek ? { cheek } : {}), ...(liner ? { liner } : {}) };
 }
 
