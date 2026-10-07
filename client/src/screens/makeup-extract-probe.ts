@@ -76,7 +76,7 @@ let bareCv: HTMLCanvasElement | null = null, refCv: HTMLCanvasElement | null = n
 let imageLm: Promise<FaceLandmarker> | null = null;
 type Crop = { x: number; y: number; w: number; h: number };
 /** bare: 원래 맨얼굴 · made: 그 자리에 맞춘 AI 화장 · outlines: ⑤ 가이드 (core/part-guide) */
-let last: { bare: RgbaImage; made: RgbaImage; lm: Pt[]; parts: PartMask[]; outlines: PartGuide[]; crop: Crop; info: string } | null = null;
+let last: { bare: RgbaImage; made: RgbaImage; bareCanvas: HTMLCanvasElement; madeCanvas: HTMLCanvasElement; lm: Pt[]; parts: PartMask[]; outlines: PartGuide[]; crop: Crop; info: string } | null = null;
 
 const setStatus = (text: string, warn = false): void => { statusEl.innerHTML = warn ? `<span class="warn">${text}</span>` : text; };
 const setMsg = (el: HTMLElement, text: string, warn = false): void => { el.innerHTML = warn ? `<span class="warn">${text}</span>` : text; };
@@ -415,10 +415,10 @@ async function maybeExtract(): Promise<void> {
   const t = robustAffine(ids.map((i) => ml[i]!), ids.map((i) => bl[i]!), 1);
   if (!t) { setStatus("두 사진을 겹치지 못했어요", true); return; }
   const resid = ids.reduce((s, i) => s + Math.hypot(applyAffine(t, ml[i]!).x - bl[i]!.x, applyAffine(t, ml[i]!).y - bl[i]!.y), 0) / ids.length;
-  const bare = rgbaOf(bareCv), made = rgbaOf(aligned(madeCv, t, bareCv.width, bareCv.height));
+  const madeCanvas = aligned(madeCv, t, bareCv.width, bareCv.height), bare = rgbaOf(bareCv), made = rgbaOf(madeCanvas);
   const eyeW = Math.hypot(bl[33]!.x - bl[133]!.x, bl[33]!.y - bl[133]!.y);
   last = {
-    bare, made, lm: bl, parts: [], outlines: [], crop: faceCrop(bl, bare.w, bare.h),
+    bare, made, bareCanvas: bareCv, madeCanvas, lm: bl, parts: [], outlines: [], crop: faceCrop(bl, bare.w, bare.h),
     info: `겹치기 오차 평균 ${resid.toFixed(1)}px (눈 폭의 ${((resid / eyeW) * 100).toFixed(1)}%)`,
   };
   await extract();
@@ -446,36 +446,42 @@ async function extract(): Promise<void> {
   setStatus(`${last.info} · 떼기 + 테두리 ${ms}ms · 부위를 눌러 켜고 끄기`);
 }
 
-/** 가이드 그리기 — 사진(자른 자리) 위에 켠 부위의 화장 영역 테두리 (부위 색 실선) */
-function drawOutlines(cv: HTMLCanvasElement, im: RgbaImage, crop: Crop, outlines: readonly PartGuide[]): void {
-  cv.width = crop.w; cv.height = crop.h;
-  const g = cv.getContext("2d")!, id = g.createImageData(crop.w, crop.h);
-  for (let y = 0; y < crop.h; y++) for (let x = 0; x < crop.w; x++) {
-    const i = ((crop.y + y) * im.w + (crop.x + x)) * 4, o = (y * crop.w + x) * 4;
-    id.data[o] = im.data[i]!; id.data[o + 1] = im.data[i + 1]!; id.data[o + 2] = im.data[i + 2]!; id.data[o + 3] = 255;
-  }
-  g.putImageData(id, 0, 0);
-  const lw = Math.max(2, crop.w / 300);
-  g.lineWidth = lw;
+/** 가이드 그리기 — 사진의 자른 자리(crop)를 넓이 960 으로 키워 그 위에 켠 부위의 테두리 (부위 색 실선). 부위로 확대해도 선 굵기는 그대로 */
+function drawOutlines(cv: HTMLCanvasElement, src: HTMLCanvasElement, crop: Rect, outlines: readonly PartGuide[]): void {
+  const OUT = 960, k = OUT / crop.w;
+  cv.width = OUT; cv.height = Math.round(crop.h * k);
+  const g = cv.getContext("2d")!;
+  g.drawImage(src, crop.x, crop.y, crop.w, crop.h, 0, 0, cv.width, cv.height);
+  g.lineWidth = 2.5;
+  g.lineJoin = "round";
   for (const o of outlines) {
     if (!on.has(o.part)) continue;
     g.strokeStyle = `rgb(${PARTS.find((p) => p.id === o.part)!.color.join(",")})`;
     for (const poly of o.polys) {
       if (poly.length < 3) continue;
       g.beginPath();
-      g.moveTo(poly[0]!.x - crop.x, poly[0]!.y - crop.y);
-      for (const p of poly.slice(1)) g.lineTo(p.x - crop.x, p.y - crop.y);
+      g.moveTo((poly[0]!.x - crop.x) * k, (poly[0]!.y - crop.y) * k);
+      for (const p of poly.slice(1)) g.lineTo((p.x - crop.x) * k, (p.y - crop.y) * k);
       g.closePath();
       g.stroke();
     }
   }
 }
 
+/** 사진 가이드 — 부위를 골랐으면 실시간 확대 창과 같은 비율로 그 부위만 (고른 게 없으면 얼굴 전체 · 모든 부위) */
+function renderPhoto(): void {
+  if (!last) return;
+  const shown = focus ? last.outlines.filter((o) => pageOf(o.part) === focus) : last.outlines;
+  const crop = focus ? clampRect(cropSpec(focus, last.lm, LIVE_ASPECT[focus], shown.flatMap((o) => o.polys.flat())), last.bare.w, last.bare.h) : last.crop;
+  drawOutlines(cvFitBare, last.bareCanvas, crop, shown);
+  drawOutlines(cvFitMade, last.madeCanvas, crop, shown);
+}
+
 function renderGuide(): void {
   if (!last) return;
   if (liveStop) buildRuns();
-  drawOutlines(cvFitBare, last.bare, last.crop, last.outlines);
-  drawOutlines(cvFitMade, last.made, last.crop, last.outlines);
+  drawPartChips();
+  renderPhoto();
   const side = (s: PartMask["side"]) => (s === "R" ? " 사진 왼쪽" : s === "L" ? " 사진 오른쪽" : "");
   const from = { landmark: "얼굴 점 선", mixed: "얼굴 점 + 화장 영역", region: "화장 영역" } as const;
   const lines = last.outlines.map((o) => `${PARTS.find((p) => p.id === o.part)!.name}${side(o.side)}: ${from[o.from]} · 테두리 ${o.polys.length}개 · ${o.count.toLocaleString()}px`);
@@ -488,11 +494,11 @@ const LIVE_NAME: Record<FeedbackPart, string> = { brow: "눈썹", liner: "아이
 const LIVE_ORDER: readonly FeedbackPart[] = ["brow", "liner", "shadow", "lip", "cheek"];
 /** 확대 창 가로/세로 — 눈 부위는 양쪽 눈을 한 창에 */
 const LIVE_ASPECT: Record<FeedbackPart, number> = { brow: 2, liner: 2, shadow: 2, lip: 4 / 3, cheek: 4 / 3 };
-const liveParts = $("liveParts");
+const partChips = $("partChips");
 let liveRuns: { part: FeedbackPart; run: ReturnType<typeof createLiveRun<HTMLCanvasElement>> }[] = [];
 let liveStop: (() => void) | null = null;
-/** 고른 부위 (null = 전체 — 확대 없이 모든 부위) */
-let liveFocus: FeedbackPart | null = null;
+/** 고른 부위 — 사진 가이드 · 실시간 가이드가 같이 쓴다 (null = 전체 — 확대 없이 모든 부위) */
+let focus: FeedbackPart | null = null;
 let follow: ReturnType<typeof createCropFollow> | null = null;
 let lastShape: Pt[] = [];
 
@@ -509,20 +515,22 @@ function buildRuns(): void {
     const outline: Outline = m?.dots.length ? { polys, lines: [], dots: m.dots, arrows: m.arrows } : { polys, lines: [] };
     liveRuns.push({ part, run: createLiveRun<HTMLCanvasElement>({ partId: part, baseline: { lm: l.lm, foreheadL }, outline }) });
   }
-  if (liveFocus && !liveRuns.some((r) => r.part === liveFocus)) liveFocus = null;
-  drawLiveChips();
 }
 
-function drawLiveChips(): void {
-  const chip = (label: string, focus: FeedbackPart | null): HTMLButtonElement => {
+/** 부위 칩 [전체 / 눈썹 / …] — 켠 부위 중 가이드가 있는 것만. 누르면 사진 · 실시간 둘 다 그 부위로 */
+function drawPartChips(): void {
+  const l = last;
+  const pages = l ? LIVE_ORDER.filter((part) => l.outlines.some((o) => on.has(o.part) && pageOf(o.part) === part && o.polys.some((q) => q.length >= 3))) : [];
+  if (focus && !pages.includes(focus)) focus = null;
+  const chip = (label: string, f: FeedbackPart | null): HTMLButtonElement => {
     const b = document.createElement("button");
     b.type = "button";
     b.textContent = label;
-    b.className = liveFocus === focus ? "main" : "";
-    b.addEventListener("click", () => { liveFocus = focus; follow = null; lastShape = []; drawLiveChips(); });
+    b.className = focus === f ? "main" : "";
+    b.addEventListener("click", () => { focus = f; follow = null; lastShape = []; drawPartChips(); renderPhoto(); });
     return b;
   };
-  liveParts.replaceChildren(chip("전체", null), ...liveRuns.map((r) => chip(LIVE_NAME[r.part], r.part)));
+  partChips.replaceChildren(...(pages.length ? [chip("전체", null), ...pages.map((part) => chip(LIVE_NAME[part], part))] : []));
 }
 
 /** 창(crop)만 거울로 칸에 맞춰 그리고 그 위에 테두리 — 화면 4 drawView 와 같은 그리기 (청록 점선 · 먼 쪽 눈은 흐리게) */
@@ -561,14 +569,14 @@ function liveFrame(now: number): void {
   const face = videoLm.detectForVideo(video, now).faceLandmarks[0];
   const lm: Pt[] | null = face && face.length >= 478 ? face.map((p) => ({ x: p.x * w, y: p.y * h })) : null;
   const steps = liveRuns.map((r) => ({ part: r.part, ...r.run.step({ t: now, lm, w, h, image: () => liveView }) }));
-  const shown = liveFocus ? steps.filter((s) => s.part === liveFocus) : steps;
+  const shown = focus ? steps.filter((s) => s.part === focus) : steps;
   let crop: Rect = { x: 0, y: 0, w, h };
-  if (liveFocus) {
-    const aspect = LIVE_ASPECT[liveFocus];
+  if (focus) {
+    const aspect = LIVE_ASPECT[focus];
     liveView.style.aspectRatio = String(aspect);
-    follow ??= createCropFollow(liveFocus, aspect);
+    follow ??= createCropFollow(focus, aspect);
     // 창은 지난 장면 테두리까지 담게 (화면 4 와 같이) — 얼굴이 없으면 맨얼굴 자리
-    crop = lm ? clampRect(follow.step(lm, now, lastShape), w, h) : clampRect(cropSpec(liveFocus, last.lm, aspect), w, h);
+    crop = lm ? clampRect(follow.step(lm, now, lastShape), w, h) : clampRect(cropSpec(focus, last.lm, aspect), w, h);
     lastShape = shown.flatMap((s) => s.outline?.polys.flat() ?? []);
   } else liveView.style.aspectRatio = `${w} / ${h}`;
   drawLive(crop, shown);
