@@ -214,9 +214,13 @@ describe("부위 가이드 — 실사진에서 나온 문제", () => {
     const poly = get(partGuides([part("shadow", "R", m)], LMS, W, H), "shadow", "R")!.polys[0]!;
     const h = (p: Pt) => lidY(p.x) - p.y;
     const xs = poly.map((p) => p.x), left = Math.min(...xs), right = Math.max(...xs);
+    // 끝점은 눈꺼풀 위, 끝에서 3px 안쪽도 높이 20 의 60% 밑 — 세로로 끊긴 네모 끝이면 거기서 이미 20 이다.
+    // (끝 1px 안만 보던 때는 3px 안쪽에서 16px 솟는 벽도 통과했다. 섀도 윗선이 가장 높은 점들을 잇는 부채꼴이 되며 고침, 2026-10-07)
     for (const end of [left, right]) {
-      const hs = poly.filter((p) => Math.abs(p.x - end) < 1).map(h);
-      expect(Math.max(...hs), `끝 (x ${end.toFixed(0)}) 높이 — 눈꺼풀로 내려와 닫힘 (라이너 없음)`).toBeLessThan(2);
+      const tip = poly.find((p) => p.x === end)!, inward = end === left ? 3 : -3;
+      expect(h(tip), `끝점 (x ${end.toFixed(0)}) 높이 — 눈꺼풀로 내려와 닫힘 (라이너 없음)`).toBeLessThan(2);
+      const h3 = Math.max(...poly.filter((p) => Math.abs(p.x - (end + inward)) < 0.5).map(h));
+      expect(h3, `끝에서 3px 안쪽 (x ${(end + inward).toFixed(0)}) 높이 — 비스듬히 올라간다`).toBeLessThan(12);
     }
   });
 });
@@ -538,5 +542,24 @@ describe("부위 가이드 — 섀도 테두리도 이웃 점끼리 매끄럽게
       return Math.abs(((v - u + 3 * Math.PI) % (2 * Math.PI)) - Math.PI) * (180 / Math.PI);
     });
     expect(Math.max(...turn.slice(1, -1)), "바깥 테두리에서 가장 크게 꺾인 각도").toBeLessThan(35);
+  });
+
+  it("SH5 섀도 윗선이 군데군데 꺼져도 가이드 윗선은 가장 높은 점들을 잇는 부채꼴 — 한 번 올라갔다 내려온다 (사용자 2026-10-07 실사진: 울퉁불퉁)", () => {
+    // 바깥 10px · 가운데 24px · 그 안쪽이 넓게 꺼져 9px · 눈머리 쪽 20px — 칸마다 보이는 높이로 그리면 24 → 10 → 19 로 출렁였다
+    const Hs = (x: number) => (x < 200 ? 10 : x < 225 ? 24 : x < 240 ? 9 : 20);
+    const sh = mask((x, y) => x >= 176 && x <= 256 && y <= lidY(x) - 1 && y >= lidY(x) - 1 - Hs(x));
+    const poly = get(partGuides([part("shadow", "R", sh)], LMS, W, H), "shadow", "R")!.polys[0]!;
+    // 윗선(꼬리 끝 → 눈머리)이 한쪽으로만 휜다 = 부채꼴. 꺼진 곳이 있으면 거기서 반대로 휜다
+    // (점이 0.2px 간격으로 촘촘해서 3px 쯤씩 건너 각도로 본다)
+    const outer = poly.slice(PART_GUIDE.profileN + 1).filter((_, i) => i % 12 === 0);
+    const turn = outer.slice(1, -1).map((a, i) => {
+      const p = outer[i]!, n = outer[i + 2]!, c = (a.x - p.x) * (n.y - a.y) - (a.y - p.y) * (n.x - a.x);
+      return c / (Math.hypot(a.x - p.x, a.y - p.y) * Math.hypot(n.x - a.x, n.y - a.y) || 1);
+    });
+    const sign = Math.sign(turn.reduce((t, c) => t + c, 0));
+    const bad = outer.slice(1, -1).filter((_, i) => turn[i]! * sign < -0.03);
+    expect(bad.map((p) => `(${p.x.toFixed(0)}, ${p.y.toFixed(1)})`), "윗선이 반대로 휘는 점 (꺼지거나 솟은 곳)").toEqual([]);
+    const topAt = (x: number) => Math.min(...poly.filter((p) => Math.abs(p.x - x) < 3).map((p) => p.y));
+    expect(lidY(232) - 1 - topAt(232), "꺼진 곳 위도 양옆 높은 점(24 · 20)을 이은 높이").toBeGreaterThan(17);
   });
 });

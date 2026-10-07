@@ -10,8 +10,8 @@
  *      AI 화장 사진(made)을 주면 두께는 실제 어두운 눈썹 털에 맞춰 줄이거나 넓힌다 (빈 살은 안 잡는다)
  *    라이너: 눈머리 → 눈꼬리 눈꺼풀 위 띠는 다 덮되 두께는 실제대로(칸마다 잰 두께의 2차 곡선), 꼬리 윗선도 실제 모양대로
  *      (눈꼬리 밖 칸마다 따라가며), 아랫선은 눈꼬리 → 꼬리 끝 곧게 (사용자 그림 2026-10-07 — 고정 띠 + 삼각 꼬리는 실제와 달랐다)
- *    섀도: 라이너 윗선 위에서 겹치지 않게, 눈머리부터 라이너 꼬리 끝까지 부채꼴 — 높이는 칸마다 보이는 그대로(이웃끼리 다듬기),
- *      그 바깥으로 더 번졌으면 칸마다 아래 · 위 끝을 따라 거기까지 (사용자 2026-10-07)
+ *    섀도: 라이너 윗선 위에서 겹치지 않게, 눈머리부터 라이너 꼬리 끝까지 부채꼴 — 높이는 칸마다 보이는 대로 재고,
+ *      그 바깥으로 더 번졌으면 칸마다 아래 · 위 끝을 따라 거기까지. 윗선은 그중 가장 높은 점들만 매끄럽게 잇는다 (사용자 2026-10-07)
  *    아래 섀도: 아랫눈꺼풀에서 내려간 높이를 매끈한 2차 곡선으로
  *    블러셔: 화장 영역 모멘트 타원
  *  - 쉐딩 · 하이라이트(참고)는 뺀다. clip 밖 픽셀(klein 이면 얼굴 윤곽 0.9 밖 — 원본에 되붙인 경계 차이)도 뺀다.
@@ -47,12 +47,13 @@ export interface PartGuide {
  * waveSmooth: 꼬리 끝 → 띠 윗선을 이웃 3점 평균으로 다듬는 횟수 · wingTaper: 꼬리 끝에서 이 비율 구간은 끝으로 곧게 모인다 ·
  * lashOpen: 라이너 진한 픽셀에서 이 굵기(눈 폭 비율)보다 가는 가닥(마스카라 속눈썹)은 지운다 ·
  * shadowExtMax · shadowExtN: 섀도가 라이너 꼬리 끝 바깥으로 번진 곳을 찾는 거리(눈 폭) · 다시 잡는 칸 수 ·
- * shadowStep · shadowSmooth: 섀도 바깥 테두리를 다시 찍는 간격(눈 폭) · 모서리 깎기 횟수
+ * shadowStep · shadowSmooth: 섀도 바깥 테두리를 다시 찍는 간격(눈 폭) · 모서리 깎기 횟수 ·
+ * roofSmooth: 섀도 윗선(가장 높은 점들을 이은 껍질)을 둥글게 하는 이웃 평균 횟수
  * (전부 눈 폭 비율). 눈대중 시작값
  */
 export const PART_GUIDE = {
   mouthOpen: 0.06, profileN: 24, shadowMax: 1.0, underMax: 0.6, browMax: 0.4, minH: 0.03,
-  wingMin: 0.03, taper: 0.2, linerStart: 0.06, linerMax: 0.3, linerMin: 0.015, wingMax: 0.8, wingTrack: 0.06, wingN: 10, waveSmooth: 3, wingTaper: 0.3, shadowExtMax: 0.8, shadowExtN: 8, shadowStep: 0.04, shadowSmooth: 4, lashOpen: 0.012,
+  wingMin: 0.03, taper: 0.2, linerStart: 0.06, linerMax: 0.3, linerMin: 0.015, wingMax: 0.8, wingTrack: 0.06, wingN: 10, waveSmooth: 3, wingTaper: 0.3, shadowExtMax: 0.8, shadowExtN: 8, shadowStep: 0.04, shadowSmooth: 4, roofSmooth: 8, lashOpen: 0.012,
 } as const;
 
 type SV = { s: number; v: number };
@@ -170,8 +171,8 @@ export function partGuides(parts: readonly PartMask[], lm: readonly Pt[], w: num
     const base = shadowBase(s), nrm = normals(base, f.up);
     return { prof: base.map((p, i) => reach(inside, p, nrm[i]!, PART_GUIDE.shadowMax * f.ew) / f.ew), ext: shadowExt(inside, f, base[base.length - 1]!) };
   }, (a, b) => ({ prof: a.prof.map((x, i) => (x + b.prof[i]!) / 2), ext: a.ext && b.ext ? avgExt(a.ext, b.ext) : a.ext ?? b.ext }), ({ prof, ext }, f, s) => {
-    // 눈머리부터 라이너 꼬리 끝까지(라이너가 없으면 눈꼬리까지) 부채꼴 — 높이는 칸마다 보이는 그대로, 이웃 칸끼리만 다듬는다
-    // (5칸 중앙값 → 3칸 평균). 눈머리 끝은 아랫선으로 내려와 닫힌다 (사용자 2026-10-07, 시험 SH1 · SH2).
+    // 눈머리부터 라이너 꼬리 끝까지(라이너가 없으면 눈꼬리까지) 부채꼴 — 높이는 칸마다 보이는 대로 재서 이웃 칸끼리 다듬고
+    // (5칸 중앙값 → 3칸 평균), 윗선은 그중 가장 높은 점들만 잇는다(아래). 눈머리 끝은 아랫선으로 내려와 닫힌다 (사용자 2026-10-07, 시험 SH1 · SH2).
     // 그 바깥으로 섀도가 더 번졌으면 칸마다 아래 · 위 끝을 따라 거기까지 (사용자: 뗀 섀도보다 범위가 모자라다, 시험 SH3)
     if (!prof.some((x) => x >= PART_GUIDE.minH) && !ext) return [];
     const med = prof.map((_, i) => median(prof.slice(Math.max(0, i - 2), i + 3)));
@@ -182,13 +183,16 @@ export function partGuides(parts: readonly PartMask[], lm: readonly Pt[], w: num
     // 라이너 안에 든 아랫선 점은 라이너 밖으로 밀어 올린다 (겹치지 않게)
     const base = all.map((p, i) => (liner ? pushOut(p, nrm[i]!, liner) : p));
     const top = base.map((p, i) => add(p, nrm[i]!, Math.max(0, sm[i]!) * taper(i) * f.ew));
-    let outer = [...top].reverse();
+    let lo: Pt[] = [], hi: Pt[] = [];
     if (ext) {
       const e = f.to(base[base.length - 1]!), K = ext.low.length - 1;
-      const lo = ext.low.slice(1).map((v, k) => f.from({ s: e.s + (ext.ds * (k + 1)) / K, v }));
-      const hi = ext.high.slice(1).map((v, k) => f.from({ s: e.s + (ext.ds * (k + 1)) / K, v }));
-      outer = [...lo, ...[...hi].reverse(), ...outer];
+      lo = ext.low.slice(1).map((v, k) => f.from({ s: e.s + (ext.ds * (k + 1)) / K, v }));
+      hi = ext.high.slice(1).map((v, k) => f.from({ s: e.s + (ext.ds * (k + 1)) / K, v }));
     }
+    // 윗선은 가장 높은 점들만 잇는다 (눈 좌표에서 위로 볼록한 껍질) — 시작점(눈머리)과 끝점(꼬리 끝 · 번진 끝)은 그대로, 고른 간격으로
+    // 다시 찍어 이웃 평균으로 꺾인 데를 둥글게. 칸마다 보이는 높이를 그대로 이었더니 꺼진 곳마다 울퉁불퉁했다 (사용자 2026-10-07 실사진, 시험 SH5)
+    const roof = smoothChain(resample(upperHull([...top, ...hi], f), (PART_GUIDE.shadowStep / 2) * f.ew), PART_GUIDE.roofSmooth);
+    const outer = [...lo, ...[...roof].reverse().slice(ext ? 1 : 0)];
     // 바깥 테두리(번진 끝 + 윗선)는 다시 찍은 뒤 모서리를 조금씩 깎아(차이킨) 매끄럽게 — 번진 끝처럼 되돌아가는 곳도 둥글게.
     // 아랫선(라이너 위)은 그대로 (사용자, 시험 SH4). 이웃 평균만으로는 되돌아가는 끝이 덜 둥글었다
     const chain = resample([base[base.length - 1]!, ...outer, base[0]!], PART_GUIDE.shadowStep * f.ew);
@@ -364,6 +368,25 @@ function avgWing(a: Wing, b: Wing): Wing {
 function resample(line: readonly Pt[], step: number): Pt[] {
   const len = line.slice(1).reduce((a, b, i) => a + Math.hypot(b.x - line[i]!.x, b.y - line[i]!.y), 0);
   return samples(line, Math.max(2, Math.round(len / Math.max(step, 0.5)) + 1));
+}
+
+/**
+ * 위로 볼록한 껍질 — 눈 좌표(s 바깥 · v 위)에서 첫 점부터 끝 점까지, 그 사이 가장 높은 점들만 남긴다 (첫 · 끝 점은 그대로,
+ * 둘 사이 s 밖의 점은 뺀다). 첫 점 s 가 끝 점보다 작아야 한다 (눈머리 → 바깥)
+ */
+function upperHull(pts: readonly Pt[], f: EyeFrame): Pt[] {
+  const a = pts[0]!, b = pts[pts.length - 1]!, sa = f.to(a).s, sb = f.to(b).s;
+  const mid = pts.slice(1, -1).map((p) => ({ p, q: f.to(p) })).filter(({ q }) => q.s > sa && q.s < sb).sort((x, y) => x.q.s - y.q.s);
+  const out: { p: Pt; q: SV }[] = [];
+  for (const c of [{ p: a, q: f.to(a) }, ...mid, { p: b, q: f.to(b) }]) {
+    while (out.length >= 2) {
+      const o = out[out.length - 2]!.q, m = out[out.length - 1]!.q;
+      if ((m.s - o.s) * (c.q.v - o.v) - (m.v - o.v) * (c.q.s - o.s) < 0) break;
+      out.pop();
+    }
+    out.push(c);
+  }
+  return out.map((c) => c.p);
 }
 
 /** 열린 꺾은선 모서리 깎기 (차이킨) n 번 — 양 끝 점은 그대로 */
