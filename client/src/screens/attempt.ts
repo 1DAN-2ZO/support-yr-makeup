@@ -215,7 +215,7 @@ export function attemptScreen<S>(deps: AttemptDeps): Screen<S> {
                   sharpness: sharpnessOf(video, faceCropOf(lm, sw, sh)),
                 });
               }
-              const shot = run.shot as AttemptShotId;   // startAttemptRun 은 정면 두 장만 낸다
+              const shot = run.shot;
               const r = runStep(run, ms, now);
               run = r.state;
               line.textContent = r.hint ?? r.gate?.text ?? "";
