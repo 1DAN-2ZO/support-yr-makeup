@@ -20,7 +20,7 @@ import { FACE_TRIANGLES } from "@core/face-mesh";
 import { LM } from "@core/landmarks";
 import { TRANSFER_PARTS, applyMakeup, extractMakeup, makeupPreview, matchLook, partChange, pasteRegions, type LookMatch, type MakeupLayer, type OcclusionMap, type PartStrength, type TransferPart } from "@core/look-extract";
 import { GUIDE_PARTS, buildGuide, type GuidePartId, type LookGuide } from "@core/look-guide";
-import { checkPhoto, landmarkShift, warpMask, warpToFace, type FaceShift, type PhotoCheck, type WarpedFace } from "@core/look-transfer";
+import { checkPhoto, hairCover, landmarkShift, warpMask, warpToFace, type FaceShift, type PhotoCheck, type WarpedFace } from "@core/look-transfer";
 import type { HairMask } from "@core/sampling";
 import type { Pt } from "@core/types";
 import { createHairMasker } from "./hair-segmenter";
@@ -512,7 +512,25 @@ const EYE_OPEN = [
 ];
 
 /**
- * 사진의 r 부분을 잘라 보낼 그림으로. keep 이 "face" 면 얼굴 윤곽 밖과 머리카락이 덮은 곳을 회색으로 가린다 —
+ * 생성 모델에 보낼 화장 사진에서 머리카락을 이만큼(눈 폭 대비) 넓혀 가린다 — 가닥 끝이 화장으로 옮겨 가지 않게 (core/look-transfer hairCover).
+ * 2026-10-07 앞머리 화장 사진 5장 × 얼굴 3명: 안 넓히면 앞머리 가닥이 눈두덩의 검은 줄 · 누런 섀도로 옮겨 왔고, 0.1 이면 줄었지만 남았고, 0.2 면 거의 사라졌다.
+ * 꼬리가 있는 화장 사진 5장에서는 0 · 0.1 · 0.2 어느 쪽이든 꼬리 길이 · 각도가 같게 나왔다 (옆머리 때문에 꼬리가 가려지지는 않았다)
+ */
+const REF_HAIR_GROW = 0.2;
+/** 사진마다 "머리카락으로 보고 가릴 칸" 은 한 번만 만든다 */
+const hairCovers = new WeakMap<Photo, Uint8Array>();
+function hairCoverOf(p: Photo): Uint8Array | null {
+  if (!p.hair) return null;
+  let cover = hairCovers.get(p);
+  if (!cover) {
+    cover = hairCover(p.hair, p.img.width, p.img.height, REF_HAIR_GROW * p.check.eyeWidthPx);
+    hairCovers.set(p, cover);
+  }
+  return cover;
+}
+
+/**
+ * 사진의 r 부분을 잘라 보낼 그림으로. keep 이 "face" 면 얼굴 윤곽 밖과 머리카락이 덮은 곳(조금 넓혀서)을 회색으로 가린다 —
  * 모델이 옷·머리·배경 색을 화장으로 가져오는 것을 막는다. "faceNoEyes" 는 눈동자까지 가린다 (눈 색이 섀도로 옮겨 오는 걸 막으려고)
  */
 function cropBlob(p: Photo, r: Rect, keep: "all" | "face" | "faceNoEyes" = "all"): Promise<Blob> {
@@ -525,10 +543,10 @@ function cropBlob(p: Photo, r: Rect, keep: "all" | "face" | "faceNoEyes" = "all"
     const im = g.getImageData(0, 0, r.w, r.h);
     const oval = FACE_OVAL.map((i) => p.lm[i]!);
     const eyes = keep === "faceNoEyes" ? EYE_OPEN.map((ids) => ids.map((i) => p.lm[i]!)) : [];
-    const m = p.hair;
+    const cover = hairCoverOf(p);
     for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) {
       const px = x + r.x, py = y + r.y;
-      const hair = m ? (m.data[Math.min(m.h - 1, Math.floor((py * m.h) / p.img.height)) * m.w + Math.min(m.w - 1, Math.floor((px * m.w) / p.img.width))] ?? 0) >= 0.5 : false;
+      const hair = cover ? cover[py * p.img.width + px] === 1 : false;
       if (!hair && pointInPoly(px, py, oval) && !eyes.some((e) => pointInPoly(px, py, e))) continue;
       im.data.set([128, 128, 128], (y * r.w + x) * 4);
     }
@@ -585,7 +603,10 @@ async function generate(): Promise<void> {
       renderRows();
     }
     const best = gen;
-    genStatus.textContent = `후보 ${count}개 중 ${best?.seed ?? "?"}번을 골랐습니다 — 화장 사진과 닮음 ${best?.match ? Math.round(best.match.score * 100) : "?"}점 (${((performance.now() - t0) / 1000).toFixed(1)}초). "후보"에서 다른 것도 볼 수 있습니다.`;
+    // 머리카락(앞머리 · 옆머리)이 눈 · 눈썹을 많이 가렸으면 알린다 — 가려진 곳의 화장은 모델에 안 보여 주므로 옮겨지지 않는다
+    const hid = layer ? (["brow", "eye"] as const).filter((p) => layer!.hidden[p] > MAX_HIDDEN).map((p) => `${PART_NAME[p]} ${Math.round(layer!.hidden[p] * 100)}%`) : [];
+    const hairNote = hid.length ? ` 머리카락(내 사진이나 화장 사진의 앞머리 · 옆머리)이 ${hid.join(" · ")}를 가려서, 가려진 곳의 화장은 옮기지 못했습니다 — 이마 · 눈썹이 드러난 사진이 더 잘 됩니다.` : "";
+    genStatus.textContent = `후보 ${count}개 중 ${best?.seed ?? "?"}번을 골랐습니다 — 화장 사진과 닮음 ${best?.match ? Math.round(best.match.score * 100) : "?"}점 (${((performance.now() - t0) / 1000).toFixed(1)}초). "후보"에서 다른 것도 볼 수 있습니다.${hairNote}`;
   } catch (e) {
     genStatus.textContent = e instanceof Error ? e.message : String(e);
     genStatus.className = "warn";

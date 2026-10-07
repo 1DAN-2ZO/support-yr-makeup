@@ -82,6 +82,43 @@ export function warpMask(mask: { w: number; h: number; data: ArrayLike<number> }
   return out;
 }
 
+/**
+ * 머리카락 마스크(확률 0 ~ 1, 크기는 사진과 달라도 된다)를 사진 크기 w×h 로 옮기고 grow(px) 만큼 넓힌다 — 머리카락으로 보고 가릴 칸이 1.
+ * 생성 모델에 보낼 화장 사진에서 머리카락을 가릴 때 쓴다 (실험 화면 cropBlob).
+ * 넓히는 까닭: 분할 모델은 머리카락 덩어리는 잡아도 가장자리의 가닥 끝을 놓친다. 앞머리가 눈까지 내려온 화장 사진에서 남은 가닥 끝을
+ * 생성 모델이 "눈두덩의 화장" 으로 옮겨 그렸다 — 검은 앞머리는 눈두덩의 검은 줄로, 금발 앞머리는 누런 섀도로 (2026-10-07, 화장 사진 5장 × 얼굴 3명).
+ * 눈 폭의 20% 만큼 넓혀 가리니 그 줄 · 색이 거의 사라졌다 (10% 로는 남았다). 대신 머리카락 바로 옆의 화장(앞머리에 닿은 눈썹 · 섀도 위쪽)도 같이 가려진다
+ */
+export function hairCover(mask: { w: number; h: number; data: ArrayLike<number> }, w: number, h: number, grow: number, threshold = 0.5): Uint8Array {
+  const base = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    const my = Math.min(mask.h - 1, Math.floor((y * mask.h) / h)) * mask.w;
+    for (let x = 0; x < w; x++) base[y * w + x] = (mask.data[my + Math.min(mask.w - 1, Math.floor((x * mask.w) / w))] ?? 0) >= threshold ? 1 : 0;
+  }
+  const r = Math.round(grow);
+  if (r < 1) return base;
+  /** 한 줄(n 칸, 칸 간격 step)에서 1 인 칸의 r 칸 안을 전부 1 로 */
+  const spread = (from: Uint8Array, to: Uint8Array, n: number, lines: number, step: number, lineStep: number): void => {
+    for (let l = 0; l < lines; l++) {
+      const at = l * lineStep;
+      let last = -Infinity;
+      for (let i = 0; i < n; i++) {
+        if (from[at + i * step]) last = i;
+        if (i - last <= r) to[at + i * step] = 1;
+      }
+      last = Infinity;
+      for (let i = n - 1; i >= 0; i--) {
+        if (from[at + i * step]) last = i;
+        if (last - i <= r) to[at + i * step] = 1;
+      }
+    }
+  };
+  const rows = new Uint8Array(w * h), out = new Uint8Array(w * h);
+  spread(base, rows, w, h, 1, w);
+  spread(rows, out, h, w, w, 1);
+  return out;
+}
+
 /** 두 얼굴의 점이 얼마나 어긋났나. 전부 눈 폭 대비 비율 (0.03 = 눈 폭의 3%) */
 export interface FaceShift {
   /** 얼굴 전체가 밀린 정도 — 화장·표정에 안 흔들리는 점(RIGID_IDS)들의 평균 이동 */

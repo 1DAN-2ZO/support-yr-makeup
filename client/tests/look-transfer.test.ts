@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { RgbaImage } from "@core/color";
 import type { Triangle } from "@core/face-mesh";
 import { LM } from "@core/landmarks";
-import { checkPhoto, landmarkShift, warpMask, warpToFace } from "@core/look-transfer";
+import { checkPhoto, hairCover, landmarkShift, warpMask, warpToFace } from "@core/look-transfer";
 import type { Pt } from "@core/types";
 import { faceLandmarks } from "./helpers/synth-face";
 
@@ -93,5 +93,32 @@ describe("checkPhoto", () => {
     expect(c.eyeWidthPx).toBeCloseTo(90, 5);
     expect(c.eyeWidthRatio).toBeCloseTo(1, 5);
     expect(c.rollDeg).toBeCloseTo(0, 5);
+  });
+});
+
+describe("hairCover", () => {
+  // 20×20 마스크의 가운데 한 칸만 머리카락 → 40×40 사진에서는 (20..21, 20..21) 네 칸
+  const mask = { w: 20, h: 20, data: Float32Array.from({ length: 400 }, (_, i) => (i === 10 * 20 + 10 ? 0.9 : 0.1)) };
+  const count = (c: Uint8Array): number => c.reduce((s, v) => s + v, 0);
+
+  it("넓히지 않으면 마스크가 기준을 넘는 칸만 — 사진 크기로 옮겨서", () => {
+    const c = hairCover(mask, 40, 40, 0);
+    expect(count(c)).toBe(4);
+    expect(c[20 * 40 + 20]).toBe(1);
+    expect(c[19 * 40 + 19]).toBe(0);
+  });
+
+  it("grow 만큼 사방으로 넓힌다 — 가닥 끝을 놓친 자리까지 가리게", () => {
+    const c = hairCover(mask, 40, 40, 3);
+    // 2×2 칸이 사방으로 3칸씩 → 8×8
+    expect(count(c)).toBe(64);
+    expect(c[17 * 40 + 17]).toBe(1);
+    expect(c[24 * 40 + 24]).toBe(1);
+    expect(c[16 * 40 + 20]).toBe(0);
+    expect(c[20 * 40 + 25]).toBe(0);
+  });
+
+  it("기준을 못 넘는 칸은 넓혀도 안 가린다", () => {
+    expect(count(hairCover(mask, 40, 40, 5, 0.95))).toBe(0);
   });
 });

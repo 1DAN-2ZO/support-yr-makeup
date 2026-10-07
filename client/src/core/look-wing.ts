@@ -425,8 +425,12 @@ export function judgeWing(inp: WingInput, cd: WingCand | null, P: WingParams = W
   if (!cd) return none("눈꼬리 밖으로 나가는 가는 선 없음");
   const spot = (q: { t: number; v: number }): Pt => ({ x: outer.x + ax.x * q.t + up.x * q.v, y: outer.y + ax.y * q.t + up.y * q.v });
   const tip = cd.path[cd.path.length - 1]!, p = wingProb(cd, model);
-  // 그릴 선: 따라간 선 그대로, 눈꼬리 점 밖 부분만 — 선이 실제 꼬리 위에 놓인다 (눈꼬리 점은 꼬리가 시작하는 곳과 다를 수 있다)
-  const line = cd.path.filter((q) => q.t >= 0).map(spot);
+  // 그릴 선: 따라간 선 그대로, 눈꼬리 점 밖 부분만 — 선이 실제 꼬리 위에 놓인다 (눈꼬리 점은 꼬리가 시작하는 곳과 다를 수 있다).
+  // 자리마다 능선을 찾아 옆으로 한두 칸씩 옮긴 것이 톱니처럼 보여서, 이웃끼리 고르게 편다 (양 끝은 그대로)
+  let line = cd.path.filter((q) => q.t >= 0).map(spot);
+  for (let pass = 0; pass < 6; pass++) {
+    line = line.map((q, k) => (k === 0 || k === line.length - 1 ? q : { x: (line[k - 1]!.x + 2 * q.x + line[k + 1]!.x) / 4, y: (line[k - 1]!.y + 2 * q.y + line[k + 1]!.y) / 4 }));
+  }
   // 길이 · 각도는 눈꼬리 점에서 꼬리 끝까지 — 바르는 사람이 보는 것
   const found: WingLine = { end: spot(tip), len: Math.hypot(tip.t, tip.v), deg: Math.round((Math.atan2(tip.v, tip.t) * 180) / Math.PI), dark: cd.f.strength, free: cd.f.free * u, p, line };
   if (cd.f.out < P.minLen) return none(`눈꼬리 밖으로 ${pct(cd.f.out)}뿐 — 꼬리로 안 봄`);
