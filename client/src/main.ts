@@ -51,6 +51,7 @@ import { reviewScreen, type ReviewDeps } from "./screens/review";
 import { startReviewShot } from "./screens/review-shot";
 import { createShell } from "./screens/shell";
 import { attemptScreen, type AttemptShots } from "./screens/attempt";
+import { loadFeedback, type AnswerPhoto, type FeedbackLoad } from "./screens/feedback-source";
 import { partGuideSlot, saveSlot, slotScreen, type PartGuideSlotDeps, type SaveSlotDeps } from "./screens/flow-slots";
 import { inNewFlow } from "./core/screens";
 
@@ -238,12 +239,28 @@ async function boot(): Promise<void> {
   const getAttempt = (): AttemptShots | null => attempt;
   shell.register("attempt", attemptScreen<Session>({ setAttempt: (shots) => { attempt = shots; }, next: "feedback" }));
 
+  // 3 정답사진 — 화면 3(정답사진 만들기 연결, 방식은 #331)이 setAnswer 로 넣는다. 맨얼굴과 같은 크기 · 같은 자리여야 한다
+  // (docs/feedback-input-contract.md). 메모리에만 둔다
+  let answer: AnswerPhoto | null = null;
+  const getAnswer = (): AnswerPhoto | null => answer;
+  const setAnswer = (a: AnswerPhoto | null): void => { answer = a; };
+
+  // 6 피드백 재료 (⑥ 연결, #332) — 화면(⑤)은 getFeedback 이 준 것(문장 · 사진 두 장)을 그리기만 한다.
+  // 옮긴 그림(getMoved)은 아직 넣지 않는다 — 라이너 줄만 "볼 수 없었어요". 넣기 전에 ③ 의 라이너 재기 수정이 먼저다:
+  // 지금 코드는 꼬리를 틀리게 읽어서 getMoved 가 붙으면 틀린 라이너 문장이 화면에 나간다 (#336 ③ 리뷰, 실험 44).
+  // 붙일 때는 옮긴 그림을 기다리는 동안 입술 · 섀도우 · 눈썹을 먼저 재 둔다 (서버가 한 장에 15초쯤)
+  const getFeedback = (): Promise<FeedbackLoad> => loadFeedback({ getBaseline: () => session.baseline, getAttempt, getAnswer });
+
+  // 개발할 때만: 정답사진 만들기가 붙기 전에도 화면 6 을 돌려 볼 수 있게 콘솔에서 넣는 길 (배포 빌드에는 없다)
+  //   __nudyDev.setAnswer(blob)  ·  await __nudyDev.getFeedback()
+  if (import.meta.env.DEV) (window as unknown as { __nudyDev?: unknown }).__nudyDev = { setAnswer: (image: Blob) => setAnswer({ image }), getFeedback };
+
   // 새 흐름 뼈대 (2026-10-06) — 담당이 진짜 화면을 올리면 여기 등록만 바꾼다 (screens/flow-slots.ts)
   // 후기 설문 주소. 공개 구글 폼이라 숨길 것이 아니어서 기본값을 코드에 둔다 —
   // 그래야 배포 빌드에 따로 값을 넣지 않아도 뜬다. VITE_SURVEY_URL 로 덮어쓸 수 있다.
   // 빈 문자열을 주면(VITE_SURVEY_URL=) 설문을 끌 수 있다
   const surveyUrl = (import.meta.env.VITE_SURVEY_URL as string | undefined) ?? SURVEY_URL;
-  registerFlowSlots(shell, { getPart: () => session.currentPart, clearAll, surveyUrl, getAttempt });
+  registerFlowSlots(shell, { getPart: () => session.currentPart, clearAll, surveyUrl, getAttempt, getAnswer, getFeedback });
 
   registerAll(
     shell,
@@ -367,6 +384,7 @@ async function boot(): Promise<void> {
       restart: () => {
         logStore.reopen();
         attempt = null;
+        answer = null;
         set(createSession());
         clearRemaining = 0;
         shell.render();
@@ -431,7 +449,7 @@ function registerAll(
  * 새 흐름(2026-10-06)의 빈 자리 — 순서는 core/screens.ts SCREEN_ORDER.
  * 옛 흐름 화면(looks · fullrender · guide · live · result · review)은 registerAll 에 그대로 등록돼 있지만 흐름이 가지 않는다
  */
-function registerFlowSlots(shell: ReturnType<typeof createShell<Session>>, deps: PartGuideSlotDeps & SaveSlotDeps & { getAttempt: () => AttemptShots | null }): void {
+function registerFlowSlots(shell: ReturnType<typeof createShell<Session>>, deps: PartGuideSlotDeps & SaveSlotDeps & { getAttempt: () => AttemptShots | null; getAnswer: () => AnswerPhoto | null; getFeedback: () => Promise<FeedbackLoad> }): void {
   shell.register("answer", slotScreen<Session>({
     title: "2 · 3 참고 사진 · 정답사진",
     owner: "① · ② · ④",
@@ -448,9 +466,13 @@ function registerFlowSlots(shell: ReturnType<typeof createShell<Session>>, deps:
     owner: "③",
     todo: [
       "정답사진 대 시도사진 — 부위별로 어느 부분이 어떻게 됐나 (잘함 / 덜 그림 / 넘침). 점수 없음",
-      "시도사진은 main.ts 의 getAttempt() — 눈 뜬 장 묶음(5장까지) · 감은 장, 장마다 사진(원본 크기) · 얼굴 점 · 크기 (screens/attempt.ts AttemptShots)",
+      "화면이 받는 것: main.ts 의 getFeedback() — 문장(③ feedbackWhole) · 정답사진 · 시도사진 주소 (screens/feedback-source.ts FeedbackView). 화면은 그리기만 한다 (#332 · 모양 #318)",
     ],
-    status: () => { const a = deps.getAttempt(); return a ? `시도사진 받음 — 눈 뜬 장 ${a.front_open.length}장 · 감은 장 ${a.front_closed.length}장` : "시도사진 없음 — 앱을 다시 켰으면 다시 찍어야 해요"; },
+    status: () => {
+      const a = deps.getAttempt();
+      const shots = a ? `시도사진 받음 — 눈 뜬 장 ${a.front_open.length}장 · 감은 장 ${a.front_closed.length}장` : "시도사진 없음 — 앱을 다시 켰으면 다시 찍어야 해요";
+      return `${shots} / ${deps.getAnswer() ? "정답사진 받음" : "정답사진 없음 (#331)"}`;
+    },
     next: "save",
   }));
   shell.register("save", saveSlot<Session>(deps));
