@@ -22,9 +22,9 @@ export function startAttemptRun(taken: Partial<Record<AttemptShotId, unknown>>, 
 /**
  * 한 번 찍을 때 모으는 장 수 (2026-10-07, #328). 눈 뜬 장은 다섯 장 묶음 — 피드백(③)이 값마다 가운데 값을 써서 한 장의 흔들림을 줄인다.
  * 감은 장은 한 장 (눈을 감고 기다리는 시간을 늘리지 않는다).
- * minGapMs: 묶음 안 장면 사이 간격 · maxMs: 셔터 뒤 이만큼 지나면 모은 만큼으로 끝 (눈을 감거나 움직여도 멈추지 않게)
+ * minGapMs: 묶음 안 장면 사이 간격 — 0.2초. 흔들림이 줄어드는 것을 확인한 조건이 0.2초 간격 · 1초 동안의 다섯 장이다 (#333, 80ms 는 시험한 적이 없고 장면이 서로 너무 비슷해질 수 있다) · maxMs: 셔터 뒤 이만큼 지나면 모은 만큼으로 끝 (눈을 감거나 움직여도 멈추지 않게)
  */
-export const ATTEMPT_BURST = { count: { front_open: 5, front_closed: 1 } as Record<AttemptShotId, number>, minGapMs: 80, maxMs: 1500 } as const;
+export const ATTEMPT_BURST = { count: { front_open: 5, front_closed: 1 } as Record<AttemptShotId, number>, minGapMs: 200, maxMs: 1500 } as const;
 
 export interface AttemptBurst {
   shot: AttemptShotId;
