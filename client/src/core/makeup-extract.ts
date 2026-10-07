@@ -156,6 +156,15 @@ export interface ExtractOptions {
    */
   readonly adaptive: boolean;
   readonly adaptiveK: number;
+  /**
+   * shade: 섀도 · 아래 섀도 자리에서 피부색 그대로 어두워지기만 한 픽셀(음영)은 화장으로 안 본다 — 어두워졌는데 색 방향(hue) 차이가
+   * shadeHue(°) 안이고 채도가 shadeChroma 넘게 늘지 않은 것. AI 가 눈두덩을 다시 그리며 오목한 곳을 어둡게 해서 섀도 위 음영까지 잡혔다
+   * (사용자 2026-10-07 실사진). 피부 채도가 너무 낮으면(6 밑) 색 방향을 믿을 수 없어 거르지 않는다.
+   * 한계: 피부와 같은 색 방향으로 어둡게만 하는 섀도(음영 섀도)는 같이 빠진다 — 보통 갈색 섀도는 색 방향이 20° 넘게 바뀐다
+   */
+  readonly shade: boolean;
+  readonly shadeHue: number;
+  readonly shadeChroma: number;
 }
 
 export const EXTRACT: ExtractOptions = {
@@ -163,6 +172,7 @@ export const EXTRACT: ExtractOptions = {
   edge: 0.3, peakPct: 0.98, minPixels: 30,
   linerMaxL: 40, linerDarker: 30, contourDL: 3,
   blur: false, blurRatio: 0.04, skinMap: false, chroma: false, chromaL: 0.4, adaptive: false, adaptiveK: 3,
+  shade: true, shadeHue: 10, shadeChroma: 3,
 };
 
 /** 가로 · 세로 상자 흐림 (반경 r). 투명(AI 사진이 닿지 않은 빈칸) 픽셀은 섞지 않는다 */
@@ -291,8 +301,20 @@ function zones(lm: readonly Pt[]): { list: Zone[]; exclude: Pt[][] } {
   return { list, exclude };
 }
 
-/** 한 픽셀의 색 차 — d: 거르기 적용한 차(색 위주면 밝기를 줄여 잰 것) · dL · da · db: 밝기 · 붉은기 · 노란기 차(톤 뺀) · L: 화장 사진 밝기(톤 뺀) · bL · mL: 맨얼굴 · 화장 사진 밝기 그대로 */
-export interface DiffPx { d: number; dL: number; da: number; db: number; L: number; bL: number; mL: number }
+/**
+ * 한 픽셀의 색 차 — d: 거르기 적용한 차(색 위주면 밝기를 줄여 잰 것) · dL · da · db: 밝기 · 붉은기 · 노란기 차(톤 뺀) · L: 화장 사진 밝기(톤 뺀) ·
+ * bL · mL: 맨얼굴 · 화장 사진 밝기 그대로 · ba · bb: 맨얼굴 붉은기 · 노란기
+ */
+export interface DiffPx { d: number; dL: number; da: number; db: number; L: number; bL: number; mL: number; ba: number; bb: number }
+
+/** 음영 — 어두워지기만 하고 색 방향(hue)은 그대로, 채도도 안 늘었다 (ExtractOptions.shade) */
+export function isShade(q: DiffPx, opts: Pick<ExtractOptions, "shadeHue" | "shadeChroma"> = EXTRACT): boolean {
+  if (q.dL >= 0) return false;
+  const cb = Math.hypot(q.ba, q.bb);
+  if (cb < 6) return false;
+  const ma = q.ba + q.da, mb = q.bb + q.db, dh = Math.abs(((((Math.atan2(mb, ma) - Math.atan2(q.bb, q.ba)) * 180) / Math.PI + 540) % 360) - 180);
+  return dh < opts.shadeHue && Math.hypot(ma, mb) - cb <= opts.shadeChroma;
+}
 
 /**
  * 맨얼굴 ↔ 화장 사진 색 차 — 떼기(extractAll)와 모양 숫자 재기(makeup-fit)가 같은 기준을 쓴다.
@@ -319,7 +341,7 @@ export function diffField(bare0: RgbaImage, made0: RgbaImage, lm: readonly Pt[],
     if ((made.data[(y * made.w + x) * 4 + 3] ?? 255) < 250) return null;
     const sh = shiftAt(x, y), b = labAt(bare, x, y), m0 = labAt(made, x, y), m = { L: m0.L - sh.L, a: m0.a - sh.a, b: m0.b - sh.b };
     const dL = m.L - b.L, d = colorZone ? Math.hypot(opts.chromaL * dL, m.a - b.a, m.b - b.b) : deltaE(b, m);
-    return { d, dL, da: m.a - b.a, db: m.b - b.b, L: m.L, bL: b.L, mL: m0.L };
+    return { d, dL, da: m.a - b.a, db: m.b - b.b, L: m.L, bL: b.L, mL: m0.L, ba: b.a, bb: b.b };
   };
   // adaptive: 얼굴 상자 안 색 차 분포 — 대부분이 화장 아닌 피부라 중앙값 + K × 퍼짐(MAD × 1.4826) 이 '피부 변화' 의 윗선
   let floor = 0;
@@ -359,6 +381,8 @@ export function extractAll(bare0: RgbaImage, made0: RgbaImage, lm: readonly Pt[]
         if (!q) continue;
         // 얼굴 나머지(쉐딩 · 하이라이트)에서 아주 어두운 픽셀은 머리카락 · 그늘 — 화장으로 안 본다
         if (z.part === "contour" && Math.min(q.bL, q.mL) < 25) continue;
+        // 섀도 자리의 음영(피부색 그대로 어두워지기만)은 화장이 아니다 — 가장 진한 곳 · 문턱도 화장 픽셀로만 잰다
+        if (opts.shade && (z.part === "shadow" || z.part === "underShadow") && isShade(q, opts)) continue;
         px.push({ i, d: q.d, dL: q.dL, L: q.L });
       }
     }

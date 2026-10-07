@@ -60,8 +60,15 @@ export interface LiveRunOptions {
   baseAb?: { a: number; b: number };
   /** 맨얼굴 정면 때 표정 (① Baseline, #177). 없으면 표정 조건 생략 */
   baseExpr?: Readonly<Record<string, number>> | null;
-  /** 테두리 모양. 채점과 같은 것 */
-  guide: GuideSource;
+  /** 테두리 모양. 채점과 같은 것. outline 을 주면 안 쓴다 */
+  guide?: GuideSource;
+  /**
+   * 맨얼굴(baseline) 좌표로 이미 그린 테두리 — 정답사진에서 만든 부위 가이드(core/part-guide)처럼 템플릿이 아닌 모양을
+   * 예전 화면 4 와 같은 다듬기(그물 붙이기 · 떨림 거르기 · 먼 쪽 눈 보정 · 흐리게)로 따라가게 (사용자 2026-10-07).
+   * 점 · 화살표(dots · arrows)는 넣은 그대로 따라간다 — 템플릿용 퍼지는 방향 표시(spreadMarks)는 덧붙이지 않는다
+   * (섀도 표시는 템플릿 섀도 모양을 전제로 해서 다른 모양엔 엉뚱한 자리에 생긴다). guide 와 둘 중 하나는 있어야 한다
+   */
+  outline?: Outline;
   /** 테두리를 그릴 점에 One-Euro(④ smoothing.ts, 값은 LIVE_SMOOTH)를 건다. 기본 켬 — 떨림 비교(#23)용으로 끌 수 있다 */
   smooth?: boolean;
   limits?: LiveLimits;
@@ -102,8 +109,11 @@ export function outlineOf(partId: PartId, lm: readonly Pt[], guide: GuideSource)
     const o = linerOutline(f, g.liner?.thick ?? GUIDE_PARAMS.liner.thick, g.liner?.wing);
     return { polys: [o.R, o.L], lines: [] };
   }
-  const o = guideOutline(partId, lm, g);
-  // 블러셔 · 섀도우 · 쉐딩: 진한 곳(점)에서 퍼지는 방향(화살표) — 화면 3·4 만 (화면 5 는 guideOutline 그대로)
+  return withSpread(partId, guideOutline(partId, lm, g));
+}
+
+/** 블러셔 · 섀도우 · 쉐딩: 진한 곳(점)에서 퍼지는 방향(화살표) — 화면 3·4 만 (화면 5 는 guideOutline 그대로) */
+function withSpread(partId: PartId, o: Outline): Outline {
   const m = spreadMarks(partId, o.polys);
   return m.dots.length ? { ...o, dots: m.dots, arrows: m.arrows } : o;
 }
@@ -192,7 +202,9 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
   // 테두리는 맨얼굴(기준) 정면에서 한 번 그려 얼굴 그물에 붙이고, 매 장면 지금 얼굴로 옮긴다 (2-b AR 화장과 같은 방식).
   // 매 장면 새로 그리면 크기·각도가 화면 기준(눈 폭 평균 · 화면 위쪽)이라 고개를 돌릴 때 원근이 안 들어가 어긋났다 (2026-10-02 PC).
   // 화면 3(맨얼굴 사진 위 테두리)·채점(맨얼굴 기준)과도 같은 모양
-  const pinned = pinOutline(outlineOf(opt.partId, opt.baseline.lm, opt.guide), opt.baseline.lm);
+  if (!opt.outline && !opt.guide) throw new Error("createLiveRun: guide 나 outline 이 있어야 한다");
+  const shape = opt.outline ?? outlineOf(opt.partId, opt.baseline.lm, opt.guide!);
+  const pinned = pinOutline(shape, opt.baseline.lm);
   // 눈 부위: 테두리 다각형마다 어느 눈 쪽인지 — 고개를 많이 돌리면 먼 쪽은 눈 모양 틀로(C안) · 흐리게(후보 1, 화면이 고름)
   const baseOutline = placeOutline(pinned, opt.baseline.lm).polys;
   const sides = EYE_PARTS.includes(opt.partId) ? baseOutline.map((poly) => nearerEye(poly, opt.baseline.lm)) : null;

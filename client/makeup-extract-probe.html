@@ -36,7 +36,8 @@
       figure { margin: 0; flex: 1 1 340px; max-width: 520px; }
       .big figure { max-width: none; }
       figcaption { font-size: 13px; opacity: .8; margin-bottom: 4px; }
-      #cvOnly, #cvBare, #cvMade, #cvFitBare, #cvFitMade { width: 100%; height: auto; border-radius: 8px; background: #000; display: block; }
+      #cvOnly, #cvBare, #cvMade, #cvFitBare, #cvFitMade, #liveView { width: 100%; height: auto; border-radius: 8px; background: #000; display: block; }
+      [hidden] { display: none !important; }
     </style>
   </head>
   <body>
@@ -83,10 +84,19 @@
     <div id="status">맨얼굴과 AI 결과가 있으면 자동으로 떼요.</div>
     <div id="parts"></div>
     <h2>⑤ 가이드 — FLUX 가 화장한 영역으로</h2>
-    <p class="note">양쪽 같은 모양으로 — 입술은 얼굴 점 입술선, 눈썹은 원래 눈썹을 같은 두께만큼 넓혀서, 라이너는 눈꺼풀 위 띠(두께는 보이는 대로) + 꼬리 윗선도 실제 모양대로, 섀도는 눈머리부터 라이너 꼬리 끝까지 부채꼴(높이는 보이는 대로), 블러셔는 타원. 위 부위 칸을 눌러 켜고 끄기.</p>
-    <div class="row">
+    <p class="note">양쪽 같은 모양으로 — 입술은 얼굴 점 입술선, 눈썹은 원래 눈썹을 같은 두께만큼 넓혀서, 라이너는 눈꺼풀 위 띠(두께는 보이는 대로) + 꼬리 윗선도 실제 모양대로, 섀도는 눈머리부터 라이너 꼬리 끝까지 가장 높은 점들을 이은 부채꼴(피부색 그대로 어두워지기만 한 음영은 뺌), 블러셔는 타원. 위 부위 칸을 눌러 켜고 끄기.</p>
+    <div id="partChips" class="bar"></div>
+    <div class="bar">
+      <button id="modePhoto" class="main" type="button">사진 가이드</button>
+      <button id="modeLive" type="button">실시간 가이드</button>
+      <span id="liveMsg" class="msg"></span>
+    </div>
+    <div id="photoGuide" class="row">
       <figure><figcaption>원래 맨얼굴 위 가이드</figcaption><canvas id="cvFitBare"></canvas></figure>
       <figure><figcaption>AI 화장 위 같은 가이드</figcaption><canvas id="cvFitMade"></canvas></figure>
+    </div>
+    <div id="liveGuide" class="big" hidden>
+      <figure><figcaption>실시간 — 예전 화면 4 실시간 테두리 엔진 그대로 (거울 · 떨림 거르기 · 먼 쪽 눈 보정). 위에서 고른 부위로 확대</figcaption><canvas id="liveView"></canvas></figure>
     </div>
     <div id="fitInfo" class="msg" style="white-space:pre-line;font-size:13px;margin-top:6px"></div>
     <h2>떼어낸 픽셀 (참고)</h2>

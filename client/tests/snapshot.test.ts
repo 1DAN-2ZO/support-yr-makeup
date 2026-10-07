@@ -57,4 +57,24 @@ describe("사진 가이드 — 찍기", () => {
     for (let k = 0; k < SNAP.frames - 1; k++) expect(c.push(still(k), `b${k}`)).toBeNull();
     expect(c.push(still(SNAP.frames), "b-last")).not.toBeNull();
   });
+
+  it("S7 웹캠 — 얼굴 점이 장마다 얼굴 폭 0.8% 씩 떨려도 가만히로 본다 (0.4% 기준이면 계속 처음부터였다, 사용자 2026-10-07)", () => {
+    const c = createSnapshotCollector<string>();
+    let done = null;
+    for (let k = 0; k < SNAP.frames; k++) done = c.push(shift(LMS, (k % 2 ? 1 : -1) * faceW * 0.004), `j${k}`);
+    expect(done, "frames 장째에 찍힌다").not.toBeNull();
+  });
+
+  it("S8 그래도 maxWait 장 안에 못 모으면 그동안 가장 덜 움직인 frames 장으로 찍는다 — 그 전에는 안 찍는다", () => {
+    const c = createSnapshotCollector<string>();
+    // 장마다 얼굴 폭 3% 씩 움직이다가 20 ~ 24 장째만 1.5% (그래도 기준보다 큼)
+    let x = 0, done = null, at = -1;
+    for (let k = 0; k < SNAP.maxWait; k++) {
+      x += faceW * (k >= 20 && k <= 24 ? 0.015 : 0.03);
+      done = c.push(shift(LMS, x), `m${k}`);
+      if (done) { at = k; break; }
+    }
+    expect(at, "maxWait 장째에 찍힌다").toBe(SNAP.maxWait - 1);
+    expect(["m20", "m21", "m22", "m23", "m24"], "덜 움직인 구간의 장").toContain(done!.image);
+  });
 });
