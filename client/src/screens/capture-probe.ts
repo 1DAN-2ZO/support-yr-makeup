@@ -1,5 +1,5 @@
 /**
- * [1-2·1-3 실측용 측정 도구] 폰에서 4장 자동 촬영을 돌려 시간·재촬영·45° 각도를 잰다.
+ * [1-2·1-3 실측용 측정 도구] 폰에서 자동 촬영(정면 2장)을 돌려 시간·재촬영을 잰다.
  * 1-1 의 shotGate(flow.ts) 를 실제 카메라 프레임에 연결한 최소 화면.
  *  - 동의 화면(F-01) → 프레임마다 ShotMeasure: yaw(랜드마크 · 행렬 두 식), 눈 감음(블렌드셰이프 · EAR), 얼굴 비율, 잘림 여백, 선명도, 이마 L*
  *  - 5프레임 연속 통과 → 자동 촬영 → 찍힌 사진을 크게 보여 주고 "다음 / 다시 찍기" (한 장씩 확인)
@@ -61,7 +61,7 @@ interface ProbeResult {
   frameMsAvg: number;
   /** 시작 → 끝 버튼 */
   totalSeconds: number;
-  /** 시작 → 4장째 확정 (확인 화면 시간 포함) */
+  /** 시작 → 마지막 장 확정 (확인 화면 시간 포함) */
   captureSeconds: number;
   consent: boolean;
   shots: ShotRecord[];
@@ -92,21 +92,21 @@ interface ProbeResult {
 interface ShakeStats { n: number; min: number; p10: number; median: number; max: number }
 interface ShakeResult { still: ShakeStats; shaky: ShakeStats; frontOpenSharpness: number | null; irisPx: ShakeStats }
 
-const NAME: Record<ShotId, string> = { front_open: "정면·눈뜸", front_closed: "정면·눈감음", left_45: "왼쪽 45°", right_45: "오른쪽 45°" };
+const NAME: Record<ShotId, string> = { front_open: "정면·눈뜸", front_closed: "정면·눈감음" };
 const state = {
   lm: null as FaceLandmarker | null,
   stream: null as MediaStream | null,
   shots: {} as Partial<Record<ShotId, { cv: HTMLCanvasElement; rec: ShotRecord }>>,
   order: [] as ShotId[],
   pending: null as { shot: ShotId; cv: HTMLCanvasElement; rec: ShotRecord; shownAt: number } | null,
-  rejected: { front_open: 0, front_closed: 0, left_45: 0, right_45: 0 } as Record<ShotId, number>,
+  rejected: { front_open: 0, front_closed: 0 } as Record<ShotId, number>,
   stable: 0,
   shotStart: 0,
   runStart: 0,
   lastShotAt: 0,
   lostSince: null as number | null,
   blocked: {} as Partial<Record<GateFail, number>>,
-  retakes: { front_open: 0, front_closed: 0, left_45: 0, right_45: 0 } as Record<ShotId, number>,
+  retakes: { front_open: 0, front_closed: 0 } as Record<ShotId, number>,
   baselineL: undefined as number | undefined,
   frameMs: [] as number[],
   modelMs: 0,
@@ -333,7 +333,7 @@ function calibFrame(t0: number, at: ShotAt | null): void {
   outEl.textContent = `가림 측정 끝: ${c.label} ${JSON.stringify(state.calibDone[c.label])}`;
 }
 
-// ---------- 흔들기 측정 (4장 뒤, 1-2 문제 12: 선명도 임계를 정하려고) ----------
+// ---------- 흔들기 측정 (다 찍은 뒤, 1-2 문제 12: 선명도 임계를 정하려고) ----------
 const SHAKE_MS = 3000;
 function startShake(): void {
   state.shake = { phase: "still", t0: performance.now(), still: [], shaky: [], iris: [] };
@@ -342,7 +342,7 @@ function startShake(): void {
 function shakeFrame(t0: number, at: ShotAt | null): void {
   const sk = state.shake;
   if (sk.phase === "idle" || sk.phase === "done") {
-    gateEl.textContent = sk.phase === "done" ? "흔들기 측정 끝 — 끝을 누르세요" : "4장 완료 — 흔들기 측정 또는 끝";
+    gateEl.textContent = sk.phase === "done" ? "흔들기 측정 끝 — 끝을 누르세요" : "촬영 완료 — 흔들기 측정 또는 끝";
     gateEl.classList.add("ready");
     return;
   }
@@ -486,7 +486,7 @@ async function finish(): Promise<void> {
     shake: state.shake.phase === "done" ? { still: stats(state.shake.still), shaky: stats(state.shake.shaky), frontOpenSharpness: state.shots.front_open?.rec.at.sharpness ?? null, irisPx: stats(state.shake.iris) } : null,
     events: mem.lines,
   };
-  const row = `| ${shortUa()} | ${result.startedAt.slice(0, 10)} | ${result.captureSeconds} | ${state.retakes.front_open} | ${state.retakes.front_closed} | ${state.retakes.left_45} | ${state.retakes.right_45} | 좌 ${shots.find((s) => s.shot === "left_45")?.at.yawLm ?? "-"} / 우 ${shots.find((s) => s.shot === "right_45")?.at.yawLm ?? "-"} | 프레임 ${result.frameW}×${result.frameH} · ${result.frameMsAvg}ms/프레임 |`;
+  const row = `| ${shortUa()} | ${result.startedAt.slice(0, 10)} | ${result.captureSeconds} | ${state.retakes.front_open} | ${state.retakes.front_closed} | 프레임 ${result.frameW}×${result.frameH} · ${result.frameMsAvg}ms/프레임 |`;
   const d = result.labDrift;
   const row14 = d ? `| (사람) | (조명) | ${r1(d.rangeL)} | ${r1(d.rangeA)} | ${r1(d.rangeB)} | ${r1(d.maxDeltaE)} | ${shortUa()} |` : "(장이 2장 미만이라 못 구함)";
   let sent = "";

@@ -182,6 +182,14 @@ describe.each([
   });
 });
 
+describe("촬영(화면 1) 장 수 표시", () => {
+  it("CS6 정면 2장이라 '1/2' 로 시작한다 — 장 수를 글자로 박아 두지 않는다 (2026-10-07 옆얼굴 두 장 뺌)", async () => {
+    const off = await mountCapture();
+    expect(document.querySelector(".cam-step")?.textContent).toMatch(/^1\/2 · /);
+    off();
+  });
+});
+
 // 화면 4 확인받기 (#235) — 각도·안정에 3초 넘게 막히면 버튼을 켠다. 얼굴은 합성 얼굴(600×600)
 describe("화면 4 확인받기", () => {
   // 합성 얼굴은 턱(152)이 가운데라 숙인 것으로 잰다 → 턱을 내려 정면으로 (live-run.test 와 같게)

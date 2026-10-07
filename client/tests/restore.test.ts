@@ -14,7 +14,7 @@ const roundTrip = (s: Session) => JSON.parse(JSON.stringify(stripImages(s))) as 
 
 function afterCapture(): Session {
   let s: Session = { ...createSession(() => 1000), consent: true, baseline, lookId: "daily" };
-  s.shots = { front_open: {}, front_closed: {}, left_45: {}, right_45: {} };
+  s.shots = { front_open: {}, front_closed: {} };
   s = setCurrentPart(setScreen(s, "live"), "liner");
   s = applyResult(s, "brow", { decision: "scored", score: 80, diagnosisCodes: [], diagnosis: "", checkReason: null, lrIndex: null, metrics: {} });
   s.parts[1]!.captured = { canvas: {} };
@@ -45,9 +45,18 @@ describe("planRestore", () => {
     expect(p.session).toMatchObject({ screen: "live", currentPart: "liner", lookId: "daily", consent: true, startedAt: 1000 });
     expect(p.session.parts[0]).toMatchObject({ partId: "brow", status: "passed", score: 80 });
     expect(p.session.parts.every((x) => x.captured === null)).toBe(true);
-    expect(Object.keys(p.session.shots)).toHaveLength(4);
+    expect(Object.keys(p.session.shots).sort()).toEqual(["front_closed", "front_open"]);
     expect(p.session.baseline).toBeNull();   // 랜드마크는 쌩얼 사진에서 다시 찾는다
     expect(p.baseline).toMatchObject({ foreheadL: 66, unit: { eye: 130 } });
+  });
+
+  it("R3b 옛 draft(옆얼굴 45° 두 장까지 찍은 것)도 그대로 이어 간다 — 이제 없는 장은 버린다 (2026-10-07 2장으로)", () => {
+    const d = roundTrip(afterCapture());
+    const old = { ...d, shots: { ...d.shots, left_45: true, right_45: true } as typeof d.shots };
+    const p = planRestore(old);
+    expect(p.kind).toBe("resume");
+    if (p.kind !== "resume") return;
+    expect(Object.keys(p.session.shots).sort()).toEqual(["front_closed", "front_open"]);
   });
 
   it("R4 촬영 뒤 화면인데 기준이 없으면 촬영부터", () => {
@@ -60,7 +69,7 @@ describe("planRestore", () => {
     const old = { ...d, baseline: { ...d.baseline!, w: undefined as unknown as number, h: undefined as unknown as number } };
     const p = planRestore(JSON.parse(JSON.stringify(old)) as typeof d);
     expect(p.kind).toBe("capture");
-    if (p.kind === "capture") expect(p.lostShots).toBe(4);
+    if (p.kind === "capture") expect(p.lostShots).toBe(2);
   });
 
   it("R5 rebuildBaseline 은 저장된 척도를 그대로 쓰고 랜드마크만 새로 (촬영 크기로 되돌려)", () => {
