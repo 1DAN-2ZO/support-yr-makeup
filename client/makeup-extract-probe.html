@@ -82,8 +82,8 @@
     <div class="bar"><label><input id="heat" type="checkbox" /> AI 쪽을 색 차로 보기</label></div>
     <div id="status">맨얼굴과 AI 결과가 있으면 자동으로 떼요.</div>
     <div id="parts"></div>
-    <h2>⑤ 가이드 — FLUX 가 화장한 영역 테두리</h2>
-    <p class="note">원래 맨얼굴과 차이 나는 픽셀을 부위별로 모아 바깥 테두리를 따요 (가까운 조각은 메우고 작은 점은 버림). 위 부위 칸을 눌러 켜고 끄기.</p>
+    <h2>⑤ 가이드 — FLUX 가 화장한 영역으로</h2>
+    <p class="note">입술은 얼굴 점 입술선, 눈썹은 원래 눈썹 + 더 그린 자리, 섀도는 눈꺼풀 선 위로, 블러셔는 볼록하게, 라이너는 화장 영역 그대로. 위 부위 칸을 눌러 켜고 끄기.</p>
     <div class="row">
       <figure><figcaption>원래 맨얼굴 위 가이드</figcaption><canvas id="cvFitBare"></canvas></figure>
       <figure><figcaption>AI 화장 위 같은 가이드</figcaption><canvas id="cvFitMade"></canvas></figure>

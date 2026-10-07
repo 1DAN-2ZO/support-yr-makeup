@@ -12,10 +12,10 @@
  */
 
 import type { FaceLandmarker } from "@mediapipe/tasks-vision";
-import { deltaE, foreheadLab, labAt, pointInPoly, type RgbaImage } from "@core/color";
+import { deltaE, foreheadLab, labAt, type RgbaImage } from "@core/color";
 import { applyAffine, robustAffine, type Affine } from "@core/eye-fit";
 import { EXTRACT, FACE_OVAL, extractAll, type ExtractPart, type PartMask } from "@core/makeup-extract";
-import { maskOutlines } from "@core/region-outline";
+import { partGuides, type PartGuide } from "@core/part-guide";
 import { createSnapshotCollector } from "@core/snapshot";
 import type { Pt } from "@core/types";
 import { startFrameLoop } from "./camera-loop";
@@ -63,10 +63,8 @@ const on = new Set<ExtractPart>(PARTS.map((p) => p.id));
 let bareCv: HTMLCanvasElement | null = null, refCv: HTMLCanvasElement | null = null, madeCv: HTMLCanvasElement | null = null;
 let imageLm: Promise<FaceLandmarker> | null = null;
 type Crop = { x: number; y: number; w: number; h: number };
-/** 부위 · 좌우마다 화장 영역 테두리 (큰 덩어리 먼저) */
-type Outline = { part: ExtractPart; side: PartMask["side"]; polys: Pt[][]; count: number };
-/** bare: 원래 맨얼굴 · made: 그 자리에 맞춘 AI 화장 · outlines: ⑤ 가이드 */
-let last: { bare: RgbaImage; made: RgbaImage; lm: Pt[]; parts: PartMask[]; outlines: Outline[]; crop: Crop; info: string } | null = null;
+/** bare: 원래 맨얼굴 · made: 그 자리에 맞춘 AI 화장 · outlines: ⑤ 가이드 (core/part-guide) */
+let last: { bare: RgbaImage; made: RgbaImage; lm: Pt[]; parts: PartMask[]; outlines: PartGuide[]; crop: Crop; info: string } | null = null;
 
 const setStatus = (text: string, warn = false): void => { statusEl.innerHTML = warn ? `<span class="warn">${text}</span>` : text; };
 const setMsg = (el: HTMLElement, text: string, warn = false): void => { el.innerHTML = warn ? `<span class="warn">${text}</span>` : text; };
@@ -413,28 +411,20 @@ async function maybeExtract(): Promise<void> {
 }
 
 /**
- * 떼기 → 부위 · 좌우마다 화장 영역 테두리. 피부 변화 거르기는 끈다(EXTRACT 기본) — FLUX 는 칠하지 않은 곳이 원본 그대로라 차이가 깨끗하다.
- * 조각 메우기 반지름 = 눈 폭 × 0.06, 버릴 작은 점 = (눈 폭 × 0.15)² — 눈대중 시작값
+ * 떼기 → 부위 가이드 모양 (core/part-guide: 입술 · 눈썹은 얼굴 점, 섀도는 눈꺼풀 선까지, 블러셔는 볼록하게).
+ * 피부 변화 거르기는 끈다(EXTRACT 기본) — FLUX 는 칠하지 않은 곳이 원본 그대로라 차이가 깨끗하다.
  */
 async function extract(): Promise<void> {
   if (!last) return;
   setStatus("떼는 중…");
   await new Promise((r) => setTimeout(r, 0));
   const t0 = performance.now(), res = extractAll(last.bare, last.made, last.lm, EXTRACT);
-  const eyeW = Math.hypot(last.lm[33]!.x - last.lm[133]!.x, last.lm[33]!.y - last.lm[133]!.y);
-  const opts = { close: Math.max(1, Math.round(eyeW * 0.06)), minArea: Math.max(12, Math.round((eyeW * 0.15) ** 2)) };
   last.parts = res.parts;
   // klein 이 칠하는 곳은 얼굴 윤곽을 가운데 쪽으로 0.9 줄인 안(app_klein.py OVAL_KEEP) — 그 밖은 원본에 되붙일 때 머리카락 경계에 생긴 차이라
-  // 가이드에서 뺀다 (실사진: 볼 가이드에 얼굴 옆선 띠). 쉐딩 · 하이라이트(참고)도 뺀다 — klein 은 그 자리를 칠하지 않는다
+  // 가이드에서 뺀다 (실사진: 볼 가이드에 얼굴 옆선 띠)
   const oval = FACE_OVAL.map((i) => last!.lm[i]!), c = oval.reduce((s, p) => ({ x: s.x + p.x / oval.length, y: s.y + p.y / oval.length }), { x: 0, y: 0 });
-  const paintArea = oval.map((p) => ({ x: c.x + (p.x - c.x) * 0.9, y: c.y + (p.y - c.y) * 0.9 }));
-  last.outlines = res.parts
-    .filter((p) => p.part !== "contour" && p.part !== "highlight")
-    .map((p) => {
-      const m = p.mask.slice();
-      for (let i = 0; i < m.length; i++) if (m[i] && !pointInPoly(i % res.w, Math.floor(i / res.w), paintArea)) m[i] = 0;
-      return { part: p.part, side: p.side, polys: maskOutlines(m, res.w, res.h, opts), count: p.count };
-    });
+  const clip = oval.map((p) => ({ x: c.x + (p.x - c.x) * 0.9, y: c.y + (p.y - c.y) * 0.9 }));
+  last.outlines = partGuides(res.parts, last.lm, res.w, res.h, { clip });
   const ms = Math.round(performance.now() - t0);
   drawPartList(res.parts);
   render();
@@ -443,7 +433,7 @@ async function extract(): Promise<void> {
 }
 
 /** 가이드 그리기 — 사진(자른 자리) 위에 켠 부위의 화장 영역 테두리 (부위 색 실선) */
-function drawOutlines(cv: HTMLCanvasElement, im: RgbaImage, crop: Crop, outlines: readonly Outline[]): void {
+function drawOutlines(cv: HTMLCanvasElement, im: RgbaImage, crop: Crop, outlines: readonly PartGuide[]): void {
   cv.width = crop.w; cv.height = crop.h;
   const g = cv.getContext("2d")!, id = g.createImageData(crop.w, crop.h);
   for (let y = 0; y < crop.h; y++) for (let x = 0; x < crop.w; x++) {
@@ -472,7 +462,8 @@ function renderGuide(): void {
   drawOutlines(cvFitBare, last.bare, last.crop, last.outlines);
   drawOutlines(cvFitMade, last.made, last.crop, last.outlines);
   const side = (s: PartMask["side"]) => (s === "R" ? " 사진 왼쪽" : s === "L" ? " 사진 오른쪽" : "");
-  const lines = last.outlines.map((o) => `${PARTS.find((p) => p.id === o.part)!.name}${side(o.side)}: 테두리 ${o.polys.length}개 · ${o.count.toLocaleString()}px`);
+  const from = { landmark: "얼굴 점 선", mixed: "얼굴 점 + 화장 영역", region: "화장 영역" } as const;
+  const lines = last.outlines.map((o) => `${PARTS.find((p) => p.id === o.part)!.name}${side(o.side)}: ${from[o.from]} · 테두리 ${o.polys.length}개 · ${o.count.toLocaleString()}px`);
   fitInfo.textContent = lines.length ? lines.join("\n") : "화장 영역을 못 찾았어요";
 }
 
