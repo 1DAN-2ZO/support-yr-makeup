@@ -357,9 +357,9 @@ function registerFlowSlots(shell: ReturnType<typeof createShell<Session>>, deps:
     owner: "③",
     todo: [
       "정답사진 대 시도사진 — 부위별로 어느 부분이 어떻게 됐나 (잘함 / 덜 그림 / 넘침). 점수 없음",
-      "시도사진은 main.ts 의 getAttempt() — 눈 뜬 장 · 감은 장, 사진 · 얼굴 점 · 크기 (screens/attempt.ts AttemptShots)",
+      "시도사진은 main.ts 의 getAttempt() — 눈 뜬 장 묶음(5장까지) · 감은 장, 장마다 사진(원본 크기) · 얼굴 점 · 크기 (screens/attempt.ts AttemptShots)",
     ],
-    status: () => (deps.getAttempt() ? "시도사진 2장 받음" : "시도사진 없음 — 앱을 다시 켰으면 다시 찍어야 해요"),
+    status: () => { const a = deps.getAttempt(); return a ? `시도사진 받음 — 눈 뜬 장 ${a.front_open.length}장 · 감은 장 ${a.front_closed.length}장` : "시도사진 없음 — 앱을 다시 켰으면 다시 찍어야 해요"; },
     next: "save",
   }));
   shell.register("save", saveSlot<Session>(deps));

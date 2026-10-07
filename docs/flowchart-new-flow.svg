@@ -19,7 +19,7 @@
 <line x1="430" y1="192" x2="430" y2="238" stroke="#1f2d3a" stroke-width="2.5" marker-end="url(#ar-k)"/>
 <rect x="210.0" y="240" width="440" height="88" rx="10" fill="#fff" stroke="#8a8a8a" stroke-width="2.5"/>
 <text x="430" y="276" font-size="18" font-weight="700" text-anchor="middle" fill="#1f2d3a">처리 안내 · 동의</text>
-<text x="430" y="302" font-size="13.5" text-anchor="middle" fill="#6b7280">사진은 폰에만 · 사용 기록만 서버로 — 동의하면 시작</text>
+<text x="430" y="302" font-size="13.5" text-anchor="middle" fill="#6b7280">사진은 폰에만 저장 · 그림을 만들 때와 사용 기록만 서버로</text>
 <line x1="650.0" y1="284.0" x2="694.0" y2="284.0" stroke="#8a8a8a" stroke-width="2"/>
 <rect x="694.0" y="252.0" width="300" height="64" rx="8" fill="#fff" stroke="#8a8a8a" stroke-width="2"/>
 <text x="708.0" y="278.0" font-size="13" fill="#1f2d3a">닫기를 누르면 첫 화면에 그대로</text>
@@ -87,12 +87,12 @@
 <circle cx="210.0" cy="1410" r="19" fill="#2a8f86"/>
 <text x="210.0" y="1416" font-size="16" font-weight="700" text-anchor="middle" fill="#fff">6</text>
 <text x="430" y="1446" font-size="18" font-weight="700" text-anchor="middle" fill="#1f2d3a">피드백</text>
-<text x="430" y="1472" font-size="13.5" text-anchor="middle" fill="#6b7280">정답사진 대 시도사진 — 부위별로 잘함 · 덜 그림 · 넘침</text>
-<line x1="650.0" y1="1454.0" x2="694.0" y2="1454.0" stroke="#8a8a8a" stroke-width="2"/>
-<rect x="694.0" y="1411.0" width="300" height="86" rx="8" fill="#fff" stroke="#8a8a8a" stroke-width="2"/>
-<text x="708.0" y="1437.0" font-size="13" fill="#1f2d3a">점수는 없음</text>
-<text x="708.0" y="1459.0" font-size="13" fill="#1f2d3a">눈 감은 장은 정답사진이 말하는</text>
-<text x="708.0" y="1481.0" font-size="13" fill="#1f2d3a">'그려야 할 자리' 와 견줌</text>
+<text x="430" y="1472" font-size="13.5" text-anchor="middle" fill="#6b7280">정답사진 대 시도사진 — 부위별 문장 (점수 없음)</text>
+<line x1="650.0" y1="1454.0" x2="694.0" y2="1454.0" stroke="#c4741f" stroke-width="2" stroke-dasharray="6 4"/>
+<rect x="694.0" y="1411.0" width="300" height="86" rx="8" fill="#fff" stroke="#c4741f" stroke-width="2" stroke-dasharray="6 4"/>
+<text x="708.0" y="1437.0" font-size="13" fill="#1f2d3a">시도사진(눈 뜬 장)을 서버로 보내</text>
+<text x="708.0" y="1459.0" font-size="13" fill="#1f2d3a">정답사진과 같은 방법으로 '옮긴 그림'</text>
+<text x="708.0" y="1481.0" font-size="13" fill="#1f2d3a">을 만들어 견줌 — 만든 뒤 바로 지움</text>
 <line x1="430" y1="1498" x2="430" y2="1538" stroke="#1f2d3a" stroke-width="2.5" marker-end="url(#ar-k)"/>
 <rect x="210.0" y="1540" width="440" height="88" rx="10" fill="#fff" stroke="#2a8f86" stroke-width="2.5"/>
 <circle cx="210.0" cy="1540" r="19" fill="#2a8f86"/>
@@ -106,5 +106,5 @@
 <line x1="430" y1="1628" x2="430" y2="1678" stroke="#1f2d3a" stroke-width="2.5" marker-end="url(#ar-k)"/>
 <rect x="280" y="1680" width="300" height="52" rx="26" fill="#e6f1ef" stroke="#2a8f86" stroke-width="2.5"/>
 <text x="430" y="1712" font-size="17" font-weight="700" text-anchor="middle" fill="#1f2d3a">끝 (폰 안 세션 데이터 삭제)</text>
-<text x="40" y="1762" font-size="12.5" fill="#6b7280">서버로 가는 것은 두 가지뿐: ③ 정답사진을 만들 때의 사진(만든 뒤 바로 지움)과, 화면 이동 같은 사용 기록(사진 · 얼굴 점 없음). 옛 흐름 그림은 flowchart-v6.png.</text>
+<text x="40" y="1762" font-size="12.5" fill="#6b7280">서버로 가는 것: 정답사진(3) · 옮긴 그림(6)을 만들 때의 사진 — 만든 뒤 바로 지움 — 과, 화면 이동 같은 사용 기록(사진 · 얼굴 점 없음). 옛 흐름 그림은 flowchart-v6.png.</text>
 </svg>

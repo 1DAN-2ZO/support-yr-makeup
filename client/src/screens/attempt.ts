@@ -4,11 +4,12 @@
  * 화면 1 촬영(①, screens/capture.ts)과 따로 만들었다. 판정은 ① 의 core 를 그대로 쓴다 (core/attempt.ts — capture-run · shotGate).
  * 카메라는 화면 6 정면 1장(review-shot.ts)과 같은 방식: 공용 카메라 루프(새 장면에만 얼굴 찾기, #245) · 켤 때·끌 때 잠금 풀기(#267).
  * 맨얼굴 대비 밝기 · 색은 막지 않는다 — 조명이 달라졌으면 피드백(③)이 판단할 일이다.
- * 두 장을 다 찍으면 카메라를 끄고 미리보기 — "다시 찍기"(눈 뜬 장부터) 또는 "이대로 피드백 받기"(사진 · 얼굴 점을 넘기고 6 피드백으로).
+ * 눈 뜬 장은 다섯 장 묶음(#328 — 피드백이 값마다 가운데 값을 쓴다), 감은 장은 한 장. 사진은 줄이지 않는다 — 맨얼굴과 같은 원본 크기.
+ * 두 종류를 다 찍으면 카메라를 끄고 미리보기 — "다시 찍기"(눈 뜬 장부터) 또는 "이대로 피드백 받기"(사진 · 얼굴 점을 넘기고 6 피드백으로).
  */
 
 import type { FaceLandmarker, FaceLandmarkerResult } from "@mediapipe/tasks-vision";
-import { ATTEMPT_SHOTS, startAttemptRun, type AttemptShotId } from "@core/attempt";
+import { ATTEMPT_SHOTS, attemptBurstStep, startAttemptBurst, startAttemptRun, type AttemptBurst, type AttemptShotId } from "@core/attempt";
 import { runStep, STEP_TEXT, type RunState } from "@core/capture-run";
 import { eyeWidthPxOf, eyesClosed, faceCropOf, faceInsetOf, faceRatioOf, yawFromLandmarks } from "@core/capture-measure";
 import type { ShotMeasure } from "@core/flow";
@@ -17,18 +18,19 @@ import type { Pt } from "@core/types";
 import { releaseCameraLocks } from "./camera-locks";
 import { startFrameLoop } from "./camera-loop";
 import { foreheadLabOf, grabFrame, sharpnessOf } from "./frame-measure";
-import { encodeForStore } from "./image-encode";
+import { BARE_MAX_SIDE, encodeForStore } from "./image-encode";
 import { createLandmarker } from "./landmarker";
 import type { Screen, ScreenContext } from "./shell";
 
-/** 한 장 — 사진(JPEG) · 얼굴 점(사진 px) · 사진 크기. 피드백(③)이 맨얼굴 · 정답사진과 맞춰 비교한다 */
+/** 한 장 — 사진(원본 크기) · 얼굴 점(사진 px) · 사진 크기. 피드백(③)이 맨얼굴 · 정답사진과 맞춰 비교한다 */
 export interface AttemptShot {
   blob: Blob;
   lm: Pt[];
   w: number;
   h: number;
 }
-export type AttemptShots = Record<AttemptShotId, AttemptShot>;
+/** 종류마다 장 묶음 — [0] 이 셔터 장. 눈 뜬 장은 다섯 장까지, 감은 장은 한 장 (core/attempt ATTEMPT_BURST) */
+export type AttemptShots = Record<AttemptShotId, AttemptShot[]>;
 
 export interface AttemptDeps {
   /** 두 장을 다 찍으면 부른다 (세션 · 폰 저장은 부르는 쪽) */
@@ -99,7 +101,7 @@ export function attemptScreen<S>(deps: AttemptDeps): Screen<S> {
         for (const [id, label] of [["front_open", ATTEMPT_TEXT.openLabel], ["front_closed", ATTEMPT_TEXT.closedLabel]] as const) {
           const fig = el("figure");
           const img = el("img");
-          const url = URL.createObjectURL(shots[id].blob);
+          const url = URL.createObjectURL(shots[id][0]!.blob);   // 종류마다 셔터 장만 보여 준다
           previewUrls.push(url);
           img.src = url;
           img.alt = label;
@@ -191,12 +193,34 @@ export function attemptScreen<S>(deps: AttemptDeps): Screen<S> {
             const m = await createLandmarker("VIDEO");
             if (!on) { m.close(); return; }
             lmk = m;
-            const taken: Partial<Record<AttemptShotId, { cv: HTMLCanvasElement; lm: Pt[]; w: number; h: number }>> = {};
+            const taken: Partial<Record<AttemptShotId, { cv: HTMLCanvasElement; lm: Pt[]; w: number; h: number }[]>> = {};
             let run: RunState = startAttemptRun(taken, performance.now());
+            /** 셔터 뒤 묶음을 모으는 중 — 다 모으면 다음 장으로 */
+            let burst: AttemptBurst | null = null, frames: { cv: HTMLCanvasElement; lm: Pt[]; w: number; h: number }[] = [];
+            const finishShot = (now: number): void => {
+              const shot = burst!.shot;
+              taken[shot] = frames;
+              burst = null; frames = [];
+              shutterCue(shot === "front_closed");
+              ctx.log.log({ name: "button", button: `attempt_shot:${shot}` });
+              run = startAttemptRun(taken, now);
+              if (run.shot) { step.textContent = STEP_TEXT[run.shot]; return; }
+              // 두 종류 다 — 카메라를 끄고 미리보기
+              stop();
+              step.textContent = "";
+              line.textContent = ATTEMPT_TEXT.saving;
+              // 줄이지 않는다 — 얼굴 점이 촬영 크기 기준이고, 줄이면 라이너 꼬리가 사라진다 (#328 · #240)
+              void Promise.all(ATTEMPT_SHOTS.map(async (id) => {
+                const list = await Promise.all(taken[id]!.map(async (t) => ({ blob: (await encodeForStore(t.cv, BARE_MAX_SIDE)).blob, lm: t.lm, w: t.w, h: t.h })));
+                return [id, list] as const;
+              })).then((pairs) => {
+                if (alive) preview(Object.fromEntries(pairs) as AttemptShots);
+              }, (e: unknown) => { if (alive) failed(e); });
+            };
             line.textContent = "";
             // now = 공용 루프가 주는 늘어나기만 하는 시각 — 얼굴 찾기와 촬영 대기 시간이 같이 쓴다
             const frame = (now: number): void => {
-              if (!on || !lmk || !run.shot) return;
+              if (!on || !lmk || (!run.shot && !burst)) return;
               if (video.readyState < 2) return;
               const sw = video.videoWidth, sh = video.videoHeight;
               const res: FaceLandmarkerResult = lmk.detectForVideo(video, now);
@@ -215,29 +239,25 @@ export function attemptScreen<S>(deps: AttemptDeps): Screen<S> {
                   sharpness: sharpnessOf(video, faceCropOf(lm, sw, sh)),
                 });
               }
+              if (burst) {
+                const b = attemptBurstStep(burst, ms, now);
+                burst = b.state;
+                if (b.take && lm) frames.push({ cv: grabFrame(video), lm, w: sw, h: sh });
+                if (burst.done) finishShot(now);
+                return;
+              }
               const shot = run.shot;
+              if (!shot) return;
               const r = runStep(run, ms, now);
               run = r.state;
               line.textContent = r.hint ?? r.gate?.text ?? "";
               line.classList.toggle("ready", !!r.gate?.ok);
               oval.classList.toggle("ready", !!r.gate?.ok);
               if (!r.take || !lm) return;
-              taken[shot] = { cv: grabFrame(video), lm, w: sw, h: sh };
-              shutterCue(shot === "front_closed");
-              ctx.log.log({ name: "button", button: `attempt_shot:${shot}` });
-              run = startAttemptRun(taken, now);
-              if (run.shot) { step.textContent = STEP_TEXT[run.shot]; return; }
-              // 두 장 다 — 카메라를 끄고 미리보기
-              stop();
-              step.textContent = "";
-              line.textContent = ATTEMPT_TEXT.saving;
-              void Promise.all(ATTEMPT_SHOTS.map(async (id) => {
-                const t = taken[id]!;
-                const e = await encodeForStore(t.cv);
-                return [id, { blob: e.blob, lm: t.lm, w: t.w, h: t.h }] as const;
-              })).then((pairs) => {
-                if (alive) preview(Object.fromEntries(pairs) as AttemptShots);
-              }, (e: unknown) => { if (alive) failed(e); });
+              // 셔터 — 이 장이 묶음의 첫 장. 눈 뜬 장은 이어서 몇 장 더 모은다 (찍혔다는 소리는 다 모은 뒤에)
+              frames = [{ cv: grabFrame(video), lm, w: sw, h: sh }];
+              burst = startAttemptBurst(shot, now);
+              if (burst.done) finishShot(now);
             };
             // 카메라 새 장면에만 얼굴을 찾는다 (#245). 루프 안 오류는 바깥 try 가 못 잡는다
             stopLoop = startFrameLoop(video, frame, { onError: (e) => { stop(); if (alive) failed(e); } });
