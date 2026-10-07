@@ -33,119 +33,118 @@ const ORDER: readonly PalettePart[] = ["brow", "shadow", "liner", "cheek", "lip"
 let uid = 0;
 
 /**
- * 질감 필터 두 종류.
- * rough — 가장자리만 흐트러뜨린다 (펜슬·립처럼 날이 살아 있는 것)
- * powder — 흐트러뜨린 뒤 가루 입자를 뚫어 준다 (섀도우·블러셔)
+ * 질감 필터. 코덱스가 만든 견본(nudy-palette-swatch-icons.svg)을 옮겨 왔다.
+ *   cream  — 크림처럼 두껍게 발린 것(립). 가장자리만 흐트러뜨린다
+ *   powder — 파우더가 쓸린 것(섀도우). 흐트러뜨린 뒤 가루 입자를 뚫는다
+ *   pan    — 틀에 눌러 담은 압축 파우더(블러셔). 테두리는 그대로 두고 입자만 얹는다
+ * id 에 접두사를 붙여 한 페이지에 팔레트가 여러 장 떠도 안 겹치게 한다.
+ *
+ * **currentColor 를 쓰는 그라데이션은 여기 두면 안 된다.** 이 defs 는 따로 떨어진 <svg>
+ * 안에 있어서 currentColor 가 그 svg 기준(검정)으로 풀린다. 색을 쓰는 것은 각 스와치
+ * 안에 넣는다 (립 참고).
  */
 function filters(id: string): string {
   return `
-    <filter id="${id}-rough" x="-25%" y="-35%" width="150%" height="170%">
-      <feTurbulence type="fractalNoise" baseFrequency="0.05 0.09" numOctaves="3" seed="11" result="t" />
-      <feDisplacementMap in="SourceGraphic" in2="t" scale="6" xChannelSelector="R" yChannelSelector="G" />
+    <filter id="${id}-cream" x="-20%" y="-30%" width="140%" height="160%">
+      <feTurbulence type="fractalNoise" baseFrequency=".042 .12" numOctaves="3" seed="11" result="noise" />
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="4.2" xChannelSelector="R" yChannelSelector="G" />
     </filter>
-    <filter id="${id}-powder" x="-30%" y="-40%" width="160%" height="180%">
-      <feTurbulence type="fractalNoise" baseFrequency="0.028 0.06" numOctaves="4" seed="5" result="t" />
-      <feDisplacementMap in="SourceGraphic" in2="t" scale="13" xChannelSelector="R" yChannelSelector="G" result="d" />
-      <!-- 가루 입자: 높은 주파수 노이즈를 알파로 바꿔 구멍을 뚫는다 -->
-      <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="23" result="g" />
-      <feColorMatrix in="g" type="matrix"
-        values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  1.1 0 0 0 -0.42" result="ga" />
-      <feComposite in="d" in2="ga" operator="out" result="speck" />
-      <!-- 뚫린 것만 쓰면 너무 성기다. 원본을 옅게 깔고 그 위에 얹는다 -->
-      <feComponentTransfer in="d" result="base">
-        <feFuncA type="linear" slope="0.55" />
-      </feComponentTransfer>
-      <feMerge><feMergeNode in="base" /><feMergeNode in="speck" /></feMerge>
+
+    <filter id="${id}-powder" x="-20%" y="-25%" width="140%" height="150%">
+      <feTurbulence type="fractalNoise" baseFrequency=".09 .2" numOctaves="3" seed="24" result="edgeNoise" />
+      <feDisplacementMap in="SourceGraphic" in2="edgeNoise" scale="3.6" xChannelSelector="R" yChannelSelector="G" result="rough" />
+      <feTurbulence type="fractalNoise" baseFrequency=".7 .9" numOctaves="2" seed="25" result="grain" />
+      <feColorMatrix in="grain" type="matrix"
+        values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .55 .18" result="grainAlpha" />
+      <feComposite in="rough" in2="grainAlpha" operator="out" />
     </filter>
-    <!-- 압축 파우더(블러셔) — 틀에 눌러 담은 것이라 테두리가 거의 동그랗다. 입자만 얹는다 -->
-    <filter id="${id}-pan" x="-20%" y="-25%" width="140%" height="150%">
-      <feTurbulence type="fractalNoise" baseFrequency="0.05 0.08" numOctaves="3" seed="9" result="t" />
-      <feDisplacementMap in="SourceGraphic" in2="t" scale="4" xChannelSelector="R" yChannelSelector="G" result="d" />
-      <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="2" seed="17" result="g" />
-      <feColorMatrix in="g" type="matrix"
-        values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  1.1 0 0 0 -0.5" result="ga" />
-      <feComposite in="d" in2="ga" operator="out" result="speck" />
-      <feComponentTransfer in="d" result="base">
-        <feFuncA type="linear" slope="0.68" />
-      </feComponentTransfer>
-      <feMerge><feMergeNode in="base" /><feMergeNode in="speck" /></feMerge>
-    </filter>`;
+
+    <filter id="${id}-pan" x="-15%" y="-15%" width="130%" height="130%">
+      <feTurbulence type="fractalNoise" baseFrequency=".52 .62" numOctaves="2" seed="37" result="grain" />
+      <feColorMatrix in="grain" type="matrix"
+        values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .46 .18" result="grainAlpha" />
+      <feComposite in="SourceGraphic" in2="grainAlpha" operator="out" />
+    </filter>
+
+
+    <radialGradient id="${id}-pan-rise" cx="45%" cy="37%" r="62%">
+      <stop offset="0" stop-color="#fff" stop-opacity=".28" />
+      <stop offset=".36" stop-color="#fff" stop-opacity=".08" />
+      <stop offset="1" stop-color="#000" stop-opacity=".12" />
+    </radialGradient>`;
 }
 
 /** 부위별 질감 그림. viewBox 는 전부 0 0 96 64. 색은 currentColor */
 function swatch(part: PalettePart, id: string): string {
   switch (part) {
-    // 눈썹 — 펜슬로 한 올씩 그은 결. 획마다 길이·굵기·휨이 다르고 끝이 가늘어진다
+    // 눈썹 — 펜슬로 그은 결. 획마다 굵기·휨이 다르고 위로 갈수록 가늘어진다
     case "brow": return `
-      <g filter="url(#${id}-rough)" fill="currentColor">
-        <path d="M11 47 Q19 35 28 29 Q30 28 30.6 29.4 Q31 30.6 29.6 31.6 Q21 37 14.2 48 Q13.2 49.4 12 49 Q10.6 48.5 11 47 Z" opacity=".72" />
-        <path d="M22 50 Q31 33 42 26 Q44.4 24.6 45.2 26.4 Q45.8 28.2 43.8 29.6 Q34 36 25.4 51.2 Q24.3 53 22.8 52.3 Q21.3 51.6 22 50 Z" />
-        <path d="M35 50 Q45 32 57 26 Q59.4 24.8 60 26.7 Q60.5 28.5 58.4 29.8 Q48 36 38.6 51.4 Q37.5 53.2 36 52.5 Q34.4 51.8 35 50 Z" />
-        <path d="M49 48 Q59 32 71 29 Q73.2 28.5 73.6 30.2 Q73.9 31.9 71.9 32.6 Q62 35.6 52.5 49.4 Q51.4 51 50 50.4 Q48.5 49.7 49 48 Z" opacity=".86" />
-        <path d="M63 45 Q72 34 83 33 Q85 32.9 85.1 34.4 Q85.2 35.9 83.3 36.2 Q74 37.4 66.2 46.4 Q65.1 47.7 63.9 47.2 Q62.6 46.6 63 45 Z" opacity=".55" />
+      <g fill="none" stroke="currentColor" stroke-linecap="round">
+        <path d="M16 42 C28 31 39 24 54 20" stroke-width="5.4" />
+        <path d="M23 45 C33 34 45 27 61 22" stroke-width="4.5" />
+        <path d="M31 47 C41 37 52 31 70 27" stroke-width="3.6" />
+        <path d="M41 48 C52 39 63 35 78 31" stroke-width="2.8" />
+        <path d="M20 38 C26 33 32 29 39 26" stroke-width="2.2" opacity=".62" />
+        <path d="M50 22 C58 19 65 18 73 19" stroke-width="2.1" opacity=".55" />
+      </g>
+      <g fill="currentColor" opacity=".28">
+        <ellipse cx="29" cy="39" rx="2.2" ry="1.1" transform="rotate(-30 29 39)" />
+        <ellipse cx="56" cy="27" rx="1.8" ry=".9" transform="rotate(-15 56 27)" />
       </g>`;
 
-    // 아이섀도우 — 브러시로 한 번 쓸어 바른 파우더. 왼쪽이 진하고 오른쪽으로 날아간다
+    // 아이섀도우 — 브러시로 쓸어 바른 파우더. 아래로 옅게 끌린 자국과 흩날린 가루
     case "shadow": return `
-      <defs>
-        <linearGradient id="${id}-sh" x1="0.08" y1="0.3" x2="1" y2="0.75">
-          <stop offset="0" stop-color="currentColor" stop-opacity="1" />
-          <stop offset=".45" stop-color="currentColor" stop-opacity=".88" />
-          <stop offset=".8" stop-color="currentColor" stop-opacity=".45" />
-          <stop offset="1" stop-color="currentColor" stop-opacity=".08" />
-        </linearGradient>
-      </defs>
       <g filter="url(#${id}-powder)">
-        <path d="M6 37 Q12 24 32 21 Q56 17 76 23 Q90 27 93 33 Q89 42 68 46 Q40 51 19 46 Q8 43 6 37 Z"
-              fill="url(#${id}-sh)" />
+        <path fill="currentColor" opacity=".92" d="M15 39 C25 22 49 15 75 21 C86 24 87 35 76 42 C57 53 25 53 15 39Z" />
+        <path fill="currentColor" opacity=".36" d="M8 43 C21 34 39 32 61 35 C75 37 85 41 89 47 C72 52 36 56 8 43Z" />
       </g>
-      <!-- 쓸린 끝에 흩날린 가루 -->
+      <g fill="#fff" opacity=".32">
+        <circle cx="25" cy="36" r="1.6" /><circle cx="35" cy="28" r=".9" /><circle cx="51" cy="25" r="1.2" />
+        <circle cx="68" cy="31" r=".8" /><circle cx="77" cy="39" r="1.3" />
+      </g>
       <g fill="currentColor" opacity=".32">
-        <circle cx="86" cy="24" r="1.5" /><circle cx="91" cy="31" r="1.1" /><circle cx="88" cy="41" r="1.3" />
-        <circle cx="79" cy="48" r="1" /><circle cx="94" cy="37" r=".9" /><circle cx="83" cy="17" r="1" />
+        <circle cx="14" cy="46" r="1.4" /><circle cx="24" cy="51" r=".9" />
+        <circle cx="73" cy="48" r="1.1" /><circle cx="85" cy="44" r=".8" />
       </g>`;
 
-    // 아이라인 — 펜으로 그은 획. 눈머리 쪽은 얇고 눈꼬리로 갈수록 두꺼워진다(소다와 같은 결)
+    // 아이라인 — 펜으로 겹쳐 그은 획. 눈꼬리 쪽으로 갈수록 두꺼워진다
     case "liner": return `
-      <g filter="url(#${id}-rough)" fill="currentColor">
-        <path d="M8 44 Q34 27 88 21 Q89.6 20.9 89.7 22.3 Q89.8 23.7 88.3 24.1 Q36 31.5 10.6 46.6 Q9.1 47.5 8.2 46.4 Q7.4 45.2 8 44 Z" />
-        <path d="M13 53 Q38 39 76 34 Q77.3 33.9 77.4 35 Q77.5 36 76.3 36.3 Q40 42.5 15.1 54.9 Q14 55.5 13.3 54.7 Q12.6 53.8 13 53 Z" opacity=".5" />
-      </g>`;
-
-    // 블러셔 — 압축 파우더 팬. 가운데가 눌려 진하고 가장자리에 브러시 자국이 남는다
-    case "cheek": return `
-      <defs>
-        <radialGradient id="${id}-ck" cx="41%" cy="36%" r="70%">
-          <stop offset="0" stop-color="currentColor" stop-opacity="1" />
-          <stop offset=".58" stop-color="currentColor" stop-opacity=".92" />
-          <stop offset=".88" stop-color="currentColor" stop-opacity=".66" />
-          <stop offset="1" stop-color="currentColor" stop-opacity=".3" />
-        </radialGradient>
-      </defs>
-      <g filter="url(#${id}-pan)">
-        <circle cx="47" cy="32" r="26" fill="url(#${id}-ck)" />
+      <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 40 C28 31 45 28 62 31 C72 33 80 37 88 42" stroke-width="3.1" />
+        <path d="M16 35 C32 27 49 25 64 28 C75 30 82 34 89 39" stroke-width="4.6" opacity=".86" />
+        <path d="M21 31 C39 24 56 24 69 28 C80 31 87 36 91 40" stroke-width="2.1" opacity=".55" />
+        <path d="M71 28 C80 29 87 33 92 39" stroke-width="6.4" opacity=".28" />
       </g>
-      <g fill="currentColor" opacity=".3">
-        <circle cx="76" cy="18" r="1.2" /><circle cx="19" cy="46" r="1" /><circle cx="73" cy="48" r="1.1" />
-        <circle cx="24" cy="15" r=".9" />
+      <path fill="currentColor" opacity=".5" d="M84 34 C90 36 93 39 95 43 C90 42 86 40 82 37Z" />`;
+
+    // 블러셔 — 틀에 눌러 담은 압축 파우더. 가운데가 솟고 브러시가 쓸고 간 자국이 남는다
+    case "cheek": return `
+      <g filter="url(#${id}-pan)">
+        <ellipse cx="48" cy="33" rx="27" ry="22" fill="currentColor" />
+      </g>
+      <ellipse cx="48" cy="33" rx="27" ry="22" fill="url(#${id}-pan-rise)" opacity=".9" />
+      <path d="M27 29 C38 23 58 22 70 30" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" opacity=".26" />
+      <path d="M25 36 C38 43 58 44 72 36" fill="none" stroke="#000" stroke-width="1.4" stroke-linecap="round" opacity=".07" />
+      <g fill="#fff" opacity=".24">
+        <circle cx="35" cy="25" r="1" /><circle cx="52" cy="20" r=".8" /><circle cx="63" cy="31" r="1.1" />
       </g>`;
 
-    // 립 — 립스틱을 눌러 쓸어 바른 자국. 가운데가 두툼하고 광이 한 줄 올라온다
+    // 립 — 눌러 쓸어 바른 크림. 가운데가 두툼하고 광이 두 줄로 번진다
     case "lip": return `
       <defs>
-        <linearGradient id="${id}-lp" x1="0.05" y1="0.1" x2="0.95" y2="0.95">
-          <stop offset="0" stop-color="currentColor" stop-opacity=".66" />
-          <stop offset=".38" stop-color="currentColor" stop-opacity="1" />
-          <stop offset=".78" stop-color="currentColor" stop-opacity=".92" />
-          <stop offset="1" stop-color="currentColor" stop-opacity=".42" />
+        <linearGradient id="${id}-lip-rise" x1="16" y1="50" x2="82" y2="25" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stop-color="currentColor" stop-opacity=".58" />
+          <stop offset=".45" stop-color="currentColor" />
+          <stop offset="1" stop-color="currentColor" stop-opacity=".7" />
         </linearGradient>
       </defs>
-      <g filter="url(#${id}-rough)">
-        <path d="M10 40 Q15 24 34 21 Q58 17 78 26 Q89 31 88 38 Q84 47 62 50 Q34 54 17 47 Q10 44 10 40 Z"
-              fill="url(#${id}-lp)" />
-        <!-- 크림 광 -->
-        <path d="M26 30 Q40 25 58 27 Q66 28 70 31 Q58 29 43 30 Q32 31 26 30 Z" fill="#fff" opacity=".4" />
-      </g>`;
+      <g filter="url(#${id}-cream)">
+        <path fill="url(#${id}-lip-rise)" d="M13 43 C16 33 27 28 43 27 C55 26 69 20 80 25 C90 29 86 40 75 45 C59 52 33 53 13 43Z" />
+        <path fill="currentColor" opacity=".42" d="M11 46 C28 51 55 51 78 44 C65 57 28 60 11 46Z" />
+      </g>
+      <path fill="#fff" opacity=".34" d="M31 33 C43 28 57 27 69 29 C58 31 43 34 30 39 C27 37 28 35 31 33Z" />
+      <path fill="#fff" opacity=".22" d="M61 35 C69 33 76 33 81 36 C73 37 67 39 60 42 C57 40 58 37 61 35Z" />
+      <path fill="currentColor" opacity=".22" d="M16 43 C23 41 30 42 39 46 C30 47 22 47 16 43Z" />`;
   }
 }
 
