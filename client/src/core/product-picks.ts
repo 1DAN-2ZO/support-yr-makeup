@@ -283,7 +283,13 @@ function familyLab(part: PalettePart, family: string): Lab | null {
   };
 }
 
-/** 화면에 쓸 한 줄. 호수를 모르면 계열 이름으로 말한다 — 틀린 호수를 말하지 않는다 */
-export function pickShadeText(pick: ProductPick, family: string): string {
-  return pick.shade ? `${pick.shade} 호` : `${family} 계열 호수로`;
+/**
+ * 화면에 쓸 한 줄 — **계열 이름만** 말한다 (2026-10-07 전지원).
+ *
+ * 호수를 집어 주지 않는다. 사진에서 뽑은 색은 피부 위에 올라간 색이라 "얼마나 진한
+ * 제품인가" 를 알 수 없고(얼마나 두껍게 발랐는지를 모른다), 그 상태로 호수를 말하면
+ * 틀린 호수를 자신 있게 말하게 된다. 계열까지만 말하면 틀릴 일이 없다.
+ */
+export function pickShadeText(_pick: ProductPick, family: string): string {
+  return `${family} 계열`;
 }
