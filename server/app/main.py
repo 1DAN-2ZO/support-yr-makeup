@@ -2,6 +2,7 @@
 
 엔드포인트:
   GET  /health   상태·버전
+  POST /events   사용 기록 받기 (어느 화면에서 나갔는지) — 사진·얼굴 점은 받지 않는다. events.py
 
 실행:  uv run uvicorn server.app.main:app --reload --port 8000
 
@@ -14,9 +15,10 @@ from __future__ import annotations
 import logging
 import os
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
+from . import events
 from .config import settings
 from .schemas import Health
 
@@ -41,3 +43,21 @@ app.add_middleware(
 @app.get("/health", response_model=Health)
 def health() -> Health:
     return Health(ok=True, ver=settings.versions.as_dict())
+
+
+@app.post("/events", status_code=204)
+async def post_events(request: Request) -> Response:
+    out = events.events_dir()
+    if out is None:
+        raise HTTPException(503, "events off (DHE_DATA_DIR)")
+    body = b""
+    async for chunk in request.stream():
+        body += chunk
+        if len(body) > events.MAX_BODY:
+            raise HTTPException(413, "too large")
+    try:
+        evs = events.parse(body)
+    except events.BadEvents as err:
+        raise HTTPException(422, str(err)) from err
+    events.store(evs, out)
+    return Response(status_code=204)
