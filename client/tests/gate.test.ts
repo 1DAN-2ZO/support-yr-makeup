@@ -40,7 +40,7 @@ describe("evaluateGate", () => {
   it("V4 정면이 아니면 angle — 어두운 것보다 먼저, **어느 쪽으로** 돌리면 되는지 말한다 (폰 시험 2026-09-30)", () => {
     const r = evaluateGate("liner", good({ yaw: 30, baseYaw: 30, foreheadL: 20 }));
     expect(r.firstFail).toBe("angle");
-    // 방향은 화면 1 과 같은 기준: yaw 가 + 면 "왼쪽으로" (flow.ts left_45 = yaw 음수 = "고개를 왼쪽으로")
+    // 방향은 화면 1 과 같은 기준: yaw 가 + 면 "왼쪽으로" (yaw 음수 = "고개를 왼쪽으로")
     expect(r.text).toBe(GATE_TEXT.turnLeft);
     expect(evaluateGate("liner", good({ yaw: -30, baseYaw: -30 })).text).toBe(GATE_TEXT.turnRight);
     expect(evaluateGate("lip", good({ pitch: 12, basePitch: 12 })).text).toBe(GATE_TEXT.tiltUp);

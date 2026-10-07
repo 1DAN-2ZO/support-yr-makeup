@@ -67,7 +67,7 @@ const LOCK_VALUE: Record<"whiteBalanceMode" | "exposureMode" | "focusMode", read
 };
 
 /**
- * 기준 촬영 4장 동안 색이 안 흔들리게 WB·노출·초점을 'manual' 로 잠근다.
+ * 기준 촬영 동안 색이 안 흔들리게 WB·노출·초점을 'manual' 로 잠근다.
  * 순서: 1) 'continuous' 로 두고 안정될 시간을 준 뒤(호출 쪽) 2) 이 함수로 'manual' 전환 — **그 순간의 값(getSettings)을 그대로 고정**.
  * manual 이 지원 목록에 없거나, 지금 값을 못 읽으면(노출 시간·색온도) 건너뛴다. applyConstraints 가 throw 하면 failed.
  */
