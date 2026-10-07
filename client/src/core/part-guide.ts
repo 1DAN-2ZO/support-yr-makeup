@@ -6,7 +6,8 @@
  *  - 단순하게:
  *    입술: 얼굴 점 입술선 그대로 (벌린 입이면 윗입술 · 아랫입술). 입술 화장이 잡혔을 때만
  *    눈썹: 원래 눈썹(얼굴 점)을 위 · 아래로 같은 두께만큼 넓힌다 (화장 영역이 눈썹선 밖으로 나간 정도의 중앙값 — 털 톱니는 무시).
- *      모양은 아치 — 얼굴 점을 지나는 닫힌 매끈한 곡선(캣멀-롬), 꼬리는 한 점으로 모이고 앞머리는 둥글게
+ *      모양은 아치 — 얼굴 점을 지나는 닫힌 매끈한 곡선(캣멀-롬), 꼬리는 한 점으로 모이고 앞머리는 둥글게.
+ *      AI 화장 사진(made)을 주면 두께는 실제 어두운 눈썹 털에 맞춰 줄이거나 넓힌다 (빈 살은 안 잡는다)
  *    라이너: 눈머리 → 눈꼬리 눈꺼풀 위 띠는 다 덮되 두께는 실제대로(칸마다 잰 두께의 2차 곡선), 꼬리 윗선도 실제 모양대로
  *      (눈꼬리 밖 칸마다 따라가며), 아랫선은 눈꼬리 → 꼬리 끝 곧게 (사용자 그림 2026-10-07 — 고정 띠 + 삼각 꼬리는 실제와 달랐다)
  *    섀도: 라이너 띠 윗선에서 시작해 겹치지 않게, 높이 하나(그 위 화장 영역 높이의 중앙값)로 라이너 윗선을 따라가는 띠 —
@@ -16,7 +17,7 @@
  *  - 쉐딩 · 하이라이트(참고)는 뺀다. clip 밖 픽셀(klein 이면 얼굴 윤곽 0.9 밖 — 원본에 되붙인 경계 차이)도 뺀다.
  */
 
-import { pointInPoly } from "./color";
+import { pointInPoly, type RgbaImage } from "./color";
 import { GUIDE_PARAMS } from "./guides";
 import { LM } from "./landmarks";
 import type { ExtractPart, PartMask } from "./makeup-extract";
@@ -54,7 +55,7 @@ export const PART_GUIDE = {
 type SV = { s: number; v: number };
 interface EyeFrame { o: Pt; out: Pt; up: Pt; ew: number; from: (q: SV) => Pt; to: (p: Pt) => SV }
 
-export function partGuides(parts: readonly PartMask[], lm: readonly Pt[], w: number, h: number, opts: { clip?: readonly Pt[] } = {}): PartGuide[] {
+export function partGuides(parts: readonly PartMask[], lm: readonly Pt[], w: number, h: number, opts: { clip?: readonly Pt[]; made?: RgbaImage } = {}): PartGuide[] {
   const P = (i: number): Pt => lm[i]!;
   const masks = new Map<string, { m: Uint8Array; count: number }>();
   for (const p of parts) {
@@ -90,6 +91,20 @@ export function partGuides(parts: readonly PartMask[], lm: readonly Pt[], w: num
   const browLines = (s: Side) => { const b = s === "R" ? LM.browA : LM.browB; return { up: b.upper.map(P), lo: b.lower.map(P) }; };
   both("brow", (inside, f, s) => {
     const { up, lo } = browLines(s);
+    // AI 화장 사진이 있으면 실제 어두운 눈썹 털에 맞춰 줄이거나 넓힌다 — 원래 눈썹(얼굴 점)보다 얇게 그리면 윗부분 빈 살까지 잡았다 (실사진, 시험 B2)
+    const dark = opts.made ? darkIn(opts.made, [...up, ...[...lo].reverse()], PART_GUIDE.browMax * f.ew * 0.5) : null;
+    if (dark) {
+      // 눈썹 가운데 선에서 위 · 아래로 이어진 어두운 부분만 (살로 끊기면 멈춤) — 가장 먼 어두운 픽셀까지 재니
+      // 옅은 눈썹에서 위쪽 그늘 · 머리카락까지 잡혀 커졌다 (실사진, 시험 B3)
+      const U9 = samples(up, 9), L9 = samples(lo, 9), dUs: number[] = [], dLs: number[] = [];
+      for (let k = 0; k < 9; k++) {
+        const c = mid(U9[k]!, L9[k]!);
+        if (!dark(c)) continue;
+        const t = runOut(dark, c, f.up, PART_GUIDE.browMax * f.ew), b2 = runOut(dark, c, neg(f.up), PART_GUIDE.browMax * f.ew);
+        dUs.push(dot(add(c, f.up, t), U9[k]!, f.up)); dLs.push(dot(L9[k]!, add(c, f.up, -b2), f.up));
+      }
+      if (dUs.length >= 3) return { dU: median(dUs) / f.ew, dL: median(dLs) / f.ew };
+    }
     const dU = median(samples(up, 9).map((p) => reach(inside, p, f.up, PART_GUIDE.browMax * f.ew))) / f.ew;
     const dL = median(samples(lo, 9).map((p) => reach(inside, p, neg(f.up), PART_GUIDE.browMax * f.ew))) / f.ew;
     return { dU, dL };
@@ -128,7 +143,9 @@ export function partGuides(parts: readonly PartMask[], lm: readonly Pt[], w: num
       const u = (k + 1) / PART_GUIDE.wingN, q = { s: c.s + (wing.sTip - c.s) * u, v: Math.max(v, Math.min(c.v, wing.vTip)) };
       return f.from(q);
     }).filter((p) => f.to(p).s > c.s);
-    return (linerPoly[s] = [...base, tip, ...[...wingTop].reverse(), ...[...top].reverse()]);
+    // 윗선은 꼬리 끝에서 눈머리 쪽으로 위로 볼록하게만 잇는다 — 꼬리 윗선이 띠보다 높게 시작하면 만나는 곳에 홈이 생겨 튀었고,
+    // 꼬리 윗선도 칸마다 출렁였다 (실사진, 시험 L7)
+    return (linerPoly[s] = [...base, ...convexFromTip([tip, ...[...wingTop].reverse(), ...[...top].reverse()], f)]);
   }, "mixed");
 
   // 섀도: 라이너 윗선(라이너가 없으면 눈꺼풀)에서 올라간 높이 하나
@@ -255,6 +272,66 @@ function wingOf(inside: (q: Pt) => boolean, f: EyeFrame, th0: number): Wing | nu
 
 function avgWing(a: Wing, b: Wing): Wing {
   return { sTip: (a.sTip + b.sTip) / 2, vTip: (a.vTip + b.vTip) / 2, top: a.top.map((v, i) => (v + b.top[i]!) / 2) };
+}
+
+/** 위로 볼록한 윗선 — 첫 점(꼬리 끝)부터 눈 좌표 s 가 줄어드는 순서로, 홈이 되는 점은 뺀다 */
+function convexFromTip(chain: readonly Pt[], f: EyeFrame): Pt[] {
+  const out: Pt[] = [];
+  for (const p of chain) {
+    while (out.length >= 2) {
+      const a = f.to(out[out.length - 2]!), b = f.to(out[out.length - 1]!), c = f.to(p);
+      if (Math.abs(c.s - a.s) < 1e-9 || b.v >= a.v + ((c.v - a.v) * (b.s - a.s)) / (c.s - a.s)) break;
+      out.pop();
+    }
+    out.push(p);
+  }
+  return out;
+}
+
+/** 다각형 둘레(margin px 안)에서 어두운 픽셀 — 밝기 오츠 문턱. 어두운 쪽 · 밝은 쪽이 갈리지 않으면 null */
+function darkIn(im: RgbaImage, poly: readonly Pt[], margin: number): ((q: Pt) => boolean) | null {
+  const xs = poly.map((p) => p.x), ys = poly.map((p) => p.y);
+  const x0 = Math.max(0, Math.floor(Math.min(...xs) - margin)), x1 = Math.min(im.w - 1, Math.ceil(Math.max(...xs) + margin));
+  const y0 = Math.max(0, Math.floor(Math.min(...ys) - margin)), y1 = Math.min(im.h - 1, Math.ceil(Math.max(...ys) + margin));
+  const zone = (x: number, y: number) => pointInPoly(x, y, poly) || polyDist({ x, y }, poly) <= margin;
+  const lum = (x: number, y: number) => { const i = (y * im.w + x) * 4; return 0.299 * im.data[i]! + 0.587 * im.data[i + 1]! + 0.114 * im.data[i + 2]!; };
+  const hist = new Array<number>(256).fill(0);
+  let n = 0;
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (zone(x, y)) { hist[Math.round(lum(x, y))]!++; n++; }
+  if (n < 20) return null;
+  let sum = 0;
+  for (let i = 0; i < 256; i++) sum += i * hist[i]!;
+  let wB = 0, sB = 0, best = -1, thr = 0;
+  for (let t = 0; t < 256; t++) {
+    wB += hist[t]!; if (!wB || wB === n) continue;
+    sB += t * hist[t]!;
+    const mB = sB / wB, mF = (sum - sB) / (n - wB), between = wB * (n - wB) * (mB - mF) ** 2;
+    if (between > best) { best = between; thr = t; }
+  }
+  return (q) => {
+    const x = Math.round(q.x), y = Math.round(q.y);
+    return x >= x0 && x <= x1 && y >= y0 && y <= y1 && zone(x, y) && lum(x, y) <= thr;
+  };
+}
+
+/** 점 p 에서 방향 d 로 — p 부터 이어진 칠한 픽셀 끝까지 거리 (1px 끊김은 잇는다) */
+function runOut(inside: (q: Pt) => boolean, p: Pt, d: Pt, maxPx: number): number {
+  let last = 0, gap = 0;
+  for (let k = 0.5; k <= maxPx; k += 0.5) {
+    if (inside(add(p, d, k))) { last = k; gap = 0; } else if (++gap > 2) break;
+  }
+  return last;
+}
+
+/** a 가 b 보다 방향 d 쪽으로 얼마나 더 나갔나 */
+const dot = (a: Pt, b: Pt, d: Pt): number => (a.x - b.x) * d.x + (a.y - b.y) * d.y;
+
+function polyDist(q: Pt, poly: readonly Pt[]): number {
+  return Math.min(...poly.map((a, i) => {
+    const b = poly[(i + 1) % poly.length]!, dx = b.x - a.x, dy = b.y - a.y, L = dx * dx + dy * dy;
+    const t = L ? Math.max(0, Math.min(1, ((q.x - a.x) * dx + (q.y - a.y) * dy) / L)) : 0;
+    return Math.hypot(q.x - a.x - t * dx, q.y - a.y - t * dy);
+  }));
 }
 
 /** 점 p 에서 방향 d 로 최대 maxPx 까지 — 화장 영역의 가장 먼 픽셀 거리 (없으면 0, 사이가 비어도 더 간다) */

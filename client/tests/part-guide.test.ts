@@ -3,7 +3,7 @@ import { LM } from "../src/core/landmarks";
 import type { PartMask } from "../src/core/makeup-extract";
 import { LIPS_INNER, partGuides } from "../src/core/part-guide";
 import type { Pt } from "../src/core/types";
-import { LMS, P, eyeOf } from "./helpers/synth-face";
+import { INK, LMS, P, eyeOf, image } from "./helpers/synth-face";
 
 const W = 600, H = 600;
 function mask(inside: (x: number, y: number) => boolean): Uint8Array {
@@ -333,5 +333,50 @@ describe("부위 가이드 — 실사진 라이너 꼬리 · 아치 눈썹 (사�
     });
     const tip = poly.reduce((a, c) => (c.x < a.x ? c : a));
     expect(Math.max(...turn.filter((_, i) => Math.hypot(poly[i]!.x - tip.x, poly[i]!.y - tip.y) > 4)), "꼬리 끝 말고 가장 크게 꺾인 각도").toBeLessThan(45);
+  });
+});
+
+describe("부위 가이드 — 꼬리 윗선 홈 · 눈썹 빈 곳 (사용자 2026-10-07)", () => {
+  const lid = eyeOf("R").upper.map(P);
+  const lidY = (x: number) => { for (let i = 1; i < lid.length; i++) { const a = lid[i - 1]!, b = lid[i]!; if ((x - a.x) * (x - b.x) <= 0 && a.x !== b.x) return a.y + ((b.y - a.y) * (x - a.x)) / (b.x - a.x); } return NaN; };
+
+  it("L7 꼬리 윗선이 띠보다 높게 시작해도 윗선에 홈이 없다 — 실사진: 꼬리와 띠가 만나는 곳이 꺾여 튀었다", () => {
+    const o = P(LM.eyeA.outer), tip = { x: o.x - 24, y: o.y - 12 }, top0 = { x: o.x, y: o.y - 9 };
+    const wing = [{ x: o.x, y: o.y }, tip, top0];
+    const m = mask((x, y) => (x >= 172 && x <= 258 && y <= lidY(x) && y >= lidY(x) - 4) || inPoly(x, y, wing));
+    const poly = get(partGuides([part("liner", "R", m)], LMS, W, H), "liner", "R")!.polys[0]!;
+    const ti = poly.reduce((bi, p, i) => (p.x < poly[bi]!.x ? i : bi), 0), upper = poly.slice(ti);   // 꼬리 끝 → 윗선 → 눈머리
+    for (let i = 1; i + 1 < upper.length; i++) {
+      const a = upper[i - 1]!, m2 = upper[i]!, c = upper[i + 1]!;
+      if (c.x - a.x < 1e-6) continue;
+      const yLine = a.y + ((c.y - a.y) * (m2.x - a.x)) / (c.x - a.x);
+      expect(m2.y - yLine, `윗선 (${m2.x.toFixed(1)}, ${m2.y.toFixed(1)}) 홈`).toBeLessThan(0.3);
+    }
+  });
+
+  it("B2 AI 가 눈썹을 원래보다 얇게 그렸으면 가이드도 실제 어두운 눈썹에 맞춘다 — 빈 살은 안 잡는다 (실사진)", () => {
+    const b = LM.browA, own = [...b.upper, ...[...b.lower].reverse()].map(P);
+    const loY = (x: number) => 214 - 4 * Math.sin(((x - 160) / 110) * Math.PI), upY = (x: number) => 200 - 8 * Math.sin(((x - 160) / 110) * Math.PI);
+    const darkTop = (x: number) => loY(x) - 0.6 * (loY(x) - upY(x));   // 실제 눈썹은 아래 60%
+    const made = image((x, y) => (x >= 162 && x <= 268 && y >= darkTop(x) && y <= loY(x) ? INK : null));
+    const g = partGuides([part("brow", "R", mask((x, y) => inPoly(x, y, own)))], LMS, W, H, { made });
+    const poly = get(g, "brow", "R")!.polys[0]!;
+    const top = Math.min(...poly.filter((p) => Math.abs(p.x - 215) < 3).map((p) => p.y));
+    expect(Math.abs(top - darkTop(215)), `가운데 윗선 ${top.toFixed(1)} (실제 눈썹 윗선 ${darkTop(215).toFixed(1)}, 얼굴 점 윗선 ${upY(215).toFixed(1)})`).toBeLessThan(2);
+  });
+});
+
+describe("부위 가이드 — 눈썹 위 떨어진 어두운 곳 (실사진: 옅은 눈썹에서 위쪽 그늘까지 잡혀 커졌다)", () => {
+  it("B3 눈썹 위로 살 틈을 두고 떨어진 어두운 곳(그늘 · 머리카락)은 눈썹이 아니다 — 이어진 어두운 부분만", () => {
+    const b = LM.browA, own = [...b.upper, ...[...b.lower].reverse()].map(P);
+    const loY = (x: number) => 214 - 4 * Math.sin(((x - 160) / 110) * Math.PI), upY = (x: number) => 200 - 8 * Math.sin(((x - 160) / 110) * Math.PI);
+    const made = image((x, y) => {
+      if (x >= 162 && x <= 268 && y >= upY(x) && y <= loY(x)) return INK;                 // 눈썹
+      if (x >= 170 && x <= 260 && y >= upY(x) - 9 && y <= upY(x) - 4) return INK;         // 위로 4px 틈 두고 그늘
+      return null;
+    });
+    const poly = get(partGuides([part("brow", "R", mask((x, y) => inPoly(x, y, own)))], LMS, W, H, { made }), "brow", "R")!.polys[0]!;
+    const top = Math.min(...poly.filter((p) => Math.abs(p.x - 215) < 3).map((p) => p.y));
+    expect(Math.abs(top - upY(215)), `가운데 윗선 ${top.toFixed(1)} (눈썹 윗선 ${upY(215).toFixed(1)}, 그늘 위 ${(upY(215) - 9).toFixed(1)})`).toBeLessThan(2);
   });
 });

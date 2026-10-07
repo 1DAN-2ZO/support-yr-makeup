@@ -424,7 +424,7 @@ async function extract(): Promise<void> {
   // 가이드에서 뺀다 (실사진: 볼 가이드에 얼굴 옆선 띠)
   const oval = FACE_OVAL.map((i) => last!.lm[i]!), c = oval.reduce((s, p) => ({ x: s.x + p.x / oval.length, y: s.y + p.y / oval.length }), { x: 0, y: 0 });
   const clip = oval.map((p) => ({ x: c.x + (p.x - c.x) * 0.9, y: c.y + (p.y - c.y) * 0.9 }));
-  last.outlines = partGuides(res.parts, last.lm, res.w, res.h, { clip });
+  last.outlines = partGuides(res.parts, last.lm, res.w, res.h, { clip, made: last.made });
   const ms = Math.round(performance.now() - t0);
   drawPartList(res.parts);
   render();
