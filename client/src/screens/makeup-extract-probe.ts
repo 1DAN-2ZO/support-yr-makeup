@@ -8,6 +8,8 @@
  *     뗀 화장만(회색 바탕 + AI 색) · 맨얼굴 · AI 사진 위 부위별 색 테두리 · 부위 켜고 끄기
  *  ⑤ 가이드: 부위별 화장 영역의 바깥 테두리(core/region-outline) — FLUX 는 칠하지 않은 곳이 원본 그대로라 차이가 깨끗해서
  *     템플릿 모양에 숫자를 읽던 방식(makeup-fit, Stable-Makeup 용)과 AI 맨얼굴 비교 · 피부 변화 거르기는 뺐다 (사용자 2026-10-06)
+ *  ⑤ 실시간: 버튼으로 사진 가이드 ↔ 실시간 가이드 — 가이드 점을 맨얼굴 얼굴 그물(core/mesh-pin)에 붙여 두고 웹캠 얼굴로 옮겨 그린다
+ *     (얼굴 점 떨림은 화면 4 테두리 값 LIVE_SMOOTH 로 거른다, 사용자 2026-10-07)
  * 사진은 이 컴퓨터 안에서만 쓴다 (저장은 누를 때만, 다운로드 폴더로).
  */
 
@@ -15,7 +17,10 @@ import type { FaceLandmarker } from "@mediapipe/tasks-vision";
 import { deltaE, foreheadLab, labAt, type RgbaImage } from "@core/color";
 import { applyAffine, robustAffine, type Affine } from "@core/eye-fit";
 import { EXTRACT, FACE_OVAL, extractAll, type ExtractPart, type PartMask } from "@core/makeup-extract";
+import { pinPoints, placePins, type Pin } from "@core/mesh-pin";
 import { partGuides, type PartGuide } from "@core/part-guide";
+import { LIVE_SMOOTH } from "@core/smooth-params";
+import { LandmarkSmoother } from "@core/smoothing";
 import { createSnapshotCollector } from "@core/snapshot";
 import type { Pt } from "@core/types";
 import { startFrameLoop } from "./camera-loop";
@@ -46,6 +51,8 @@ const heat = $<HTMLInputElement>("heat");
 const cvOnly = $<HTMLCanvasElement>("cvOnly"), cvBare = $<HTMLCanvasElement>("cvBare"), cvMade = $<HTMLCanvasElement>("cvMade");
 const statusEl = $("status"), partsEl = $("parts");
 const cvFitBare = $<HTMLCanvasElement>("cvFitBare"), cvFitMade = $<HTMLCanvasElement>("cvFitMade"), fitInfo = $("fitInfo");
+const modePhoto = $<HTMLButtonElement>("modePhoto"), modeLive = $<HTMLButtonElement>("modeLive"), liveMsg = $("liveMsg");
+const photoGuide = $("photoGuide"), liveGuide = $("liveGuide"), liveView = $<HTMLCanvasElement>("liveView");
 
 const PARTS: { id: ExtractPart; name: string; color: [number, number, number] }[] = [
   { id: "lip", name: "입술", color: [255, 59, 92] },
@@ -189,6 +196,8 @@ function stopCamera(): void {
 
 camBtn.addEventListener("click", async () => {
   if (camMode !== "off") { stopCamera(); preview(bareView, bareCv); return; }
+  // 실시간 가이드와 같은 카메라(video) — 켜져 있으면 사진 가이드로 돌린다
+  if (liveStop) await setMode(false);
   camBtn.disabled = true;
   setMsg(bareMsg, "카메라를 여는 중…");
   try {
@@ -425,6 +434,7 @@ async function extract(): Promise<void> {
   const oval = FACE_OVAL.map((i) => last!.lm[i]!), c = oval.reduce((s, p) => ({ x: s.x + p.x / oval.length, y: s.y + p.y / oval.length }), { x: 0, y: 0 });
   const clip = oval.map((p) => ({ x: c.x + (p.x - c.x) * 0.9, y: c.y + (p.y - c.y) * 0.9 }));
   last.outlines = partGuides(res.parts, last.lm, res.w, res.h, { clip, made: last.made });
+  pinGuides();
   const ms = Math.round(performance.now() - t0);
   drawPartList(res.parts);
   render();
@@ -466,6 +476,84 @@ function renderGuide(): void {
   const lines = last.outlines.map((o) => `${PARTS.find((p) => p.id === o.part)!.name}${side(o.side)}: ${from[o.from]} · 테두리 ${o.polys.length}개 · ${o.count.toLocaleString()}px`);
   fitInfo.textContent = lines.length ? lines.join("\n") : "화장 영역을 못 찾았어요";
 }
+
+// ---------- ⑤ 실시간 가이드 ----------
+
+/** 가이드 테두리 점마다 맨얼굴 얼굴 그물의 삼각형 · 무게 — 웹캠 얼굴의 같은 삼각형에 놓는다 */
+let livePins: { part: ExtractPart; pins: Pin[][] }[] = [];
+let liveStop: (() => void) | null = null;
+const liveSmoother = new LandmarkSmoother(Array.from({ length: 478 }, (_, i) => i), LIVE_SMOOTH);
+
+function pinGuides(): void {
+  const l = last;
+  livePins = l ? l.outlines.map((o) => ({ part: o.part, pins: o.polys.filter((q) => q.length >= 3).map((q) => pinPoints(l.lm, q)) })) : [];
+}
+
+function liveFrame(now: number): void {
+  if (video.readyState < 2 || !videoLm) return;
+  const w = video.videoWidth, h = video.videoHeight;
+  if (!w || !h) return;
+  if (liveView.width !== w || liveView.height !== h) { liveView.width = w; liveView.height = h; }
+  const face = videoLm.detectForVideo(video, now).faceLandmarks[0];
+  const lm = liveSmoother.smooth(face && face.length >= 478 ? face.map((p) => ({ x: p.x * w, y: p.y * h })) : null, now);
+  const g = liveView.getContext("2d")!;
+  // 거울로 — 영상과 선을 같이 뒤집는다
+  g.save();
+  g.translate(w, 0);
+  g.scale(-1, 1);
+  g.drawImage(video, 0, 0, w, h);
+  if (lm) {
+    g.lineWidth = Math.max(2, w / 400);
+    g.lineJoin = "round";
+    for (const { part, pins } of livePins) {
+      if (!on.has(part)) continue;
+      g.strokeStyle = `rgb(${PARTS.find((p) => p.id === part)!.color.join(",")})`;
+      for (const pp of pins) {
+        const pts = placePins(lm, pp);
+        g.beginPath();
+        g.moveTo(pts[0]!.x, pts[0]!.y);
+        for (const p of pts.slice(1)) g.lineTo(p.x, p.y);
+        g.closePath();
+        g.stroke();
+      }
+    }
+  }
+  g.restore();
+  setMsg(liveMsg, lm ? "" : "얼굴을 찾는 중…");
+}
+
+function stopLive(): void {
+  liveStop?.();
+  liveStop = null;
+  for (const t of (video.srcObject as MediaStream | null)?.getTracks() ?? []) t.stop();
+  video.srcObject = null;
+}
+
+/** 사진 가이드 ↔ 실시간 가이드 */
+async function setMode(live: boolean): Promise<void> {
+  if (live && !last?.outlines.length) { setMsg(liveMsg, "가이드를 먼저 만들어 주세요 — ① 맨얼굴 · ③ AI 화장이 있어야 해요", true); return; }
+  modePhoto.classList.toggle("main", !live);
+  modeLive.classList.toggle("main", live);
+  photoGuide.hidden = live;
+  liveGuide.hidden = !live;
+  if (!live) { stopLive(); setMsg(liveMsg, ""); return; }
+  if (liveStop) return;
+  if (camMode !== "off") { stopCamera(); preview(bareView, bareCv); }
+  setMsg(liveMsg, "카메라를 여는 중…");
+  try {
+    videoLm ??= await createLandmarker("VIDEO", { blendshapes: false });
+    video.srcObject = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+    await video.play();
+    liveSmoother.reset();
+    liveStop = startFrameLoop(video, liveFrame, { onError: (e) => setMsg(liveMsg, String(e), true) });
+  } catch (e) {
+    await setMode(false);
+    setMsg(liveMsg, `카메라를 못 열었어요: ${e instanceof Error ? e.message : String(e)}`, true);
+  }
+}
+
+modePhoto.addEventListener("click", () => void setMode(false));
+modeLive.addEventListener("click", () => void setMode(true));
 
 heat.addEventListener("change", render);
 preview(bareView, null); preview(refView, null); preview(madeView, null);
