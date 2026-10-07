@@ -18,7 +18,6 @@
  */
 
 import { pointInPoly, type RgbaImage } from "./color";
-import { GUIDE_PARAMS } from "./guides";
 import { LM } from "./landmarks";
 import type { ExtractPart, PartMask } from "./makeup-extract";
 import { maskOutlines } from "./region-outline";
@@ -44,12 +43,13 @@ export interface PartGuide {
  * shadowMax · underMax · browMax: 높이 · 두께를 찾을 거리(눈 폭) · minH: 이보다 낮은 칸은 섀도 없음 ·
  * wingMin: 눈꼬리 밖으로 이만큼 넘어야 꼬리 ·
  * taper: 섀도 양 끝에서 이 비율 구간 동안 눈꺼풀로 내려온다 · linerStart · linerMax · linerMin: 라이너 띠는 눈꺼풀에서 이만큼 안에서
- * 시작하는 줄, 두께는 이 사이 · wingMax: 꼬리를 찾는 거리 · wingTrack: 앞 칸 윗선에서 이만큼 안의 줄만 잇는다 · wingN: 꼬리 윗선 칸 수
+ * 시작하는 줄, 두께는 이 사이 · wingMax: 꼬리를 찾는 거리 · wingTrack: 앞 칸 윗선에서 이만큼 안의 줄만 잇는다 · wingN: 꼬리 윗선 칸 수 ·
+ * wingBlend: 꼬리 윗선과 볼록하게 이어 다듬는 눈꼬리 쪽 띠 구간
  * (전부 눈 폭 비율). 눈대중 시작값
  */
 export const PART_GUIDE = {
   mouthOpen: 0.06, profileN: 24, shadowMax: 1.0, underMax: 0.6, browMax: 0.4, minH: 0.03,
-  wingMin: 0.03, taper: 0.2, linerStart: 0.06, linerMax: 0.3, linerMin: 0.015, wingMax: 0.8, wingTrack: 0.06, wingN: 10,
+  wingMin: 0.03, taper: 0.2, linerStart: 0.06, linerMax: 0.3, linerMin: 0.015, wingMax: 0.8, wingTrack: 0.06, wingN: 10, wingBlend: 0.2,
 } as const;
 
 type SV = { s: number; v: number };
@@ -130,11 +130,13 @@ export function partGuides(parts: readonly PartMask[], lm: readonly Pt[], w: num
     return { th, wing: wingOf(inside, f, th[th.length - 1]!) };
   }, (a, b) => ({ th: a.th.map((x, i) => (x + b.th[i]!) / 2), wing: a.wing && b.wing ? avgWing(a.wing, b.wing) : a.wing ?? b.wing }),
   ({ th, wing }, f, s) => {
-    const ts = th.map((_, i) => i / PART_GUIDE.profileN), vals = th.filter((x) => x > 0);
-    const fit = vals.length >= 3 ? quadFit(ts.filter((_, i) => th[i]! > 0), vals) : () => (vals.length ? median(vals) : GUIDE_PARAMS.liner.thick);
-    const tAt = (t: number) => Math.min(PART_GUIDE.linerMax, Math.max(PART_GUIDE.linerMin, fit(t)));
+    // 두께는 이웃 칸끼리만 다듬는다 (5칸 중앙값 → 3칸 평균) — 보이는 그대로. 눈꺼풀 전체에 2차 곡선 하나로 맞추니
+    // 절반만 칠한 라이너는 뭉개지고 눈꼬리에 꼬리 픽셀이 섞인 칸에 안쪽 띠까지 끌려갔다 (시험 L5 · L8). 칠하지 않은 칸은 얇은 선
+    const raw = th.map((x) => (x > 0 ? x : PART_GUIDE.linerMin)), med = raw.map((_, i) => median(raw.slice(Math.max(0, i - 2), i + 3)));
+    const sm = med.map((_, i) => { const w = med.slice(Math.max(0, i - 1), i + 2); return w.reduce((a, b) => a + b, 0) / w.length; });
+    const tAt = (i: number) => Math.min(PART_GUIDE.linerMax, Math.max(PART_GUIDE.linerMin, sm[i]!));
     const base = samples(lidOf(s, true), PART_GUIDE.profileN + 1), nrm = normals(base, f.up);
-    const top = base.map((p, i) => add(p, nrm[i]!, tAt(ts[i]!) * f.ew));
+    const top = base.map((p, i) => add(p, nrm[i]!, tAt(i) * f.ew));
     linerTop[s] = top;
     if (!wing) return (linerPoly[s] = [...base, ...[...top].reverse()]);
     // 꼬리 윗선: 눈꼬리 띠 윗점과 꼬리 끝 사이 — 둘 중 낮은 쪽보다 아래로는 안 내려간다 (갈고리 · 홈 방지)
@@ -143,9 +145,11 @@ export function partGuides(parts: readonly PartMask[], lm: readonly Pt[], w: num
       const u = (k + 1) / PART_GUIDE.wingN, q = { s: c.s + (wing.sTip - c.s) * u, v: Math.max(v, Math.min(c.v, wing.vTip)) };
       return f.from(q);
     }).filter((p) => f.to(p).s > c.s);
-    // 윗선은 꼬리 끝에서 눈머리 쪽으로 위로 볼록하게만 잇는다 — 꼬리 윗선이 띠보다 높게 시작하면 만나는 곳에 홈이 생겨 튀었고,
-    // 꼬리 윗선도 칸마다 출렁였다 (실사진, 시험 L7)
-    return (linerPoly[s] = [...base, ...convexFromTip([tip, ...[...wingTop].reverse(), ...[...top].reverse()], f)]);
+    // 꼬리 윗선과 눈꼬리 쪽 띠(눈 폭 wingBlend 안)만 위로 볼록하게 이어 만나는 곳의 홈 · 꼬리 윗선 출렁임을 없앤다 (실사진, 시험 L7).
+    // 그보다 안쪽 띠는 그대로 — 띠 전체를 볼록하게 이으니 꼬리 끝이 높을 때 눈 가운데까지 곧은 선이 되어 띠가 쐐기로 덮였다 (시험 L8).
+    // 그대로 두는 띠의 첫 점까지 넣어 경계가 이어지게 한다
+    const topRev = [...top].reverse(), cut = topRev.findIndex((p) => f.to(p).s < -PART_GUIDE.wingBlend), k = cut < 0 ? topRev.length : cut;
+    return (linerPoly[s] = [...base, ...convexFromTip([tip, ...[...wingTop].reverse(), ...topRev.slice(0, k + 1)], f), ...topRev.slice(k + 1)]);
   }, "mixed");
 
   // 섀도: 라이너 윗선(라이너가 없으면 눈꺼풀)에서 올라간 높이 하나
