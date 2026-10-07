@@ -6,7 +6,7 @@
  *  - 단순하게:
  *    입술: 얼굴 점 입술선 그대로 (벌린 입이면 윗입술 · 아랫입술). 입술 화장이 잡혔을 때만
  *    눈썹: 원래 눈썹(얼굴 점)을 위 · 아래로 같은 두께만큼 넓힌다 (화장 영역이 눈썹선 밖으로 나간 정도의 중앙값 — 털 톱니는 무시).
- *      선은 얼굴 점을 그대로 지나는 매끈한 곡선(캣멀-롬) — 모서리 다듬기는 점 5개짜리 선의 양끝을 7px 가까이 깎았다
+ *      모양은 아치 — 얼굴 점을 지나는 닫힌 매끈한 곡선(캣멀-롬), 꼬리는 한 점으로 모이고 앞머리는 둥글게
  *    라이너: 눈머리 → 눈꼬리 눈꺼풀 위 띠는 다 덮되 두께는 실제대로(칸마다 잰 두께의 2차 곡선), 꼬리 윗선도 실제 모양대로
  *      (눈꼬리 밖 칸마다 따라가며), 아랫선은 눈꼬리 → 꼬리 끝 곧게 (사용자 그림 2026-10-07 — 고정 띠 + 삼각 꼬리는 실제와 달랐다)
  *    섀도: 라이너 띠 윗선에서 시작해 겹치지 않게, 높이 하나(그 위 화장 영역 높이의 중앙값)로 라이너 윗선을 따라가는 띠 —
@@ -94,8 +94,12 @@ export function partGuides(parts: readonly PartMask[], lm: readonly Pt[], w: num
     const dL = median(samples(lo, 9).map((p) => reach(inside, p, neg(f.up), PART_GUIDE.browMax * f.ew))) / f.ew;
     return { dU, dL };
   }, (a, b) => ({ dU: (a.dU + b.dU) / 2, dL: (a.dL + b.dL) / 2 }), ({ dU, dL }, f, s) => {
-    const { up, lo } = browLines(s);
-    return [...spline(up.map((p) => add(p, f.up, dU * f.ew))), ...spline([...lo].reverse().map((p) => add(p, f.up, -dL * f.ew)))];
+    // 아치: 꼬리는 위 · 아래 선이 한 점으로 모이고(그 점을 두 번 넣어 뾰족하게), 앞머리는 둥글게 — 닫힌 매끈한 곡선.
+    // 위 · 아래 선을 따로 그려 이었더니 꼬리 · 앞머리가 뚝 잘린 사다리꼴이었다 (실사진, 시험 B1)
+    const { up, lo } = browLines(s), U = up.map((p) => add(p, f.up, dU * f.ew)), L = lo.map((p) => add(p, f.up, -dL * f.ew));
+    const n = U.length - 1, tail = mid(U[0]!, L[0]!), d = { x: U[n]!.x - U[n - 1]!.x, y: U[n]!.y - U[n - 1]!.y }, dl = Math.hypot(d.x, d.y) || 1;
+    const head = add(mid(U[n]!, L[n]!), { x: d.x / dl, y: d.y / dl }, 0.25 * Math.hypot(U[n]!.x - L[n]!.x, U[n]!.y - L[n]!.y));
+    return splineClosed([tail, tail, ...U.slice(1), head, ...L.slice(1).reverse()]);
   }, "mixed");
 
   // 눈꺼풀 선 (눈머리 → 눈꼬리) — 얼굴 점을 지나는 매끈한 곡선. 꺾은선 그대로 띄우면 꺾인 데가 섀도 윗선에 도드라졌다 (시험 S3)
@@ -219,37 +223,34 @@ function eyeFrame(lm: readonly Pt[], side: Side): EyeFrame {
 type Wing = { sTip: number; vTip: number; top: number[] };
 
 /**
- * 꼬리 — 눈꼬리 밖으로 눈 폭 1% 칸씩 가며 그 칸의 화장 영역 줄(v 범위)을 찾는다. 바로 앞 칸 윗선과 가까운 줄만 잇고(위로 뻗은
- * 속눈썹 · 섀도 끝은 안 붙는다) 3칸 비면 끝. 윗선은 꼬리 길이 비율 u 칸(wingN)마다로 다시 잡아 3칸 평균으로 다듬는다
+ * 꼬리 — 끝을 먼저 찾고(눈꼬리 밖 화장 영역에서 가장 먼 자리 + 그 둘레 높이 평균), 눈꼬리 띠 윗점 → 끝 직선을 기준으로 칸마다
+ * 그 근처 줄의 윗선을 잰다 (없으면 직선). 눈꼬리부터 칸마다 이어 가며 찾았더니, 눈꼬리에 속눈썹이 뭉쳐 띠가 두껍게 재지거나
+ * 꼬리가 살짝 끊기면 꼬리를 통째로 놓쳤다 (실사진, 시험 L6). 윗선은 3칸 평균으로 다듬는다
  */
 function wingOf(inside: (q: Pt) => boolean, f: EyeFrame, th0: number): Wing | null {
-  const dv = 0.5 / f.ew, cols: { s: number; top: number; bot: number }[] = [];
-  let prev = Math.max(th0, PART_GUIDE.linerMin), gap = 0;
-  for (let s = 0.01; s <= PART_GUIDE.wingMax; s += 0.01) {
-    const runs: { top: number; bot: number }[] = [];
+  const R = Math.ceil(f.ew), cand: SV[] = [];
+  for (let y = Math.floor(f.o.y - R); y <= f.o.y + R; y++) for (let x = Math.floor(f.o.x - R); x <= f.o.x + R; x++) {
+    if (!inside({ x, y })) continue;
+    const q = f.to({ x, y });
+    if (q.s >= PART_GUIDE.wingMin && q.s <= PART_GUIDE.wingMax && Math.abs(q.v) < 0.5) cand.push(q);
+  }
+  if (!cand.length) return null;
+  const sTip = Math.max(...cand.map((q) => q.s)), nearTip = cand.filter((q) => q.s >= sTip - 0.03);
+  const vTip = nearTip.reduce((a, q) => a + q.v, 0) / nearTip.length, dv = 0.5 / f.ew;
+  const raw = Array.from({ length: PART_GUIDE.wingN + 1 }, (_, k) => {
+    const u = k / PART_GUIDE.wingN, s = u * sTip, want = th0 + (vTip - th0) * u, runs: { top: number; bot: number }[] = [];
     let cur: { top: number; bot: number } | null = null;
     for (let v = -0.2; v <= 0.6; v += dv) {
       if (inside(f.from({ s, v }))) { if (cur) cur.top = v; else cur = { top: v, bot: v }; }
       else if (cur) { runs.push(cur); cur = null; }
     }
     if (cur) runs.push(cur);
-    const near = runs.filter((r) => Math.abs(r.top - prev) <= PART_GUIDE.wingTrack).sort((a, b) => Math.abs(a.top - prev) - Math.abs(b.top - prev))[0];
-    if (!near) { if (++gap > 3) break; continue; }
-    gap = 0;
-    cols.push({ s, ...near });
-    prev = near.top;
-  }
-  const last = cols[cols.length - 1];
-  if (!last || last.s < PART_GUIDE.wingMin) return null;
-  const at = (s: number) => {
-    let i = 0;
-    while (i < cols.length - 1 && cols[i + 1]!.s < s) i++;
-    const a = cols[i]!, b = cols[Math.min(cols.length - 1, i + 1)]!, k = b.s > a.s ? Math.min(1, Math.max(0, (s - a.s) / (b.s - a.s))) : 0;
-    return a.top + (b.top - a.top) * k;
-  };
-  const raw = Array.from({ length: PART_GUIDE.wingN + 1 }, (_, k) => at((k / PART_GUIDE.wingN) * last.s));
+    const gap = (r: { top: number; bot: number }) => (want > r.top ? want - r.top : want < r.bot ? r.bot - want : 0);
+    const best = runs.sort((a, b) => gap(a) - gap(b))[0];
+    return best && gap(best) <= PART_GUIDE.wingTrack ? best.top : want;
+  });
   const top = raw.map((v, k) => (k === 0 || k === raw.length - 1 ? v : (raw[k - 1]! + v + raw[k + 1]!) / 3));
-  return { sTip: last.s, vTip: (last.top + last.bot) / 2, top };
+  return { sTip, vTip, top };
 }
 
 function avgWing(a: Wing, b: Wing): Wing {
@@ -329,6 +330,22 @@ function ellipseOf(pts: readonly SV[]): { cs: number; cv: number; rx: number; ry
 const neg = (p: Pt): Pt => ({ x: -p.x, y: -p.y });
 const add = (a: Pt, d: Pt, k: number): Pt => ({ x: a.x + d.x * k, y: a.y + d.y * k });
 const median = (v: readonly number[]): number => { const s = [...v].sort((a, b) => a - b); return s.length ? s[s.length >> 1]! : 0; };
+
+const mid = (a: Pt, b: Pt): Pt => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+
+/** 점들을 그대로 지나는 매끈한 닫힌 곡선 (캣멀-롬, 구간마다 k 칸) */
+function splineClosed(p: readonly Pt[], k = 8): Pt[] {
+  const n = p.length, q = (i: number) => p[((i % n) + n) % n]!, out: Pt[] = [];
+  for (let i = 0; i < n; i++) {
+    const p0 = q(i - 1), p1 = q(i), p2 = q(i + 1), p3 = q(i + 2);
+    for (let j = 0; j < k; j++) {
+      const t = j / k, t2 = t * t, t3 = t2 * t;
+      const f = (a: number, b: number, c: number, d: number) => 0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3);
+      out.push({ x: f(p0.x, p1.x, p2.x, p3.x), y: f(p0.y, p1.y, p2.y, p3.y) });
+    }
+  }
+  return out.filter((pt, i) => i === 0 || Math.hypot(pt.x - out[i - 1]!.x, pt.y - out[i - 1]!.y) > 1e-6);
+}
 
 /** 점들을 그대로 지나는 매끈한 열린 곡선 (캣멀-롬, 구간마다 k 칸) */
 function spline(p: readonly Pt[], k = 8): Pt[] {

@@ -69,7 +69,8 @@ describe("부위 가이드 모양 — 입술 · 눈썹은 얼굴 점, 나머지�
     const m = mask((x, y) => (x >= 165 && x <= 265 && y <= lowY(x) && y >= lowY(x) - 6) || (x >= 170 && x <= 260 && x % 5 < 2 && y < lowY(x) - 6 && y >= lowY(x) - 36));
     const g = get(partGuides([part("brow", "R", m)], LMS, W, H), "brow", "R")!;
     const poly = g.polys[0]!;
-    for (const id of [...LM.browA.upper, ...LM.browA.lower]) {
+    // 꼬리 끝 위 · 아래 점(70 · 46)은 아치 꼬리가 한 점으로 모이며 안쪽으로 들어간다 — 나머지를 본다
+    for (const id of [...LM.browA.upper.slice(1), ...LM.browA.lower.slice(1)]) {
       const q = P(id);
       // 매끈하게 다듬으면 뾰족한 꼬리 모서리가 조금 둥글어진다 — 눈 폭의 3% (합성 2.7px, 실제 사진에선 1px 남짓)까지
       expect(inPoly(q.x, q.y, poly) || edgeDist(q, poly) < 0.03 * 90, `눈썹 점 ${id} (${q.x.toFixed(0)}, ${q.y.toFixed(0)}) 변까지 ${edgeDist(q, poly).toFixed(1)}px`).toBe(true);
@@ -184,7 +185,7 @@ describe("부위 가이드 — 양쪽 같은 모양 · 단순한 모양 (사용�
     const r = partGuides([part("brow", "R", browMask("R", 4)), part("brow", "L", browMask("L", 8))], LMS, W, H);
     expect(sym(r, "brow"), "거울처럼 같다").toBeLessThan(1);
     const poly = get(r, "brow", "R")!.polys[0]!;
-    for (const id of [...LM.browA.upper, ...LM.browA.lower]) expect(inPoly(P(id).x, P(id).y, poly) || edgeDist(P(id), poly) < 0.03 * 90, `눈썹 점 ${id}`).toBe(true);
+    for (const id of [...LM.browA.upper.slice(1), ...LM.browA.lower.slice(1)]) expect(inPoly(P(id).x, P(id).y, poly) || edgeDist(P(id), poly) < 0.03 * 90, `눈썹 점 ${id}`).toBe(true);
   });
 
   it("S6 한쪽만 잡혀도 반대쪽에 거울로 — 화장은 양쪽 같게 한다", () => {
@@ -299,5 +300,38 @@ describe("부위 가이드 — 라이너 두께는 보이는 그대로 (사용�
     expect(hs[1]!, `눈머리 쪽 ${hs[1]!.toFixed(1)}px`).toBeLessThan(2);
     expect(Math.abs(hs[2]! - 6), `눈꼬리 쪽 ${hs[2]!.toFixed(1)}px`).toBeLessThan(1.2);
     expect(Math.abs(hs[3]! - 6), `눈꼬리 쪽 ${hs[3]!.toFixed(1)}px`).toBeLessThan(1.2);
+  });
+});
+
+describe("부위 가이드 — 실사진 라이너 꼬리 · 아치 눈썹 (사용자 2026-10-07)", () => {
+  const lid = eyeOf("R").upper.map(P);
+  const lidY = (x: number) => { for (let i = 1; i < lid.length; i++) { const a = lid[i - 1]!, b = lid[i]!; if ((x - a.x) * (x - b.x) <= 0 && a.x !== b.x) return a.y + ((b.y - a.y) * (x - a.x)) / (b.x - a.x); } return NaN; };
+  const seg = (x: number, y: number, a: Pt, b: Pt) => { const dx = b.x - a.x, dy = b.y - a.y, t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy))); return Math.hypot(x - a.x - t * dx, y - a.y - t * dy); };
+
+  it("L6 눈꼬리에 속눈썹이 뭉쳐 띠가 두껍게 재지고 꼬리 중간이 2px 끊겨도 꼬리를 잡는다 — 실사진: 꼬리를 통째로 놓쳤다", () => {
+    const o = P(LM.eyeA.outer), tip = { x: o.x - 24, y: o.y - 12 };
+    const m = mask((x, y) => {
+      if (x >= 168 && x <= 258 && y <= lidY(x) + 1 && y >= lidY(x) - 5) return true;            // 띠 5px
+      if (x >= 166 && x <= 182 && y <= (lidY(x) || o.y) + 1 && y >= (lidY(x) || o.y) - 15) return true;   // 눈꼬리 점까지 덮은 속눈썹 뭉치
+      if (x <= o.x - 9 && x > o.x - 11) return false;                                             // 꼬리 중간 2px 끊김
+      return x <= o.x && seg(x, y, { x: o.x, y: o.y - 3 }, tip) <= 2.5;                           // 꼬리
+    });
+    const poly = get(partGuides([part("liner", "R", m)], LMS, W, H), "liner", "R")!.polys[0]!;
+    const far = poly.reduce((a, b) => (b.x < a.x ? b : a));
+    expect(Math.hypot(far.x - tip.x, far.y - tip.y), `꼬리 끝 (${far.x.toFixed(1)}, ${far.y.toFixed(1)})`).toBeLessThan(4);
+  });
+
+  it("B1 눈썹은 아치 — 꼬리는 한 점으로 모이고 각진 모서리가 없다 (실사진: 꼬리 · 앞머리가 뚝 잘린 사다리꼴)", () => {
+    const b = LM.browA, own = [...b.upper, ...[...b.lower].reverse()].map(P);
+    const poly = get(partGuides([part("brow", "R", mask((x, y) => inPoly(x, y, own)))], LMS, W, H), "brow", "R")!.polys[0]!;
+    const tailX = Math.min(...poly.map((p) => p.x)), nearTail = poly.filter((p) => p.x < tailX + 3).map((p) => p.y);
+    expect(Math.max(...nearTail) - Math.min(...nearTail), "꼬리 끝 3px 안 두께 (뾰족)").toBeLessThan(3);
+    const turn = poly.map((a, i) => {
+      const p = poly[(i + poly.length - 1) % poly.length]!, n = poly[(i + 1) % poly.length]!;
+      const u = Math.atan2(a.y - p.y, a.x - p.x), v = Math.atan2(n.y - a.y, n.x - a.x);
+      return Math.abs(((v - u + 3 * Math.PI) % (2 * Math.PI)) - Math.PI) * (180 / Math.PI);
+    });
+    const tip = poly.reduce((a, c) => (c.x < a.x ? c : a));
+    expect(Math.max(...turn.filter((_, i) => Math.hypot(poly[i]!.x - tip.x, poly[i]!.y - tip.y) > 4)), "꼬리 끝 말고 가장 크게 꺾인 각도").toBeLessThan(45);
   });
 });
