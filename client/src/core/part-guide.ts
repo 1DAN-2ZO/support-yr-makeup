@@ -282,12 +282,6 @@ function normals(line: readonly Pt[], up: Pt): Pt[] {
   });
 }
 
-/** 꺾은선을 선에 수직(up 쪽)으로 d 만큼 띄운 선 */
-function offsetLine(line: readonly Pt[], d: number, up: Pt): Pt[] {
-  const n = normals(line, up);
-  return line.map((p, i) => add(p, n[i]!, d));
-}
-
 /** 다각형 안에 든 점을 방향 n 으로 밀어 밖으로 (0.25px 씩, 최대 100px) */
 function pushOut(p: Pt, n: Pt, poly: readonly Pt[]): Pt {
   let q = p;
