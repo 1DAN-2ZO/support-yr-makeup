@@ -46,12 +46,13 @@ export interface PartGuide {
  * 시작하는 줄, 두께는 이 사이 · wingMax: 꼬리를 찾는 거리 · wingTrack: 앞 칸 윗선에서 이만큼 안의 줄만 잇는다 · wingN: 꼬리 윗선 칸 수 ·
  * waveSmooth: 꼬리 끝 → 띠 윗선을 이웃 3점 평균으로 다듬는 횟수 · wingTaper: 꼬리 끝에서 이 비율 구간은 끝으로 곧게 모인다 ·
  * lashOpen: 라이너 진한 픽셀에서 이 굵기(눈 폭 비율)보다 가는 가닥(마스카라 속눈썹)은 지운다 ·
- * shadowExtMax · shadowExtN: 섀도가 라이너 꼬리 끝 바깥으로 번진 곳을 찾는 거리(눈 폭) · 다시 잡는 칸 수
+ * shadowExtMax · shadowExtN: 섀도가 라이너 꼬리 끝 바깥으로 번진 곳을 찾는 거리(눈 폭) · 다시 잡는 칸 수 ·
+ * shadowStep · shadowSmooth: 섀도 바깥 테두리를 다시 찍는 간격(눈 폭) · 모서리 깎기 횟수
  * (전부 눈 폭 비율). 눈대중 시작값
  */
 export const PART_GUIDE = {
   mouthOpen: 0.06, profileN: 24, shadowMax: 1.0, underMax: 0.6, browMax: 0.4, minH: 0.03,
-  wingMin: 0.03, taper: 0.2, linerStart: 0.06, linerMax: 0.3, linerMin: 0.015, wingMax: 0.8, wingTrack: 0.06, wingN: 10, waveSmooth: 3, wingTaper: 0.3, shadowExtMax: 0.8, shadowExtN: 8, lashOpen: 0.012,
+  wingMin: 0.03, taper: 0.2, linerStart: 0.06, linerMax: 0.3, linerMin: 0.015, wingMax: 0.8, wingTrack: 0.06, wingN: 10, waveSmooth: 3, wingTaper: 0.3, shadowExtMax: 0.8, shadowExtN: 8, shadowStep: 0.04, shadowSmooth: 4, lashOpen: 0.012,
 } as const;
 
 type SV = { s: number; v: number };
@@ -181,11 +182,17 @@ export function partGuides(parts: readonly PartMask[], lm: readonly Pt[], w: num
     // 라이너 안에 든 아랫선 점은 라이너 밖으로 밀어 올린다 (겹치지 않게)
     const base = all.map((p, i) => (liner ? pushOut(p, nrm[i]!, liner) : p));
     const top = base.map((p, i) => add(p, nrm[i]!, Math.max(0, sm[i]!) * taper(i) * f.ew));
-    if (!ext) return [...base, ...[...top].reverse()];
-    const e = f.to(base[base.length - 1]!), K = ext.low.length - 1;
-    const lo = ext.low.slice(1).map((v, k) => f.from({ s: e.s + (ext.ds * (k + 1)) / K, v }));
-    const hi = ext.high.slice(1).map((v, k) => f.from({ s: e.s + (ext.ds * (k + 1)) / K, v }));
-    return [...base, ...lo, ...[...hi].reverse(), ...[...top].reverse()];
+    let outer = [...top].reverse();
+    if (ext) {
+      const e = f.to(base[base.length - 1]!), K = ext.low.length - 1;
+      const lo = ext.low.slice(1).map((v, k) => f.from({ s: e.s + (ext.ds * (k + 1)) / K, v }));
+      const hi = ext.high.slice(1).map((v, k) => f.from({ s: e.s + (ext.ds * (k + 1)) / K, v }));
+      outer = [...lo, ...[...hi].reverse(), ...outer];
+    }
+    // 바깥 테두리(번진 끝 + 윗선)는 다시 찍은 뒤 모서리를 조금씩 깎아(차이킨) 매끄럽게 — 번진 끝처럼 되돌아가는 곳도 둥글게.
+    // 아랫선(라이너 위)은 그대로 (사용자, 시험 SH4). 이웃 평균만으로는 되돌아가는 끝이 덜 둥글었다
+    const chain = resample([base[base.length - 1]!, ...outer, base[0]!], PART_GUIDE.shadowStep * f.ew);
+    return [...base, ...chaikinOpen(chain, PART_GUIDE.shadowSmooth).slice(1, -1)];
   }, "mixed");
 
   // 아래 섀도: 아랫눈꺼풀에서 내려간 높이 → 2차 곡선
@@ -351,6 +358,27 @@ function wingOf(inside: (q: Pt) => boolean, f: EyeFrame, th0: number, thin?: (q:
 
 function avgWing(a: Wing, b: Wing): Wing {
   return { sTip: (a.sTip + b.sTip) / 2, vTip: (a.vTip + b.vTip) / 2, top: a.top.map((v, i) => (v + b.top[i]!) / 2) };
+}
+
+/** 열린 꺾은선을 step 간격으로 다시 찍는다 (양 끝 포함) */
+function resample(line: readonly Pt[], step: number): Pt[] {
+  const len = line.slice(1).reduce((a, b, i) => a + Math.hypot(b.x - line[i]!.x, b.y - line[i]!.y), 0);
+  return samples(line, Math.max(2, Math.round(len / Math.max(step, 0.5)) + 1));
+}
+
+/** 열린 꺾은선 모서리 깎기 (차이킨) n 번 — 양 끝 점은 그대로 */
+function chaikinOpen(chain: readonly Pt[], n: number): Pt[] {
+  let c = [...chain];
+  for (let k = 0; k < n && c.length > 2; k++) {
+    const out: Pt[] = [c[0]!];
+    for (let i = 0; i < c.length - 1; i++) {
+      const a = c[i]!, b = c[i + 1]!;
+      out.push({ x: 0.75 * a.x + 0.25 * b.x, y: 0.75 * a.y + 0.25 * b.y }, { x: 0.25 * a.x + 0.75 * b.x, y: 0.25 * a.y + 0.75 * b.y });
+    }
+    out.push(c[c.length - 1]!);
+    c = out;
+  }
+  return c;
 }
 
 /** 열린 꺾은선을 이웃 3점 평균으로 n 번 다듬는다 (양 끝 점은 그대로) */

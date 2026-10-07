@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { LM } from "../src/core/landmarks";
 import type { PartMask } from "../src/core/makeup-extract";
-import { LIPS_INNER, partGuides } from "../src/core/part-guide";
+import { LIPS_INNER, PART_GUIDE, partGuides } from "../src/core/part-guide";
 import type { Pt } from "../src/core/types";
 import { BROWN, INK, LMS, P, eyeOf, image } from "./helpers/synth-face";
 
@@ -520,5 +520,23 @@ describe("부위 가이드 — 섀도가 라이너 꼬리 끝 바깥까지 번�
     const far = Math.min(...poly.map((p) => p.x));
     expect(far, `가이드 바깥 끝 x ${far.toFixed(1)} (번진 끝 ${o.x - 48})`).toBeLessThan(o.x - 42);
     expect(inPoly(o.x - 36, o.y - 28, poly), "바깥 위쪽 번진 곳을 덮는다").toBe(true);
+  });
+});
+
+describe("부위 가이드 — 섀도 테두리도 이웃 점끼리 매끄럽게 (사용자 2026-10-07)", () => {
+  const lid = eyeOf("R").upper.map(P);
+  const lidY = (x: number) => { for (let i = 1; i < lid.length; i++) { const a = lid[i - 1]!, b = lid[i]!; if ((x - a.x) * (x - b.x) <= 0 && a.x !== b.x) return a.y + ((b.y - a.y) * (x - a.x)) / (b.x - a.x); } return NaN; };
+  it("SH4 톱니 같은 섀도 윗선 · 번진 끝도 가이드 바깥 테두리는 매끄럽다 (아랫선은 라이너에 붙어 그대로)", () => {
+    const o = P(LM.eyeA.outer);
+    const saw = (x: number) => (Math.floor(x / 4) % 2 ? 4 : 0);
+    const out = [{ x: o.x, y: o.y - 6 }, { x: o.x - 24, y: o.y - 14 }, { x: o.x - 40, y: o.y - 30 }, { x: o.x - 6, y: o.y - 32 }];
+    const sh = mask((x, y) => (x >= 172 && x <= 258 && y <= lidY(x) - 1 && y >= lidY(x) - 22 - saw(x)) || (inPoly(x, y, out) && y >= o.y - 32 - saw(x)));
+    const poly = get(partGuides([part("shadow", "R", sh)], LMS, W, H), "shadow", "R")!.polys[0]!;
+    const outer = poly.slice(PART_GUIDE.profileN + 1);
+    const turn = outer.slice(1, -1).map((a, i) => {
+      const p = outer[i]!, n = outer[i + 2]!, u = Math.atan2(a.y - p.y, a.x - p.x), v = Math.atan2(n.y - a.y, n.x - a.x);
+      return Math.abs(((v - u + 3 * Math.PI) % (2 * Math.PI)) - Math.PI) * (180 / Math.PI);
+    });
+    expect(Math.max(...turn.slice(1, -1)), "바깥 테두리에서 가장 크게 꺾인 각도").toBeLessThan(35);
   });
 });
