@@ -18,6 +18,7 @@ import type { FaceLandmarker } from "@mediapipe/tasks-vision";
 import { pointInPoly, rgbToLab, type Lab } from "@core/color";
 import { FACE_TRIANGLES } from "@core/face-mesh";
 import { LM } from "@core/landmarks";
+import { anchorGuide, followLandmarks, placeGuide, type AnchoredGuide } from "@core/look-anchor";
 import { TRANSFER_PARTS, applyMakeup, extractMakeup, makeupPreview, matchLook, partChange, pasteRegions, type LookMatch, type MakeupLayer, type OcclusionMap, type PartStrength, type TransferPart } from "@core/look-extract";
 import { GUIDE_PARTS, buildGuide, type GuidePartId, type LookGuide } from "@core/look-guide";
 import { checkPhoto, hairCover, landmarkShift, warpMask, warpToFace, type FaceShift, type PhotoCheck, type WarpedFace } from "@core/look-transfer";
@@ -247,18 +248,22 @@ function drawMakeup(): void {
   drawGuide(shown);
 }
 
-/** 같은 layer 로 가이드를 다시 계산하지 않게 — 세기 막대만 움직일 때는 그리기만 한다 */
-let guideOfLayer: { layer: MakeupLayer; guide: LookGuide } | null = null;
+/** 같은 layer 로 가이드를 다시 계산하지 않게 — 세기 막대만 움직일 때는 그리기만 한다. anchored = 그 가이드를 내 얼굴 점에 묶은 것 (AR 로 볼 때 쓴다) */
+let guideOfLayer: { layer: MakeupLayer; guide: LookGuide; anchored: AnchoredGuide } | null = null;
 
 /** 부위 가이드: 바탕 그림(입힌 결과 또는 맨얼굴)을 그 부위로 잘라 키우고, 그 위에 점 · 선을 그린다 */
 function drawGuide(shown: MakeupLayer): void {
   if (!bare) return;
   // 생성 그림에서 뗀 것을 보는 중이면, 화장 사진을 직접 포개서 뗀 것도 같이 넘긴다 — 정답사진에 안 그려진 아이라이너를 거기서 찾는다
   const direct = shown !== layer ? layer : null;
-  if (guideOfLayer?.layer !== shown) guideOfLayer = { layer: shown, guide: buildGuide(shown, bare.lm, direct) };
+  if (guideOfLayer?.layer !== shown) {
+    const made = buildGuide(shown, bare.lm, direct);
+    guideOfLayer = { layer: shown, guide: made, anchored: anchorGuide(made, bare.lm) };
+  }
   const guide = guideOfLayer.guide;
-  // 실험 화면 전용: 개발자 도구에서 떼어 낸 화장과 가이드를 들여다볼 수 있게 (기준값을 맞출 때 쓴다)
-  (window as unknown as { __lt?: unknown }).__lt = { layer: shown, guide, lm: bare.lm };
+  arStart.disabled = !!ar;
+  // 실험 화면 전용: 개발자 도구에서 떼어 낸 화장과 가이드를 들여다볼 수 있게 (기준값을 맞출 때 쓴다). arFrame = 카메라 없이 그림 한 장으로 AR 한 프레임을 돌려 본다
+  (window as unknown as { __lt?: unknown }).__lt = { layer: shown, guide, lm: bare.lm, arFrame };
   const parts: readonly GuidePartId[] = guidePart.value === "all" ? GUIDE_PARTS : [guidePart.value as GuidePartId];
   const bareCv = document.createElement("canvas");
   bareCv.width = bare.img.width;
@@ -335,6 +340,96 @@ function drawGuide(shown: MakeupLayer): void {
     if (part.notes.length) guideNotes.append(list("ul", part.notes.map((n) => `${n.label}: ${n.value}`), "measured"));
   }
 }
+
+// ── AR 로 보기: 같은 가이드를 카메라 화면의 얼굴 위에 ─────────────────────────────
+const arStart = $<HTMLButtonElement>("arStart"), arStop = $<HTMLButtonElement>("arStop");
+const arTint = $<HTMLInputElement>("arTint"), arLabels = $<HTMLInputElement>("arLabels"), arStatus = $("arStatus"), cvAr = $<HTMLCanvasElement>("cvAr");
+/** 영상용 얼굴 점 찾기 (사진용과 따로 — 영상용은 앞 프레임을 이어서 본다) */
+let arLandmarker: Promise<FaceLandmarker> | null = null;
+/** 켜져 있는 카메라. prev = 지난 프레임의 얼굴 점 (떨림을 줄이려고) */
+let ar: { stream: MediaStream; raf: number; prev: Pt[] | null } | null = null;
+
+/**
+ * 한 프레임: source(카메라 영상 · 시험용 그림)에서 얼굴 점을 찾아, 묶어 둔 가이드를 그 위에 놓고 cvAr 에 그린다.
+ * 거울처럼 좌우를 뒤집어 그린다. 돌려주는 것은 놓은 가이드와 얼굴 점(뒤집기 전 좌표) — 얼굴을 못 찾았거나 가이드가 없으면 null
+ */
+function arDraw(lmk: FaceLandmarker, source: HTMLVideoElement | HTMLCanvasElement, w: number, h: number, ts: number, prev: Pt[] | null): { guide: LookGuide; lm: Pt[] } | null {
+  if (cvAr.width !== w || cvAr.height !== h) {
+    cvAr.width = w;
+    cvAr.height = h;
+  }
+  const g = cvAr.getContext("2d");
+  if (!g) return null;
+  g.setTransform(-1, 0, 0, 1, w, 0);
+  g.drawImage(source, 0, 0, w, h);
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  const raw = lmk.detectForVideo(source, ts).faceLandmarks[0];
+  const anchored = guideOfLayer?.anchored;
+  if (!raw || !anchored) return null;
+  const cur = raw.map((p) => ({ x: p.x * w, y: p.y * h }));
+  const lm = followLandmarks(prev, cur, checkPhoto(cur).eyeWidthPx);
+  const placed = placeGuide(anchored, lm);
+  const parts: readonly GuidePartId[] = guidePart.value === "all" ? GUIDE_PARTS : [guidePart.value as GuidePartId];
+  drawGuideParts(g, placed, parts.filter((p) => placed[p].found), { at: (q) => ({ x: w - q.x, y: q.y }), tint: arTint.checked, labels: arLabels.checked, midX: w - lm[LM.glabella]!.x });
+  return { guide: placed, lm };
+}
+/** 시험용: 카메라 없이 그림 한 장을 한 프레임으로 넣어 본다 (ts 는 부를 때마다 커져야 한다) */
+async function arFrame(source: HTMLCanvasElement, ts: number, prev: Pt[] | null = null): Promise<{ guide: LookGuide; lm: Pt[] } | null> {
+  return arDraw(await (arLandmarker ??= createLandmarker("VIDEO", { blendshapes: false })), source, source.width, source.height, ts, prev);
+}
+
+function stopAr(): void {
+  if (!ar) return;
+  cancelAnimationFrame(ar.raf);
+  for (const t of ar.stream.getTracks()) t.stop();
+  ar = null;
+  arStart.disabled = !guideOfLayer;
+  arStop.disabled = true;
+  arStatus.textContent = "카메라를 껐습니다.";
+}
+async function startAr(): Promise<void> {
+  if (ar || !guideOfLayer) return;
+  arStart.disabled = true;
+  arStatus.className = "";
+  arStatus.textContent = "카메라를 켜는 중…";
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+    const video = document.createElement("video");
+    video.playsInline = true;
+    video.muted = true;
+    video.srcObject = stream;
+    await video.play();
+    const lmk = await (arLandmarker ??= createLandmarker("VIDEO", { blendshapes: false }));
+    const me = { stream, raf: 0, prev: null as Pt[] | null };
+    ar = me;
+    arStop.disabled = false;
+    let frames = 0, found = 0, since = performance.now();
+    const tick = (): void => {
+      if (ar !== me) return;
+      if (video.videoWidth) {
+        const now = performance.now(), got = arDraw(lmk, video, video.videoWidth, video.videoHeight, now, me.prev);
+        me.prev = got ? got.lm : null;
+        frames++;
+        if (got) found++;
+        if (now - since >= 1000) {
+          arStatus.textContent = found ? `${video.videoWidth}×${video.videoHeight} · 초당 ${Math.round((frames * 1000) / (now - since))}장 · 눈 폭 ${Math.round(checkPhoto(me.prev ?? []).eyeWidthPx || 0)}px` : "얼굴을 찾지 못했어요 — 얼굴이 화면에 다 들어오게 해 주세요";
+          frames = 0;
+          found = 0;
+          since = now;
+        }
+      }
+      me.raf = requestAnimationFrame(tick);
+    };
+    me.raf = requestAnimationFrame(tick);
+  } catch (e) {
+    arStatus.textContent = `카메라를 열 수 없어요 — 브라우저에서 카메라를 허용해 주세요 (${e instanceof Error ? e.name : String(e)})`;
+    arStatus.className = "warn";
+    arStart.disabled = !guideOfLayer;
+  }
+}
+arStart.addEventListener("click", () => void startAr());
+arStop.addEventListener("click", stopAr);
+window.addEventListener("pagehide", stopAr);
 
 interface Row {
   label: string;

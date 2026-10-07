@@ -154,6 +154,17 @@
       <div id="guideNotes"></div>
     </div>
 
+    <h3>AR 로 보기 (실험) — 같은 가이드를 카메라에 비친 내 얼굴 위에</h3>
+    <p class="note">위 가이드를 얼굴 점에 묶어 두었다가, 카메라 화면에서 찾은 얼굴 점 위에 다시 놓습니다 — 사진으로 보는 것과 <b>같은 가이드</b>이고, 얼굴을 움직이면 따라옵니다 (거울처럼 좌우를 뒤집어 보여 줍니다). 볼 부위는 위 "크게 보기" 의 부위 고르기를 같이 씁니다. 카메라 영상은 이 기기 안에서만 쓰고 저장하거나 보내지 않습니다. 정면에서 가장 잘 맞고, 고개를 많이 돌리면 어긋납니다.</p>
+    <div class="controls">
+      <button id="arStart" type="button" disabled>카메라 켜기</button>
+      <button id="arStop" type="button" disabled>끄기</button>
+      <label><input id="arTint" type="checkbox" checked /> 바를 자리를 그 색으로</label>
+      <label><input id="arLabels" type="checkbox" /> 점 이름 · 숫자</label>
+      <span id="arStatus"></span>
+    </div>
+    <canvas id="cvAr" width="4" height="3"></canvas>
+
     <h3>중간 과정 (어디서 틀렸는지 볼 때)</h3>
     <div class="grid">
       <div><h2>1단계 — 화장 사진을 내 얼굴 모양에 포갠 것</h2><canvas id="cvOut" width="4" height="3"></canvas></div>
