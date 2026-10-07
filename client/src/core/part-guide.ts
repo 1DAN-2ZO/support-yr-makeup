@@ -44,12 +44,13 @@ export interface PartGuide {
  * wingMin: 눈꼬리 밖으로 이만큼 넘어야 꼬리 ·
  * taper: 섀도 양 끝에서 이 비율 구간 동안 눈꺼풀로 내려온다 · linerStart · linerMax · linerMin: 라이너 띠는 눈꺼풀에서 이만큼 안에서
  * 시작하는 줄, 두께는 이 사이 · wingMax: 꼬리를 찾는 거리 · wingTrack: 앞 칸 윗선에서 이만큼 안의 줄만 잇는다 · wingN: 꼬리 윗선 칸 수 ·
- * wingBlend: 꼬리 윗선과 볼록하게 이어 다듬는 눈꼬리 쪽 띠 구간 · wingTaper: 꼬리 끝에서 이 비율 구간은 끝으로 곧게 모인다
+ * wingBlend: 꼬리 윗선과 볼록하게 이어 다듬는 눈꼬리 쪽 띠 구간 · wingTaper: 꼬리 끝에서 이 비율 구간은 끝으로 곧게 모인다 ·
+ * lashOpen: 라이너 진한 픽셀에서 이 굵기(눈 폭 비율)보다 가는 가닥(마스카라 속눈썹)은 지운다
  * (전부 눈 폭 비율). 눈대중 시작값
  */
 export const PART_GUIDE = {
   mouthOpen: 0.06, profileN: 24, shadowMax: 1.0, underMax: 0.6, browMax: 0.4, minH: 0.03,
-  wingMin: 0.03, taper: 0.2, linerStart: 0.06, linerMax: 0.3, linerMin: 0.015, wingMax: 0.8, wingTrack: 0.06, wingN: 10, wingBlend: 0.2, wingTaper: 0.3,
+  wingMin: 0.03, taper: 0.2, linerStart: 0.06, linerMax: 0.3, linerMin: 0.015, wingMax: 0.8, wingTrack: 0.06, wingN: 10, wingBlend: 0.2, wingTaper: 0.3, lashOpen: 0.012,
 } as const;
 
 type SV = { s: number; v: number };
@@ -57,7 +58,7 @@ interface EyeFrame { o: Pt; out: Pt; up: Pt; ew: number; from: (q: SV) => Pt; to
 
 export function partGuides(parts: readonly PartMask[], lm: readonly Pt[], w: number, h: number, opts: { clip?: readonly Pt[]; made?: RgbaImage } = {}): PartGuide[] {
   const P = (i: number): Pt => lm[i]!;
-  const masks = new Map<string, { m: Uint8Array; count: number }>();
+  const masks = new Map<string, { m: Uint8Array; count: number; raw?: Uint8Array }>();
   for (const p of parts) {
     if (p.part === "contour" || p.part === "highlight" || !p.count) continue;
     let m = p.mask;
@@ -126,14 +127,15 @@ export function partGuides(parts: readonly PartMask[], lm: readonly Pt[], w: num
   if (opts.made) for (const sd of ["R", "L"] as const) {
     const e = masks.get(`liner:${sd}`);
     const dm = e ? linerDark(opts.made, lidOf(sd, true), F[sd]) : null;
-    if (e && dm) masks.set(`liner:${sd}`, { m: dm, count: e.count });
+    if (e && dm) masks.set(`liner:${sd}`, { m: dm.solid, count: e.count, raw: dm.raw });
   }
   const linerTop: Partial<Record<Side, Pt[]>> = {};   // 띠 윗선 (눈머리 → 눈꼬리) — 섀도는 이 위에서 시작
   const linerPoly: Partial<Record<Side, Pt[]>> = {};
   both("liner", (inside, f, s) => {
     const base = samples(lidOf(s, true), PART_GUIDE.profileN + 1), nrm = normals(base, f.up);
     const th = base.map((p, i) => runFrom(inside, p, nrm[i]!, Math.max(2, PART_GUIDE.linerStart * f.ew), PART_GUIDE.linerMax * f.ew) / f.ew);
-    return { th, wing: wingOf(inside, f, th[th.length - 1]!) };
+    const raw = masks.get(`liner:${s}`)?.raw;
+    return { th, wing: wingOf(inside, f, th[th.length - 1]!, raw ? at(raw) : undefined) };
   }, (a, b) => ({ th: a.th.map((x, i) => (x + b.th[i]!) / 2), wing: a.wing && b.wing ? avgWing(a.wing, b.wing) : a.wing ?? b.wing }),
   ({ th, wing }, f, s) => {
     // 두께는 이웃 칸끼리만 다듬는다 (5칸 중앙값 → 3칸 평균) — 보이는 그대로. 눈꺼풀 전체에 2차 곡선 하나로 맞추니
@@ -255,16 +257,36 @@ type Wing = { sTip: number; vTip: number; top: number[] };
  * 그 근처 줄의 윗선을 잰다 (없으면 직선). 눈꼬리부터 칸마다 이어 가며 찾았더니, 눈꼬리에 속눈썹이 뭉쳐 띠가 두껍게 재지거나
  * 꼬리가 살짝 끊기면 꼬리를 통째로 놓쳤다 (실사진, 시험 L6). 윗선은 3칸 평균으로 다듬는다
  */
-function wingOf(inside: (q: Pt) => boolean, f: EyeFrame, th0: number): Wing | null {
-  const R = Math.ceil(f.ew), cand: SV[] = [];
+function wingOf(inside: (q: Pt) => boolean, f: EyeFrame, th0: number, thin?: (q: Pt) => boolean): Wing | null {
+  const R = Math.ceil(f.ew), cand: SV[] = [], dv = 0.5 / f.ew;
   for (let y = Math.floor(f.o.y - R); y <= f.o.y + R; y++) for (let x = Math.floor(f.o.x - R); x <= f.o.x + R; x++) {
     if (!inside({ x, y })) continue;
     const q = f.to({ x, y });
     if (q.s >= PART_GUIDE.wingMin && q.s <= PART_GUIDE.wingMax && Math.abs(q.v) < 0.5) cand.push(q);
   }
-  if (!cand.length) return null;
-  const sTip = Math.max(...cand.map((q) => q.s)), nearTip = cand.filter((q) => q.s >= sTip - 0.03);
-  const vTip = nearTip.reduce((a, q) => a + q.v, 0) / nearTip.length, dv = 0.5 / f.ew;
+  let sTip = 0, vTip = th0 / 2;
+  if (cand.length) {
+    sTip = Math.max(...cand.map((q) => q.s));
+    const nearTip = cand.filter((q) => q.s >= sTip - 0.03);
+    vTip = nearTip.reduce((a, q) => a + q.v, 0) / nearTip.length;
+  }
+  // 가는 꼬리 끝: 속눈썹을 지운 영역(inside)의 끝에서, 지우기 전 영역(thin)으로 같은 방향 줄만 따라 더 간다 — 가는 꼬리는
+  // 속눈썹과 함께 지워졌고, 위로 뻗은 속눈썹은 앞 칸 높이에서 멀어져 안 따라간다 (실사진, 시험 L12)
+  if (thin) {
+    let gap = 0;
+    for (let s = sTip + 0.01; s <= PART_GUIDE.wingMax; s += 0.01) {
+      let best: number | null = null, cur: { top: number; bot: number } | null = null;
+      const consider = (r: { top: number; bot: number }) => { const c = (r.top + r.bot) / 2; if (Math.abs(c - vTip) <= PART_GUIDE.wingTrack && (best === null || Math.abs(c - vTip) < Math.abs(best - vTip))) best = c; };
+      for (let v = -0.2; v <= 0.6; v += dv) {
+        if (thin(f.from({ s, v }))) { if (cur) cur.top = v; else cur = { top: v, bot: v }; }
+        else if (cur) { consider(cur); cur = null; }
+      }
+      if (cur) consider(cur);
+      if (best === null) { if (++gap > 3) break; continue; }
+      gap = 0; sTip = s; vTip = best;
+    }
+  }
+  if (sTip < PART_GUIDE.wingMin) return null;
   const raw = Array.from({ length: PART_GUIDE.wingN + 1 }, (_, k) => {
     const u = k / PART_GUIDE.wingN, s = u * sTip, want = th0 + (vTip - th0) * u, runs: { top: number; bot: number }[] = [];
     let cur: { top: number; bot: number } | null = null;
@@ -304,7 +326,7 @@ function convexFromTip(chain: readonly Pt[], f: EyeFrame): Pt[] {
  * 한 번 더 나눠 섀도(갈색)와 라이너(검정)를 가른다. 두 번째로 나눈 두 쪽 밝기가 25 넘게 차이 날 때만 (섀도가 없으면 라이너 테두리만 잘려서).
  * 눈꺼풀 띠 쪽에서 이어진 것만 남긴다
  */
-function linerDark(im: RgbaImage, lid: readonly Pt[], f: EyeFrame): Uint8Array | null {
+function linerDark(im: RgbaImage, lid: readonly Pt[], f: EyeFrame): { solid: Uint8Array; raw: Uint8Array } | null {
   const sv = lid.map((p) => f.to(p)).sort((a, b) => a.s - b.s);
   const lidV = (s: number) => {
     let i = 0;
@@ -332,16 +354,47 @@ function linerDark(im: RgbaImage, lid: readonly Pt[], f: EyeFrame): Uint8Array |
   const dark = new Uint8Array(im.w * im.h);
   pix.forEach((i, k) => { if (L[k]! <= thr) dark[i] = 1; });
   // 눈꺼풀 띠 쪽(눈꼬리 안) 진한 픽셀에서 이어진 것만 — 꼬리 자리 끝 관자놀이 머리카락까지 꼬리로 잡혔다 (실사진, 시험 L11)
-  const m = new Uint8Array(im.w * im.h), stack: number[] = [];
-  for (const i of pix) if (dark[i] && f.to({ x: i % im.w, y: Math.floor(i / im.w) }).s <= 0) { m[i] = 1; stack.push(i); }
-  while (stack.length) {
-    const i = stack.pop()!, x = i % im.w, y = (i - x) / im.w;
-    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-      const nx = x + dx, ny = y + dy, j = ny * im.w + nx;
-      if (nx >= 0 && ny >= 0 && nx < im.w && ny < im.h && dark[j] && !m[j]) { m[j] = 1; stack.push(j); }
+  const connected = (src: Uint8Array) => {
+    const m = new Uint8Array(im.w * im.h), stack: number[] = [];
+    for (const i of pix) if (src[i] && f.to({ x: i % im.w, y: Math.floor(i / im.w) }).s <= 0) { m[i] = 1; stack.push(i); }
+    while (stack.length) {
+      const i = stack.pop()!, x = i % im.w, y = (i - x) / im.w;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx, ny = y + dy, j = ny * im.w + nx;
+        if (nx >= 0 && ny >= 0 && nx < im.w && ny < im.h && src[j] && !m[j]) { m[j] = 1; stack.push(j); }
+      }
+    }
+    return m;
+  };
+  // 가는 가닥(마스카라 속눈썹)은 깎았다 다시 붙이기로 지운 것(solid)으로 띠 두께 · 꼬리 윗선을 잰다 — 속눈썹까지 라이너로 잡혀
+  // 띠가 두꺼워지고 꼬리와 뭉쳤다 (실사진, 시험 L12). 지우기 전(raw)은 가는 꼬리 끝을 따라갈 때만
+  const r = Math.max(1, Math.round(PART_GUIDE.lashOpen * f.ew));
+  return { solid: connected(dilate(erode(dark, im.w, im.h, r), im.w, im.h, r)), raw: connected(dark) };
+}
+
+/** 깎기 — 둘레 (2r+1)² 가 다 칠해진 곳만 남는다 */
+function erode(m: Uint8Array, w: number, h: number, r: number): Uint8Array {
+  const out = new Uint8Array(w * h);
+  for (let y = r; y < h - r; y++) for (let x = r; x < w - r; x++) {
+    if (!m[y * w + x]) continue;
+    let all = true;
+    for (let dy = -r; dy <= r && all; dy++) for (let dx = -r; dx <= r; dx++) if (!m[(y + dy) * w + x + dx]) { all = false; break; }
+    if (all) out[y * w + x] = 1;
+  }
+  return out;
+}
+
+/** 붙이기 — 칠한 곳 둘레 (2r+1)² 를 칠한다 */
+function dilate(m: Uint8Array, w: number, h: number, r: number): Uint8Array {
+  const out = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (!m[y * w + x]) continue;
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      const nx = x + dx, ny = y + dy;
+      if (nx >= 0 && ny >= 0 && nx < w && ny < h) out[ny * w + nx] = 1;
     }
   }
-  return m;
+  return out;
 }
 
 /** 오츠 문턱 (0~255 밝기) — 두 무리 사이 분산이 가장 큰 자리 */

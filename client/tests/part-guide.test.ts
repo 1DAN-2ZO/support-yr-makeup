@@ -454,3 +454,27 @@ describe("부위 가이드 — 라이너는 띠와 이어진 진한 선만 (실�
     expect(Math.min(...poly.map((p) => p.x)), "꼬리가 머리카락까지 안 간다").toBeGreaterThan(o.x - 30);
   });
 });
+
+describe("부위 가이드 — 마스카라 속눈썹은 라이너가 아니다 (실사진: 띠가 두꺼워지고 꼬리와 뭉쳤다)", () => {
+  const lid = eyeOf("R").upper.map(P);
+  const lidY = (x: number) => { for (let i = 1; i < lid.length; i++) { const a = lid[i - 1]!, b = lid[i]!; if ((x - a.x) * (x - b.x) <= 0 && a.x !== b.x) return a.y + ((b.y - a.y) * (x - a.x)) / (b.x - a.x); } return NaN; };
+  const seg = (x: number, y: number, a: Pt, b: Pt) => { const dx = b.x - a.x, dy = b.y - a.y, t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy))); return Math.hypot(x - a.x - t * dx, y - a.y - t * dy); };
+  it("L12 띠 위 속눈썹 가닥은 빼고 띠 두께는 라이너만, 가는 꼬리는 끝까지", () => {
+    const o = P(LM.eyeA.outer), tip = { x: o.x - 30, y: o.y - 14 };
+    const made = image((x, y) => {
+      const ly = lidY(x);
+      if (Number.isFinite(ly) && x >= 172 && x <= 258 && y <= ly && y >= ly - 4) return INK;                          // 라이너 4px
+      if (seg(x, y, { x: o.x, y: o.y - 2 }, tip) <= 1.2) return INK;                                                    // 가는 꼬리 (2px)
+      if (Number.isFinite(ly) && x >= 175 && x <= 255 && x % 4 === 0 && y < ly - 4 && y >= ly - 13) return INK;      // 속눈썹 가닥 (1px, 4px 마다)
+      return null;
+    });
+    const diff = mask((x, y) => x >= 172 && x <= 258 && y <= lidY(x) && y >= lidY(x) - 13);
+    const poly = get(partGuides([part("liner", "R", diff)], LMS, W, H, { made }), "liner", "R")!.polys[0]!;
+    for (const x of [235, 215]) {
+      const top = Math.min(...poly.filter((p) => Math.abs(p.x - x) < 2.5 && p.y < lidY(x) + 0.5).map((p) => p.y));
+      expect(Math.abs(lidY(x) - top - 4), `x ${x}: 띠 높이 ${(lidY(x) - top).toFixed(1)}px (라이너 4px, 속눈썹까지 13px)`).toBeLessThan(1.5);
+    }
+    const far = poly.reduce((a, b) => (b.x < a.x ? b : a));
+    expect(Math.hypot(far.x - tip.x, far.y - tip.y), `꼬리 끝 (${far.x.toFixed(1)}, ${far.y.toFixed(1)})`).toBeLessThan(4);
+  });
+});
