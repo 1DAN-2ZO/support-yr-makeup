@@ -1,0 +1,7 @@
+# 모델(약 15GB) · 해석해 둔 지시문 · 결과 그림 · 시험 사진은 저장소에 넣지 않는다
+models/
+embeds/
+out/
+test*/
+.venv/
+__pycache__/
