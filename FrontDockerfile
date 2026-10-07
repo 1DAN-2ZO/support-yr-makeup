@@ -1,0 +1,30 @@
+# FROM node:22-alpine AS builder
+FROM node:24 AS builder
+
+WORKDIR /app
+
+COPY ./client/package*.json ./
+RUN npm ci
+
+COPY rules/ /rules/
+COPY poc/ /poc/
+# 일부 테스트가 ../../eval 을 참조해 빌드 타입검사가 eval 을 필요로 한다 (client 밖)
+COPY eval/ /eval/
+
+COPY ./client .
+
+RUN npm run build
+
+FROM nginx:alpine AS production
+
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# /api/ 를 백엔드(back:8000)로 넘긴다. 이게 없으면 바깥에서 백엔드에 닿을 길이 없다
+# (Cloudflare 가 80 포트만 내보내고, 기본 nginx 는 정적 파일만 준다)
+COPY ./client/nginx.conf /etc/nginx/conf.d/default.conf
+
+# COPY ./dist /usr/share/nginx/html
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]

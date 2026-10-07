@@ -2,7 +2,6 @@
 // 화면 1(촬영) · 화면 4 · 2-b AR · 화면 6 정면 1장이 공용 카메라 루프(#245)를 쓰나 — 카메라 새 장면에만 얼굴을 찾고, 화면 그리기(rAF)로는 안 찾는다. 떠나면 멈춘다.
 // 카메라·모델·rVFC·rAF 는 전부 가짜. 얼굴은 안 찾아지는 장면만 (분석 횟수만 본다)
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CAPTURE_GUIDE } from "@core/flow";
 import { GATE_TEXT } from "@core/gate";
 import { LIVE_SMOOTH } from "@core/smooth-params";
 import { LM } from "@core/landmarks";
@@ -91,7 +90,8 @@ async function mountCapture(wait = 2000): Promise<() => void> {
     next: "looks",
   };
   const off = captureScreen<null>(deps).mount(ctx) as () => void;
-  Array.from(ctx.root.querySelectorAll("button")).find((b) => b.textContent === CAPTURE_GUIDE.button)!.click();
+  // 2026-10-07 새 흐름: 찍기 전 안내가 동의 화면(consent.ts 의 앞머리·안경·밝기)으로 옮겨가서
+  // 촬영 화면은 바로 카메라로 들어간다 — 눌러서 넘길 버튼이 없다
   await vi.advanceTimersByTimeAsync(wait);
   return off;
 }

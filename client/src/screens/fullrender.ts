@@ -78,27 +78,50 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
       wrap.className = "fullrender";
       ctx.root.append(wrap);
 
-      // 맨 위 뒤로 가기 — 카메라 화면·제품 목록에 밀려 아래 버튼이 안 보일 수 있다 (2026-09-29 폰)
-      const top = document.createElement("button");
-      top.type = "button";
-      top.className = "back ghost";
-      top.textContent = "‹ 다른 화장";
-      top.addEventListener("click", () => {
+      const top = document.createElement("div");
+      top.className = "ar-topbar";
+      top.innerHTML = `
+        <div class="nudy-logo ar-logo" aria-label="nudy">
+          <span>nudy</span>
+          <i aria-hidden="true"></i>
+        </div>
+      `;
+      const change = document.createElement("button");
+      change.type = "button";
+      change.className = "ar-change";
+      change.textContent = "다른 룩";
+      change.addEventListener("click", () => {
         ctx.log.log({ name: "button", button: "look_change" });
         ctx.go("looks");
       });
+      top.append(change);
+
+      const head = document.createElement("div");
+      head.className = "ar-head";
+      head.innerHTML = `
+        <div class="ar-coach">
+          <img src="/ui/nudy-coach-simple.svg" alt="" aria-hidden="true" />
+          <div><span>선택한 룩을 내 얼굴에 맞춰 보여드릴게요</span><i aria-hidden="true"></i></div>
+        </div>
+      `;
+
+      const title = document.createElement("div");
+      title.className = "ar-title";
       const h = document.createElement("h1");
-      h.textContent = `${look.name} — 내 얼굴에 입혀 봤어요`;
+      h.textContent = look.name;
+      title.append(h);
+      head.append(title);
+
       const stage = document.createElement("div");
       stage.className = "ar-stage";
       const note = document.createElement("p");
-      note.className = "muted";
-      wrap.append(top, h, stage, note);
+      note.className = "ar-note";
+      wrap.append(top, head, stage, note);
 
       if (lookId) wrap.append(products(lookId));
 
       const row = document.createElement("div");
-      row.className = "btns";
+      row.className = "btns ar-actions";
       const go = document.createElement("button");
       go.type = "button";
       go.className = "primary";
@@ -274,15 +297,36 @@ export function goodRef(lm: readonly Pt[], w: number, h: number): boolean {
 function products(lookId: string): HTMLElement {
   const { look, products: list } = lookDetail(lookId);
   const box = document.createElement("section");
-  box.className = "look-detail";
-  const h = document.createElement("h2");
-  h.textContent = `${look.name} — 쓰는 것`;
-  const ul = document.createElement("ul");
-  for (const p of list) {
-    const li = document.createElement("li");
-    li.textContent = p;
-    ul.append(li);
-  }
-  box.append(h, ul);
+  box.className = "look-detail ar-palette";
+  const colorOf = (part: "liner" | "shadow" | "lip" | "cheek", fallback: string): string => {
+    const c = look.parts[part]?.color;
+    return c ? `rgb(${c.join(" ")})` : fallback;
+  };
+  const tones = [
+    colorOf("shadow", "#c9b7aa"),
+    colorOf("liner", "#5c4640"),
+    colorOf("cheek", "#eaa59b"),
+    colorOf("lip", "#ce7775"),
+  ];
+  const names = ["베이스", "라인", "블러셔", "립"];
+  const productRows = list.slice(0, 7).map((p, i) => {
+    const [part = "", item = p] = p.split(" · ");
+    return `
+      <li>
+        <span class="palette-swatch" style="--tone:${tones[i % tones.length]}"></span>
+        <span><strong>${item}</strong><em>${part}</em></span>
+      </li>
+    `;
+  }).join("");
+  box.innerHTML = `
+    <div class="palette-paper">
+      <p class="palette-kicker">맞춤형 컬러 처방</p>
+      <h2>My Color Palette</h2>
+      <ul class="palette-list">${productRows}</ul>
+    </div>
+    <div class="palette-tags">
+      ${tones.map((tone, i) => `<span><b style="background:${tone}"></b>${names[i]}</span>`).join("")}
+    </div>
+  `;
   return box;
 }

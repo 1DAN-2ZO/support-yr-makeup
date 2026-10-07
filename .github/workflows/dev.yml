@@ -1,0 +1,32 @@
+name: Print Workflow
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+jobs:
+  print-workflow:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          path: .
+
+      - name: Docker Down
+        working-directory: .
+        run: docker compose down
+        continue-on-error: true
+
+      - name: Docker Build
+        working-directory: .
+        run: |
+          docker builder prune -af
+          docker compose build --no-cache
+
+      - name: Docker Up
+        working-directory: .
+        run: docker compose --profile tools up -d
