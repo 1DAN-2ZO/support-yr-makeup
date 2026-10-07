@@ -7,9 +7,9 @@
  *    입술: 얼굴 점 입술선 그대로 (벌린 입이면 윗입술 · 아랫입술). 입술 화장이 잡혔을 때만
  *    눈썹: 원래 눈썹(얼굴 점)을 위 · 아래로 같은 두께만큼 넓힌다 (화장 영역이 눈썹선 밖으로 나간 정도의 중앙값 — 털 톱니는 무시).
  *      선은 얼굴 점을 그대로 지나는 매끈한 곡선(캣멀-롬) — 모서리 다듬기는 점 5개짜리 선의 양끝을 7px 가까이 깎았다
- *    라이너: 눈머리 → 눈꼬리 윗눈꺼풀 띠는 고정 (앱 기본 두께 GUIDE_PARAMS.liner.thick), 꼬리 끝만 화장 영역이 눈꼬리 밖으로
- *      가장 멀리 간 자리 (사용자 2026-10-07 — 띠 두께를 재니 진한 속눈썹까지 잡혀 눈을 감싸는 렌즈가 됐다)
- *    섀도: 라이너 윗선에서 시작해 겹치지 않게, 높이 하나(라이너 윗선 위 화장 영역 높이의 중앙값)로 라이너 윗선을 따라가는 띠 —
+ *    라이너: 눈머리 → 눈꼬리 눈꺼풀 위 띠는 다 덮되 두께는 실제대로(칸마다 잰 두께의 2차 곡선), 꼬리 윗선도 실제 모양대로
+ *      (눈꼬리 밖 칸마다 따라가며), 아랫선은 눈꼬리 → 꼬리 끝 곧게 (사용자 그림 2026-10-07 — 고정 띠 + 삼각 꼬리는 실제와 달랐다)
+ *    섀도: 라이너 띠 윗선에서 시작해 겹치지 않게, 높이 하나(그 위 화장 영역 높이의 중앙값)로 라이너 윗선을 따라가는 띠 —
  *      양 끝은 라이너 윗선으로 내려와 닫힌다 (사용자: 엉망 · 라이너와 겹치면 안 된다 — 2차 곡선은 가운데만 솟은 돔이 됐다)
  *    아래 섀도: 아랫눈꺼풀에서 내려간 높이를 매끈한 2차 곡선으로
  *    블러셔: 화장 영역 모멘트 타원
@@ -42,11 +42,13 @@ export interface PartGuide {
  * mouthOpen: 속입술 위아래가 입 폭의 이 비율 넘게 벌어지면 벌린 입 · profileN: 섀도 높이를 잴 눈꺼풀 칸 수 ·
  * shadowMax · underMax · browMax: 높이 · 두께를 찾을 거리(눈 폭) · minH: 이보다 낮은 칸은 섀도 없음 ·
  * wingMin: 눈꼬리 밖으로 이만큼 넘어야 꼬리 ·
- * taper: 섀도 양 끝에서 이 비율 구간 동안 눈꺼풀로 내려온다. 눈대중 시작값
+ * taper: 섀도 양 끝에서 이 비율 구간 동안 눈꺼풀로 내려온다 · linerStart · linerMax · linerMin: 라이너 띠는 눈꺼풀에서 이만큼 안에서
+ * 시작하는 줄, 두께는 이 사이 · wingMax: 꼬리를 찾는 거리 · wingTrack: 앞 칸 윗선에서 이만큼 안의 줄만 잇는다 · wingN: 꼬리 윗선 칸 수
+ * (전부 눈 폭 비율). 눈대중 시작값
  */
 export const PART_GUIDE = {
   mouthOpen: 0.06, profileN: 24, shadowMax: 1.0, underMax: 0.6, browMax: 0.4, minH: 0.03,
-  wingMin: 0.03, taper: 0.2,
+  wingMin: 0.03, taper: 0.2, linerStart: 0.06, linerMax: 0.3, linerMin: 0.015, wingMax: 0.8, wingTrack: 0.06, wingN: 10,
 } as const;
 
 type SV = { s: number; v: number };
@@ -99,28 +101,36 @@ export function partGuides(parts: readonly PartMask[], lm: readonly Pt[], w: num
   // 눈꺼풀 선 (눈머리 → 눈꼬리) — 얼굴 점을 지나는 매끈한 곡선. 꺾은선 그대로 띄우면 꺾인 데가 섀도 윗선에 도드라졌다 (시험 S3)
   const lidOf = (s: Side, upper: boolean) => { const e = s === "R" ? LM.eyeA : LM.eyeB; return spline([...(upper ? e.upper : e.lower)].reverse().map(P)); };
 
-  // 라이너: 띠는 고정, 꼬리 끝만 (눈 좌표)
+  // 라이너 (사용자 그림 2026-10-07): 눈머리 → 눈꼬리 눈꺼풀 위 띠는 다 덮되 두께는 실제대로(칸마다 재서 2차 곡선 — 튀는 칸은 눌린다),
+  // 꼬리 윗선도 실제 모양대로(눈꼬리 밖 칸마다 따라가며), 아랫선은 눈꼬리 → 꼬리 끝 곧게
+  const linerTop: Partial<Record<Side, Pt[]>> = {};   // 띠 윗선 (눈머리 → 눈꼬리) — 섀도는 이 위에서 시작
   const linerPoly: Partial<Record<Side, Pt[]>> = {};
-  const hasLiner = masks.has("liner:R") || masks.has("liner:L");
-  const linerT = (f: EyeFrame) => (hasLiner ? GUIDE_PARAMS.liner.thick * f.ew : 0);
-  both("liner", (inside, f) => {
-    const R = Math.ceil(f.ew), cand: SV[] = [];
-    for (let y = Math.floor(f.o.y - R); y <= f.o.y + R; y++) for (let x = Math.floor(f.o.x - R); x <= f.o.x + R; x++) {
-      if (!inside({ x, y })) continue;
-      const q = f.to({ x, y });
-      if (q.s >= PART_GUIDE.wingMin && Math.abs(q.v) < 0.5) cand.push(q);
-    }
-    if (!cand.length) return { tip: null as SV | null };
-    // 가장 먼 자리 + 그 둘레 높이 평균 — 끝 한 픽셀에 덜 흔들린다
-    const sMax = Math.max(...cand.map((q) => q.s)), near = cand.filter((q) => q.s >= sMax - 0.03);
-    return { tip: { s: sMax, v: near.reduce((a, q) => a + q.v, 0) / near.length } as SV | null };
-  }, (a, b) => ({ tip: a.tip && b.tip ? { s: (a.tip.s + b.tip.s) / 2, v: (a.tip.v + b.tip.v) / 2 } : a.tip ?? b.tip }),
-  ({ tip }, f, s) => (linerPoly[s] = linerShape(lidOf(s, true), linerT(f), tip ? f.from(tip) : null, f)), "mixed");
+  both("liner", (inside, f, s) => {
+    const base = samples(lidOf(s, true), PART_GUIDE.profileN + 1), nrm = normals(base, f.up);
+    const th = base.map((p, i) => runFrom(inside, p, nrm[i]!, Math.max(2, PART_GUIDE.linerStart * f.ew), PART_GUIDE.linerMax * f.ew) / f.ew);
+    return { th, wing: wingOf(inside, f, th[th.length - 1]!) };
+  }, (a, b) => ({ th: a.th.map((x, i) => (x + b.th[i]!) / 2), wing: a.wing && b.wing ? avgWing(a.wing, b.wing) : a.wing ?? b.wing }),
+  ({ th, wing }, f, s) => {
+    const ts = th.map((_, i) => i / PART_GUIDE.profileN), vals = th.filter((x) => x > 0);
+    const fit = vals.length >= 3 ? quadFit(ts.filter((_, i) => th[i]! > 0), vals) : () => (vals.length ? median(vals) : GUIDE_PARAMS.liner.thick);
+    const tAt = (t: number) => Math.min(PART_GUIDE.linerMax, Math.max(PART_GUIDE.linerMin, fit(t)));
+    const base = samples(lidOf(s, true), PART_GUIDE.profileN + 1), nrm = normals(base, f.up);
+    const top = base.map((p, i) => add(p, nrm[i]!, tAt(ts[i]!) * f.ew));
+    linerTop[s] = top;
+    if (!wing) return (linerPoly[s] = [...base, ...[...top].reverse()]);
+    // 꼬리 윗선: 눈꼬리 띠 윗점과 꼬리 끝 사이 — 둘 중 낮은 쪽보다 아래로는 안 내려간다 (갈고리 · 홈 방지)
+    const tip = f.from({ s: wing.sTip, v: wing.vTip }), c = f.to(top[top.length - 1]!);
+    const wingTop = wing.top.slice(1, -1).map((v, k) => {
+      const u = (k + 1) / PART_GUIDE.wingN, q = { s: c.s + (wing.sTip - c.s) * u, v: Math.max(v, Math.min(c.v, wing.vTip)) };
+      return f.from(q);
+    }).filter((p) => f.to(p).s > c.s);
+    return (linerPoly[s] = [...base, tip, ...[...wingTop].reverse(), ...[...top].reverse()]);
+  }, "mixed");
 
   // 섀도: 라이너 윗선(라이너가 없으면 눈꺼풀)에서 올라간 높이 하나
-  const shadowBase = (s: Side, f: EyeFrame) => samples(offsetLine(lidOf(s, true), linerT(f), f.up), PART_GUIDE.profileN + 1);
+  const shadowBase = (s: Side) => samples(linerTop[s] ?? lidOf(s, true), PART_GUIDE.profileN + 1);
   both("shadow", (inside, f, s) => {
-    const base = shadowBase(s, f), nrm = normals(base, f.up);
+    const base = shadowBase(s), nrm = normals(base, f.up);
     return base.map((p, i) => reach(inside, p, nrm[i]!, PART_GUIDE.shadowMax * f.ew) / f.ew);
   }, (a, b) => a.map((x, i) => (x + b[i]!) / 2), (prof, f, s) => {
     const on = prof.map((x) => x >= PART_GUIDE.minH), i0 = on.indexOf(true), i1 = on.lastIndexOf(true);
@@ -130,7 +140,7 @@ export function partGuides(parts: readonly PartMask[], lm: readonly Pt[], w: num
     const H = median(prof.slice(m0, m1 + 1).filter((x) => x >= PART_GUIDE.minH)) * f.ew;
     const t = prof.map((_, i) => i / PART_GUIDE.profileN).slice(i0, i1 + 1), span = t[t.length - 1]! - t[0]!;
     const taper = (x: number) => { const u = Math.min(x - t[0]!, t[t.length - 1]! - x) / (PART_GUIDE.taper * span); return u >= 1 ? 1 : u <= 0 ? 0 : u * u * (3 - 2 * u); };
-    const all = shadowBase(s, f), nrmAll = normals(all, f.up), liner = linerPoly[s];
+    const all = shadowBase(s), nrmAll = normals(all, f.up), liner = linerPoly[s];
     // 라이너 꼬리 쪽은 윗선을 볼록하게 이어 띠보다 높다 — 그 안에 든 아랫선 점은 라이너 밖으로 밀어 올린다
     const base = all.slice(i0, i1 + 1).map((p, i) => (liner ? pushOut(p, nrmAll[i0 + i]!, liner) : p)), nrm = nrmAll.slice(i0, i1 + 1);
     return [...base, ...base.map((p, i) => add(p, nrm[i]!, H * taper(t[i]!))).reverse()];
@@ -206,20 +216,44 @@ function eyeFrame(lm: readonly Pt[], side: Side): EyeFrame {
   };
 }
 
-/** 라이너 — [눈머리 → 눈꼬리 눈꺼풀, 꼬리 끝, 윗선 눈꼬리 → 눈머리]. 윗선은 눈꺼풀에 수직으로 띄우고, 꼬리 끝에서 위로 볼록하게만 잇는다 */
-function linerShape(lid: readonly Pt[], t: number, tip: Pt | null, f: EyeFrame): Pt[] {
-  const top = offsetLine(lid, t, f.up).reverse();
-  if (!tip) return [...lid, ...top];
-  const chain: Pt[] = [tip];
-  for (const p of top) {
-    while (chain.length >= 2) {
-      const a = f.to(chain[chain.length - 2]!), b = f.to(chain[chain.length - 1]!), c = f.to(p);
-      if (Math.abs(c.s - a.s) < 1e-9 || b.v >= a.v + ((c.v - a.v) * (b.s - a.s)) / (c.s - a.s)) break;
-      chain.pop();
+type Wing = { sTip: number; vTip: number; top: number[] };
+
+/**
+ * 꼬리 — 눈꼬리 밖으로 눈 폭 1% 칸씩 가며 그 칸의 화장 영역 줄(v 범위)을 찾는다. 바로 앞 칸 윗선과 가까운 줄만 잇고(위로 뻗은
+ * 속눈썹 · 섀도 끝은 안 붙는다) 3칸 비면 끝. 윗선은 꼬리 길이 비율 u 칸(wingN)마다로 다시 잡아 3칸 평균으로 다듬는다
+ */
+function wingOf(inside: (q: Pt) => boolean, f: EyeFrame, th0: number): Wing | null {
+  const dv = 0.5 / f.ew, cols: { s: number; top: number; bot: number }[] = [];
+  let prev = Math.max(th0, PART_GUIDE.linerMin), gap = 0;
+  for (let s = 0.01; s <= PART_GUIDE.wingMax; s += 0.01) {
+    const runs: { top: number; bot: number }[] = [];
+    let cur: { top: number; bot: number } | null = null;
+    for (let v = -0.2; v <= 0.6; v += dv) {
+      if (inside(f.from({ s, v }))) { if (cur) cur.top = v; else cur = { top: v, bot: v }; }
+      else if (cur) { runs.push(cur); cur = null; }
     }
-    chain.push(p);
+    if (cur) runs.push(cur);
+    const near = runs.filter((r) => Math.abs(r.top - prev) <= PART_GUIDE.wingTrack).sort((a, b) => Math.abs(a.top - prev) - Math.abs(b.top - prev))[0];
+    if (!near) { if (++gap > 3) break; continue; }
+    gap = 0;
+    cols.push({ s, ...near });
+    prev = near.top;
   }
-  return [...lid, ...chain];
+  const last = cols[cols.length - 1];
+  if (!last || last.s < PART_GUIDE.wingMin) return null;
+  const at = (s: number) => {
+    let i = 0;
+    while (i < cols.length - 1 && cols[i + 1]!.s < s) i++;
+    const a = cols[i]!, b = cols[Math.min(cols.length - 1, i + 1)]!, k = b.s > a.s ? Math.min(1, Math.max(0, (s - a.s) / (b.s - a.s))) : 0;
+    return a.top + (b.top - a.top) * k;
+  };
+  const raw = Array.from({ length: PART_GUIDE.wingN + 1 }, (_, k) => at((k / PART_GUIDE.wingN) * last.s));
+  const top = raw.map((v, k) => (k === 0 || k === raw.length - 1 ? v : (raw[k - 1]! + v + raw[k + 1]!) / 3));
+  return { sTip: last.s, vTip: (last.top + last.bot) / 2, top };
+}
+
+function avgWing(a: Wing, b: Wing): Wing {
+  return { sTip: (a.sTip + b.sTip) / 2, vTip: (a.vTip + b.vTip) / 2, top: a.top.map((v, i) => (v + b.top[i]!) / 2) };
 }
 
 /** 점 p 에서 방향 d 로 최대 maxPx 까지 — 화장 영역의 가장 먼 픽셀 거리 (없으면 0, 사이가 비어도 더 간다) */
@@ -227,6 +261,16 @@ function reach(inside: (q: Pt) => boolean, p: Pt, d: Pt, maxPx: number): number 
   let last = 0;
   for (let k = 0; k <= maxPx; k += 0.5) if (inside(add(p, d, k))) last = k;
   return last;
+}
+
+/** 점 p 에서 방향 d 로 — startMax px 안에서 시작하는 화장 띠 두께 (1px 끊김은 잇는다). 없으면 0 */
+function runFrom(inside: (q: Pt) => boolean, p: Pt, d: Pt, startMax: number, maxPx: number): number {
+  let start = -1, end = -1, gap = 0;
+  for (let k = 0; k <= maxPx; k += 0.5) {
+    if (inside(add(p, d, k))) { if (start < 0) { if (k > startMax) break; start = k; } end = k; gap = 0; }
+    else if (start >= 0 && ++gap > 2) break;
+  }
+  return start >= 0 ? end - start + 0.5 : 0;
 }
 
 /** 꺾은선 점마다 선에 수직인 방향 (up 쪽) */

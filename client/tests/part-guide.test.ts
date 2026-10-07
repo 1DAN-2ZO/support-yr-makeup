@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { LM } from "../src/core/landmarks";
 import type { PartMask } from "../src/core/makeup-extract";
-import { GUIDE_PARAMS } from "../src/core/guides";
 import { LIPS_INNER, partGuides } from "../src/core/part-guide";
 import type { Pt } from "../src/core/types";
 import { LMS, P, eyeOf } from "./helpers/synth-face";
@@ -216,14 +215,14 @@ describe("부위 가이드 — 실사진에서 나온 문제", () => {
     const xs = poly.map((p) => p.x), left = Math.min(...xs), right = Math.max(...xs);
     for (const end of [left, right]) {
       const hs = poly.filter((p) => Math.abs(p.x - end) < 1).map(h);
-      expect(Math.max(...hs), `끝 (x ${end.toFixed(0)}) 높이 = 라이너 두께 ${(GUIDE_PARAMS.liner.thick * 90).toFixed(1)}px 근처`).toBeLessThan(GUIDE_PARAMS.liner.thick * 90 + 1.5);
+      expect(Math.max(...hs), `끝 (x ${end.toFixed(0)}) 높이 — 눈꺼풀로 내려와 닫힘 (라이너 없음)`).toBeLessThan(2);
     }
   });
 });
 
-describe("부위 가이드 — 라이너 띠 고정 · 섀도는 라이너 위 (사용자 2026-10-07)", () => {
+describe("부위 가이드 — 섀도는 라이너 위 (사용자 2026-10-07)", () => {
   const seg = (x: number, y: number, a: Pt, b: Pt) => { const dx = b.x - a.x, dy = b.y - a.y, t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy))); return Math.hypot(x - a.x - t * dx, y - a.y - t * dy); };
-  const lid = eyeOf("R").upper.map(P), mid = lid[4]!, T = GUIDE_PARAMS.liner.thick * 90;
+  const lid = eyeOf("R").upper.map(P), mid = lid[4]!;
   const lidY = (x: number) => { for (let i = 1; i < lid.length; i++) { const a = lid[i - 1]!, b = lid[i]!; if ((x - a.x) * (x - b.x) <= 0 && a.x !== b.x) return a.y + ((b.y - a.y) * (x - a.x)) / (b.x - a.x); } return NaN; };
   /** 눈꺼풀 위 r px 두께 라이너 + 꼬리 */
   const linerMask = (r: number) => mask((x, y) => {
@@ -232,19 +231,73 @@ describe("부위 가이드 — 라이너 띠 고정 · 섀도는 라이너 위 (
     return false;
   });
 
-  it("S9 라이너 띠 두께는 고정 (앱 기본 눈 폭의 4.5%) — 화장 영역이 두꺼워도 (실사진: 진한 속눈썹까지 재서 눈을 감싸는 렌즈가 됐다)", () => {
-    const poly = get(partGuides([part("liner", "R", linerMask(6))], LMS, W, H), "liner", "R")!.polys[0]!;
-    const above = poly.filter((p) => Math.abs(p.x - mid.x) < 3 && lidY(p.x) - p.y > 0.5).map((p) => lidY(p.x) - p.y);
-    expect(above.length, "눈꺼풀 가운데 위 윗선 점").toBeGreaterThan(0);
-    for (const d of above) expect(Math.abs(d - T), `윗선 높이 ${d.toFixed(1)}px (고정 ${T.toFixed(1)}px)`).toBeLessThan(0.6);
-  });
-
   it("S10 섀도는 라이너 윗선에서 시작 — 라이너 띠와 겹치지 않는다", () => {
     const sh = mask((x, y) => x >= 172 && x <= 258 && y <= lidY(x) && y >= lidY(x) - 24);
     const r = partGuides([part("liner", "R", linerMask(2.5)), part("shadow", "R", sh)], LMS, W, H);
     const liner = get(r, "liner", "R")!.polys[0]!, shadow = get(r, "shadow", "R")!.polys[0]!;
     for (const p of shadow) expect(inPoly(p.x, p.y, liner) && edgeDist(p, liner) > 0.5, `섀도 점 (${p.x.toFixed(1)}, ${p.y.toFixed(1)}) 이 라이너 안`).toBe(false);
     const low = Math.max(...shadow.filter((p) => Math.abs(p.x - mid.x) < 3).map((p) => p.y));
-    expect(lidY(mid.x) - low, "섀도 아랫선 = 라이너 윗선").toBeGreaterThan(T - 0.6);
+    expect(lidY(mid.x) - low, "섀도 아랫선이 라이너(두께 2.5px 띠) 위").toBeGreaterThan(2);
+  });
+});
+
+describe("부위 가이드 — 라이너는 실제 두께 · 꼬리 모양대로 (사용자 그림 2026-10-07)", () => {
+  const lid = eyeOf("R").upper.map(P);
+  const lidY = (x: number) => { for (let i = 1; i < lid.length; i++) { const a = lid[i - 1]!, b = lid[i]!; if ((x - a.x) * (x - b.x) <= 0 && a.x !== b.x) return a.y + ((b.y - a.y) * (x - a.x)) / (b.x - a.x); } return NaN; };
+  /** 사진 왼쪽 눈 눈꼬리 (170, 250) 기준 눈 좌표 — 바깥(왼쪽) s · 위 v, 눈 폭 90px */
+  const sv = (x: number, y: number) => ({ s: (170 - x) / 90, v: (250 - y) / 90 });
+
+  it("L1 띠 두께는 실제 라이너를 따라 — 눈머리 쪽 2px 에서 눈꼬리 쪽 7px 로 두꺼워지면 가이드도", () => {
+    const T = (x: number) => 2 + (5 * (260 - x)) / 90;
+    const m = mask((x, y) => x >= 172 && x <= 258 && y <= lidY(x) && y >= lidY(x) - T(x));
+    const poly = get(partGuides([part("liner", "R", m)], LMS, W, H), "liner", "R")!.polys[0]!;
+    for (const x of [250, 215, 182]) {
+      const top = Math.min(...poly.filter((p) => Math.abs(p.x - x) < 2.5 && p.y < lidY(x) + 0.5).map((p) => p.y));
+      expect(Math.abs(lidY(x) - top - T(x)), `x ${x}: 띠 높이 ${(lidY(x) - top).toFixed(1)}px (실제 ${T(x).toFixed(1)}px)`).toBeLessThan(1.2);
+    }
+  });
+
+  it("L2 꼬리 윗선은 실제 꼬리 모양 그대로 (위로 볼록하게 휜 꼬리), 아랫선은 눈꼬리 → 꼬리 끝", () => {
+    const sT = 0.3, vT = 0.12;
+    const hi = (s: number) => vT * (s / sT) + 0.08 * (1 - s / sT) + 0.05 * Math.sin((Math.PI * s) / sT);
+    const m = mask((x, y) => {
+      if (x >= 172 && x <= 258 && y <= lidY(x) && y >= lidY(x) - 7) return true;   // 띠
+      const q = sv(x, y);
+      return q.s >= 0 && q.s <= sT && q.v >= vT * (q.s / sT) && q.v <= hi(q.s);
+    });
+    const poly = get(partGuides([part("liner", "R", m)], LMS, W, H), "liner", "R")!.polys[0]!;
+    const midTop = { x: 170 - 90 * sT / 2, y: 250 - 90 * hi(sT / 2) };
+    expect(edgeDist(midTop, poly), `꼬리 가운데 윗선 (${midTop.x}, ${midTop.y.toFixed(1)})`).toBeLessThan(1.5);
+    const tip = poly.reduce((a, b) => (b.x < a.x ? b : a));
+    expect(Math.hypot(tip.x - (170 - 90 * sT), tip.y - (250 - 90 * vT)), `꼬리 끝 (${tip.x.toFixed(1)}, ${tip.y.toFixed(1)})`).toBeLessThan(3);
+  });
+});
+
+describe("부위 가이드 — 라이너 두께는 보이는 그대로 (사용자: 모든 화장이 눈꼬리 쪽이 두꺼운 게 아니다)", () => {
+  const lid = eyeOf("R").upper.map(P);
+  const lidY = (x: number) => { for (let i = 1; i < lid.length; i++) { const a = lid[i - 1]!, b = lid[i]!; if ((x - a.x) * (x - b.x) <= 0 && a.x !== b.x) return a.y + ((b.y - a.y) * (x - a.x)) / (b.x - a.x); } return NaN; };
+  const bandAt = (T: (x: number) => number, xs: readonly number[]) => {
+    const m = mask((x, y) => x >= 172 && x <= 258 && y <= lidY(x) && y >= lidY(x) - T(x));
+    const poly = get(partGuides([part("liner", "R", m)], LMS, W, H), "liner", "R")!.polys[0]!;
+    return xs.map((x) => lidY(x) - Math.min(...poly.filter((p) => Math.abs(p.x - x) < 2.5 && p.y < lidY(x) + 0.5).map((p) => p.y)));
+  };
+
+  it("L3 고른 두께(5px) 라이너는 가이드도 고르게", () => {
+    for (const [x, h] of [250, 215, 182].map((x, i) => [x, bandAt(() => 5, [250, 215, 182])[i]!] as const)) expect(Math.abs(h - 5), `x ${x}: ${h.toFixed(1)}px`).toBeLessThan(1.2);
+  });
+
+  it("L4 눈머리 쪽이 두껍고(7px) 눈꼬리 쪽이 얇은(2px) 라이너도 그대로", () => {
+    const T = (x: number) => 2 + (5 * (x - 170)) / 90;
+    const hs = bandAt(T, [250, 215, 182]);
+    [250, 215, 182].forEach((x, i) => expect(Math.abs(hs[i]! - T(x)), `x ${x}: ${hs[i]!.toFixed(1)}px (실제 ${T(x).toFixed(1)})`).toBeLessThan(1.2));
+  });
+
+  it("L5 눈꼬리 쪽 절반만 칠한 라이너 — 칠한 곳은 그 두께, 안 칠한 눈머리 쪽은 얇은 선", () => {
+    const T = (x: number) => (x < 215 ? 6 : 0);
+    const hs = bandAt(T, [250, 235, 195, 182]);
+    expect(hs[0]!, `눈머리 쪽 ${hs[0]!.toFixed(1)}px`).toBeLessThan(2);
+    expect(hs[1]!, `눈머리 쪽 ${hs[1]!.toFixed(1)}px`).toBeLessThan(2);
+    expect(Math.abs(hs[2]! - 6), `눈꼬리 쪽 ${hs[2]!.toFixed(1)}px`).toBeLessThan(1.2);
+    expect(Math.abs(hs[3]! - 6), `눈꼬리 쪽 ${hs[3]!.toFixed(1)}px`).toBeLessThan(1.2);
   });
 });
