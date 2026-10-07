@@ -34,6 +34,19 @@ describe("시도사진 장 순서", () => {
     expect(b.done).toBe(true);
   });
 
+  it("AR5 묶음 간격은 0.2초 — 다섯 장이 0.8초 넘게 걸쳐 있다 (흔들림이 줄어드는 것을 확인한 조건, #333)", () => {
+    expect(ATTEMPT_BURST.minGapMs).toBe(200);
+    let b = startAttemptBurst("front_open", 0), last = 0;
+    for (let t = 33; t < 2000 && !b.done; t += 33) {
+      const r = attemptBurstStep(b, OK, t);
+      b = r.state;
+      if (r.take) last = t;
+    }
+    expect(b.got).toBe(5);
+    expect(last).toBeGreaterThanOrEqual(800);
+    expect(last).toBeLessThan(ATTEMPT_BURST.maxMs);
+  });
+
   it("AR4 묶음은 조건(정면 · 눈 · 크기 · 선명)을 통과한 장면만, 너무 붙은 장면은 건너뛰고, 제한 시간이 지나면 모은 만큼으로 끝", () => {
     const b0 = startAttemptBurst("front_open", 0);
     expect(attemptBurstStep(b0, OK, ATTEMPT_BURST.minGapMs - 1).take).toBe(false);           // 너무 붙음
