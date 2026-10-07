@@ -124,6 +124,12 @@ export interface MakeupLayer {
    * 입힐 때 무게는 mask × amount — 영역 안이라도 안 바뀐 맨살은 건드리지 않는다
    */
   parts: Record<TransferPart, { mask: Float32Array; amount: Float32Array; dL: Float32Array; da: Float32Array; db: Float32Array }>;
+  /**
+   * 흐리기 전의 밝기 차이(ΔL, 맨살 바탕을 뺀 것). 가는 선(아이라인 꼬리)을 찾을 때 쓴다 — 부위별 dL 은 흐린 값이라 2 ~ 3px 선이 옅어지고,
+   * 둘레가 밝아진 곳(생성 그림이 관자놀이 그늘을 걷어 낸 자리)에서는 선과 둘레가 섞여 0 이 된다 (2026-10-07: 꼬리 끝 7% 가 그렇게 사라졌다).
+   * 얼굴 그물 밖 · 눈 뜬 틈은 뜻 없는 값이니 parts.*.mask 와 같이 읽는다
+   */
+  rawDL: Float32Array;
   /** 부위별 맨살 잡음(화장 부위가 아닌 맨살에서 두 그림이 다른 정도, ΔE)과 그래서 정한 "화장 있음" 경계 */
   present: Record<TransferPart, { noise: number; lo: number; hi: number }>;
 }
@@ -425,7 +431,7 @@ export function extractMakeup(bare: RgbaImage, warped: WarpedFace, lm: readonly 
     parts[p] = { mask: mask[p], amount: soft, dL: pL, da: pa, db: pb };
     present[p] = { noise, lo, hi };
   }
-  return { x0, y0, w, h, u, bare: B, skin: FB.med, skinSamples: { bare: FB.count, ref: FR.count }, skinMask: Uint8Array.from(FB.used), hidden, face, parts, present };
+  return { x0, y0, w, h, u, bare: B, skin: FB.med, skinSamples: { bare: FB.count, ref: FR.count }, skinMask: Uint8Array.from(FB.used), hidden, face, parts, rawDL: dL, present };
 }
 
 export type PartStrength = Partial<Record<TransferPart, number>>;

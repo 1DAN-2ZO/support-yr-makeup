@@ -18,6 +18,7 @@
 import { LM, at, dist } from "./landmarks";
 import { TRANSFER_PARTS, blur, labToRgb } from "./look-extract";
 import type { MakeupLayer, TransferPart } from "./look-extract";
+import { findWing, pairWings, type WingFound } from "./look-wing";
 import type { Outline } from "./overlay";
 import type { Pt } from "./types";
 
@@ -70,19 +71,10 @@ export const GUIDE = {
    */
   shadow: { reach: 0.9, out: 0.6, outStep: 0.1, under: 0.45, underStations: 9, underMin: 0.06, minHeight: 0.1, snap: 0.1, coreMin: 0.04, capTall: 1.6 },
   /**
-   * 라이너: 어둡다고 칠 최소 밝기 차(ΔL) · 두께를 재는 범위 · 최소 두께 · 최대 두께 · 꼬리 최소 길이 · 꼬리를 찾는 범위.
-   * 최대 두께보다 넓은 어두운 곳은 선이 아니라 어두운 섀도다 (스모키 · 짙은 색 섀도) — 라이너로 안 본다.
-   * 꼬리: 눈꼬리 밖(wingReach)에서 눈 축 아래 below ~ 위 above 띠를 본다. 넓은 그늘(어두운 섀도)은 빼고 가는 선만 남긴 그림에서 —
-   * 어두운 정도에서 그것을 wingFine 만큼 흐린 것을 뺀다 — 가장 진한 곳이 wingDark 보다 진해야 하고, 그 wingEdge 배보다 진한 칸을 선으로 친다.
-   * 눈꼬리 점 근처(wingStart)에서 시작해, 한 칸 나갈 때 위아래로 wingSlope 칸까지만 옮겨 가며 따라간다.
-   * (wingWidth 는 0.08 이었는데, 굵게 그린 꼬리가 끝 쪽에서도 9% 로 재여 걸러져서 0.12 로 올렸다 — 2026-10-07)
-   * wingWidth: 찾은 선을 가로질러 "어두운 정도"(가는 선만 남긴 그림이 아니라 원래 것)로 잰 굵기가 이보다 넓으면 선이 아니라 번진 섀도다 —
-   * 스모키처럼 눈꼬리에 어둡게 번진 덩어리도 가는 선만 남긴 그림에서는 가운데가 능선으로 남아 꼬리처럼 보인다 (2026-10-06 스모키 샘플).
-   * wingBareDark · wingBareNear · wingFree: 꼬리는 맨살 위에 그린 선이다. 따라간 길 옆(wingBareNear 안)에 맨얼굴에서 이미 둘레보다
-   * wingBareDark(ΔL) 넘게 어두운 선이 있으면 거기는 속눈썹 선이다 — 속눈썹 선을 따라 그린 라이너를 꼬리로 잡지 않게, 길 끝에서부터
-   * 맨살 위로 이어진 길이가 wingFree 이상이어야 꼬리로 본다. (얼굴 점의 눈꼬리는 속눈썹 선 끝보다 눈 폭의 15% 쯤 안쪽에 찍혀서,
-   * 속눈썹 선의 바깥 끝이 "눈꼬리 밖" 으로 재인다.) 2026-10-06 잰 값: 속눈썹 선을 따라간 가짜 꼬리(스모키)는 길 전체에서 옆의 어두움이
-   * 21 ~ 37, 진짜 꼬리(시험 E 양쪽 눈)는 끝 7% 구간에서 1 ~ 11. 사진 두 장으로 잡은 값이다.
+   * 라이너: 어둡다고 칠 최소 밝기 차(ΔL) · 두께를 재는 범위 · 최소 두께 · 최대 두께.
+   * 최대 두께보다 넓은 어두운 곳은 선이 아니라 어두운 섀도다 (스모키 · 짙은 색 섀도) — 속눈썹 선의 라이너로 안 본다.
+   * fineBlur: "가는 선만 남긴 그림" = 어두워진 정도에서 그것을 이만큼 흐린 것을 뺀 것. lineDark: 그 그림에서 선으로 치는 진하기 (색을 잴 때 쓴다).
+   * 꼬리(눈꼬리 밖으로 뺀 선)는 look-wing.ts 가 따로 찾는다 — 기준도 거기 있다.
    * lash: 속눈썹 선을 따라간 라이너. 눈꺼풀 선의 자리마다 증거 둘 중 하나가 있으면 "여기 라이너" 로 친다:
    *   fine — 눈꺼풀 선에서 눈썹 쪽 from ~ to 사이에 가는 어두운 선이 이만큼 진하다
    *   gain · gainDark — 눈꺼풀 선의 어두운 띠가 맨얼굴보다 gain 넘게 두꺼워졌고, 두꺼워진 자리가 gainDark 넘게 어두워졌다
@@ -92,16 +84,9 @@ export const GUIDE = {
    * 2026-10-06 잰 값 — 라이너가 보이는 눈(스모키): fine 15 ~ 28, 두꺼워짐 3 ~ 13% · 어두워짐 15 ~ 35.
    *   라이너 없는 눈(화장 없음 · 섀도만): fine 0 ~ 13, 두꺼워짐 0 ~ 1%. 눈 앞머리 윤곽 어긋남: fine 9 ~ 18 · 두꺼워짐 2% · 어두워짐 23 ~ 30 (세 자리).
    * thin · thick = 그릴 때 쓰는 두께의 아래 · 위 한계 (thin 은 두께를 못 쟀을 때 그리는 두께이기도 하다).
-   * taper · taperTo = 정해 둔 영역(눈머리 ~ 눈꼬리)의 모양: 눈머리에서 제 두께의 taper 배로 시작해 눈 길이의 taperTo 지점부터 제 두께. wingDarkStrict · wingFreeStrict = 화장 사진을 직접 포갠 것에서 꼬리를 볼 때의 기준.
-   * extendDeg: 속눈썹 선 끝을 따라 이어 그은 선을 꼬리로 받는 방향 범위 (눈 축 기준, + 가 눈썹 쪽).
-   * wingKeep · wingFollowWidth: 굵은 꼬리를 이어 따라갈 때 — 시작 자리 어두움의 wingKeep 배 이상이고 가로 굵기가 wingFollowWidth 이하면 이어 간다.
-   * wingBridge · wingBridgeSlope: 눈꼬리에 어둡게 뭉친 곳을 건너뛰는 최대 거리와, 건너뛸 때 허용하는 기울기 (아래로는 조금만, 위로는 45° 까지).
-   * wingDrop: 따라간 길의 끝 1/3 기울기가 이보다 가파르게 내려가면(눈 축 방향 1 에 눈썹 반대쪽으로 0.5) 꼬리가 아니라 눈 윤곽을 도는 선이다.
-   * outerWidth: 속눈썹 선 끝을 따라간 선을 꼬리로 받는 굵기 한계 — 둘레에 섀도가 있어 꼬리(wingWidth)보다 굵게 재인다 (11% 로 재인 적이 있다)
-   * wingDark 16 의 근거 (2026-10-06, 한 사람 사진 4장): 꼬리를 그린 눈은 가는 선의 가장 진한 곳이 −26, 안 그린 눈은 −10 ~ −11
-   * (생성 모델이 속눈썹 선을 조금 진하게 그리는 것). 그 사이로 잡았다 — 다른 얼굴 · 다른 조명에서는 다시 봐야 한다
+   * taper · taperTo = 정해 둔 영역(눈머리 ~ 눈꼬리)의 모양: 눈머리에서 제 두께의 taper 배로 시작해 눈 길이의 taperTo 지점부터 제 두께.
    */
-  liner: { minDark: 6, reach: 0.3, minThick: 0.012, maxThick: 0.12, wingMin: 0.06, wingReach: 0.7, wingDark: 16, wingEdge: 0.5, wingFine: 0.06, wingWidth: 0.12, wingBareDark: 15, wingBareNear: 0.06, wingFree: 0.04, wingDarkStrict: 22, wingFreeStrict: 0.08, outerWidth: 0.15, extendDeg: { min: -25, max: 35 }, wingKeep: 0.55, wingFollowWidth: 0.14, wingDrop: -0.5, wingBridge: 0.22, wingBridgeSlope: { down: -0.5, up: 1 }, lash: { from: 0.02, to: 0.14, draw: 0.025, reach: 0.22, core: 0.06, contrast: 8, skipInner: 0.12, gapMax: 2, min: { normal: 4, strict: 5 }, fine: { normal: 14, relaxed: 11, strict: 20 }, gain: { normal: 0.02, relaxed: 0.015, strict: 0.03 }, gainDark: { normal: 12, relaxed: 10, strict: 18 }, thin: 0.03, thick: 0.1, taper: 0.5, taperTo: 0.4 }, wingBand: { below: 0.2, above: 0.4 }, wingStart: { from: -0.05, to: 0.14 }, wingSlope: 1.8 },
+  liner: { minDark: 6, reach: 0.3, minThick: 0.012, maxThick: 0.12, fineBlur: 0.06, lineDark: 16, lash: { from: 0.02, to: 0.14, draw: 0.025, reach: 0.22, core: 0.06, contrast: 8, skipInner: 0.12, gapMax: 2, min: { normal: 4, strict: 5 }, fine: { normal: 14, relaxed: 11, strict: 20 }, gain: { normal: 0.02, relaxed: 0.015, strict: 0.03 }, gainDark: { normal: 12, relaxed: 10, strict: 18 }, thin: 0.03, thick: 0.1, taper: 0.5, taperTo: 0.4 } },
   /**
    * 눈썹: 가운데 선에서 위아래로 재는 범위 · 꼬리 · 앞머리 밖으로 더 재는 칸 수와 간격 · 어둡다고 칠 최소 밝기 차(ΔL).
    * 눈썹은 "어두워진 곳" 만 본다 — 색이 바뀐 곳 전부를 보면 눈썹까지 올라온 섀도 색이 눈썹으로 잡힌다 (주황 섀도 샘플에서 그랬다).
@@ -315,15 +300,21 @@ export function buildGuide(layer: MakeupLayer, lm: readonly Pt[], refLayer: Make
   /** 어두워진 정도: 영역 × 밝기가 내려간 크기(ΔL) */
   // 눈 영역은 눈 뜬 틈 가장자리에서 0.5 쯤으로 옅어진다 — 바로 그 속눈썹 선에 라이너가 있으므로 영역을 두 배로 쳐서(1 까지) 덜 깎는다
   type Reader = (x: number, y: number) => number;
-  type EyeMaps = { darkArr: Float32Array; fineArr: Float32Array; dark: Reader; fine: Reader; dL: Reader; lo: number };
+  type EyeMaps = { darkArr: Float32Array; fineArr: Float32Array; dark: Reader; fine: Reader; dL: Reader; raw: Reader; weight: Reader; lo: number };
   /** 눈 둘레의 "어두워진 정도" 를 읽는 그림들 — 떼어 낸 화장 한 장에서 만든다 */
   const eyeMapsOf = (from: MakeupLayer): EyeMaps => {
     const part = from.parts.eye, darkA = new Float32Array(w * h);
     for (let i = 0; i < darkA.length; i++) darkA[i] = Math.min(1, 2 * part.mask[i]!) * Math.max(0, -part.dL[i]!);
     // 가는 선만: 넓게 어두운 곳(섀도)은 흐린 것과 차이가 없어 0 이 되고, 2 ~ 3px 선은 남는다
-    const wideA = blur(darkA, w, h, GUIDE.liner.wingFine * u), fineA = new Float32Array(w * h);
+    const wideA = blur(darkA, w, h, GUIDE.liner.fineBlur * u), fineA = new Float32Array(w * h);
     for (let i = 0; i < fineA.length; i++) fineA[i] = Math.max(0, darkA[i]! - wideA[i]!);
-    return { darkArr: darkA, fineArr: fineA, dark: reader(darkA), fine: reader(fineA), dL: reader(part.dL), lo: from.present.eye.lo };
+    // 꼬리 찾기(look-wing.ts)가 읽는 것: 흐리기 전의 어두워진 정도(부호 있음)와, 그 칸을 믿을 수 있는 정도
+    const rawA = new Float32Array(w * h), weightA = new Float32Array(w * h);
+    for (let i = 0; i < rawA.length; i++) {
+      rawA[i] = -from.rawDL[i]!;
+      weightA[i] = Math.min(1, 2 * part.mask[i]!);
+    }
+    return { darkArr: darkA, fineArr: fineA, dark: reader(darkA), fine: reader(fineA), dL: reader(part.dL), raw: reader(rawA), weight: reader(weightA), lo: from.present.eye.lo };
   };
   const M0 = eyeMapsOf(layer), darkArr = M0.darkArr, fineArr = M0.fineArr;
   // 화장 사진을 직접 포갠 것은 같은 칸(같은 맨얼굴 · 같은 얼굴 점)에서 뗀 것이어야 쓴다
@@ -334,7 +325,7 @@ export function buildGuide(layer: MakeupLayer, lm: readonly Pt[], refLayer: Make
    * kind "wing" 은 맨살 위로 뺀 꼬리, "extend" 는 속눈썹 선 끝을 따라 짧게 이어 그은 것
    */
   type LinerRaw = { seen: { a: number; b: number; thick: number; where: string } | null; tail: { len: number; deg: number; free: number; kind: "wing" | "extend" } | null };
-  type LinerFound = { raw: LinerRaw; lashNote: string; wing: PartGuide };
+  type LinerFound = { raw: LinerRaw; lashNote: string; wing: PartGuide; wf: WingFound };
   const linerJobs: {
     side: "R" | "L";
     find: (M: EyeMaps, relaxed: boolean, strict: boolean) => LinerFound;
@@ -342,6 +333,8 @@ export function buildGuide(layer: MakeupLayer, lm: readonly Pt[], refLayer: Make
     region: (thick: number) => { line: Pt[]; zone: Pt[]; head: Pt; tail: Pt };
     /** 반대쪽 눈에서 잰 꼬리를 이 눈에 옮겨 그린다 */
     mirrorTail: (tail: NonNullable<LinerRaw["tail"]>) => PartGuide;
+    /** 꼬리 찾기 결과 → 잰 값과 그릴 것. paired = 반대쪽 눈의 꼬리가 받쳐 줘서 받은 것 */
+    tailOf: (wf: WingFound, paired?: boolean) => { tail: LinerRaw["tail"]; wing: PartGuide };
   }[] = [];
   /** 맨얼굴 밝기(L) — 떼어 낸 칸 밖은 0 */
   const bareL = layer.bare.L, rBare = reader(bareL);
@@ -556,171 +549,8 @@ export function buildGuide(layer: MakeupLayer, lm: readonly Pt[], refLayer: Make
         lashCells = { from: best[0]!, to: best[best.length - 1]!, cells };
       }
     }
-    // 라이너 ② 꼬리: 눈꼬리 밖으로 뻗은 가늘고 어두운 선. 속눈썹 선의 띠가 안 보여도 따로 찾는다.
-    // 눈꼬리 점에서 곧게 뻗는다고 치지 않는다 — 얼굴 점이 몇 px 어긋나고 꼬리는 휘기도 한다. 눈 축 방향으로 한 칸씩 나가며
-    // 위아래로 가장 어두운 자리를 찾아 이어 간다 (선 따라가기)
-    /** 눈꼬리에서 축 방향 t, 눈썹 쪽 v 만큼 간 자리 */
-    const spot = (t: number, v: number): Pt => ({ x: outer.x + ax.x * t + up.x * v, y: outer.y + ax.y * t + up.y * v });
-    /** t 칸에서 v 가 lo ~ hi 인 구간의 가장 어두운 자리 */
-    const darkest = (t: number, lo: number, hi: number): { v: number; d: number } => {
-      let best = { v: lo, d: 0 };
-      for (let v = lo; v <= hi; v += step) {
-        const d = fine(spot(t, v).x, spot(t, v).y);
-        if (d > best.d) best = { v, d };
-      }
-      return best;
-    };
-    let fanPeak = 0;
-    for (let t = 0; t <= W.wingReach * u; t += step) fanPeak = Math.max(fanPeak, darkest(t, -W.wingBand.below * u, W.wingBand.above * u).d);
-    let wing: { end: Pt; len: number; deg: number; dark: number; free: number; line: Pt[] } | null = null;
-    /** 눈꼬리 점 밖으로, 속눈썹 선 끝을 따라 그은 선 (맨살로 빼지 않아서 꼬리는 아니다) — 이것도 아이라이너다 */
-    let outerLine: { line: Pt[]; len: number } | null = null;
-    /** 꼬리로 못 봤을 때 어디서 걸렸는지 (기준을 맞출 때 본다) */
-    let why = "";
-    const wingNeed = Math.max(strict ? W.wingDarkStrict : W.wingDark, 2 * eyeLo);
-    if (!wide && fanPeak >= wingNeed) {
-      const level = W.wingEdge * fanPeak;
-      // 시작: 눈꼬리 점 근처에서 선이 처음 나타나는 칸
-      let start: { t: number; v: number } | null = null;
-      for (let t = W.wingStart.from * u; t <= W.wingStart.to * u && !start; t += step) {
-        const c = darkest(t, -W.wingBand.below * u, W.wingBand.above * u);
-        if (c.d >= level) start = { t, v: c.v };
-      }
-      if (!start) why = "눈꼬리 근처에서 시작하는 진한 선을 못 찾음";
-      else {
-        // 따라가기: 한 칸 나갈 때 위아래로 wingSlope 칸까지. gap 보다 길게 끊기면 거기가 끝
-        let end = start, cur = start;
-        const path = [start];
-        /**
-         * 원래 어두운 정도로 본 "획": t 칸의 lo ~ hi 를 위(눈썹 쪽)에서부터 훑어 need 넘게 어두운 첫 덩어리 — 그 가운데 · 가장 어두운 값 · 가로 굵기.
-         * 가장 어두운 것이 아니라 가장 위쪽 것을 고른다: 눈꼬리에서 선이 둘로 갈라지면(꼬리 + 눈 밑으로 도는 선) 꼬리는 위쪽 것이다.
-         * 가장 어두운 쪽을 따라갔더니 눈 밑으로 도는 선을 타고 내려갔다 (2026-10-07)
-         */
-        const strokeAt = (t: number, lo: number, hi: number, need: number): { v: number; d: number; width: number } | null => {
-          const at = (v: number): number => dark(spot(t, v).x, spot(t, v).y);
-          let vb = hi;
-          while (vb >= lo && at(vb) < need) vb -= step;
-          if (vb < lo) return null;
-          let va = vb, peak = at(vb);
-          while (va - step >= lo - 0.1 * u && at(va - step) >= need) {
-            va -= step;
-            peak = Math.max(peak, at(va));
-          }
-          let wa = va, wb = vb;
-          while (wb - vb < 0.3 * u && at(wb + step) >= peak / 2) wb += step;
-          while (va - wa < 0.3 * u && at(wa - step) >= peak / 2) wa -= step;
-          return { v: (va + vb) / 2, d: peak, width: wb - wa };
-        };
-        const dark0 = dark(spot(start.t, start.v).x, spot(start.t, start.v).y);
-        for (let t = start.t + step; t <= W.wingReach * u; t += step) {
-          const reach = W.wingSlope * (t - cur.t) + step;
-          const lo = Math.max(-W.wingBand.below * u, cur.v - reach), hi = Math.min(W.wingBand.above * u, cur.v + reach);
-          const c = darkest(t, lo, hi);
-          if (c.d >= level) {
-            cur = { t, v: c.v };
-            end = cur;
-            path.push(cur);
-            continue;
-          }
-          // 굵은 꼬리는 "가는 선만 남긴 그림" 에서 가운데가 꺼져 끊긴다 (2026-10-07: 눈 폭의 35% 꼬리가 14% 에서 끊겼다).
-          // 그럴 때는 원래 어두운 정도로 이어 본다 — 시작한 자리만큼 어둡고, 가로 굵기가 획다울 때만 (번진 섀도는 넓다)
-          const b = strokeAt(t, lo, hi, W.wingKeep * dark0);
-          if (b && b.width <= W.wingFollowWidth * u) {
-            cur = { t, v: b.v };
-            end = cur;
-            path.push(cur);
-            continue;
-          }
-          // 눈꼬리에 어둡게 뭉친 곳(꼬리의 굵은 뿌리 · 번진 섀도)을 건너뛴다: 앞쪽 wingBridge 안에서 가는 선이 다시 나오고,
-          // 거기까지 곧게 이은 길이 내내 어두우면 이어진 한 획으로 본다. 아래로 가파르게 꺾이는 쪽(눈 밑으로 도는 선)으로는 안 건넌다
-          let jumped = false;
-          for (let t2 = t + step; t2 <= Math.min(W.wingReach * u, cur.t + W.wingBridge * u) && !jumped; t2 += step) {
-            const far = darkest(t2, Math.max(-W.wingBand.below * u, cur.v + W.wingBridgeSlope.down * (t2 - cur.t)), Math.min(W.wingBand.above * u, cur.v + W.wingBridgeSlope.up * (t2 - cur.t)));
-            if (far.d < level) continue;
-            const n = Math.max(1, Math.round((t2 - cur.t) / step));
-            let solid = true;
-            for (let k = 1; k < n && solid; k++) {
-              const q = spot(cur.t + ((t2 - cur.t) * k) / n, cur.v + ((far.v - cur.v) * k) / n);
-              if (dark(q.x, q.y) < W.wingKeep * dark0) solid = false;
-            }
-            if (!solid) continue;
-            for (let k = 1; k <= n; k++) path.push({ t: cur.t + ((t2 - cur.t) * k) / n, v: cur.v + ((far.v - cur.v) * k) / n });
-            cur = { t: t2, v: far.v };
-            end = cur;
-            t = t2;
-            jumped = true;
-          }
-          if (!jumped && t - end.t > gap) break;
-        }
-        // 길의 끝 1/3 이 가파르게 내려가면 꼬리가 아니다 — 눈 윤곽(속눈썹 선 바깥 끝)을 따라 아래로 도는 선이다
-        const outside = path.filter((q) => q.t >= 0), third = outside[Math.floor((outside.length * 2) / 3)];
-        const drops = !!third && end.t - third.t > step && (end.v - third.v) / (end.t - third.t) < W.wingDrop;
-        /** 그 자리가 맨살 위인가 — 바로 옆에 맨얼굴의 어두운 선(속눈썹 선 · 머리카락)이 없다 */
-        const onSkin = (q: { t: number; v: number }): boolean => {
-          const around: number[] = [];
-          let nearMin = Infinity;
-          for (let d = -0.12 * u; d <= 0.12 * u; d += step) {
-            const at = spot(q.t, q.v + d), L = rBare(at.x, at.y);
-            if (L <= 0) continue;
-            around.push(L);
-            if (Math.abs(d) <= W.wingBareNear * u) nearMin = Math.min(nearMin, L);
-          }
-          if (around.length < 8) return false;
-          around.sort((c, d) => c - d);
-          return around[Math.floor(around.length * 0.8)]! - nearMin < W.wingBareDark;
-        };
-        // 끝에서부터 거슬러 올라가며 맨살 위인 동안만 센다 — 길 끝이 속눈썹 선에 닿아 있으면 0 (속눈썹 선을 따라간 것)
-        let freeN = 0;
-        for (let k = path.length - 1; k >= 0 && path[k]!.t >= 0 && onSkin(path[k]!); k--) freeN++;
-        const free = freeN * step;
-        const to = spot(end.t, end.v);
-        // 굵기: 꼬리 끝 쪽(눈꼬리 밖 부분의 80% 지점)에서, 원래 어두운 정도로 — 그 자리 어두움의 절반이 되는 곳까지 위아래로 걸어가 잰다.
-        // 가운데서 재면 뿌리가 굵은 꼬리(눈꼬리에 어둡게 뭉친 데서 가늘게 빠지는 꼬리)가 "번진 섀도" 로 걸러진다 (2026-10-07: 22% 로 재였다)
-        const from0 = Math.max(0, start.t), outT = from0 + 0.8 * (end.t - from0);
-        const near = path.reduce((p, q) => (Math.abs(q.t - outT) < Math.abs(p.t - outT) ? q : p));
-        const here = spot(near.t, near.v), half = 0.5 * dark(here.x, here.y);
-        let wa = 0, wb = 0;
-        while (wb < 0.25 * u && dark(here.x + up.x * (wb + step), here.y + up.y * (wb + step)) >= half) wb += step;
-        while (wa > -0.25 * u && dark(here.x + up.x * (wa - step), here.y + up.y * (wa - step)) >= half) wa -= step;
-        const width = wb - wa;
-        if (end.t < W.wingMin * u) why = `눈꼬리 밖으로 ${pct(Math.max(0, end.t) / u)}뿐 — 꼬리로 안 봄`;
-        else if (drops) why = "눈 윤곽을 따라 아래로 도는 선 — 눈꼬리 밖으로 뻗은 꼬리로 안 봄";
-        else if (free < (strict ? W.wingFreeStrict : W.wingFree) * u) {
-          why = `속눈썹 선 끝을 따라간 선 (맨살 위로는 ${pct(free / u)}뿐) — 꼬리가 아니라 눈꼬리 끝의 라이너로 봄`;
-          // 넓게 번진 것이 아니라 선이면 눈꼬리 끝의 라이너로 받는다 (2026-10-06: 짧은 꼬리를 그린 화장 사진에서 이것이 버려져 라이너가 통째로 안 나왔다)
-          // 화장 사진을 직접 포갠 것에서는 안 받는다 — 사람이 달라 속눈썹 끝이 다르게 생긴 것이 그대로 "선" 으로 보인다 (라이너 없는 화장 사진에서 실제로 잡혔다)
-          if (strict) why = `속눈썹 선 끝을 따라간 선 (맨살 위로는 ${pct(free / u)}뿐) — 사람마다 다른 속눈썹 끝일 수 있어 안 받음`;
-          else if (width <= W.outerWidth * u) {
-            const beyond = path.filter((q) => q.t >= 0), vs = smooth(beyond.map((q) => q.v));
-            // 눈꼬리 점에서 본 방향이 가파르면 꼬리가 아니다 — 눈꼬리 점이 속눈썹 선보다 아래에 찍힌 눈에서, 눈꼬리 점 → 윗속눈썹 선으로
-            // 올라가는 길이 "위로 44° · 71° 꼬리" 로 잡혔다. 그것은 속눈썹 선의 바깥쪽 부분이고, 눈머리 ~ 눈꼬리 영역이 이미 맡는다
-            const steep = Math.round((Math.atan2(end.v, end.t) * 180) / Math.PI);
-            if (steep > W.extendDeg.max || steep < W.extendDeg.min) why = `눈꼬리 점에서 ${steep}° 방향 — 눈꼬리 밖으로 뻗은 것이 아니라 속눈썹 선의 바깥쪽 부분으로 봄`;
-            else if (beyond.length >= GUIDE.minStations) outerLine = { line: beyond.map((q, k) => spot(q.t, vs[k]!)), len: end.t };
-            else why += ` · 눈꼬리 밖 길이가 짧음(${beyond.length}칸)`;
-          } else why = `눈꼬리 밖이 넓게 어두움(굵기 ${pct(width / u)}) — 선이 아니라 번진 섀도로 봄`;
-        }
-        else if (width > W.wingWidth * u) why = `눈꼬리 밖이 넓게 어두움(굵기 ${pct(width / u)}) — 선이 아니라 번진 섀도로 봄`;
-        // 꼬리는 눈꼬리 밖으로 나가야 한다 — 속눈썹 선의 띠가 눈꼬리에서 끝난 것은 꼬리가 아니다
-        else {
-          // 길이 · 각도는 눈꼬리 점에서 꼬리 끝까지 — 바르는 사람이 보는 것 (선이 시작한 칸은 속눈썹 띠 안일 수 있어 기준으로 못 쓴다)
-          const deg = Math.round((Math.atan2(end.v, end.t) * 180) / Math.PI);
-          // 선이 얼마나 진한가: 따라간 길 위(눈꼬리 밖 부분)의 가는 선 진하기 평균
-          let sum = 0, cnt = 0;
-          for (let t = Math.max(0, start.t); t <= end.t; t += step) {
-            sum += darkest(t, -W.wingBand.below * u, W.wingBand.above * u).d;
-            cnt++;
-          }
-          // 그릴 선: 눈꼬리 점에서 곧게 긋지 않고 따라간 길 그대로 — 선이 실제 꼬리 위에 놓인다 (눈꼬리 점은 꼬리가 시작하는 곳과 다를 수 있다)
-          // 속눈썹 선을 따라 내려오던 앞부분은 빼고, 맨살로 나가기 조금 전(눈 폭의 5%)부터 그린다 — 앞부분까지 그리면 꺾인 선이 돼 어디가 꼬리인지 흐려진다
-          const lead = Math.round((0.05 * u) / step);
-          const shown = path.slice(Math.max(0, path.length - freeN - lead)).filter((q) => q.t >= 0), vs = smooth(shown.map((q) => q.v));
-          wing = { end: to, len: dist(outer, to), deg, dark: cnt ? sum / cnt : 0, free, line: [...shown.slice(0, -1).map((q, k) => spot(q.t, vs[k]!)), to] };
-        }
-      }
-    } else if (!wide) {
-      why = `눈꼬리 밖에 가는 선 없음 (가장 진한 선 −${fanPeak.toFixed(1)}, 꼬리 기준 −${wingNeed.toFixed(1)})`;
-    }
+    // 라이너 ② 꼬리: 눈꼬리 밖으로 뻗은 가늘고 어두운 선. 속눈썹 선의 띠가 안 보여도, 눈두덩이 넓게 어두워도 따로 찾는다 (look-wing.ts)
+    const wf = findWing({ raw: M.raw, weight: M.weight, bareL: rBare, outer, ax, up, u, step, strict, minStations: GUIDE.minStations });
     // ── 이 눈에서 잰 것을 두 갈래로 정리한다 ──
     // (가) 속눈썹 선: 라이너가 보인 구간과 두께만 잰다. 그리는 영역은 눈머리 ~ 눈꼬리 전체로 정해 둔다 (아래 region)
     const whereOf = (a: number, b: number): string => {
@@ -740,29 +570,39 @@ export function buildGuide(layer: MakeupLayer, lm: readonly Pt[], refLayer: Make
       : wide
         ? `어두운 곳이 넓어서(${pct(thick / u)}) 선이 아니라 어두운 섀도로 봄`
         : `이 눈의 속눈썹 선에서는 라이너가 안 보임 (어두워진 정도 −${peak.toFixed(1)})`;
-    // (나) 꼬리: 눈꼬리 점 밖으로 나간 선은 전부 꼬리로, 속눈썹 선과 따로 알린다.
-    // 맨살 위로 뺀 것(wing)과, 속눈썹 선 끝을 따라 짧게 이어 그은 것(extend)을 구분해 적는다
-    const tgtW = empty();
-    let tail: LinerRaw["tail"] = null;
-    const degWord = (deg: number): string => `눈 축에서 ${deg > 0 ? "위로 " : deg < 0 ? "아래로 " : ""}${Math.abs(deg)}°`;
-    if (wing) {
-      tail = { len: wing.len / u, deg: wing.deg, free: wing.free / u, kind: "wing" };
-      tgtW.outline.lines.push(wing.line);
-      tgtW.dots.push({ at: wing.end, label: `${NAME[side]} 꼬리 끝` });
-      tgtW.arrows.push({ from: wing.line[0]!, to: wing.end, label: `${Math.round((100 * wing.len) / u)}% · ${wing.deg}°` });
-      tgtW.notes.push({ label: `${NAME[side]} 눈`, value: `눈꼬리 점에서 ${pct(wing.len / u)}, ${degWord(wing.deg)} — 내 속눈썹 선 끝을 지나 맨살 위로 ${Math.round((100 * wing.free) / u)}% 뺌` });
-    } else if (outerLine) {
-      const tip = outerLine.line[outerLine.line.length - 1]!, v = sub(tip, outer);
-      const deg = Math.round((Math.atan2(dot(v, up), dot(v, ax)) * 180) / Math.PI), len = dist(outer, tip);
-      tail = { len: len / u, deg, free: 0, kind: "extend" };
-      tgtW.outline.lines.push(outerLine.line);
-      tgtW.dots.push({ at: tip, label: `${NAME[side]} 꼬리 끝` });
-      tgtW.arrows.push({ from: outerLine.line[0]!, to: tip, label: `${Math.round((100 * len) / u)}% · ${deg}°` });
-      tgtW.notes.push({ label: `${NAME[side]} 눈`, value: `눈꼬리 점에서 ${pct(len / u)}, ${degWord(deg)} — 속눈썹 선 끝을 따라 짧게 이어 그음 (맨살로는 거의 안 뺌)` });
-    } else {
-      tgtW.notes.push({ label: `${NAME[side]} 눈`, value: why ? `없음 (${why})` : "없음" });
-    }
-    return { raw: { seen, tail }, lashNote, wing: tgtW };
+    // (나) 꼬리: 눈꼬리 점 밖으로 나간 선은 속눈썹 선과 따로 알린다 (아래 tailOf)
+    const t = tailOf(wf);
+    return { raw: { seen, tail: t.tail }, lashNote, wing: t.wing, wf };
+    };
+    /**
+     * 꼬리 찾기 결과 → 잰 값과 그릴 것. 맨살 위로 뺀 것(wing)과, 속눈썹 선 끝을 따라 짧게 이어 그은 것(extend)을 구분해 적는다
+     */
+    const tailOf = (wf: WingFound, paired = false): { tail: LinerRaw["tail"]; wing: PartGuide } => {
+      const tgtW = empty();
+      let tail: LinerRaw["tail"] = null;
+      const degWord = (deg: number): string => `눈 축에서 ${deg > 0 ? "위로 " : deg < 0 ? "아래로 " : ""}${Math.abs(deg)}°`;
+      if (wf.wing) {
+        const wing = wf.wing, sure = `꼬리일 확률 ${Math.round(wing.p * 100)}%`;
+        tail = { len: wing.len / u, deg: wing.deg, free: wing.free / u, kind: "wing" };
+        tgtW.outline.lines.push(wing.line);
+        tgtW.dots.push({ at: wing.end, label: `${NAME[side]} 꼬리 끝` });
+        tgtW.arrows.push({ from: wing.line[0]!, to: wing.end, label: `${Math.round((100 * wing.len) / u)}% · ${wing.deg}°` });
+        tgtW.notes.push({
+          label: `${NAME[side]} 눈`,
+          value: `눈꼬리 점에서 ${pct(wing.len / u)}, ${degWord(wing.deg)} — 내 속눈썹 선 끝을 지나 맨살 위로 ${Math.round((100 * wing.free) / u)}% 뺌 (${paired ? `혼자서는 ${sure} 였지만 반대쪽 눈의 꼬리와 모양이 비슷해 받음` : sure})`,
+        });
+      } else if (wf.outerLine) {
+        const line = wf.outerLine.line, tip = line[line.length - 1]!, v = sub(tip, outer);
+        const deg = Math.round((Math.atan2(dot(v, up), dot(v, ax)) * 180) / Math.PI), len = dist(outer, tip);
+        tail = { len: len / u, deg, free: 0, kind: "extend" };
+        tgtW.outline.lines.push(line);
+        tgtW.dots.push({ at: tip, label: `${NAME[side]} 꼬리 끝` });
+        tgtW.arrows.push({ from: line[0]!, to: tip, label: `${Math.round((100 * len) / u)}% · ${deg}°` });
+        tgtW.notes.push({ label: `${NAME[side]} 눈`, value: `눈꼬리 점에서 ${pct(len / u)}, ${degWord(deg)} — 속눈썹 선 끝을 따라 짧게 이어 그음 (맨살로는 거의 안 뺌)` });
+      } else {
+        tgtW.notes.push({ label: `${NAME[side]} 눈`, value: wf.why ? `없음 (${wf.why})` : "없음" });
+      }
+      return { tail, wing: tgtW };
     };
     /**
      * 속눈썹 선 아이라인의 영역: 눈머리(눈 안쪽 끝) ~ 눈꼬리(눈 바깥 끝) 전체를 띠로 정해 둔다 — 어느 구간에 그었는지를 찾아서 그리지 않는다.
@@ -785,7 +625,7 @@ export function buildGuide(layer: MakeupLayer, lm: readonly Pt[], refLayer: Make
       tgt.notes.push({ label: `${NAME[side]} 눈`, value: "반대쪽 눈에서 잰 꼬리를 같은 길이 · 같은 각도로 옮겨 그림 (이쪽 눈에서는 안 재임)" });
       return tgt;
     };
-    linerJobs.push({ side, find: findLiner, region, mirrorTail });
+    linerJobs.push({ side, find: findLiner, region, mirrorTail, tailOf });
   }
   // ── 아이라인 판단 ──
   // ① 정답사진에서 뗀 것으로 먼저 ② 속눈썹 선의 라이너가 한쪽 눈에서만 보이면 반대쪽은 기준을 낮춰 다시
@@ -794,6 +634,15 @@ export function buildGuide(layer: MakeupLayer, lm: readonly Pt[], refLayer: Make
   if (linerRes.length === 2 && !linerRes[0]!.res.raw.seen !== !linerRes[1]!.res.raw.seen) {
     const miss = linerRes.find((q) => !q.res.raw.seen)!, again = miss.job.find(M0, true, false);
     if (again.raw.seen) miss.res = again;
+  }
+  // 꼬리가 한쪽 눈에서만 잡혔으면, 반대쪽 눈의 "꼬리일 수도 있는 선" 이 같은 모양인지 본다 (look-wing.ts pairWings)
+  if (linerRes.length === 2) {
+    pairWings(linerRes[0]!.res.wf, linerRes[1]!.res.wf, u).forEach((wf, k) => {
+      const q = linerRes[k]!;
+      if (wf === q.res.wf) return;
+      const t = q.job.tailOf(wf, true);
+      q.res = { ...q.res, wf, raw: { ...q.res.raw, tail: t.tail }, wing: t.wing };
+    });
   }
   if (Mref) {
     for (const q of linerRes) {
@@ -853,7 +702,7 @@ export function buildGuide(layer: MakeupLayer, lm: readonly Pt[], refLayer: Make
   if (!Mref && refLayer) out.liner.notes.push({ label: "화장 사진에서 직접", value: "칸이 달라 못 씀" });
   // 색: 섀도우는 "가는 어두운 선"(라이너)이 아닌 칸들의 색, 라이너는 그 선 위 칸들의 색.
   // 어두워진 칸을 통째로 섀도우에서 빼면 안 된다 — 주황 · 갈색 섀도는 살보다 어두워서 다 빠지고 옅은 가장자리 색만 남는다 (2026-10-06 주황 샘플)
-  const lineLo = GUIDE.liner.wingDark / 2;
+  const lineLo = GUIDE.liner.lineDark / 2;
   if (out.shadow.found) out.shadow.color = colorOf("eye", (i) => (S.eye[i]! >= eyeLo && fineArr[i]! < lineLo ? S.eye[i]! : 0)) ?? colorOf("eye", (i) => (S.eye[i]! >= eyeLo ? S.eye[i]! : 0));
   // 아이라인 · 꼬리의 색: 가는 어두운 선 위 칸들의 색. 못 구하면(화장 사진에서 직접 잰 것 등) 짙은 갈색
   const linerColor = colorOf("eye", (i) => (fineArr[i]! >= lineLo ? fineArr[i]! : 0)) ?? colorOf("eye", (i) => (darkArr[i]! >= GUIDE.liner.minDark ? darkArr[i]! : 0)) ?? ([48, 40, 40] as [number, number, number]);
