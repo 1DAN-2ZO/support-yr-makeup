@@ -116,7 +116,7 @@ export const SAMPLE = { boxRatio: scoreRules.sample.boxRatio, hairCut: scoreRule
 
 const boxOf = (eyePx: number): number => Math.max(1, Math.round(eyePx * SAMPLE.boxRatio));
 
-function labBox(im: RgbaImage, x: number, y: number, box: number): Lab {
+export function labBox(im: RgbaImage, x: number, y: number, box: number): Lab {
   if (box <= 1) return labAt(im, x, y);
   const x0 = Math.round(x - (box - 1) / 2), y0 = Math.round(y - (box - 1) / 2);
   let r = 0, g = 0, b = 0, n = 0;
