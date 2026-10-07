@@ -44,13 +44,13 @@ export interface PartGuide {
  * wingMin: 눈꼬리 밖으로 이만큼 넘어야 꼬리 ·
  * taper: 섀도 양 끝에서 이 비율 구간 동안 눈꺼풀로 내려온다 · linerStart · linerMax · linerMin: 라이너 띠는 눈꺼풀에서 이만큼 안에서
  * 시작하는 줄, 두께는 이 사이 · wingMax: 꼬리를 찾는 거리 · wingTrack: 앞 칸 윗선에서 이만큼 안의 줄만 잇는다 · wingN: 꼬리 윗선 칸 수 ·
- * wingBlend: 꼬리 윗선과 볼록하게 이어 다듬는 눈꼬리 쪽 띠 구간 · wingTaper: 꼬리 끝에서 이 비율 구간은 끝으로 곧게 모인다 ·
+ * waveSmooth: 꼬리 끝 → 띠 윗선을 이웃 3점 평균으로 다듬는 횟수 · wingTaper: 꼬리 끝에서 이 비율 구간은 끝으로 곧게 모인다 ·
  * lashOpen: 라이너 진한 픽셀에서 이 굵기(눈 폭 비율)보다 가는 가닥(마스카라 속눈썹)은 지운다
  * (전부 눈 폭 비율). 눈대중 시작값
  */
 export const PART_GUIDE = {
   mouthOpen: 0.06, profileN: 24, shadowMax: 1.0, underMax: 0.6, browMax: 0.4, minH: 0.03,
-  wingMin: 0.03, taper: 0.2, linerStart: 0.06, linerMax: 0.3, linerMin: 0.015, wingMax: 0.8, wingTrack: 0.06, wingN: 10, wingBlend: 0.2, wingTaper: 0.3, lashOpen: 0.012,
+  wingMin: 0.03, taper: 0.2, linerStart: 0.06, linerMax: 0.3, linerMin: 0.015, wingMax: 0.8, wingTrack: 0.06, wingN: 10, waveSmooth: 3, wingTaper: 0.3, lashOpen: 0.012,
 } as const;
 
 type SV = { s: number; v: number };
@@ -154,11 +154,11 @@ export function partGuides(parts: readonly PartMask[], lm: readonly Pt[], w: num
       return f.from(q);
     }).filter((p, k) => f.to(p).s > c.s && (k + 1) / PART_GUIDE.wingN <= 1 - PART_GUIDE.wingTaper);
     // 꼬리 끝 wingTaper 구간은 윗선을 빼서 끝으로 곧게 모이게 — 그대로 두니 끝 바로 앞까지 높다가 꺾여 뭉툭하게 잘렸다 (실사진, 시험 L10)
-    // 꼬리 윗선과 눈꼬리 쪽 띠(눈 폭 wingBlend 안)만 위로 볼록하게 이어 만나는 곳의 홈 · 꼬리 윗선 출렁임을 없앤다 (실사진, 시험 L7).
-    // 그보다 안쪽 띠는 그대로 — 띠 전체를 볼록하게 이으니 꼬리 끝이 높을 때 눈 가운데까지 곧은 선이 되어 띠가 쐐기로 덮였다 (시험 L8).
-    // 그대로 두는 띠의 첫 점까지 넣어 경계가 이어지게 한다
-    const topRev = [...top].reverse(), cut = topRev.findIndex((p) => f.to(p).s < -PART_GUIDE.wingBlend), k = cut < 0 ? topRev.length : cut;
-    return (linerPoly[s] = [...base, ...convexFromTip([tip, ...[...wingTop].reverse(), ...topRev.slice(0, k + 1)], f), ...topRev.slice(k + 1)]);
+    // 윗선 = 꼬리 끝 → 꼬리 윗선 → 띠 윗선을 한 줄로 잇고 이웃 점끼리만 매끄럽게 (양 끝은 그대로) — 띠와 꼬리 사이 실제 물결
+    // (눈꼬리 근처에서 살짝 내려갔다 꼬리로 올라감)은 남고 툭 꺾이는 곳만 부드러워진다 (사용자: 부채꼴 말고 뗀 화장처럼 물결, 시험 W1).
+    // 위로 볼록하게 메웠더니 띠 꼭대기에서 꼬리 끝까지 곧은 선으로 건너가 부채꼴이 됐다
+    const upper = smoothChain([tip, ...[...wingTop].reverse(), ...[...top].reverse()], PART_GUIDE.waveSmooth);
+    return (linerPoly[s] = [...base, ...upper]);
   }, "mixed");
 
   // 섀도: 라이너 윗선(라이너가 없으면 눈꺼풀)에서 올라간 높이 하나
@@ -307,18 +307,11 @@ function avgWing(a: Wing, b: Wing): Wing {
   return { sTip: (a.sTip + b.sTip) / 2, vTip: (a.vTip + b.vTip) / 2, top: a.top.map((v, i) => (v + b.top[i]!) / 2) };
 }
 
-/** 위로 볼록한 윗선 — 첫 점(꼬리 끝)부터 눈 좌표 s 가 줄어드는 순서로, 홈이 되는 점은 뺀다 */
-function convexFromTip(chain: readonly Pt[], f: EyeFrame): Pt[] {
-  const out: Pt[] = [];
-  for (const p of chain) {
-    while (out.length >= 2) {
-      const a = f.to(out[out.length - 2]!), b = f.to(out[out.length - 1]!), c = f.to(p);
-      if (Math.abs(c.s - a.s) < 1e-9 || b.v >= a.v + ((c.v - a.v) * (b.s - a.s)) / (c.s - a.s)) break;
-      out.pop();
-    }
-    out.push(p);
-  }
-  return out;
+/** 열린 꺾은선을 이웃 3점 평균으로 n 번 다듬는다 (양 끝 점은 그대로) */
+function smoothChain(chain: readonly Pt[], n: number): Pt[] {
+  let c = [...chain];
+  for (let k = 0; k < n; k++) c = c.map((p, i) => (i === 0 || i === c.length - 1 ? p : { x: (c[i - 1]!.x + p.x + c[i + 1]!.x) / 3, y: (c[i - 1]!.y + p.y + c[i + 1]!.y) / 3 }));
+  return c;
 }
 
 /**

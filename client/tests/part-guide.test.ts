@@ -337,25 +337,27 @@ describe("부위 가이드 — 실사진 라이너 꼬리 · 아치 눈썹 (사�
   });
 });
 
-describe("부위 가이드 — 꼬리 윗선 홈 · 눈썹 빈 곳 (사용자 2026-10-07)", () => {
+describe("부위 가이드 — 라이너 물결 · 눈썹 빈 곳 (사용자 2026-10-07)", () => {
   const lid = eyeOf("R").upper.map(P);
   const lidY = (x: number) => { for (let i = 1; i < lid.length; i++) { const a = lid[i - 1]!, b = lid[i]!; if ((x - a.x) * (x - b.x) <= 0 && a.x !== b.x) return a.y + ((b.y - a.y) * (x - a.x)) / (b.x - a.x); } return NaN; };
 
-  it("L7 꼬리가 띠에서 이어져 나올 때 만나는 곳에 홈이 없다 — 실사진: 꼬리와 띠가 만나는 곳이 꺾여 튀었다", () => {
-    // 실제 라이너처럼 눈꼬리 쪽에서 띠가 두꺼워지며(4 → 9px) 꼬리로 이어진다
+  it("W1 띠와 꼬리 사이 실제 물결(눈꼬리 근처에서 살짝 내려갔다 꼬리로 올라감)은 남기고, 툭 꺾이는 곳은 없다 — 사용자: 부채꼴 말고 뗀 화장처럼 물결", () => {
+    // 띠 4px 그대로 + 눈꼬리에서 위로 9px 시작하는 꼬리 — 두 윗선 사이가 눈꼬리 근처에서 오목하다 (물결)
     const o = P(LM.eyeA.outer), tip = { x: o.x - 24, y: o.y - 12 };
-    const T = (x: number) => (x >= 195 ? 4 : 4 + (5 * (195 - x)) / 25);
     const wing = [{ x: o.x, y: o.y }, tip, { x: o.x, y: o.y - 9 }];
-    const m = mask((x, y) => (x >= 172 && x <= 258 && y <= lidY(x) && y >= lidY(x) - T(x)) || inPoly(x, y, wing));
+    const m = mask((x, y) => (x >= 172 && x <= 258 && y <= lidY(x) && y >= lidY(x) - 4) || inPoly(x, y, wing));
     const poly = get(partGuides([part("liner", "R", m)], LMS, W, H), "liner", "R")!.polys[0]!;
     const ti = poly.reduce((bi, p, i) => (p.x < poly[bi]!.x ? i : bi), 0), upper = poly.slice(ti);   // 꼬리 끝 → 윗선 → 눈머리
-    for (let i = 1; i + 1 < upper.length; i++) {
-      const a = upper[i - 1]!, m2 = upper[i]!, c = upper[i + 1]!;
-      if (c.x - a.x < 1e-6) continue;
-      const yLine = a.y + ((c.y - a.y) * (m2.x - a.x)) / (c.x - a.x);
-      // 1px 미만 — 합성 얼굴은 실사진보다 3배 커서 실사진으론 0.3px (안 보임). 실사진의 튐은 2px 남짓이었다
-      expect(m2.y - yLine, `윗선 (${m2.x.toFixed(1)}, ${m2.y.toFixed(1)}) 홈`).toBeLessThan(1);
-    }
+    const topAt = (x: number) => { const ys: number[] = []; for (let i = 1; i < upper.length; i++) { const a = upper[i - 1]!, c = upper[i]!; if ((x - a.x) * (x - c.x) <= 0 && a.x !== c.x) ys.push(a.y + ((c.y - a.y) * (x - a.x)) / (c.x - a.x)); } return Math.min(...ys); };
+    // 물결: 눈꼬리 근처(x 172) 윗선이 띠(x 188)와 꼬리 가운데(x 158) 윗선을 이은 직선보다 아래로 들어가 있다 (부채꼴로 메우면 직선 위)
+    const chord = topAt(188) + ((topAt(158) - topAt(188)) * (172 - 188)) / (158 - 188);
+    expect(topAt(172) - chord, `눈꼬리 근처 윗선 ${topAt(172).toFixed(1)} · 직선 ${chord.toFixed(1)}`).toBeGreaterThan(1);
+    // 매끄러움: 꼬리 끝 말고는 크게 꺾인 곳이 없다
+    const turn = upper.slice(1, -1).map((a, i) => {
+      const p = upper[i]!, n = upper[i + 2]!, u = Math.atan2(a.y - p.y, a.x - p.x), v = Math.atan2(n.y - a.y, n.x - a.x);
+      return Math.abs(((v - u + 3 * Math.PI) % (2 * Math.PI)) - Math.PI) * (180 / Math.PI);
+    });
+    expect(Math.max(...turn), "꼬리 끝 말고 가장 크게 꺾인 각도").toBeLessThan(40);
   });
 
   it("B2 AI 가 눈썹을 원래보다 얇게 그렸으면 가이드도 실제 어두운 눈썹에 맞춘다 — 빈 살은 안 잡는다 (실사진)", () => {
