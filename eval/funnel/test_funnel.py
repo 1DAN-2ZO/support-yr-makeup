@@ -297,3 +297,16 @@ def test_옛_흐름_화면은_앱이_옮기는_자리로_센다():
 
 def test_퍼널_화면_순서는_새_흐름():
     assert FUNNEL_SCREENS == ["consent", "capture", "answer", "partguide", "attempt", "feedback", "save"]
+
+
+def test_동의_안내를_열고_동의하지_않은_세션도_거부로_센다():
+    """동의 화면의 '동의하지 않음' 이 '닫기' 로 바뀌어(#321) consent ok=false 가 안 남는다.
+    안내를 열었는데(consent_open) 동의가 없으면 거부로 센다. 안내를 안 연 세션은 거부가 아니다"""
+    a = [ev("a", 0, "button", button="consent_open"), ev("a", 1, "button", button="consent_close")]
+    b = [ev("b", 0, "button", button="consent_open"), ev("b", 1, "consent", ok=True)]
+    c = [ev("c", 0, "screen_enter", screen="consent")]
+    d = [ev("d", 0, "consent", ok=False)]
+    assert summarize_session(a).consent_opened is True
+    m = rows_by_metric(aggregate(a + b + c + d))
+    assert m["동의 거부율(%)"] == 50.0
+    assert m["동의 안내 연 비율(%)"] == 50.0

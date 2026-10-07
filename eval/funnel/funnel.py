@@ -76,6 +76,8 @@ def by_session(events: Iterable[Event]) -> dict[str, list[Event]]:
 class SessionSummary:
     sid: str
     consented: bool | None = None
+    """동의 안내를 열었나 (button consent_open). '동의하지 않음' 이 '닫기' 가 되어 거부를 이걸로 센다 #321"""
+    consent_opened: bool = False
     """도달한 화면 (FUNNEL_SCREENS 중)"""
     reached: set[str] = field(default_factory=set)
     """들어간 화면 이름 그대로 (옛 흐름 이름 포함)"""
@@ -138,6 +140,8 @@ def summarize_session(events: list[Event]) -> SessionSummary:
                 s.score_ms.append(int(e["ms"]))
         elif name == "button" and str(e.get("button")).startswith("save"):
             s.saved_result = True
+        elif name == "button" and e.get("button") == "consent_open":
+            s.consent_opened = True
         elif name == "restore":
             s.restore_ok = bool(e.get("ok"))
         elif name == "vlm_plan":
@@ -213,8 +217,11 @@ def aggregate(events: Iterable[Event]) -> list[dict]:
             row(f"이탈 위치 · {sc}(%)", _pct(stopped[sc], n), f"{stopped[sc]}/{n}")
 
     # 2. 동의
-    denied = sum(1 for s in sessions if s.consented is False)
-    row("동의 거부율(%)", _pct(denied, n), f"{denied}/{n}")
+    # 거부 = 명시적 거부(옛 로그) 또는 안내를 열고도 동의하지 않음. 안내를 안 연 세션은 거부가 아니다
+    opened = sum(1 for s in sessions if s.consent_opened)
+    denied = sum(1 for s in sessions if s.consented is False or (s.consent_opened and s.consented is None))
+    row("동의 안내 연 비율(%)", _pct(opened, n), f"{opened}/{n}")
+    row("동의 거부율(%)", _pct(denied, n), f"{denied}/{n} — 안내를 열고 동의 안 함 포함")
 
     # 3. 촬영
     done4 = sum(1 for s in sessions if len(s.shots_ok) >= 4)
