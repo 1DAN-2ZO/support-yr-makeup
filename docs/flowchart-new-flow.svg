@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 1790" width="1040" height="1790" font-family="'Malgun Gothic','Apple SD Gothic Neo','Noto Sans KR',sans-serif">
+<title>nudy 사용자 흐름 (새 흐름, 2026-10-06 확정)</title>
+<defs>
+<marker id="ar-k" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#1f2d3a"/></marker>
+<marker id="ar-r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#c0392b"/></marker>
+<marker id="ar-g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#8a8a8a"/></marker>
+</defs>
+<rect width="1040" height="1790" fill="#f7f5f1"/>
+<text x="40" y="52" font-size="26" font-weight="700" fill="#1f2d3a">nudy — 사용자 흐름</text>
+<text x="40" y="80" font-size="14" fill="#6b7280">새 흐름 (2026-10-06 확정 · 촬영 2장은 2026-10-07) — 참고 사진의 화장을 내 얼굴에 입혀 보고, 따라 그린 뒤 피드백</text>
+<line x1="40" y1="108" x2="80" y2="108" stroke="#1f2d3a" stroke-width="2.5" stroke-dasharray=""/>
+<text x="88" y="113" font-size="13" fill="#1f2d3a">진행</text>
+<line x1="190" y1="108" x2="230" y2="108" stroke="#c0392b" stroke-width="2.5" stroke-dasharray=""/>
+<text x="238" y="113" font-size="13" fill="#1f2d3a">되돌아가기</text>
+<line x1="340" y1="108" x2="380" y2="108" stroke="#c4741f" stroke-width="2.5" stroke-dasharray="6 4"/>
+<text x="388" y="113" font-size="13" fill="#1f2d3a">서버로 가는 것</text>
+<rect x="280" y="140" width="300" height="52" rx="26" fill="#e6f1ef" stroke="#2a8f86" stroke-width="2.5"/>
+<text x="430" y="172" font-size="17" font-weight="700" text-anchor="middle" fill="#1f2d3a">시작 (앱 열기)</text>
+<line x1="430" y1="192" x2="430" y2="238" stroke="#1f2d3a" stroke-width="2.5" marker-end="url(#ar-k)"/>
+<rect x="210.0" y="240" width="440" height="88" rx="10" fill="#fff" stroke="#8a8a8a" stroke-width="2.5"/>
+<text x="430" y="276" font-size="18" font-weight="700" text-anchor="middle" fill="#1f2d3a">처리 안내 · 동의</text>
+<text x="430" y="302" font-size="13.5" text-anchor="middle" fill="#6b7280">사진은 폰에만 · 사용 기록만 서버로 — 동의하면 시작</text>
+<line x1="650.0" y1="284.0" x2="694.0" y2="284.0" stroke="#8a8a8a" stroke-width="2"/>
+<rect x="694.0" y="252.0" width="300" height="64" rx="8" fill="#fff" stroke="#8a8a8a" stroke-width="2"/>
+<text x="708.0" y="278.0" font-size="13" fill="#1f2d3a">닫기를 누르면 첫 화면에 그대로</text>
+<text x="708.0" y="300.0" font-size="13" fill="#1f2d3a">(동의 전에는 아무것도 안 보냄)</text>
+<line x1="430" y1="328" x2="430" y2="368" stroke="#1f2d3a" stroke-width="2.5" marker-end="url(#ar-k)"/>
+<text x="442" y="354.0" font-size="13.5" font-weight="700" fill="#1f2d3a">동의</text>
+<rect x="210.0" y="370" width="440" height="88" rx="10" fill="#fff" stroke="#2a8f86" stroke-width="2.5"/>
+<circle cx="210.0" cy="370" r="19" fill="#2a8f86"/>
+<text x="210.0" y="376" font-size="16" font-weight="700" text-anchor="middle" fill="#fff">1</text>
+<text x="430" y="406" font-size="18" font-weight="700" text-anchor="middle" fill="#1f2d3a">맨얼굴 촬영 2장</text>
+<text x="430" y="432" font-size="13.5" text-anchor="middle" fill="#6b7280">정면 눈 뜬 장 · 눈 감은 장 — 조건이 맞으면 자동으로 찍힘</text>
+<line x1="430" y1="458" x2="430" y2="498" stroke="#1f2d3a" stroke-width="2.5" marker-end="url(#ar-k)"/>
+<rect x="210.0" y="500" width="440" height="88" rx="10" fill="#fff" stroke="#2a8f86" stroke-width="2.5"/>
+<circle cx="210.0" cy="500" r="19" fill="#2a8f86"/>
+<text x="210.0" y="506" font-size="16" font-weight="700" text-anchor="middle" fill="#fff">2</text>
+<text x="430" y="536" font-size="18" font-weight="700" text-anchor="middle" fill="#1f2d3a">참고 사진 올리기</text>
+<text x="430" y="562" font-size="13.5" text-anchor="middle" fill="#6b7280">따라 하고 싶은 화장 사진 한 장 — 올리면 바로 검사</text>
+<line x1="430" y1="588" x2="430" y2="604" stroke="#1f2d3a" stroke-width="2.5" marker-end="url(#ar-k)"/>
+<path d="M430 606L630 660L430 714L230 660z" fill="#fdf0e2" stroke="#c4741f" stroke-width="2.5"/>
+<text x="430" y="660" font-size="16.5" font-weight="700" text-anchor="middle" fill="#1f2d3a">쓸 수 있는 사진?</text>
+<text x="430" y="682" font-size="12.5" text-anchor="middle" fill="#6b7280">얼굴이 보이고 화장을 읽을 수 있나</text>
+<path d="M230 660H96V544.0H207.0" fill="none" stroke="#c0392b" stroke-width="2.5" marker-end="url(#ar-r)"/>
+<text x="88" y="598.0" font-size="13" font-weight="700" text-anchor="end" fill="#c0392b">아니오</text>
+<text x="88" y="616.0" font-size="12.5" text-anchor="end" fill="#c0392b">다시 올리기</text>
+<line x1="430" y1="714" x2="430" y2="758" stroke="#1f2d3a" stroke-width="2.5" marker-end="url(#ar-k)"/>
+<text x="442" y="742.0" font-size="13.5" font-weight="700" fill="#1f2d3a">예</text>
+<rect x="210.0" y="760" width="440" height="88" rx="10" fill="#fff" stroke="#2a8f86" stroke-width="2.5"/>
+<circle cx="210.0" cy="760" r="19" fill="#2a8f86"/>
+<text x="210.0" y="766" font-size="16" font-weight="700" text-anchor="middle" fill="#fff">3</text>
+<text x="430" y="796" font-size="18" font-weight="700" text-anchor="middle" fill="#1f2d3a">정답사진 만들기</text>
+<text x="430" y="822" font-size="13.5" text-anchor="middle" fill="#6b7280">참고 사진의 화장을 내 맨얼굴(눈 뜬 장)에 입힌 사진</text>
+<line x1="650.0" y1="804.0" x2="694.0" y2="804.0" stroke="#c4741f" stroke-width="2" stroke-dasharray="6 4"/>
+<rect x="694.0" y="761.0" width="300" height="86" rx="8" fill="#fff" stroke="#c4741f" stroke-width="2" stroke-dasharray="6 4"/>
+<text x="708.0" y="787.0" font-size="13" fill="#1f2d3a">만드는 곳: 서버 (필요하면 외부 API)</text>
+<text x="708.0" y="809.0" font-size="13" fill="#1f2d3a">참고 사진은 만든 뒤 바로 지움</text>
+<text x="708.0" y="831.0" font-size="13" fill="#1f2d3a">얼굴 모양은 그대로 · 화장만 바뀜</text>
+<line x1="430" y1="848" x2="430" y2="888" stroke="#1f2d3a" stroke-width="2.5" marker-end="url(#ar-k)"/>
+<rect x="210.0" y="890" width="440" height="88" rx="10" fill="#fff" stroke="#2a8f86" stroke-width="2.5"/>
+<circle cx="210.0" cy="890" r="19" fill="#2a8f86"/>
+<text x="210.0" y="896" font-size="16" font-weight="700" text-anchor="middle" fill="#fff">4</text>
+<text x="430" y="926" font-size="18" font-weight="700" text-anchor="middle" fill="#1f2d3a">부위별 가이드</text>
+<text x="430" y="952" font-size="13.5" text-anchor="middle" fill="#6b7280">정답사진에서 그 부위만 잘라 점 · 선으로 — 보고 거울에서 화장</text>
+<line x1="430" y1="978" x2="430" y2="994" stroke="#1f2d3a" stroke-width="2.5" marker-end="url(#ar-k)"/>
+<path d="M430 996L630 1050L430 1104L230 1050z" fill="#fdf0e2" stroke="#c4741f" stroke-width="2.5"/>
+<text x="430" y="1056" font-size="16.5" font-weight="700" text-anchor="middle" fill="#1f2d3a">남은 부위?</text>
+<path d="M230 1050H96V934.0H207.0" fill="none" stroke="#c0392b" stroke-width="2.5" marker-end="url(#ar-r)"/>
+<text x="88" y="988.0" font-size="13" font-weight="700" text-anchor="end" fill="#c0392b">예</text>
+<text x="88" y="1006.0" font-size="12.5" text-anchor="end" fill="#c0392b">다음 부위</text>
+<line x1="430" y1="1104" x2="430" y2="1148" stroke="#1f2d3a" stroke-width="2.5" marker-end="url(#ar-k)"/>
+<text x="442" y="1132.0" font-size="13.5" font-weight="700" fill="#1f2d3a">아니오 · 화장 끝</text>
+<rect x="210.0" y="1150" width="440" height="88" rx="10" fill="#fff" stroke="#2a8f86" stroke-width="2.5"/>
+<circle cx="210.0" cy="1150" r="19" fill="#2a8f86"/>
+<text x="210.0" y="1156" font-size="16" font-weight="700" text-anchor="middle" fill="#fff">5</text>
+<text x="430" y="1186" font-size="18" font-weight="700" text-anchor="middle" fill="#1f2d3a">시도사진 2장</text>
+<text x="430" y="1212" font-size="13.5" text-anchor="middle" fill="#6b7280">정면 눈 뜬 장 · 눈 감은 장 — 찍은 뒤 두 장을 보여 줌</text>
+<line x1="430" y1="1238" x2="430" y2="1254" stroke="#1f2d3a" stroke-width="2.5" marker-end="url(#ar-k)"/>
+<path d="M430 1256L630 1310L430 1364L230 1310z" fill="#fdf0e2" stroke="#c4741f" stroke-width="2.5"/>
+<text x="430" y="1316" font-size="16.5" font-weight="700" text-anchor="middle" fill="#1f2d3a">이대로 피드백 받기?</text>
+<path d="M230 1310H96V1194.0H207.0" fill="none" stroke="#c0392b" stroke-width="2.5" marker-end="url(#ar-r)"/>
+<text x="88" y="1248.0" font-size="13" font-weight="700" text-anchor="end" fill="#c0392b">아니오</text>
+<text x="88" y="1266.0" font-size="12.5" text-anchor="end" fill="#c0392b">다시 찍기</text>
+<line x1="430" y1="1364" x2="430" y2="1408" stroke="#1f2d3a" stroke-width="2.5" marker-end="url(#ar-k)"/>
+<text x="442" y="1392.0" font-size="13.5" font-weight="700" fill="#1f2d3a">예</text>
+<rect x="210.0" y="1410" width="440" height="88" rx="10" fill="#fff" stroke="#2a8f86" stroke-width="2.5"/>
+<circle cx="210.0" cy="1410" r="19" fill="#2a8f86"/>
+<text x="210.0" y="1416" font-size="16" font-weight="700" text-anchor="middle" fill="#fff">6</text>
+<text x="430" y="1446" font-size="18" font-weight="700" text-anchor="middle" fill="#1f2d3a">피드백</text>
+<text x="430" y="1472" font-size="13.5" text-anchor="middle" fill="#6b7280">정답사진 대 시도사진 — 부위별로 잘함 · 덜 그림 · 넘침</text>
+<line x1="650.0" y1="1454.0" x2="694.0" y2="1454.0" stroke="#8a8a8a" stroke-width="2"/>
+<rect x="694.0" y="1411.0" width="300" height="86" rx="8" fill="#fff" stroke="#8a8a8a" stroke-width="2"/>
+<text x="708.0" y="1437.0" font-size="13" fill="#1f2d3a">점수는 없음</text>
+<text x="708.0" y="1459.0" font-size="13" fill="#1f2d3a">눈 감은 장은 정답사진이 말하는</text>
+<text x="708.0" y="1481.0" font-size="13" fill="#1f2d3a">'그려야 할 자리' 와 견줌</text>
+<line x1="430" y1="1498" x2="430" y2="1538" stroke="#1f2d3a" stroke-width="2.5" marker-end="url(#ar-k)"/>
+<rect x="210.0" y="1540" width="440" height="88" rx="10" fill="#fff" stroke="#2a8f86" stroke-width="2.5"/>
+<circle cx="210.0" cy="1540" r="19" fill="#2a8f86"/>
+<text x="210.0" y="1546" font-size="16" font-weight="700" text-anchor="middle" fill="#fff">7</text>
+<text x="430" y="1576" font-size="18" font-weight="700" text-anchor="middle" fill="#1f2d3a">저장 · 공유</text>
+<text x="430" y="1602" font-size="13.5" text-anchor="middle" fill="#6b7280">결과와 피드백을 내 폰에 저장하거나 공유</text>
+<line x1="650.0" y1="1584.0" x2="694.0" y2="1584.0" stroke="#8a8a8a" stroke-width="2"/>
+<rect x="694.0" y="1552.0" width="300" height="64" rx="8" fill="#fff" stroke="#8a8a8a" stroke-width="2"/>
+<text x="708.0" y="1578.0" font-size="13" fill="#1f2d3a">우리 서버에는 사진 · 결과를</text>
+<text x="708.0" y="1600.0" font-size="13" fill="#1f2d3a">저장하지 않음</text>
+<line x1="430" y1="1628" x2="430" y2="1678" stroke="#1f2d3a" stroke-width="2.5" marker-end="url(#ar-k)"/>
+<rect x="280" y="1680" width="300" height="52" rx="26" fill="#e6f1ef" stroke="#2a8f86" stroke-width="2.5"/>
+<text x="430" y="1712" font-size="17" font-weight="700" text-anchor="middle" fill="#1f2d3a">끝 (폰 안 세션 데이터 삭제)</text>
+<text x="40" y="1762" font-size="12.5" fill="#6b7280">서버로 가는 것은 두 가지뿐: ③ 정답사진을 만들 때의 사진(만든 뒤 바로 지움)과, 화면 이동 같은 사용 기록(사진 · 얼굴 점 없음). 옛 흐름 그림은 flowchart-v6.png.</text>
+</svg>
