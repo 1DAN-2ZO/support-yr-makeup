@@ -133,6 +133,9 @@ async function boot(): Promise<void> {
   // 화면에 들어올 때마다 보낸다: 서버가 이탈 위치를 "마지막 screen_enter" 로 보고,
   // "나갔다" 신호는 폰에서 안 올 때가 많기 때문이다.
   const sender = createEventSender({
+    // 같은 주소의 /events 로 보낸다 (PR #317 규격 그대로).
+    // 바깥에서 백엔드 포트(8000)는 안 열려 있어서, 프론트 nginx 가 그 경로를
+    // 백엔드로 넘겨 준다 (client/nginx.conf)
     base: (import.meta.env.VITE_EVENTS_BASE as string | undefined) ?? "",
     // 동의하기 전에는 보내지 않는다. 그동안은 기기 안에만 쌓인다
     enabled: () => session.consent === true,
