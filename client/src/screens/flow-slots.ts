@@ -187,7 +187,6 @@ function guideMock(part: PartId): HTMLElement {
   // 제품을 고르는 데는 **보정한 색** (제품은 피부에 섞이지 않았다)
   const hex = read?.hex ?? sample.hex;
   const name = read ? `${read.name.text} 계열` : sample.name;
-  const family = read?.product.name.base ?? "";
   const card = document.createElement("div");
   card.className = "slot-guide-card";
   card.style.setProperty("--slot-color", hex);

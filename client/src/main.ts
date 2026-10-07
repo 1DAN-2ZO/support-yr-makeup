@@ -75,6 +75,10 @@ function el(id: string): HTMLElement {
   return found;
 }
 
+/**
+ * 앱이 시작하다 실패했을 때. 그냥 두면 사용자가 **빈 화면**을 본다 —
+ * 무엇이 잘못됐는지도, 무엇을 해야 하는지도 모른다.
+ */
 function showBootError(e: unknown): void {
   console.error(e);
   const root = el("screen");
@@ -471,4 +475,5 @@ async function restore(store: SessionStore, events: CaptureEvents, fresh: Sessio
   return { ...plan.session, baseline: rebuildBaseline(plan.baseline, found, blob) };
 }
 
-void boot();
+// 시작하다 실패하면 빈 화면 대신 안내를 띄운다 (IndexedDB 가 막힌 브라우저·저장공간 부족 등)
+void boot().catch(showBootError);
