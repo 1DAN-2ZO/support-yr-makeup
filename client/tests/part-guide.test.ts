@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { LM } from "../src/core/landmarks";
 import type { PartMask } from "../src/core/makeup-extract";
+import { GUIDE_PARAMS } from "../src/core/guides";
 import { LIPS_INNER, partGuides } from "../src/core/part-guide";
 import type { Pt } from "../src/core/types";
 import { LMS, P, eyeOf } from "./helpers/synth-face";
@@ -152,7 +153,7 @@ describe("부위 가이드 — 양쪽 같은 모양 · 단순한 모양 (사용�
     const poly = get(r, "shadow", "R")!.polys[0]!;
     const top = poly.filter((p) => yR(p.x) - p.y > 3).sort((a, b) => a.x - b.x);
     const hMid = yR(215) - Math.min(...poly.filter((p) => Math.abs(p.x - 215) < 6).map((p) => p.y));
-    expect(Math.abs(hMid - 26.5), `가운데 높이 ${hMid.toFixed(1)}px (R 20~23 · L 30 의 중간)`).toBeLessThan(3);
+    expect(Math.abs(hMid - 25.75), `가운데 높이 ${hMid.toFixed(1)}px (R 톱니 평균 21.5 · L 30 의 중간)`).toBeLessThan(2.5);
     // 가운데 구간에서 톱니 없음 (양 끝은 눈꺼풀로 내려오는 곡선 — S8)
     const mid = top.filter((p) => Math.abs(p.x - 215) < 25);
     const d2 = mid.slice(1, -1).map((p, i) => Math.abs(mid[i]!.y - 2 * p.y + mid[i + 2]!.y));
@@ -206,7 +207,7 @@ describe("부위 가이드 — 실사진에서 나온 문제", () => {
     expect(Math.max(...xs) - Math.min(...xs), "너비 ≈ 덩어리 너비 60").toBeLessThan(68);
   });
 
-  it("S8 섀도: 양 끝은 눈꺼풀로 내려와 닫힌다 (네모가 아니라 초승달) — 실사진: 양 끝이 세로로 끊겼다", () => {
+  it("S8 섀도: 양 끝은 라이너 윗선으로 내려와 닫힌다 (네모가 아니라 초승달) — 실사진: 양 끝이 세로로 끊겼다", () => {
     const lid = eyeOf("R").upper.map(P);
     const lidY = (x: number) => { for (let i = 1; i < lid.length; i++) { const a = lid[i - 1]!, b = lid[i]!; if ((x - a.x) * (x - b.x) <= 0 && a.x !== b.x) return a.y + ((b.y - a.y) * (x - a.x)) / (b.x - a.x); } return NaN; };
     const m = mask((x, y) => x >= 172 && x <= 258 && y <= lidY(x) && y >= lidY(x) - 20);
@@ -215,7 +216,35 @@ describe("부위 가이드 — 실사진에서 나온 문제", () => {
     const xs = poly.map((p) => p.x), left = Math.min(...xs), right = Math.max(...xs);
     for (const end of [left, right]) {
       const hs = poly.filter((p) => Math.abs(p.x - end) < 1).map(h);
-      expect(Math.max(...hs), `끝 (x ${end.toFixed(0)}) 높이`).toBeLessThan(2);
+      expect(Math.max(...hs), `끝 (x ${end.toFixed(0)}) 높이 = 라이너 두께 ${(GUIDE_PARAMS.liner.thick * 90).toFixed(1)}px 근처`).toBeLessThan(GUIDE_PARAMS.liner.thick * 90 + 1.5);
     }
+  });
+});
+
+describe("부위 가이드 — 라이너 띠 고정 · 섀도는 라이너 위 (사용자 2026-10-07)", () => {
+  const seg = (x: number, y: number, a: Pt, b: Pt) => { const dx = b.x - a.x, dy = b.y - a.y, t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy))); return Math.hypot(x - a.x - t * dx, y - a.y - t * dy); };
+  const lid = eyeOf("R").upper.map(P), mid = lid[4]!, T = GUIDE_PARAMS.liner.thick * 90;
+  const lidY = (x: number) => { for (let i = 1; i < lid.length; i++) { const a = lid[i - 1]!, b = lid[i]!; if ((x - a.x) * (x - b.x) <= 0 && a.x !== b.x) return a.y + ((b.y - a.y) * (x - a.x)) / (b.x - a.x); } return NaN; };
+  /** 눈꺼풀 위 r px 두께 라이너 + 꼬리 */
+  const linerMask = (r: number) => mask((x, y) => {
+    const o = P(LM.eyeA.outer), path = [...[...lid].reverse(), { x: o.x - 22, y: o.y - 10 }];
+    for (let i = 1; i < path.length; i++) if (seg(x, y, { x: path[i - 1]!.x, y: path[i - 1]!.y - r }, { x: path[i]!.x, y: path[i]!.y - r }) <= r) return true;
+    return false;
+  });
+
+  it("S9 라이너 띠 두께는 고정 (앱 기본 눈 폭의 4.5%) — 화장 영역이 두꺼워도 (실사진: 진한 속눈썹까지 재서 눈을 감싸는 렌즈가 됐다)", () => {
+    const poly = get(partGuides([part("liner", "R", linerMask(6))], LMS, W, H), "liner", "R")!.polys[0]!;
+    const above = poly.filter((p) => Math.abs(p.x - mid.x) < 3 && lidY(p.x) - p.y > 0.5).map((p) => lidY(p.x) - p.y);
+    expect(above.length, "눈꺼풀 가운데 위 윗선 점").toBeGreaterThan(0);
+    for (const d of above) expect(Math.abs(d - T), `윗선 높이 ${d.toFixed(1)}px (고정 ${T.toFixed(1)}px)`).toBeLessThan(0.6);
+  });
+
+  it("S10 섀도는 라이너 윗선에서 시작 — 라이너 띠와 겹치지 않는다", () => {
+    const sh = mask((x, y) => x >= 172 && x <= 258 && y <= lidY(x) && y >= lidY(x) - 24);
+    const r = partGuides([part("liner", "R", linerMask(2.5)), part("shadow", "R", sh)], LMS, W, H);
+    const liner = get(r, "liner", "R")!.polys[0]!, shadow = get(r, "shadow", "R")!.polys[0]!;
+    for (const p of shadow) expect(inPoly(p.x, p.y, liner) && edgeDist(p, liner) > 0.5, `섀도 점 (${p.x.toFixed(1)}, ${p.y.toFixed(1)}) 이 라이너 안`).toBe(false);
+    const low = Math.max(...shadow.filter((p) => Math.abs(p.x - mid.x) < 3).map((p) => p.y));
+    expect(lidY(mid.x) - low, "섀도 아랫선 = 라이너 윗선").toBeGreaterThan(T - 0.6);
   });
 });
