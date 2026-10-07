@@ -7,7 +7,7 @@
  */
 
 import { startRun, type RunState } from "./capture-run";
-import { SHOTS, type ShotId } from "./flow";
+import { SHOTS, shotGate, type ShotId, type ShotMeasure } from "./flow";
 
 export type AttemptShotId = ShotId;
 
@@ -17,4 +17,37 @@ export const ATTEMPT_SHOTS: readonly AttemptShotId[] = SHOTS.map((s) => s.id);
 /** 이미 찍은 장을 넘기면 다음 장부터. 다 찍었으면 shot 이 null */
 export function startAttemptRun(taken: Partial<Record<AttemptShotId, unknown>>, now: number): RunState {
   return startRun(taken, now);
+}
+
+/**
+ * 한 번 찍을 때 모으는 장 수 (2026-10-07, #328). 눈 뜬 장은 다섯 장 묶음 — 피드백(③)이 값마다 가운데 값을 써서 한 장의 흔들림을 줄인다.
+ * 감은 장은 한 장 (눈을 감고 기다리는 시간을 늘리지 않는다).
+ * minGapMs: 묶음 안 장면 사이 간격 · maxMs: 셔터 뒤 이만큼 지나면 모은 만큼으로 끝 (눈을 감거나 움직여도 멈추지 않게)
+ */
+export const ATTEMPT_BURST = { count: { front_open: 5, front_closed: 1 } as Record<AttemptShotId, number>, minGapMs: 80, maxMs: 1500 } as const;
+
+export interface AttemptBurst {
+  shot: AttemptShotId;
+  /** 셔터 시각 — 그 장이 묶음의 첫 장 */
+  startedAt: number;
+  /** 마지막으로 넣은 장면의 시각 */
+  lastAt: number;
+  /** 지금까지 모은 장 수 (셔터 장 포함) */
+  got: number;
+  done: boolean;
+}
+
+/** 셔터가 눌린 순간 — 그 장이 첫 장. 한 장만 모으는 장이면 바로 끝 */
+export function startAttemptBurst(shot: AttemptShotId, now: number): AttemptBurst {
+  return { shot, startedAt: now, lastAt: now, got: 1, done: ATTEMPT_BURST.count[shot] <= 1 };
+}
+
+/** 셔터 뒤 장면마다. 조건(안정 빼고)을 통과하고 앞 장과 간격이 있으면 take. 다 모았거나 시간이 지나면 done */
+export function attemptBurstStep(b: AttemptBurst, m: ShotMeasure, now: number, opt = ATTEMPT_BURST): { state: AttemptBurst; take: boolean } {
+  if (b.done) return { state: b, take: false };
+  if (now - b.startedAt >= opt.maxMs) return { state: { ...b, done: true }, take: false };
+  const ok = now - b.lastAt >= opt.minGapMs && shotGate(b.shot, { ...m, stableCount: Number.MAX_SAFE_INTEGER }).ok;
+  if (!ok) return { state: b, take: false };
+  const got = b.got + 1;
+  return { state: { ...b, lastAt: now, got, done: got >= opt.count[b.shot] }, take: true };
 }
