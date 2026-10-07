@@ -22,6 +22,8 @@ export interface SlotSpec {
   owner: string;
   todo: readonly string[];
   next: ScreenId;
+  /** 지금 받아 둔 것 한 줄 (들어올 때마다 새로 읽는다) — 다음 담당이 무엇을 받아 쓰는지 보이게 */
+  status?: () => string;
 }
 
 export interface SlotDeps {
@@ -353,6 +355,14 @@ export function slotScreen<S>(spec: SlotSpec, deps: SlotDeps = {}): Screen<S> {
           feedbackCards(),
           action(ctx as ScreenContext<unknown>, "다음 · 저장하러 가기", spec.next),
         );
+      }
+      // 받아 둔 것 한 줄 (#316 시도사진) — 넘어온 칸에만 붙는다.
+      // 참고 사진 칸은 resetPage 로 다시 그리므로 여기 붙이지 않는다 (그 칸엔 status 가 없다)
+      if (spec.status) {
+        const line = document.createElement("p");
+        line.className = "muted slot-status";
+        line.textContent = spec.status();
+        root.append(line);
       }
       ctx.root.append(root);
       return () => {

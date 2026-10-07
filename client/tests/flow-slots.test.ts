@@ -91,6 +91,18 @@ describe("빈 자리 화면", () => {
     expect(ctx.go).toHaveBeenCalledWith("save");
   });
 
+  it("FS1c 지금 받아 둔 것을 한 줄로 보여 줄 수 있다 — 들어올 때마다 새로 읽는다 (다음 담당이 무엇을 받아 쓰는지)", () => {
+    let got = "시도사진 없음";
+    const screen = slotScreen<null>({ title: "6 피드백", owner: "③", todo: [], next: "save", status: () => got });
+    const ctx = ctxOf();
+    screen.mount(ctx);
+    expect(ctx.root.querySelector(".slot-status")?.textContent).toBe("시도사진 없음");
+    got = "시도사진 2장 받음";
+    const ctx2 = ctxOf();
+    screen.mount(ctx2);
+    expect(ctx2.root.querySelector(".slot-status")?.textContent).toBe("시도사진 2장 받음");
+  });
+
   it("FS2 부위 가이드 자리 — 지금 부위를 보여 주고 '다음' 은 다음 부위, 마지막 부위면 시도사진으로", () => {
     const first = PART_IDS[0]!, second = PART_IDS[1]!, last = PART_IDS[PART_IDS.length - 1]!;
     let part: PartId | null = first;

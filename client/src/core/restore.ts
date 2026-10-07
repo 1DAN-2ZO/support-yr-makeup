@@ -10,7 +10,7 @@
  * 2시간 만료는 session-store 가 맡는다 (만료면 draft 가 null 로 온다).
  */
 
-import { createSession, type Session, type SessionDraft, type ShotId } from "./flow";
+import { SHOTS, createSession, type Session, type SessionDraft, type ShotId } from "./flow";
 import type { Baseline, Pt } from "./types";
 
 export type RestorePlan =
@@ -32,7 +32,8 @@ export function planRestore(draft: SessionDraft | null, now: () => number = Date
     return { kind: "capture", session: { ...fresh, consent: true, screen: "capture", startedAt: draft.startedAt }, lostShots };
   }
   const shots: Partial<Record<ShotId, unknown>> = {};
-  for (const [k, v] of Object.entries(draft.shots)) if (v) shots[k as ShotId] = true;
+  // 지금 찍는 장만 되살린다 — 옛 draft 에는 옆얼굴 45° 두 장이 남아 있을 수 있다 (2026-10-07 2장으로)
+  for (const s of SHOTS) if (draft.shots[s.id]) shots[s.id] = true;
   const session: Session = {
     ...fresh,
     screen: draft.screen,

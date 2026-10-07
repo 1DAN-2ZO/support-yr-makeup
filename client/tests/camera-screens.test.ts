@@ -2,7 +2,6 @@
 // 화면 1(촬영) · 화면 4 · 2-b AR · 화면 6 정면 1장이 공용 카메라 루프(#245)를 쓰나 — 카메라 새 장면에만 얼굴을 찾고, 화면 그리기(rAF)로는 안 찾는다. 떠나면 멈춘다.
 // 카메라·모델·rVFC·rAF 는 전부 가짜. 얼굴은 안 찾아지는 장면만 (분석 횟수만 본다)
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CAPTURE_GUIDE } from "@core/flow";
 import { GATE_TEXT } from "@core/gate";
 import { LIVE_SMOOTH } from "@core/smooth-params";
 import { LM } from "@core/landmarks";
@@ -12,6 +11,7 @@ import { captureScreen, type CaptureDeps } from "@screens/capture";
 import { fullRenderScreen } from "@screens/fullrender";
 import { LIVE_TEXT, liveScreen, type LiveDeps } from "@screens/live";
 import { startReviewShot } from "@screens/review-shot";
+import { ATTEMPT_TEXT, attemptScreen } from "@screens/attempt";
 import type { ScreenContext } from "@screens/shell";
 import { LMS } from "./helpers/synth-face";
 
@@ -74,7 +74,7 @@ afterEach(() => {
   delete (HTMLVideoElement.prototype as { cancelVideoFrameCallback?: unknown }).cancelVideoFrameCallback;
 });
 
-function ctxOf(screen: "capture" | "live" | "fullrender" | "review"): ScreenContext<null> {
+function ctxOf(screen: "capture" | "live" | "fullrender" | "review" | "attempt"): ScreenContext<null> {
   document.body.innerHTML = `<div id="root"></div>`;
   const root = document.getElementById("root") as HTMLElement;
   return { root, session: null, go: vi.fn(), goPart: vi.fn(), log: createLogger({ sid: "s1", screen, part: null, ver }, memorySink().sink) };
@@ -90,7 +90,8 @@ async function mountCapture(wait = 2000): Promise<() => void> {
     next: "looks",
   };
   const off = captureScreen<null>(deps).mount(ctx) as () => void;
-  Array.from(ctx.root.querySelectorAll("button")).find((b) => b.textContent === CAPTURE_GUIDE.button)!.click();
+  // 2026-10-07 새 흐름: 찍기 전 안내가 동의 화면(consent.ts 의 앞머리·안경·밝기)으로 옮겨가서
+  // 촬영 화면은 바로 카메라로 들어간다 — 눌러서 넘길 버튼이 없다
   await vi.advanceTimersByTimeAsync(wait);
   return off;
 }
@@ -120,8 +121,18 @@ async function mountReviewShot(wait = 2000): Promise<() => void> {
   return off;
 }
 
+/** 화면 5 시도사진 (⑥, 2026-10-06 새 흐름) — "찍기 시작" 을 눌러야 카메라를 켠다 */
+async function mountAttempt(wait = 2000): Promise<() => void> {
+  const ctx = ctxOf("attempt");
+  const off = attemptScreen<null>({ setAttempt: vi.fn(), next: "feedback" }).mount(ctx) as () => void;
+  Array.from(ctx.root.querySelectorAll("button")).find((b) => b.textContent === ATTEMPT_TEXT.start)!.click();
+  await vi.advanceTimersByTimeAsync(wait);
+  return off;
+}
+
 describe.each([
   ["촬영(화면 1)", mountCapture],
+  ["시도사진(화면 5)", mountAttempt],
   ["화면 4", mountLive],
   ["2-b AR", mountFullRender],
   ["리뷰 정면 1장(화면 6)", mountReviewShot],
@@ -167,6 +178,14 @@ describe.each([
     const off = await mount(100);
     cam.fire(33);
     expect(detect).toHaveBeenCalledTimes(1);
+    off();
+  });
+});
+
+describe("촬영(화면 1) 장 수 표시", () => {
+  it("CS6 정면 2장이라 '1/2' 로 시작한다 — 장 수를 글자로 박아 두지 않는다 (2026-10-07 옆얼굴 두 장 뺌)", async () => {
+    const off = await mountCapture();
+    expect(document.querySelector(".cam-step")?.textContent).toMatch(/^1\/2 · /);
     off();
   });
 });

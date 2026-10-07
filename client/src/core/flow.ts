@@ -1,5 +1,5 @@
 /**
- * 전체 흐름 — 순수 로직 (화면 순서, 촬영 4장 게이트, 세션, 화면 6 변환).
+ * 전체 흐름 — 순수 로직 (화면 순서, 촬영 2장 게이트, 세션, 화면 6 변환).
  * poc/full/lib/flow.js 를 계약 타입(types.ts)에 맞춰 옮긴 것. DOM·카메라를 쓰지 않는다.
  *
  * 모듈 ① 촬영·기준이 주인이고 ②③⑥이 받아 쓴다 (work-split-modules-v6.md §2).
@@ -61,9 +61,10 @@ export const SCREEN_NAME: Record<ScreenId, string> = {
 /** 부위 순서 = 룩 5부위 + 쉐딩·하이라이트(고정 마지막) */
 export const PART_ORDER: readonly PartId[] = PART_IDS;
 
-// ---------- 화면 1: 촬영 4장 ----------
+// ---------- 화면 1: 촬영 2장 ----------
+// 옆얼굴 45° 두 장은 뺐다 (2026-10-07, 새 흐름) — 쓰던 곳(서버 법선 정밀화 · 2-b AR)이 없어졌다
 
-export type ShotId = "front_open" | "front_closed" | "left_45" | "right_45";
+export type ShotId = "front_open" | "front_closed";
 
 export interface ShotSpec {
   id: ShotId;
@@ -84,17 +85,14 @@ export const SHOTS: readonly ShotSpec[] = [
  * 머리카락·안경이 가리면 그 값이 틀어지므로 찍기 전에 한 번 알려 준다 (안경은 처음부터 쓰고 있어 이마 급변으로 못 잡는다). 숫자 없이.
  */
 export const CAPTURE_GUIDE = {
-  title: "카메라 준비",
+  title: "찍기 전에 확인해 주세요",
   lines: [
     "앞머리를 넘겨서 이마가 다 보이게 해 주세요",
-    "머리카락이나 손이 얼굴을 가리지 않게 해 주세요",
+    "머리카락을 귀 뒤로 넘겨서 양쪽 귀가 다 보이게 해 주세요",
     "안경을 쓰셨다면 벗어 주세요",
   ],
-  button: "카메라 켜기",
+  button: "확인했어요",
 } as const;
-
-/** 새 흐름은 서버 개인화를 하지 않는다. 정면 눈 뜬 사진만 후속 화면 기준으로 쓴다 */
-export const SERVER_SHOTS: readonly ShotId[] = ["front_open"];
 
 /** 촬영 조건 한계. 화면 4 게이트(gate.ts, 1-9)와 값을 맞춘다 */
 export interface CaptureLimits {
@@ -108,7 +106,7 @@ export interface CaptureLimits {
   brightTol: number;
   /**
    * 이마 L* 절대 범위 — 첫 장부터 너무 어둡거나 밝으면 막는다 (impl-screen1-5 1-2 "이마 L* 40~85", 가정값 → 1-4 로 확정).
-   * 2026-09-22 iPhone 이 L* 9~23 인 방에서 4장이 다 찍혀서 넣었다
+   * 2026-09-22 iPhone 이 L* 9~23 인 방에서 전부 찍혀서 넣었다
    */
   brightMin: number;
   brightMax: number;
@@ -119,16 +117,9 @@ export interface CaptureLimits {
   eyeMinPx: number;
   /** 이마 a*·b* 가 첫 장 대비 이만큼 넘게 돌면 "조명 색이 바뀜" (1-9). 임계는 1-4 실측으로 확정, 지금은 가정값 */
   colorTol: number;
-  /**
-   * 45° 장 전용 밝기·색 허용 차. 고개를 돌리면 이마에 빛이 닿는 각도가 바뀌어 정면끼리보다 크게 흔들린다 (노출 잠금과 무관).
-   * 2026-09-30 1차 실측(15회, 폰 4종, 비정상 1회 제외): 정면 두 장 최대 밝기 7.5·색 4.1 / **45° 최대 밝기 11.6·색 8.0**.
-   * 규칙 "정상 최대 × 1.5" → 정면 12·6 (그대로), 45° 18·12. 내일(#215) 사람 2·3 조명 3종으로 검증 후 확정
-   */
-  brightTol45: number;
-  colorTol45: number;
   stableFrames: number;
 }
-export const CAPTURE_LIMITS: CaptureLimits = { pitch: 10, sharpMin: 150, brightTol: 12, brightMin: 40, brightMax: 85, eyeMinPx: 80, colorTol: 6, brightTol45: 18, colorTol45: 12, stableFrames: 5 };
+export const CAPTURE_LIMITS: CaptureLimits = { pitch: 10, sharpMin: 150, brightTol: 12, brightMin: 40, brightMax: 85, eyeMinPx: 80, colorTol: 6, stableFrames: 5 };
 
 /** 촬영 조건 문구. 숫자 없이 한 줄 (기능 정의서 F-01) */
 export const SHOT_TEXT = {
@@ -137,11 +128,6 @@ export const SHOT_TEXT = {
   occluded: "얼굴을 가리지 말아 주세요",
   bangs: "앞머리를 넘겨서 이마가 보이게 해 주세요",
   front: "조금만 정면으로",
-  left: "고개를 왼쪽으로 조금 더",
-  right: "고개를 오른쪽으로 조금 더",
-  back: "너무 돌렸어요. 조금만 돌아오세요",
-  wrong_left: "반대쪽이에요. 왼쪽으로 돌려 주세요",
-  wrong_right: "반대쪽이에요. 오른쪽으로 돌려 주세요",
   open: "눈을 떠 주세요",
   close: "눈을 감아 주세요",
   near: "조금 더 가까이",
@@ -171,7 +157,7 @@ export interface ShotMeasure {
   foreheadOccluded?: boolean;
   /** 얼굴은 잡혔는데 이마 대부분이 머리카락이라 이마 피부를 못 잰다 (color.foreheadLab null, 2026-09-30). 조명 기준을 몰라서 안 찍는다 */
   foreheadHidden?: boolean;
-  /** 눈 폭 px — 두 눈 중 큰 쪽 (45° 장은 먼 눈이 짧아진다). 없으면 조건 생략 */
+  /** 눈 폭 px — 두 눈 중 큰 쪽. 없으면 조건 생략 */
   eyeWidthPx?: number;
   /** 라플라시안 분산 */
   sharpness?: number;
@@ -185,13 +171,9 @@ export interface ShotMeasure {
   stableCount?: number;
 }
 
-/** 45° 차례에 반대쪽으로 이만큼(°) 넘게 돌리면 "반대쪽이에요" */
-export const WRONG_SIDE_DEG = 15;
-
 /**
  * 얼굴 크기 허용 범위 (얼굴 폭 / 프레임 **짧은 변**). 폰 세로는 짧은 변 = 폭이라 그대로.
- * 2026-09-23 iPad 가로(1920×1080)에서 긴 변으로 나눠 정면도 0.28 에 걸치고, 45° 는 보이는 얼굴 폭이 줄어 늘 "가까이" 에 막혔다
- * → 짧은 변으로 나누고, 45° 장은 하한을 보지 않는다 (크기는 눈 폭 조건이 본다. 가까운 눈은 45° 에도 줄지 않는다)
+ * 2026-09-23 iPad 가로(1920×1080)에서 긴 변으로 나눠 정면도 0.28 에 걸쳐서 짧은 변으로 나눈다
  */
 export const FACE_RATIO = { min: 0.28, max: 0.75 } as const;
 /** 얼굴 전체가 프레임 안에 있어야 하는 최소 여백 (짧은 변의 3%). 2026-09-21 폰 실측: 턱·이마가 잘린 장이 통과해서 추가 */
@@ -205,7 +187,6 @@ export function shotGate(shotId: ShotId, m: ShotMeasure, limits: CaptureLimits =
   const shot = SHOTS.find((s) => s.id === shotId);
   if (!shot) throw new Error(`알 수 없는 촬영 장: ${shotId}`);
   const stableCount = m.stableCount ?? 0;
-  const side = shotId === "left_45" || shotId === "right_45";   // 45° 장은 밝기·색 허용 차가 넓다 (brightTol45·colorTol45)
   const fail = (firstFail: GateFail, key: ShotTextKey): GateResult => ({ ok: false, firstFail, text: SHOT_TEXT[key], stableCount });
 
   if (!m.faceDetected) return fail("face", "none");
@@ -216,19 +197,14 @@ export function shotGate(shotId: ShotId, m: ShotMeasure, limits: CaptureLimits =
   // 가림 (2026-09-23 #144): 이마 급변. 손 검출 모델 없이 손·머리카락·브러시·마스크를 한 조건으로. 무엇인지는 모른다 → "visible"
   if (m.foreheadOccluded) return fail("visible", "occluded");
   if (m.foreheadHidden) return fail("visible", "bangs");
-  if (m.yaw < shot.yaw[0] || m.yaw > shot.yaw[1]) {
-    if (shot.id.startsWith("front")) return fail("angle", "front");
-    // 반대로 돌렸을 때 "조금 더" 라고 하면 그쪽으로 더 돌린다 (2026-09-23 iPad: 왼쪽 45° 차례에 yaw +84 까지, 20초)
-    if (shot.id === "left_45") return fail("angle", m.yaw >= WRONG_SIDE_DEG ? "wrong_left" : m.yaw > shot.yaw[1] ? "left" : "back");
-    return fail("angle", m.yaw <= -WRONG_SIDE_DEG ? "wrong_right" : m.yaw < shot.yaw[0] ? "right" : "back");
-  }
+  if (m.yaw < shot.yaw[0] || m.yaw > shot.yaw[1]) return fail("angle", "front");
   if (Math.abs(m.pitch) > limits.pitch + 5) return fail("angle", "front");
   const closed = m.closedA && m.closedB;
   const open = !m.closedA && !m.closedB;
   if (shot.eyes === "open" && !open) return fail("eyes", "open");
   if (shot.eyes === "closed" && !closed) return fail("eyes", "close");
   if (typeof m.faceRatio === "number") {
-    if (shot.id.startsWith("front") && m.faceRatio < FACE_RATIO.min) return fail("size", "near");
+    if (m.faceRatio < FACE_RATIO.min) return fail("size", "near");
     if (m.faceRatio > FACE_RATIO.max) return fail("size", "far");
   }
   if (typeof m.eyeWidthPx === "number" && m.eyeWidthPx < limits.eyeMinPx) return fail("size", "near");
@@ -237,13 +213,12 @@ export function shotGate(shotId: ShotId, m: ShotMeasure, limits: CaptureLimits =
   if (typeof m.foreheadL === "number" && m.foreheadL > limits.brightMax) return fail("bright", "bright_high");
   if (typeof m.baselineL === "number" && typeof m.foreheadL === "number") {
     const d = m.foreheadL - m.baselineL;
-    const tol = side ? limits.brightTol45 : limits.brightTol;
-    if (d < -tol) return fail("bright", "bright_low");
-    if (d > tol) return fail("bright", "bright_high");
+    if (d < -limits.brightTol) return fail("bright", "bright_low");
+    if (d > limits.brightTol) return fail("bright", "bright_high");
   }
   if (m.foreheadAb && m.baselineAb) {
     const dab = Math.hypot(m.foreheadAb.a - m.baselineAb.a, m.foreheadAb.b - m.baselineAb.b);
-    if (dab > (side ? limits.colorTol45 : limits.colorTol)) return fail("color", "color");
+    if (dab > limits.colorTol) return fail("color", "color");
   }
   if (stableCount < limits.stableFrames) return fail("stable", "stable");
   return { ok: true, firstFail: null, text: SHOT_TEXT.ready, stableCount };

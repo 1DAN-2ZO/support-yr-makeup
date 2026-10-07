@@ -94,10 +94,13 @@ cd .. && python -m http.server 8000       # 샘플 사진을 쓰므로 poc/ 에�
 
 | | |
 |---|---|
-| 처리 흐름 (기술판) | `docs/processing-flow-v6.png` |
-| 처리 흐름 (쉬운 설명판) | `docs/processing-flow-eli5-v6.png` |
-| 시스템 아키텍처 | `docs/system-architecture-v6.png` |
-| 사용자 플로우차트 | `docs/flowchart-v6.png` |
+| **사용자 플로우차트 (새 흐름, 2026-10-06)** | `docs/flowchart-new-flow.svg` (그림 파일 `.png`) |
+| 사용자 플로우차트 — 옛 흐름 (2026-09-16) | `docs/flowchart-v6.png` |
+| 처리 흐름 (기술판) — 옛 흐름 | `docs/processing-flow-v6.png` |
+| 처리 흐름 (쉬운 설명판) — 옛 흐름 | `docs/processing-flow-eli5-v6.png` |
+| 시스템 아키텍처 — 옛 흐름 | `docs/system-architecture-v6.png` |
+
+옛 흐름 그림에는 지금 없는 것이 들어 있다 — 맨얼굴 4장 · 화장 10종 고르기 · 2-b AR · 실시간 테두리(화면 4) · 부위별 채점과 점수. 지금 흐름은 `docs/service-definition-v6.md` 와 새 플로우차트를 본다.
 
 ## 상태
 

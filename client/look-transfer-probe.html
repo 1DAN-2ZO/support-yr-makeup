@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <title>룩 옮기기 실험 — 당화응</title>
+    <!--
+      [dev 전용] 배우고 싶은 화장 사진을 내 맨얼굴에 옮기는 실험 (client/src/core/look-transfer.ts · look-extract.ts).
+      앱 흐름과 상관없는 독립 페이지다. 사진은 브라우저 안에서만 쓰고 어디에도 보내거나 저장하지 않는다.
+    -->
+    <style>
+      :root { color-scheme: light dark; --line: #8884; }
+      body { margin: 0; padding: 16px; font: 14px/1.5 system-ui, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; background: Canvas; color: CanvasText; }
+      h1 { font-size: 18px; margin: 0 0 4px; }
+      h2 { font-size: 14px; margin: 0 0 6px; }
+      h3 { font-size: 14px; margin: 20px 0 8px; opacity: .75; }
+      .note { margin: 0 0 12px; opacity: .75; font-size: 13px; }
+      .inputs { display: flex; flex-wrap: wrap; gap: 16px; margin: 0 0 12px; }
+      .inputs label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; }
+      .inputs input { font: inherit; font-weight: 400; }
+      button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line); background: ButtonFace; color: ButtonText; cursor: pointer; }
+      .cam { display: flex; gap: 8px; }
+      #cam { width: 100%; max-width: 480px; border-radius: 8px; background: #000; transform: scaleX(-1); margin: 0 0 8px; }
+      #cam[hidden] { display: none; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; align-items: start; }
+      canvas { width: 100%; height: auto; border-radius: 8px; background: #000; display: block; }
+      .controls { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin: 8px 0; }
+      .controls input[type="range"] { width: 200px; vertical-align: middle; }
+      .controls select, .controls input[type="number"] { font: inherit; }
+      .controls input[type="number"] { width: 5em; }
+      .gen { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+      #genStatus { font-size: 13px; }
+      .guide { display: grid; grid-template-columns: minmax(280px, 2fr) minmax(220px, 1fr); gap: 16px; align-items: start; }
+      @media (max-width: 760px) { .guide { grid-template-columns: 1fr; } }
+      #guideBoard { display: grid; grid-template-columns: repeat(auto-fit, minmax(520px, 1fr)); gap: 14px; align-items: start; margin: 0 0 16px; }
+      @media (max-width: 700px) { #guideBoard { grid-template-columns: 1fr; } .gcard:not(.gall) .pair { grid-template-columns: 1fr; } }
+      .gcard { border: 1px solid var(--line); border-left: 5px solid var(--c, var(--line)); border-radius: 10px; padding: 10px 12px; }
+      .gcard.none { opacity: .7; }
+      .gcard h4 { margin: 0 0 8px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+      .gcard h4 small { font-weight: 400; opacity: .7; font-size: 12px; }
+      .gcard .swatch { display: inline-block; width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px var(--line); }
+      .gcard .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .gcard .pair + .pair { margin-top: 8px; }
+      .gcard figure { margin: 0; }
+      .gcard figcaption { font-size: 12px; opacity: .75; margin-top: 3px; }
+      .gcard .steps { margin: 10px 0 4px; padding-left: 20px; font-size: 14px; }
+      .gcard .steps li { margin: 2px 0; }
+      .gcard details { font-size: 12px; opacity: .85; }
+      .gcard details ul { margin: 4px 0 0; padding-left: 18px; }
+      .gcard .empty { margin: 0; font-size: 13px; }
+      .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 8px; font-size: 13px; }
+      .legend span::before { content: ""; display: inline-block; width: 18px; height: 4px; border-radius: 2px; background: var(--c); vertical-align: middle; margin-right: 5px; }
+      .legend span.off { opacity: .45; text-decoration: line-through; }
+      #guideNotes h4 { margin: 10px 0 4px; font-size: 14px; border-left: 4px solid var(--c, transparent); padding-left: 6px; }
+      #guideNotes ol.steps { margin: 0 0 4px; padding-left: 20px; font-size: 13px; font-weight: 600; }
+      #guideNotes ul.points { margin: 0 0 4px; padding-left: 18px; font-size: 13px; list-style: none; }
+      #guideNotes ul.measured { opacity: .8; }
+      #guideNotes ul { margin: 0; padding-left: 18px; font-size: 13px; }
+      #guideNotes .none { opacity: .6; font-size: 13px; }
+      #guideNotes .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--line); vertical-align: -2px; margin-left: 6px; }
+      table { border-collapse: collapse; width: 100%; max-width: 760px; margin-top: 12px; }
+      th, td { border-bottom: 1px solid var(--line); padding: 5px 6px; text-align: left; vertical-align: top; }
+      td.v { font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; }
+      td.ref { font-size: 12px; opacity: .75; }
+      #status { font-size: 13px; margin: 6px 0; }
+      .warn { color: #d9480f; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <h1>룩 옮기기 실험</h1>
+    <p class="note">내 맨얼굴 사진과 배우고 싶은 화장 사진을 한 장씩 고른 뒤 "생성 모델로 입히기"를 누르면, 화장한 내 얼굴을 만들어 봅니다. 이때 두 사진의 얼굴 부분이 이 화면을 띄운 PC 의 생성 모델 서버(poc/look-transfer-gen)로 전송됩니다(외부 서비스로는 나가지 않고, 저장하지 않습니다). 안경은 벗고, 얼굴이 크게 나온 정면 사진이 잘 됩니다.</p>
+    <div class="inputs">
+      <label>① 내 맨얼굴 사진<input id="bare" type="file" accept="image/*" />
+        <span class="cam"><button id="camStart" type="button">웹캠으로 찍기</button><button id="camShot" type="button" hidden>찍기</button><button id="camStop" type="button" hidden>취소</button></span>
+      </label>
+      <label>② 배우고 싶은 화장 사진<input id="ref" type="file" accept="image/*" /></label>
+    </div>
+    <!-- 미리보기만 거울처럼 뒤집는다. 찍힌 사진은 뒤집지 않는다 -->
+    <video id="cam" autoplay playsinline muted hidden></video>
+    <div class="controls gen">
+      <button id="gen" type="button" disabled>생성 모델로 입히기</button>
+      <label>입히는 방법
+        <select id="genArea">
+          <option value="color">바뀐 색만 내 얼굴에 입히기 (얼굴 모양 그대로)</option>
+          <option value="parts">화장 부위만 붙이기</option>
+          <option value="face">얼굴 안쪽을 통째로 붙이기</option>
+          <option value="raw">모델이 만든 그대로</option>
+        </select>
+      </label>
+      <label title="이만큼 만들어 보고 화장 사진과 가장 닮은 한 장을 고른다. 많을수록 닮은 것을 찾을 가능성이 크지만 한 장에 5초쯤 더 걸린다">후보 수
+        <select id="genCount"><option value="1">1</option><option value="4" selected>4</option><option value="8">8</option></select>
+      </label>
+      <label title="후보를 이 번호부터 차례로 만든다. 같은 사진·같은 번호면 늘 같은 결과가 나온다">시작 번호 <input id="seed" type="number" min="0" value="0" /></label>
+      <label title="만든 후보들 — 닮음 점수가 가장 높은 것이 골라져 있다. 다른 후보를 골라 볼 수 있다">후보 <select id="candPick"></select></label>
+      <label title="모델에게 주는 지시문 (poc/look-transfer-gen/prompt.py)">지시문 <select id="genPrompt"></select></label>
+      <label title="화장 사진에서 얼굴만 남기고 머리카락·옷·배경은 회색으로 가려 보낸다 — 옷·머리 색을 화장으로 가져오지 않게">화장 사진
+        <select id="refMask">
+          <option value="face">얼굴만 (나머지 가림)</option>
+          <option value="faceNoEyes">얼굴만 + 눈동자도 가림</option>
+          <option value="crop">얼굴 둘레 그대로</option>
+        </select>
+      </label>
+      <label>결과 보기
+        <select id="method">
+          <option value="gen">생성 모델</option>
+          <option value="color">색 옮기기 (이전 방식)</option>
+        </select>
+      </label>
+      <span id="genStatus"></span>
+    </div>
+    <div id="status">사진 두 장을 골라 주세요.</div>
+    <div class="grid">
+      <div><h2>내 맨얼굴</h2><canvas id="cvBare" width="4" height="3"></canvas></div>
+      <div><h2>화장 사진</h2><canvas id="cvRef" width="4" height="3"></canvas></div>
+      <div><h2>입힌 결과</h2><canvas id="cvResult" width="4" height="3"></canvas></div>
+    </div>
+    <div class="controls">
+      <label>화장 세기 <input id="strength" type="range" min="0" max="150" value="100" /> <span id="strengthVal">100%</span></label>
+      <label><input class="part" type="checkbox" value="lip" checked /> 입술</label>
+      <label><input class="part" type="checkbox" value="eye" checked /> 눈 (섀도·라이너)</label>
+      <label title="화장 사진 속 사람의 원래 눈썹 모양·색이 같이 옮겨 와서 기본은 꺼 둠"><input class="part" type="checkbox" value="brow" /> 눈썹 (그 사람 눈썹이 같이 옮겨 옴)</label>
+      <label><input class="part" type="checkbox" value="cheek" checked /> 볼</label>
+      <label><input id="hair" type="checkbox" checked /> 머리카락이 덮은 곳 빼기</label>
+      <label title="영역 안이라도 색이 거의 안 바뀐 맨살은 건드리지 않는다. 끄면 영역 전체에 입힌다 (연한 볼터치가 사라질 때 꺼 본다)"><input id="dropWeak" type="checkbox" checked /> 색이 바뀐 곳만 (주변 맨살 그대로)</label>
+      <button id="hold" type="button">누르는 동안 원본 보기</button>
+    </div>
+
+    <h3>부위 가이드 — 떼어 낸 화장에서 뽑은 "어디에, 얼마나, 어떤 순서로"</h3>
+    <p class="note">부위마다 선 색이 다릅니다. <b>점선</b>은 바를 자리의 바깥 경계, 그 안의 <b>실선</b>은 색을 가장 진하게 올릴 자리, <b>굵은 선</b>은 아이라이너, <b>화살표</b>는 꼬리가 뻗는 방향이나 블러셔를 쓸어 주는 방향, <b>흰 선과 숫자</b>는 높이 · 두께(눈 폭 대비 %), <b>번호 점</b>은 짚어 줄 자리입니다. 오른쪽 그림(내 맨얼굴)에는 바를 자리를 그 화장 색으로 칠해 두었습니다. "오른쪽 · 왼쪽"은 본인 기준입니다(사진에서는 반대쪽). 경계값은 사진 몇 장으로 맞춘 눈대중 값이고 팀 기준이 아닙니다.</p>
+    <div id="guideBoard"></div>
+    <h3>크게 보기</h3>
+    <div class="controls">
+      <label>부위
+        <select id="guidePart">
+          <option value="all">전체</option>
+          <option value="brow">눈썹</option>
+          <option value="liner">아이라인 (눈머리 ~ 눈꼬리)</option>
+          <option value="wing">아이라인 꼬리</option>
+          <option value="shadow">섀도우</option>
+          <option value="lip">입술</option>
+          <option value="cheek">볼</option>
+        </select>
+      </label>
+      <label>바탕
+        <select id="guideBase">
+          <option value="result">입힌 결과 (정답사진)</option>
+          <option value="bare">내 맨얼굴</option>
+        </select>
+      </label>
+    </div>
+    <div class="guide">
+      <canvas id="cvGuide" width="4" height="3"></canvas>
+      <div id="guideNotes"></div>
+    </div>
+
+    <h3>중간 과정 (어디서 틀렸는지 볼 때)</h3>
+    <div class="grid">
+      <div><h2>1단계 — 화장 사진을 내 얼굴 모양에 포갠 것</h2><canvas id="cvOut" width="4" height="3"></canvas></div>
+      <div><h2>2단계 — 떼어 낸 화장 (내 맨살색 위에 올려 봄)</h2><canvas id="cvLayer" width="4" height="3"></canvas></div>
+    </div>
+    <div class="controls">
+      <label>포갠 것 섞기 <input id="mix" type="range" min="0" max="100" value="100" /> <span id="mixVal">100%</span></label>
+      <label><input id="mesh" type="checkbox" /> 얼굴 그물 보기</label>
+    </div>
+    <table>
+      <thead><tr><th>확인</th><th>내 맨얼굴</th><th>화장 사진</th><th>기준</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <script type="module" src="/src/screens/look-transfer-probe.ts"></script>
+  </body>
+</html>

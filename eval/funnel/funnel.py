@@ -4,8 +4,8 @@
 자동으로 붙는 것: sid, t, screen, part, ver.
 
 여기서 내는 숫자 (E-8, work-split-modules-v6.md §3):
-  동의 거부율 · 촬영 완주율과 장별 재촬영 · 룩 대기 중 이탈 · 게이트 첫 실패 분포
-  · 부위별 확인만·재확인·건너뜀과 이유 · 리뷰 도달률 · 결과 저장 클릭률 · 세션 시간
+  화면별 도달률 · 이탈 위치(끝까지 못 간 세션이 멈춘 화면) · 동의 거부율 · 촬영 완주율과 장별 재촬영
+  · 게이트 첫 실패 분포 · 부위별 확인만·재확인·건너뜀과 이유 · 피드백 도달률 · 결과 저장 클릭률 · 세션 시간
   · 얼굴 놓침 · 복원 성공률 · 채점 걸린 시간
   · VLM 개인화(vlm_plan, 2026-09-29): 성공률 · 걸린 시간 · 재질문 · 실패 이유 · 실패 뒤 이탈
 """
@@ -30,8 +30,21 @@ def _name(v: Any) -> str:
     return RENAMED.get(s, s)
 
 
-# 사용자가 흘러가는 순서. 퍼널은 이 순서로 "어디까지 왔나"를 센다
-FUNNEL_SCREENS = ["consent", "capture", "looks", "fullrender", "guide", "live", "result", "review"]
+# 사용자가 흘러가는 순서 (새 흐름 2026-10-06, client/src/core/screens.ts SCREEN_ORDER).
+# 퍼널은 이 순서로 "어디까지 왔나"를 센다
+FUNNEL_SCREENS = ["consent", "capture", "answer", "partguide", "attempt", "feedback", "save"]
+
+# 옛 흐름 화면 → 새 흐름 자리. 앱이 옛 화면에 멈춘 세션을 옮기는 표(screens.ts inNewFlow)와 같다
+# — 옛 로그도 같은 줄로
+OLD_SCREENS = {
+    "processing": "answer",
+    "looks": "answer",
+    "fullrender": "answer",
+    "guide": "partguide",
+    "live": "partguide",
+    "result": "partguide",
+    "review": "feedback",
+}
 
 
 def parse_jsonl(text: str) -> list[Event]:
@@ -63,8 +76,12 @@ def by_session(events: Iterable[Event]) -> dict[str, list[Event]]:
 class SessionSummary:
     sid: str
     consented: bool | None = None
+    """동의 안내를 열었나 (button consent_open). '동의하지 않음' 이 '닫기' 가 되어 거부를 이걸로 센다 #321"""
+    consent_opened: bool = False
     """도달한 화면 (FUNNEL_SCREENS 중)"""
     reached: set[str] = field(default_factory=set)
+    """들어간 화면 이름 그대로 (옛 흐름 이름 포함)"""
+    seen: set[str] = field(default_factory=set)
     furthest: str | None = None
     shots_ok: set[str] = field(default_factory=set)
     retries: Counter = field(default_factory=Counter)
@@ -97,6 +114,8 @@ def summarize_session(events: list[Event]) -> SessionSummary:
             s.consented = bool(e.get("ok"))
         elif name == "screen_enter":
             sc = e.get("screen")
+            s.seen.add(str(sc))
+            sc = OLD_SCREENS.get(sc, sc) if isinstance(sc, str) else sc
             if sc in FUNNEL_SCREENS:
                 s.reached.add(sc)
         elif name == "capture":
@@ -121,6 +140,8 @@ def summarize_session(events: list[Event]) -> SessionSummary:
                 s.score_ms.append(int(e["ms"]))
         elif name == "button" and str(e.get("button")).startswith("save"):
             s.saved_result = True
+        elif name == "button" and e.get("button") == "consent_open":
+            s.consent_opened = True
         elif name == "restore":
             s.restore_ok = bool(e.get("ok"))
         elif name == "vlm_plan":
@@ -187,9 +208,20 @@ def aggregate(events: Iterable[Event]) -> list[dict]:
         reached = sum(1 for s in sessions if sc in s.reached)
         row(f"퍼널 · {sc} 도달률(%)", _pct(reached, n), f"{reached}/{n}")
 
+    # 1-b. 이탈 위치 — 끝(마지막 화면)까지 못 간 세션이 가장 멀리 간 화면.
+    # "나갔다" 신호는 폰에서 안 올 때가 많아 이렇게 본다
+    last = FUNNEL_SCREENS[-1]
+    stopped: Counter = Counter(s.furthest for s in sessions if s.furthest and s.furthest != last)
+    for sc in FUNNEL_SCREENS[:-1]:
+        if stopped[sc]:
+            row(f"이탈 위치 · {sc}(%)", _pct(stopped[sc], n), f"{stopped[sc]}/{n}")
+
     # 2. 동의
-    denied = sum(1 for s in sessions if s.consented is False)
-    row("동의 거부율(%)", _pct(denied, n), f"{denied}/{n}")
+    # 거부 = 명시적 거부(옛 로그) 또는 안내를 열고도 동의하지 않음. 안내를 안 연 세션은 거부가 아니다
+    opened = sum(1 for s in sessions if s.consent_opened)
+    denied = sum(1 for s in sessions if s.consented is False or (s.consent_opened and s.consented is None))
+    row("동의 안내 연 비율(%)", _pct(opened, n), f"{opened}/{n}")
+    row("동의 거부율(%)", _pct(denied, n), f"{denied}/{n} — 안내를 열고 동의 안 함 포함")
 
     # 3. 촬영
     done4 = sum(1 for s in sessions if len(s.shots_ok) >= 4)
@@ -229,7 +261,7 @@ def aggregate(events: Iterable[Event]) -> list[dict]:
     row("재확인(회/세션)", round(reconf / n, 2), f"합계 {reconf}")
 
     # 6. 끝
-    row("리뷰 도달률(%)", _pct(sum(1 for s in sessions if "review" in s.reached), n))
+    row("피드백 도달률(%)", _pct(sum(1 for s in sessions if "feedback" in s.reached), n))
     row("결과 저장 클릭률(%)", _pct(sum(1 for s in sessions if s.saved_result), n))
     ends: Counter = Counter(s.end_reason for s in sessions if s.end_reason)
     for r, c in ends.most_common():
@@ -282,7 +314,7 @@ def aggregate(events: Iterable[Event]) -> list[dict]:
         for mname, c in models.most_common():
             row(f"개인화 모델 · {mname}(회)", c, "계획이 나온 호출")
         failed = [s for s in sessions if any(e.get("fail") not in VLM_PLANNED for e in s.vlm)]
-        gone = sum(1 for s in failed if "fullrender" not in s.reached)
+        gone = sum(1 for s in failed if "fullrender" not in s.seen)
         row(
             "개인화 실패 뒤 이탈(%)",
             _pct(gone, len(failed)),

@@ -1,7 +1,7 @@
 /**
- * 화면 1 — 맨얼굴 4장 자동 촬영 (F-01, 정의서 화면 1). 모듈 ①.
+ * 화면 1 — 맨얼굴 2장(정면 눈 뜬 장 · 감은 장) 자동 촬영 (F-01, 정의서 화면 1). 모듈 ①.
  *
- * 흐름: 촬영 안내(이마·귀·안경) → 카메라 → 장마다 조건 한 줄 → 조건이 안정되면 자동으로 찍음 → 4장 → 완료(썸네일·장별 다시 찍기) → 서버 처리.
+ * 흐름: 촬영 안내(이마·귀·안경) → 카메라 → 장마다 조건 한 줄 → 조건이 안정되면 자동으로 찍음 → 2장 → 완료(썸네일·장별 다시 찍기) → 서버 처리.
  * 측정·조건은 프로브(capture-probe, 폰 실측 1-2)와 같은 코드다: core/capture-measure · screens/frame-measure · core/capture-run.
  *
  *  - 정면 눈 뜸을 찍으면 기준(Baseline)을 만들고 쌩얼 사진을 IndexedDB 에 저장한다 (1-7 "bare").
@@ -50,7 +50,7 @@ export interface CaptureDeps {
   /** 얼굴형 판단용 정면 프레임 (F-02). 메모리에만 */
   setFaceShapeFrames: (frames: HTMLCanvasElement[]) => void;
   events: CaptureEvents;
-  /** 4장 뒤 "화장 고르러 가기" 가 가는 곳 */
+  /** 다 찍은 뒤 "화장 고르러 가기" 가 가는 곳 */
   next: ScreenId;
 }
 
@@ -121,7 +121,7 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
 
       const shots = (): Partial<Record<ShotId, unknown>> => deps.getShots();
 
-      // ---------- 완료 (4장) ----------
+      // ---------- 완료 ----------
       function showDone(): void {
         stopCamera();
         wrap.textContent = "";
@@ -227,7 +227,7 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
         };
 
         const setStep = (): void => {
-          step.textContent = run.shot ? `${SHOTS.findIndex((s) => s.id === run.shot) + 1}/4 · ${STEP_TEXT[run.shot]}` : "";
+          step.textContent = run.shot ? `${SHOTS.findIndex((s) => s.id === run.shot) + 1}/${SHOTS.length} · ${STEP_TEXT[run.shot]}` : "";
         };
         const setCoach = (text: string): void => {
           if (coachText) coachText.textContent = text || "얼굴을 맞춰 주세요";

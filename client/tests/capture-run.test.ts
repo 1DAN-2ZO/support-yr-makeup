@@ -30,7 +30,7 @@ describe("runStep", () => {
 
   it("K3 찍은 장은 건너뛰고 다음 장부터, 다 찍었으면 할 일 없음", () => {
     expect(startRun({ front_open: {} }, 0).shot).toBe("front_closed");
-    const done = startRun({ front_open: 1, front_closed: 1, left_45: 1, right_45: 1 }, 0);
+    const done = startRun({ front_open: 1, front_closed: 1 }, 0);
     expect(done.shot).toBeNull();
     expect(runStep(done, OK, 1)).toMatchObject({ take: false, gate: null });
   });
