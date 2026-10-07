@@ -317,7 +317,7 @@ export function isShade(q: DiffPx, opts: Pick<ExtractOptions, "shadeHue" | "shad
 }
 
 /**
- * 맨얼굴 ↔ 화장 사진 색 차 — 떼기(extractAll)와 모양 숫자 재기(makeup-fit)가 같은 기준을 쓴다.
+ * 맨얼굴 ↔ 화장 사진 색 차 — 떼기(extractAll)가 쓴다.
  * 스위치(blur · skinMap · adaptive)를 여기서 다 적용하고, floor 는 adaptive 의 '피부 변화 윗선'(꺼져 있으면 0).
  */
 export interface DiffField {
