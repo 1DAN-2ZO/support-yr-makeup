@@ -204,6 +204,23 @@ describe("buildGuide", () => {
     expect(g.wing.found).toBe(false);
   });
 
+  it("아이라인 꼬리: 뿌리가 굵고 끝이 가는 꼬리도 끝까지 따라간다 — 굵은 데서 끊지 않는다", () => {
+    // 눈꼬리(x 170)에서 바깥 위 10° 로 32px, 뿌리 반 굵기 6px → 끝 1px 로 가늘어지는 쐐기
+    const outer = P(LM.eyeA.outer), th = (10 * Math.PI) / 180, len = 32;
+    const end = { x: outer.x - len * Math.cos(th), y: outer.y - len * Math.sin(th) };
+    const g = guideOf((x, y) => {
+      const along = ((outer.x - x) * Math.cos(th) + (outer.y - y) * Math.sin(th));
+      if (along < 0 || along > len) return null;
+      const off = Math.abs(-(outer.x - x) * Math.sin(th) + (outer.y - y) * Math.cos(th));
+      return off <= 1 + 5 * (1 - along / len) ? INK : null;
+    });
+    expect(g.wing.found).toBe(true);
+    const tip = g.wing.dots.find((d) => d.label === "오른쪽 꼬리 끝");
+    expect(tip).toBeDefined();
+    expect(near(tip!.at, end)).toBeLessThanOrEqual(9);
+    expect(pctOf(noteOf(g, "wing", "오른쪽 눈"))).toBeGreaterThanOrEqual(28);   // 32px / 90px = 36%
+  });
+
   it("아이라인: 정답사진에서 뗀 것에 없으면, 화장 사진을 직접 포개서 뗀 것에서 찾는다", () => {
     const w = wingAt(20, 3, 30, 1.6);
     const layerOf = (paint: (x: number, y: number) => Rgb | null) => extractMakeup(bare, { data: photo(paint).data as Uint8ClampedArray, w: W, h: H }, LMS);
