@@ -299,13 +299,14 @@ function camera(view: HTMLCanvasElement, msg: HTMLElement, camBtn: HTMLButtonEle
 
 // ---------- 1 맨얼굴 ----------
 
-const bareView = $<HTMLCanvasElement>("bareView"), bareMsg = $("bareMsg"), bareNext = $<HTMLButtonElement>("bareNext");
+const bareView = $<HTMLCanvasElement>("bareView"), bareMsg = $("bareMsg"), bareNext = $<HTMLButtonElement>("bareNext"), bareSave = $<HTMLButtonElement>("bareSave");
 
 async function setBare(c: HTMLCanvasElement): Promise<void> {
   bareCv = c;
   base = null;
   resetFrom(1);
   preview(bareView, c);
+  bareSave.disabled = false;
   bareNext.disabled = true;
   say(bareMsg, "얼굴 점을 찾는 중…");
   const lm = await lmOf(c);
@@ -329,6 +330,8 @@ $<HTMLInputElement>("bareFile").addEventListener("change", async (e) => {
   if (f) await setBare(await canvasOfFile(f));
 });
 bareNext.addEventListener("click", () => go(2));
+// 개발용 — 같은 사진으로 다시 돌려 보려고 원본 크기 그대로 내려받는다
+bareSave.addEventListener("click", () => { if (bareCv) download(bareCv, "nudy-bare"); });
 
 // ---------- 2 참고 사진 ----------
 
@@ -576,18 +579,23 @@ const stamp = (): string => {
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
 };
 
-$("saveBtn").addEventListener("click", () => {
-  const c = resultImage();
-  if (!c) { say(saveMsg, "피드백까지 마쳐야 저장할 수 있어요", true); return; }
+/** PNG 로 이 기기의 다운로드 폴더에 */
+function download(c: HTMLCanvasElement, name: string, done?: () => void): void {
   c.toBlob((blob) => {
     if (!blob) return;
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `nudy-result-${stamp()}.png`;
+    a.download = `${name}-${stamp()}.png`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-    say(saveMsg, "저장했어요 — 다운로드 폴더");
+    done?.();
   }, "image/png");
+}
+
+$("saveBtn").addEventListener("click", () => {
+  const c = resultImage();
+  if (!c) { say(saveMsg, "피드백까지 마쳐야 저장할 수 있어요", true); return; }
+  download(c, "nudy-result", () => say(saveMsg, "저장했어요 — 다운로드 폴더"));
 });
 $("restart").addEventListener("click", () => {
   bareCv = refCv = tryCv = null;
@@ -596,7 +604,7 @@ $("restart").addEventListener("click", () => {
   reached = 1;
   for (const v of [bareView, refView, madeView, tryView]) preview(v, null);
   for (const m of [bareMsg, refMsg, madeMsg, tryMsg, saveMsg]) say(m, "");
-  bareNext.disabled = refNext.disabled = madeNext.disabled = tryNext.disabled = true;
+  bareNext.disabled = refNext.disabled = madeNext.disabled = tryNext.disabled = bareSave.disabled = true;
   fbList.replaceChildren();
   go(1);
 });

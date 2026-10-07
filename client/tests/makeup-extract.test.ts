@@ -163,6 +163,28 @@ describe("화장 떼기 — 모든 부위", () => {
     expect(count(r, "shadow")).toBeLessThan(count(r, "liner") * 0.1);
   });
 
+  it("X18 섀도 자리에서 피부색 그대로 어두워지기만 한 곳(음영)은 섀도가 아니다 — 색이 바뀐 금색 띠만 (사용자 2026-10-07 실사진: 섀도 위 음영까지 잡혔다)", () => {
+    // 눈꺼풀 위 1~7px 금색 띠 + 그 위 8~22px 는 살색을 0.8 배로 어둡게만 (AI 가 눈두덩을 다시 그리며 오목한 곳을 어둡게 한 것 흉내)
+    const GOLD: Rgb = [200, 170, 90], DIM: Rgb = [SKIN[0] * 0.8, SKIN[1] * 0.8, SKIN[2] * 0.8], SHINE: Rgb = [255, 208, 178];
+    const band = (lo: number, hi: number): Paint => (x, y) => {
+      for (const s of ["R", "L"] as const) {
+        const lid = eyeOf(s).upper.map(P), near = lid.reduce((b, p) => (Math.abs(p.x - x) < Math.abs(b.x - x) ? p : b)), xs = lid.map((p) => p.x);
+        if (x >= Math.min(...xs) + 4 && x <= Math.max(...xs) - 4 && y <= near.y - lo && y >= near.y - hi) return lo === 1 ? GOLD : DIM;
+      }
+      return null;
+    };
+    const gold = band(1, 7), dim = band(8, 22);
+    const r = extractAll(bare, nat((x, y) => gold(x, y) ?? dim(x, y)), LMS);
+    expect(recall(r, "shadow", gold), "금색 띠는 섀도").toBeGreaterThan(0.7);
+    expect(recall(r, "shadow", dim), "어둡게만 한 곳은 섀도 아님").toBeLessThan(0.1);
+    // 색 방향이 피부와 같아도 더 진하고 선명해졌으면(채도 28 → 38) 칠한 것 — 주황 갈색 섀도
+    const deep: Paint = (x, y) => (dim(x, y) ? [194, 130, 89] : null);
+    expect(recall(extractAll(bare, nat(deep), LMS), "shadow", deep), "피부 색 방향 · 더 선명한 섀도는 섀도").toBeGreaterThan(0.7);
+    // 밝아진 곳(반짝이 · 하이라이트 섀도)은 색 방향이 같아도 칠한 것
+    const shine: Paint = (x, y) => (dim(x, y) ? SHINE : null);
+    expect(recall(extractAll(bare, nat(shine), LMS), "shadow", shine), "밝아진 섀도는 섀도").toBeGreaterThan(0.7);
+  });
+
   it("X16 눈알 색이 바뀌어도(AI 가 렌즈 색 · 시선을 바꿈) 화장으로 안 본다", () => {
     const r = extractAll(bare, nat(eyeballPaint([90, 60, 50])), LMS);
     expect(r.parts.reduce((s, p) => s + p.count, 0)).toBeLessThan(EXTRACT.minPixels * 2);
