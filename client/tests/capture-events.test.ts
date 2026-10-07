@@ -24,11 +24,11 @@ describe("capture events", () => {
     ev.shot("front_open", false, "bright");
     ev.retake("front_open");
     ev.shot("front_open", true, null);
-    ev.shot("left_45", true, null);
+    ev.shot("front_closed", true, null);
     expect(m.events[0]).toMatchObject({ name: "capture", shot: "front_open", ok: false, retry: 0, reason: "bright" });
     expect(m.events[1]).toMatchObject({ name: "capture", shot: "front_open", ok: true, retry: 1, reason: null });
-    expect(m.events[2]).toMatchObject({ name: "capture", shot: "left_45", retry: 0 });
-    expect(ev.retries()).toEqual({ front_open: 1, front_closed: 0, left_45: 0, right_45: 0 });
+    expect(m.events[2]).toMatchObject({ name: "capture", shot: "front_closed", retry: 0 });
+    expect(ev.retries()).toEqual({ front_open: 1, front_closed: 0 });
   });
 
   it("restore 는 ok 와 사진 잔존 여부", () => {
@@ -47,39 +47,39 @@ describe("capture events", () => {
   it("blocked: 같은 조건이 stuckMs 이상 이어질 때만 capture ok=false 한 번", () => {
     const { m, ev } = setup({ stuckMs: 3000 });
     // 17fps 로 2.9초 막힘 → 아직 안 찍음
-    for (let t = 0; t < 2900; t += 60) expect(ev.blocked("right_45", "bright", t)).toBe(false);
+    for (let t = 0; t < 2900; t += 60) expect(ev.blocked("front_closed", "bright", t)).toBe(false);
     expect(m.events).toHaveLength(0);
-    expect(ev.blocked("right_45", "bright", 3000)).toBe(true);
+    expect(ev.blocked("front_closed", "bright", 3000)).toBe(true);
     // 계속 막혀도 다시 안 찍음
-    for (let t = 3060; t < 10000; t += 60) expect(ev.blocked("right_45", "bright", t)).toBe(false);
+    for (let t = 3060; t < 10000; t += 60) expect(ev.blocked("front_closed", "bright", t)).toBe(false);
     expect(m.events).toHaveLength(1);
-    expect(m.events[0]).toMatchObject({ name: "capture", shot: "right_45", ok: false, reason: "bright", retry: 0 });
+    expect(m.events[0]).toMatchObject({ name: "capture", shot: "front_closed", ok: false, reason: "bright", retry: 0 });
   });
 
   it("blocked: 조건이 바뀌면 시간을 다시 센다, 통과(null)하면 리셋", () => {
     const { m, ev } = setup({ stuckMs: 3000 });
-    ev.blocked("right_45", "bright", 0);
-    ev.blocked("right_45", "angle", 2000);      // 조건 바뀜 → angle 은 2000 부터
-    expect(ev.blocked("right_45", "angle", 4000)).toBe(false);   // 2초밖에 안 됨
-    expect(ev.blocked("right_45", "angle", 5000)).toBe(true);
-    ev.blocked("right_45", null, 5100);          // 통과 중 → 리셋
-    expect(ev.blocked("right_45", "angle", 5200)).toBe(false);
-    expect(ev.blocked("right_45", "angle", 8100)).toBe(false);   // 5200 부터 2.9초
-    expect(ev.blocked("right_45", "angle", 8200)).toBe(true);
+    ev.blocked("front_closed", "bright", 0);
+    ev.blocked("front_closed", "angle", 2000);      // 조건 바뀜 → angle 은 2000 부터
+    expect(ev.blocked("front_closed", "angle", 4000)).toBe(false);   // 2초밖에 안 됨
+    expect(ev.blocked("front_closed", "angle", 5000)).toBe(true);
+    ev.blocked("front_closed", null, 5100);          // 통과 중 → 리셋
+    expect(ev.blocked("front_closed", "angle", 5200)).toBe(false);
+    expect(ev.blocked("front_closed", "angle", 8100)).toBe(false);   // 5200 부터 2.9초
+    expect(ev.blocked("front_closed", "angle", 8200)).toBe(true);
     expect(m.events.map((e) => (e.name === "capture" ? e.reason : null))).toEqual(["angle", "angle"]);
   });
 
   it("blocked 뒤 촬영 성공·재촬영은 막힘 상태를 지운다", () => {
     const { m, ev } = setup({ stuckMs: 1000 });
-    ev.blocked("left_45", "angle", 0);
-    ev.shot("left_45", true, null);
-    expect(ev.blocked("left_45", "angle", 1500)).toBe(false);   // 새 에피소드 시작
-    ev.blocked("left_45", "angle", 2600);
+    ev.blocked("front_closed", "angle", 0);
+    ev.shot("front_closed", true, null);
+    expect(ev.blocked("front_closed", "angle", 1500)).toBe(false);   // 새 에피소드 시작
+    ev.blocked("front_closed", "angle", 2600);
     expect(m.events.filter((e) => e.name === "capture" && !e.ok)).toHaveLength(1);
-    ev.retake("left_45");
-    expect(ev.blocked("left_45", "angle", 2700)).toBe(false);
-    expect(ev.blocked("left_45", "angle", 3800)).toBe(true);
-    expect(m.events.at(-1)).toMatchObject({ name: "capture", shot: "left_45", ok: false, retry: 1 });
+    ev.retake("front_closed");
+    expect(ev.blocked("front_closed", "angle", 2700)).toBe(false);
+    expect(ev.blocked("front_closed", "angle", 3800)).toBe(true);
+    expect(m.events.at(-1)).toMatchObject({ name: "capture", shot: "front_closed", ok: false, retry: 1 });
   });
 
   // ---- 2026-09-22 iPhone 실측 뒤 추가: 조건이 계속 바뀌어도 오래 막히면 한 줄 ----
@@ -87,23 +87,23 @@ describe("capture events", () => {
     const { m, ev } = setup({ stuckMs: 3000, slowMs: 5000 });
     // 각도 2초 → 크기 1초 → 각도 1초 → 얼굴 1초 … 어느 조건도 3초를 못 채운다
     const seq: [number, "angle" | "size" | "face"][] = [[0, "angle"], [2000, "size"], [3000, "angle"], [4000, "face"], [4500, "size"]];
-    for (const [t, r] of seq) expect(ev.blocked("left_45", r, t)).toBe(false);
-    expect(ev.blocked("left_45", "size", 5000)).toBe(true);
+    for (const [t, r] of seq) expect(ev.blocked("front_closed", r, t)).toBe(false);
+    expect(ev.blocked("front_closed", "size", 5000)).toBe(true);
     // 누적: angle 2000+1000=3000, size 1000+500=1500, face 500 → angle
     expect(m.events).toHaveLength(1);
-    expect(m.events[0]).toMatchObject({ name: "capture", shot: "left_45", ok: false, reason: "angle" });
+    expect(m.events[0]).toMatchObject({ name: "capture", shot: "front_closed", ok: false, reason: "angle" });
     // 같은 구간에서 5초 규칙은 다시 안 찍는다. 한 조건이 3초를 채우면 그건 3초 규칙대로 찍는다 (size 는 4500 부터)
-    for (let t = 5100; t < 7500; t += 100) expect(ev.blocked("left_45", "size", t)).toBe(false);
+    for (let t = 5100; t < 7500; t += 100) expect(ev.blocked("front_closed", "size", t)).toBe(false);
     expect(m.events).toHaveLength(1);
-    expect(ev.blocked("left_45", "size", 7500)).toBe(true);
+    expect(ev.blocked("front_closed", "size", 7500)).toBe(true);
     expect(m.events.at(-1)).toMatchObject({ reason: "size" });
   });
 
   it("slow: 3초 규칙으로 이미 찍었으면 5초 규칙은 안 찍는다, 장이 바뀌면 새로 센다", () => {
     const { m, ev } = setup({ stuckMs: 3000, slowMs: 5000 });
-    ev.blocked("right_45", "bright", 0);
-    expect(ev.blocked("right_45", "bright", 3000)).toBe(true);
-    for (let t = 3100; t < 9000; t += 100) ev.blocked("right_45", "bright", t);
+    ev.blocked("front_closed", "bright", 0);
+    expect(ev.blocked("front_closed", "bright", 3000)).toBe(true);
+    for (let t = 3100; t < 9000; t += 100) ev.blocked("front_closed", "bright", t);
     expect(m.events).toHaveLength(1);
     ev.blocked("front_open", "angle", 9000);
     ev.blocked("front_open", "size", 11000);
