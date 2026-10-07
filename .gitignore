@@ -39,3 +39,10 @@ client/public/models/
 
 # VLM 선정 실험 — PC 마다 모델 경로가 다르다 (eval/vlm/models.example.json 을 복사)
 eval/vlm/models.json
+
+# 각자 컴퓨터에서만 쓰는 설정 — 설문 주소·시험용 서버 주소 같은 것
+# (주석은 따로 줄로 둔다. 줄 끝에 붙이면 패턴의 일부가 된다)
+.env.local
+.env.*.local
+client/.env.local
+client/.env.*.local

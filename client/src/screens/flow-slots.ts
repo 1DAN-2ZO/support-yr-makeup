@@ -11,6 +11,7 @@ import { colorPalette } from "./color-palette";
 import { analyzeRefPhoto, REF_FAIL_TEXT } from "./ref-analyze";
 import type { RefAnalysis } from "./ref-analyze";
 import { DEMO_REF_COLORS } from "./ref-demo";
+import { surveyModal } from "./survey-modal";
 import { getRefColors, setRefColors } from "./ref-store";
 import type { RefFailure } from "./ref-analyze";
 import type { Screen, ScreenContext } from "./shell";
@@ -33,6 +34,8 @@ export interface PartGuideSlotDeps {
 
 export interface SaveSlotDeps {
   clearAll: () => Promise<unknown>;
+  /** 후기 설문 주소. 있으면 "끝내기" 를 누른 그 화면 위에 모달로 묻는다 */
+  surveyUrl?: string | null;
 }
 
 const SAMPLE_COLOR: Record<PartId, { hex: string; name: string; copy: string }> = {
@@ -363,11 +366,21 @@ export function saveSlot<S>(deps: SaveSlotDeps): Screen<S> {
         saveCard(),
       );
       let busy = false;
+      const finish = (): void => {
+        void deps.clearAll().finally(() => ctx.go("done"));
+      };
       root.append(button("끝내기", () => {
         if (busy) return;
         busy = true;
         ctx.log.log({ name: "button", button: "finish" });
-        void deps.clearAll().finally(() => ctx.go("done"));
+        // 다 쓴 바로 그 순간에 묻는다. 화면을 넘긴 뒤에 물으면 잘 답해 주지 않는다
+        if (deps.surveyUrl) {
+          // 화면 칸(.screen)이 아니라 폰 틀(#app)에 붙인다 — 스크롤을 따라다니지 않게
+          const host = ctx.root.closest("#app") ?? ctx.root;
+          host.append(surveyModal({ url: deps.surveyUrl, log: ctx.log, onClose: finish }));
+          return;
+        }
+        finish();
       }));
       ctx.root.append(root);
     },

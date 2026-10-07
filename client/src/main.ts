@@ -11,6 +11,7 @@ import { createLogger } from "./core/log";
 import { createCaptureEvents, type CaptureEvents } from "./core/capture-events";
 import { planRestore, rebuildBaseline, toCapture } from "./core/restore";
 import { createLogStore } from "./core/log-store";
+import { createEventSender } from "./core/event-sender";
 import { emptyJobSource } from "./core/look-jobs";
 import {
   applyResult,
@@ -51,6 +52,9 @@ import { startReviewShot } from "./screens/review-shot";
 import { createShell } from "./screens/shell";
 import { partGuideSlot, saveSlot, slotScreen, type PartGuideSlotDeps, type SaveSlotDeps } from "./screens/flow-slots";
 import { inNewFlow } from "./core/screens";
+
+/** 후기 설문 (구글 폼). 끝내기를 누르면 모달로 묻고, 끝 화면에도 한 번 더 둔다 */
+const SURVEY_URL = "https://docs.google.com/forms/d/e/1FAIpQLSeSt5w2auBc_CW-ScpC5bq9TQs3SO1YsFIlT7REj1hlRmgi6g/viewform";
 
 /** 카메라를 못 여는 환경이면 맨 위에 띄운다. 흐름은 막지 않는다 */
 function showWarning(c: SecureCheck): void {
@@ -125,9 +129,22 @@ async function boot(): Promise<void> {
   const logStore = await createLogStore({ backend });
   const sid = crypto.randomUUID();
 
+  // 사용 기록 보내기 (PR #317). 서버는 같은 주소에 있다 — 주소를 따로 주면 그것을 쓴다.
+  // 화면에 들어올 때마다 보낸다: 서버가 이탈 위치를 "마지막 screen_enter" 로 보고,
+  // "나갔다" 신호는 폰에서 안 올 때가 많기 때문이다.
+  const sender = createEventSender({
+    base: (import.meta.env.VITE_EVENTS_BASE as string | undefined) ?? "",
+    // 동의하기 전에는 보내지 않는다. 그동안은 기기 안에만 쌓인다
+    enabled: () => session.consent === true,
+  });
   const log = createLogger(
     { sid, screen: session.screen, part: session.currentPart, ver: getVersions() },
-    logStore.sink,
+    (line, ev) => {
+      logStore.sink(line, ev);
+      sender.add(ev);
+      // 화면에 들어왔을 때 · 세션이 끝날 때만 실제로 보낸다 (매 줄 보내면 요청이 너무 잦다)
+      if (ev.name === "screen_enter" || ev.name === "session_end") void sender.send();
+    },
   );
   // 머리카락 분할 (screens/hair-segmenter) — 화면 5 채점용. 실패는 로그에 한 번 남기고 마스크 없이 간다
   const hairMask = createHairMasker(undefined, (e) => log.log({ name: "error", where: "hair", msg: (e instanceof Error ? e.message : String(e)).slice(0, 120) }));
@@ -201,13 +218,18 @@ async function boot(): Promise<void> {
     await saving;   // 저장 중인 draft·쌩얼이 지운 뒤에 써지지 않게
     // 로그 저장소를 먼저 닫는다 — 안 닫으면 버퍼·시간 저장이 지운 뒤에 events 키를 다시 만든다
     await logStore.clear();
+    sender.stop();
     const r = await sessionStore.clearAll();
     clearRemaining = r.remaining;
     return r;
   };
 
   // 새 흐름 뼈대 (2026-10-06) — 담당이 진짜 화면을 올리면 여기 등록만 바꾼다 (screens/flow-slots.ts)
-  registerFlowSlots(shell, { getPart: () => session.currentPart, clearAll });
+  // 후기 설문 주소. 공개 구글 폼이라 숨길 것이 아니어서 기본값을 코드에 둔다 —
+  // 그래야 배포 빌드에 따로 값을 넣지 않아도 뜬다. VITE_SURVEY_URL 로 덮어쓸 수 있다.
+  // 빈 문자열을 주면(VITE_SURVEY_URL=) 설문을 끌 수 있다
+  const surveyUrl = (import.meta.env.VITE_SURVEY_URL as string | undefined) ?? SURVEY_URL;
+  registerFlowSlots(shell, { getPart: () => session.currentPart, clearAll, surveyUrl });
 
   registerAll(
     shell,
@@ -323,6 +345,7 @@ async function boot(): Promise<void> {
     },
     {
       remaining: () => clearRemaining,
+      surveyUrl,
       // 세션을 통째로 새로 만든다 — 앞 세션 값이 하나도 안 남게
       restart: () => {
         logStore.reopen();
@@ -339,6 +362,10 @@ async function boot(): Promise<void> {
 
   // 탭을 닫기 전에 버퍼에 남은 로그를 저장
   window.addEventListener("pagehide", () => void logStore.flush());
+  // 화면이 가려질 때(앱 전환·탭 닫기) 남은 줄을 보낸다 — 답을 기다리지 않는다
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") sender.flushBeacon();
+  });
 
   await splashDone;
   shell.render();

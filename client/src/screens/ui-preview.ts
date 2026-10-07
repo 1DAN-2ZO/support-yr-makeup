@@ -11,7 +11,7 @@ import { LOOKS } from "../core/looks";
 import type { CaptureBundle, JobStatus, LookJob, PartId, PartResult, Versions } from "../core/types";
 import { doneScreen } from "./done";
 import { colorPalette } from "./color-palette";
-import { slotScreen } from "./flow-slots";
+import { saveSlot, slotScreen } from "./flow-slots";
 import { fullRenderScreen } from "./fullrender";
 import { guideScreen } from "./guide";
 import { DEMO_REF_COLORS } from "./ref-demo";
@@ -71,6 +71,10 @@ const SCREENS: Record<string, () => Promise<Screen<null>>> = {
   "참고 사진 올리기": async () => slotScreen<null>({
     title: "참고 사진 · 정답사진", owner: "⑤", todo: [], next: "partguide",
   }),
+  "저장 · 끝내기": async () => saveSlot<null>({
+    clearAll: async () => ({ remaining: 0 }),
+    surveyUrl: "https://docs.google.com/forms/d/e/1FAIpQLSeSt5w2auBc_CW-ScpC5bq9TQs3SO1YsFIlT7REj1hlRmgi6g/viewform",
+  }),
   "색조 팔레트": async () => ({
     mount(c) {
       const wrap = document.createElement("div");
@@ -111,7 +115,7 @@ const SCREENS: Record<string, () => Promise<Screen<null>>> = {
     store: { clearAll: async () => ({ remaining: 0 }), loadImage: async () => null },
     makeCard: async () => null, shareEnv: { download: () => {} },
   }),
-  끝: async () => doneScreen<null>({ restart: () => {}, remaining: () => 0 }),
+  끝: async () => doneScreen<null>({ restart: () => {}, remaining: () => 0, surveyUrl: "https://docs.google.com/forms/d/e/1FAIpQLSeSt5w2auBc_CW-ScpC5bq9TQs3SO1YsFIlT7REj1hlRmgi6g/viewform" }),
 };
 
 async function show(name: string): Promise<void> {

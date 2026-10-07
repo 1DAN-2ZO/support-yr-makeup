@@ -428,7 +428,8 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 .row { display: flex; gap: 8px; margin-top: 16px; }
 button.primary {
   flex: 0 0 auto; padding: 12px; border: 0; border-radius: 10px;
-  background: var(--accent); color: #fff; font: inherit; font-weight: var(--weight-strong); cursor: pointer;
+  /* 버튼 색은 한 곳에서 — 화면마다 달라 보이면 안 된다 (2026-10-06 통일) */
+  background: var(--beauty-pink, #ff8095); color: #fff; font: inherit; font-weight: var(--weight-strong); cursor: pointer;
 }
 button.primary:disabled { background: var(--line); color: var(--muted); cursor: default; }
 .row button.primary { flex: 1; }
@@ -1996,3 +1997,103 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
 .slot-answer-photo-frame.has-ref .slot-answer-face,
 .slot-answer-photo-frame.has-ref .slot-answer-line { display: none; }
 .slot-answer-photo-frame.has-ref .slot-answer-ref { opacity: 1; }
+/* 동의 안내문 — 문단 사이 줄바꿈을 살린다 */
+.consent-sheet p { white-space: pre-line; }
+
+/* 끝 화면 후기 설문 */
+.done-survey {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin: 24px 0 4px;
+  padding: 18px 16px;
+  border-radius: 18px;
+  background: #fff6f7;
+}
+.done-survey p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: #6f6f6f;
+  text-align: center;
+}
+.done-survey a.primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 22px;
+  border-radius: 999px;
+  background: var(--beauty-pink, #ff8095);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 8px 18px rgba(255, 128, 149, .25);
+}
+
+/* 끝 화면 후기 모달 — 서비스가 끝난 뒤 가운데에 한 번 */
+.done-modal-back {
+  /* #app 안에 가둔다 — #app 이 position:relative 이고 폰 폭을 갖는다.
+     화면에 고정(fixed)하면 폰 틀 밖으로 번져서 가운데가 안 맞는다 */
+  position: absolute;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(28, 26, 27, .45);
+  animation: modal-in 220ms ease-out both;
+}
+.done-modal {
+  width: 100%;
+  max-width: 320px;
+  padding: 26px 22px 20px;
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .22);
+  text-align: center;
+}
+.done-modal h2 {
+  margin: 0 0 10px;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -.02em;
+  color: #2b2b2b;
+}
+.done-modal p {
+  margin: 0 0 20px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #7b7b7b;
+}
+.done-modal a.primary {
+  display: block;
+  padding: 13px;
+  border-radius: 999px;
+  background: var(--beauty-pink, #ff8095);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 8px 18px rgba(255, 128, 149, .25);
+}
+.done-modal-later {
+  width: 100%;
+  margin-top: 10px;
+  padding: 11px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #9a9a9a;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+@keyframes modal-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .done-modal-back { animation: none; }
+}
