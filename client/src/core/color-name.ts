@@ -165,3 +165,21 @@ export function describeColor(rgb: readonly [number, number, number], part: Pale
   const tone = SOFT_BY_NAME.includes(base) ? "" : toneOf(part, L, C);
   return { text: tone ? `${tone} ${base}` : base, base, tone, lch };
 }
+
+/**
+ * 부위별로 나올 수 있는 계열 이름 전부. 제품 입력 화면이 고르는 목록으로 쓴다 —
+ * 손으로 적으면 "브릭" 과 "브릭색" 처럼 어긋나서 제품이 안 걸린다.
+ */
+export function familiesOf(part: PalettePart): string[] {
+  const names = new Set<string>();
+  for (const r of GRAY_NAME[part]) names.add(r.name);
+  for (const z of ZONES[part]) for (const r of z.byL) names.add(r.name);
+  // 구역표에 없고 special() 에서만 나오는 이름
+  const extra: Partial<Record<PalettePart, string[]>> = {
+    lip: ["오렌지", "체리", "브릭", "MLBB"],
+    cheek: ["베이지핑크"],
+    brow: ["애쉬브라운"],
+  };
+  for (const n of extra[part] ?? []) names.add(n);
+  return [...names].sort((a, b) => a.localeCompare(b, "ko"));
+}

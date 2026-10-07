@@ -11,7 +11,7 @@ import { LOOKS } from "../core/looks";
 import type { CaptureBundle, JobStatus, LookJob, PartId, PartResult, Versions } from "../core/types";
 import { doneScreen } from "./done";
 import { colorPalette } from "./color-palette";
-import { saveSlot, slotScreen } from "./flow-slots";
+import { partGuideSlot, saveSlot, slotScreen } from "./flow-slots";
 import { fullRenderScreen } from "./fullrender";
 import { guideScreen } from "./guide";
 import { DEMO_REF_COLORS } from "./ref-demo";
@@ -75,6 +75,8 @@ const SCREENS: Record<string, () => Promise<Screen<null>>> = {
     clearAll: async () => ({ remaining: 0 }),
     surveyUrl: "https://docs.google.com/forms/d/e/1FAIpQLSeSt5w2auBc_CW-ScpC5bq9TQs3SO1YsFIlT7REj1hlRmgi6g/viewform",
   }),
+  "부위 가이드 (눈썹)": async () => partGuideSlot<null>({ getPart: () => "brow" }),
+  "부위 가이드 (립)": async () => partGuideSlot<null>({ getPart: () => "lip" }),
   "색조 팔레트": async () => ({
     mount(c) {
       const wrap = document.createElement("div");

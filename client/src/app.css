@@ -2097,3 +2097,61 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
 @media (prefers-reduced-motion: reduce) {
   .done-modal-back { animation: none; }
 }
+
+/* 부위 가이드 — 색 아래 제품 추천 한 줄 */
+.slot-product {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: #faf7f5;
+}
+.slot-product > b {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  color: #a79b94;
+}
+.slot-product-row { display: flex; align-items: flex-start; gap: 12px; }
+.slot-product-dot {
+  flex: 0 0 auto;
+  width: 34px; height: 34px;
+  margin-top: 2px;
+  border-radius: 10px;
+  background: var(--slot-color, #c9b7aa);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .06);
+}
+.slot-product-row strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: #2b2b2b;
+}
+.slot-product-row em {
+  display: block;
+  margin-top: 2px;
+  font-style: normal;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--beauty-pink, #ff8095);
+}
+.slot-product-row p {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #8d8d8d;
+}
+/* 제품 사진이 있으면 색 네모 대신 사진.
+   잘라내지 않고(contain) 통째로 보여 준다 — 제품 사진은 여러 자루가 모여 찍힌 것이
+   많아서 네모로 자르면 가운데 막대기만 남아 무슨 제품인지 알 수 없다 */
+.slot-product-photo {
+  flex: 0 0 auto;
+  width: 64px; height: 64px;
+  padding: 3px;
+  border-radius: 12px;
+  object-fit: contain;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .05);
+}

@@ -5,6 +5,7 @@
 
 import type { ScreenId } from "@core/screens";
 import { nextGuidePart } from "@core/screens";
+import { pickProduct, pickShadeText } from "@core/product-picks";
 import { PART_NAME } from "@core/score";
 import type { PartId } from "@core/types";
 import { colorPalette } from "./color-palette";
@@ -198,6 +199,27 @@ function guideMock(part: PartId): HTMLElement {
       <div><strong>${name}</strong><p>${sample.copy}</p></div>
     </div>
   `;
+  // 이 색 계열에 맞는 제품 한 줄 — 호수를 모르면 계열 이름으로만 말한다
+  const family = read?.name.base ?? "";
+  const pick = part === "contour" ? null : pickProduct(part, family);
+  if (pick) {
+    const box = document.createElement("div");
+    box.className = "slot-product";
+    box.innerHTML = `
+      <b>이런 제품이면 돼요</b>
+      <div class="slot-product-row">
+        ${pick.photo
+          ? `<img class="slot-product-photo" src="${pick.photo}" alt="${pick.brand} ${pick.name}" />`
+          : `<span class="slot-product-dot" aria-hidden="true"></span>`}
+        <div>
+          <strong>${pick.brand} ${pick.name}</strong>
+          <em>${pickShadeText(pick, family)}</em>
+          <p>${pick.kind}</p>
+        </div>
+      </div>
+    `;
+    card.append(box);
+  }
   return card;
 }
 
