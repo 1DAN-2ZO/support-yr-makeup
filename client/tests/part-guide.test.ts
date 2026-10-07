@@ -488,12 +488,12 @@ describe("부위 가이드 — 섀도는 눈머리부터 라이너 꼬리 끝까
   const o = P(LM.eyeA.outer), tip = { x: o.x - 24, y: o.y - 12 };
   const liner = mask((x, y) => (x >= 172 && x <= 258 && y <= lidY(x) && y >= lidY(x) - 4) || (x <= o.x + 2 && seg(x, y, { x: o.x, y: o.y - 3 }, tip) <= 2.5));
 
-  it("SH1 섀도는 눈머리부터 라이너 꼬리 끝까지 — 바깥 끝은 라이너 꼬리 끝에 모인다", () => {
+  it("SH1 섀도는 눈머리부터 적어도 라이너 꼬리 끝까지 (더 번졌으면 그 너머까지 — SH3)", () => {
     const sh = mask((x, y) => x >= 140 && x <= 258 && y <= (lidY(x) || o.y) - 4 && y >= (lidY(x) || o.y) - 24);
     const r = partGuides([part("liner", "R", liner), part("shadow", "R", sh)], LMS, W, H);
     const poly = get(r, "shadow", "R")!.polys[0]!, ltip = get(r, "liner", "R")!.polys[0]!.reduce((a, b) => (b.x < a.x ? b : a));
     const far = poly.reduce((a, b) => (b.x < a.x ? b : a)), near = poly.reduce((a, b) => (b.x > a.x ? b : a));
-    expect(Math.hypot(far.x - ltip.x, far.y - ltip.y), `섀도 바깥 끝 (${far.x.toFixed(1)}, ${far.y.toFixed(1)}) · 라이너 꼬리 끝 (${ltip.x.toFixed(1)}, ${ltip.y.toFixed(1)})`).toBeLessThan(3);
+    expect(far.x, `섀도 바깥 끝 (${far.x.toFixed(1)}, ${far.y.toFixed(1)}) · 라이너 꼬리 끝 (${ltip.x.toFixed(1)}, ${ltip.y.toFixed(1)})`).toBeLessThan(ltip.x + 3);
     expect(near.x, "눈머리 쪽까지").toBeGreaterThan(250);
   });
 
@@ -504,5 +504,21 @@ describe("부위 가이드 — 섀도는 눈머리부터 라이너 꼬리 끝까
     const topAt = (x: number) => Math.min(...poly.filter((p) => Math.abs(p.x - x) < 3).map((p) => p.y));
     expect(Math.abs(lidY(240) - 4 - topAt(240) - 10), `안쪽 x 240 높이 ${(lidY(240) - 4 - topAt(240)).toFixed(1)} (10)`).toBeLessThan(2.5);
     expect(Math.abs(lidY(190) - 4 - topAt(190) - 25), `바깥 x 190 높이 ${(lidY(190) - 4 - topAt(190)).toFixed(1)} (25)`).toBeLessThan(2.5);
+  });
+});
+
+describe("부위 가이드 — 섀도가 라이너 꼬리 끝 바깥까지 번졌으면 거기까지 (사용자: 뗀 섀도보다 범위가 모자라다)", () => {
+  const lid = eyeOf("R").upper.map(P);
+  const lidY = (x: number) => { for (let i = 1; i < lid.length; i++) { const a = lid[i - 1]!, b = lid[i]!; if ((x - a.x) * (x - b.x) <= 0 && a.x !== b.x) return a.y + ((b.y - a.y) * (x - a.x)) / (b.x - a.x); } return NaN; };
+  const seg = (x: number, y: number, a: Pt, b: Pt) => { const dx = b.x - a.x, dy = b.y - a.y, t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy))); return Math.hypot(x - a.x - t * dx, y - a.y - t * dy); };
+  it("SH3 꼬리 끝 바깥 · 위로 번진 섀도 끝까지 가이드가 덮는다", () => {
+    const o = P(LM.eyeA.outer), tip = { x: o.x - 24, y: o.y - 12 };
+    const liner = mask((x, y) => (x >= 172 && x <= 258 && y <= lidY(x) && y >= lidY(x) - 4) || (x <= o.x + 2 && seg(x, y, { x: o.x, y: o.y - 3 }, tip) <= 2.5));
+    const out = [{ x: o.x, y: o.y - 6 }, { x: tip.x, y: tip.y - 3 }, { x: o.x - 48, y: o.y - 34 }, { x: o.x - 6, y: o.y - 30 }];
+    const sh = mask((x, y) => (x >= 172 && x <= 258 && y <= lidY(x) - 5 && y >= lidY(x) - 24) || inPoly(x, y, out));
+    const poly = get(partGuides([part("liner", "R", liner), part("shadow", "R", sh)], LMS, W, H), "shadow", "R")!.polys[0]!;
+    const far = Math.min(...poly.map((p) => p.x));
+    expect(far, `가이드 바깥 끝 x ${far.toFixed(1)} (번진 끝 ${o.x - 48})`).toBeLessThan(o.x - 42);
+    expect(inPoly(o.x - 36, o.y - 28, poly), "바깥 위쪽 번진 곳을 덮는다").toBe(true);
   });
 });
