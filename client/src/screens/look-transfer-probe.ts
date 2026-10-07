@@ -344,6 +344,8 @@ function drawGuide(shown: MakeupLayer): void {
 // ── AR 로 보기: 같은 가이드를 카메라 화면의 얼굴 위에 ─────────────────────────────
 const arStart = $<HTMLButtonElement>("arStart"), arStop = $<HTMLButtonElement>("arStop");
 const arTint = $<HTMLInputElement>("arTint"), arLabels = $<HTMLInputElement>("arLabels"), arStatus = $("arStatus"), cvAr = $<HTMLCanvasElement>("cvAr");
+/** 작은 영상을 화면 크기로 키워 그릴 때의 상한 (배) */
+const AR_MAX_ZOOM = 3;
 /** 영상용 얼굴 점 찾기 (사진용과 따로 — 영상용은 앞 프레임을 이어서 본다) */
 let arLandmarker: Promise<FaceLandmarker> | null = null;
 /** 켜져 있는 카메라. prev = 지난 프레임의 얼굴 점 (떨림을 줄이려고) */
@@ -354,13 +356,17 @@ let ar: { stream: MediaStream; raf: number; prev: Pt[] | null } | null = null;
  * 거울처럼 좌우를 뒤집어 그린다. 돌려주는 것은 놓은 가이드와 얼굴 점(뒤집기 전 좌표) — 얼굴을 못 찾았거나 가이드가 없으면 null
  */
 function arDraw(lmk: FaceLandmarker, source: HTMLVideoElement | HTMLCanvasElement, w: number, h: number, ts: number, prev: Pt[] | null): { guide: LookGuide; lm: Pt[] } | null {
-  if (cvAr.width !== w || cvAr.height !== h) {
-    cvAr.width = w;
-    cvAr.height = h;
+  // 화면에 보이는 크기로 그린다 — 웹캠 영상(640px 쯤)의 크기 그대로 그리면 화면에서 3배쯤 늘어나, 가이드 선도 3배로 굵고 뭉개져 보인다 (2026-10-07 학원 PC)
+  const shown = cvAr.clientWidth * (window.devicePixelRatio || 1), k = shown > w ? Math.min(AR_MAX_ZOOM, shown / w) : 1;
+  const W = Math.round(w * k), H = Math.round(h * k);
+  if (cvAr.width !== W || cvAr.height !== H) {
+    cvAr.width = W;
+    cvAr.height = H;
   }
   const g = cvAr.getContext("2d");
   if (!g) return null;
-  g.setTransform(-1, 0, 0, 1, w, 0);
+  g.imageSmoothingQuality = "high";
+  g.setTransform(-k, 0, 0, k, W, 0);
   g.drawImage(source, 0, 0, w, h);
   g.setTransform(1, 0, 0, 1, 0, 0);
   const raw = lmk.detectForVideo(source, ts).faceLandmarks[0];
@@ -370,7 +376,8 @@ function arDraw(lmk: FaceLandmarker, source: HTMLVideoElement | HTMLCanvasElemen
   const lm = followLandmarks(prev, cur, checkPhoto(cur).eyeWidthPx);
   const placed = placeGuide(anchored, lm);
   const parts: readonly GuidePartId[] = guidePart.value === "all" ? GUIDE_PARTS : [guidePart.value as GuidePartId];
-  drawGuideParts(g, placed, parts.filter((p) => placed[p].found), { at: (q) => ({ x: w - q.x, y: q.y }), tint: arTint.checked, labels: arLabels.checked, midX: w - lm[LM.glabella]!.x });
+  // 점 이름 · 숫자를 켜지 않으면 따라 그릴 것(바를 자리 · 테두리 · 선)만 그린다
+  drawGuideParts(g, placed, parts.filter((p) => placed[p].found), { at: (q) => ({ x: (w - q.x) * k, y: q.y * k }), tint: arTint.checked, labels: arLabels.checked, midX: (w - lm[LM.glabella]!.x) * k, plain: !arLabels.checked });
   return { guide: placed, lm };
 }
 /** 시험용: 카메라 없이 그림 한 장을 한 프레임으로 넣어 본다 (ts 는 부를 때마다 커져야 한다) */

@@ -38,6 +38,11 @@ export interface DrawOpt {
   midX: number;
   /** 모양만 그리고 점 · 글씨는 안 붙일 부위 (다른 부위의 카드에 곁들여 그릴 때) */
   quiet?: readonly GuidePartId[];
+  /**
+   * 따라 그릴 것만 남긴다: 바를 자리 · 그 테두리 · 선 · 화살표. 재는 선 · 번호 점 · 진한 자리의 테는 뺀다.
+   * 얼굴이 작게 보이는 화면(AR)에서는 눈 하나에 테두리 · 진한 자리 · 재는 선 · 점이 다 겹쳐 무엇이 무엇인지 안 보인다
+   */
+  plain?: boolean;
 }
 export interface Numbered {
   n: number;
@@ -51,6 +56,35 @@ function trace(g: CanvasRenderingContext2D, pts: readonly Pt[], close: boolean):
   g.beginPath();
   pts.forEach((q, i) => (i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y)));
   if (close) g.closePath();
+}
+/**
+ * 닫힌 테두리를 둘레를 따라 같은 간격으로 다시 찍고(n 점) 이웃끼리 평균해 둥글린다.
+ * 섀도우 테두리는 자리마다 잰 높이를 이은 것이라 작은 턱과 각진 모서리가 남는다 — 작게 보이는 화면에서는 그것이 지저분해 보인다.
+ * 뾰족한 끝은 눈 폭의 몇 % 안으로 물러난다 (따라 그리는 데는 지장 없는 크기). 잰 값 · 재는 선과는 무관하게 그림에서만 한다
+ */
+export function soften(poly: readonly Pt[], n = 72, passes = 2): Pt[] {
+  if (poly.length < 8) return [...poly];
+  const len: number[] = [0];
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i]!, b = poly[(i + 1) % poly.length]!;
+    len.push(len[i]! + Math.hypot(b.x - a.x, b.y - a.y));
+  }
+  const total = len[poly.length]!;
+  if (!(total > 0)) return [...poly];
+  let out: Pt[] = [], k = 0;
+  for (let j = 0; j < n; j++) {
+    const s = (j * total) / n;
+    while (k < poly.length - 1 && len[k + 1]! < s) k++;
+    const a = poly[k]!, b = poly[(k + 1) % poly.length]!, t = (s - len[k]!) / (len[k + 1]! - len[k]! || 1);
+    out.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+  }
+  for (let pass = 0; pass < passes; pass++) {
+    out = out.map((q, i) => {
+      const a = out[(i - 1 + n) % n]!, b = out[(i + 1) % n]!;
+      return { x: (a.x + 2 * q.x + b.x) / 4, y: (a.y + 2 * q.y + b.y) / 4 };
+    });
+  }
+  return out;
 }
 /** 흰 테 + 색 선 — 어떤 바탕에서도 보이게 */
 function strokeHalo(g: CanvasRenderingContext2D, color: string, width: number, dash: number[] = []): void {
@@ -96,7 +130,9 @@ export function drawGuideParts(g: CanvasRenderingContext2D, guide: LookGuide, pa
   // ① 넓은 것부터: 칠 → 테두리 → 진한 자리
   for (const p of order) {
     const part: PartGuide = guide[p], color = PART_STYLE[p].line;
-    const polys = part.outline.polys.map((poly) => poly.map(o.at)), zones = part.zones.map((z) => z.poly.map(o.at));
+    // 따라 그릴 것만 볼 때는 섀도우 테두리를 둥글려서 그린다 (입술 · 눈썹은 모양이 곧 가이드라 그대로)
+    const shape = (poly: readonly Pt[]): Pt[] => (o.plain && p === "shadow" ? soften(poly) : poly).map(o.at);
+    const polys = part.outline.polys.map(shape), zones = part.zones.map((z) => shape(z.poly));
     if (o.tint && part.color) {
       g.fillStyle = rgb(part.color, 0.6);
       for (const poly of polys) {
@@ -114,6 +150,7 @@ export function drawGuideParts(g: CanvasRenderingContext2D, guide: LookGuide, pa
       trace(g, poly, true);
       strokeHalo(g, color, 2.2, [7, 5]);
     }
+    if (o.plain) continue;
     for (const z of zones) {
       trace(g, z, true);
       strokeHalo(g, color, 1.4);
@@ -153,7 +190,7 @@ export function drawGuideParts(g: CanvasRenderingContext2D, guide: LookGuide, pa
       g.strokeStyle = "rgba(255,255,255,0.9)";
       g.stroke();
     }
-    for (const m of part.measures) {
+    for (const m of o.plain ? [] : part.measures) {
       const from = o.at(m.from), to = o.at(m.to), len = Math.hypot(to.x - from.x, to.y - from.y) || 1;
       const nx = (-(to.y - from.y) / len) * 5, ny = ((to.x - from.x) / len) * 5;
       for (const [w, c] of [[3.2, "rgba(20,20,24,0.7)"], [1.4, "#fff"]] as const) {
@@ -195,7 +232,7 @@ export function drawGuideParts(g: CanvasRenderingContext2D, guide: LookGuide, pa
     for (const d of part.dots) {
       const n = numbered.length + 1, at = o.at(d.at), r = o.labels ? 9 : 5;
       numbered.push({ n, part: p, label: d.label });
-      if (!inView(at)) continue;
+      if (!inView(at) || o.plain) continue;
       g.beginPath();
       g.arc(at.x, at.y, r, 0, 2 * Math.PI);
       g.fillStyle = color;
