@@ -10,8 +10,8 @@
  *      AI 화장 사진(made)을 주면 두께는 실제 어두운 눈썹 털에 맞춰 줄이거나 넓힌다 (빈 살은 안 잡는다)
  *    라이너: 눈머리 → 눈꼬리 눈꺼풀 위 띠는 다 덮되 두께는 실제대로(칸마다 잰 두께의 2차 곡선), 꼬리 윗선도 실제 모양대로
  *      (눈꼬리 밖 칸마다 따라가며), 아랫선은 눈꼬리 → 꼬리 끝 곧게 (사용자 그림 2026-10-07 — 고정 띠 + 삼각 꼬리는 실제와 달랐다)
- *    섀도: 라이너 띠 윗선에서 시작해 겹치지 않게, 높이 하나(그 위 화장 영역 높이의 중앙값)로 라이너 윗선을 따라가는 띠 —
- *      양 끝은 라이너 윗선으로 내려와 닫힌다 (사용자: 엉망 · 라이너와 겹치면 안 된다 — 2차 곡선은 가운데만 솟은 돔이 됐다)
+ *    섀도: 라이너 윗선 위에서 겹치지 않게, 눈머리부터 라이너 꼬리 끝까지 부채꼴 — 높이는 칸마다 보이는 그대로(이웃끼리 다듬기),
+ *      양 끝은 아랫선으로 내려와 닫힌다 (사용자 2026-10-07)
  *    아래 섀도: 아랫눈꺼풀에서 내려간 높이를 매끈한 2차 곡선으로
  *    블러셔: 화장 영역 모멘트 타원
  *  - 쉐딩 · 하이라이트(참고)는 뺀다. clip 밖 픽셀(klein 이면 얼굴 윤곽 0.9 밖 — 원본에 되붙인 경계 차이)도 뺀다.
@@ -129,7 +129,7 @@ export function partGuides(parts: readonly PartMask[], lm: readonly Pt[], w: num
     const dm = e ? linerDark(opts.made, lidOf(sd, true), F[sd]) : null;
     if (e && dm) masks.set(`liner:${sd}`, { m: dm.solid, count: e.count, raw: dm.raw });
   }
-  const linerTop: Partial<Record<Side, Pt[]>> = {};   // 띠 윗선 (눈머리 → 눈꼬리) — 섀도는 이 위에서 시작
+  const linerTop: Partial<Record<Side, Pt[]>> = {};   // 라이너 윗선 (눈머리 → 눈꼬리 · 꼬리가 있으면 꼬리 끝) — 섀도는 이 위에서 시작
   const linerPoly: Partial<Record<Side, Pt[]>> = {};
   both("liner", (inside, f, s) => {
     const base = samples(lidOf(s, true), PART_GUIDE.profileN + 1), nrm = normals(base, f.up);
@@ -158,6 +158,7 @@ export function partGuides(parts: readonly PartMask[], lm: readonly Pt[], w: num
     // (눈꼬리 근처에서 살짝 내려갔다 꼬리로 올라감)은 남고 툭 꺾이는 곳만 부드러워진다 (사용자: 부채꼴 말고 뗀 화장처럼 물결, 시험 W1).
     // 위로 볼록하게 메웠더니 띠 꼭대기에서 꼬리 끝까지 곧은 선으로 건너가 부채꼴이 됐다
     const upper = smoothChain([tip, ...[...wingTop].reverse(), ...[...top].reverse()], PART_GUIDE.waveSmooth);
+    linerTop[s] = [...upper].reverse();   // 눈머리 → 꼬리 끝 — 섀도가 이 선 위에 꼬리 끝까지 놓인다
     return (linerPoly[s] = [...base, ...upper]);
   }, "mixed");
 
@@ -167,17 +168,16 @@ export function partGuides(parts: readonly PartMask[], lm: readonly Pt[], w: num
     const base = shadowBase(s), nrm = normals(base, f.up);
     return base.map((p, i) => reach(inside, p, nrm[i]!, PART_GUIDE.shadowMax * f.ew) / f.ew);
   }, (a, b) => a.map((x, i) => (x + b[i]!) / 2), (prof, f, s) => {
-    const on = prof.map((x) => x >= PART_GUIDE.minH), i0 = on.indexOf(true), i1 = on.lastIndexOf(true);
-    if (i0 < 0 || i1 <= i0) return [];
-    // 높이는 가운데 60% 칸에서 — 양 끝 칸은 영역 밖으로 일찍 빠져 낮게 재진다
-    const m0 = i0 + Math.floor((i1 - i0) * 0.2), m1 = i1 - Math.floor((i1 - i0) * 0.2);
-    const H = median(prof.slice(m0, m1 + 1).filter((x) => x >= PART_GUIDE.minH)) * f.ew;
-    const t = prof.map((_, i) => i / PART_GUIDE.profileN).slice(i0, i1 + 1), span = t[t.length - 1]! - t[0]!;
-    const taper = (x: number) => { const u = Math.min(x - t[0]!, t[t.length - 1]! - x) / (PART_GUIDE.taper * span); return u >= 1 ? 1 : u <= 0 ? 0 : u * u * (3 - 2 * u); };
-    const all = shadowBase(s), nrmAll = normals(all, f.up), liner = linerPoly[s];
-    // 라이너 꼬리 쪽은 윗선을 볼록하게 이어 띠보다 높다 — 그 안에 든 아랫선 점은 라이너 밖으로 밀어 올린다
-    const base = all.slice(i0, i1 + 1).map((p, i) => (liner ? pushOut(p, nrmAll[i0 + i]!, liner) : p)), nrm = nrmAll.slice(i0, i1 + 1);
-    return [...base, ...base.map((p, i) => add(p, nrm[i]!, H * taper(t[i]!))).reverse()];
+    // 눈머리부터 라이너 꼬리 끝까지(라이너가 없으면 눈꼬리까지) 부채꼴 — 높이는 칸마다 보이는 그대로, 이웃 칸끼리만 다듬는다
+    // (5칸 중앙값 → 3칸 평균). 양 끝은 아랫선으로 내려와 닫힌다 — 바깥 끝은 라이너 꼬리 끝에 모인다 (사용자 2026-10-07, 시험 SH1 · SH2)
+    if (!prof.some((x) => x >= PART_GUIDE.minH)) return [];
+    const med = prof.map((_, i) => median(prof.slice(Math.max(0, i - 2), i + 3)));
+    const sm = med.map((_, i) => { const w = med.slice(Math.max(0, i - 1), i + 2); return w.reduce((a, b) => a + b, 0) / w.length; });
+    const n = sm.length - 1, taper = (i: number) => { const u = Math.min(i, n - i) / (PART_GUIDE.taper * n); return u >= 1 ? 1 : u <= 0 ? 0 : u * u * (3 - 2 * u); };
+    const all = shadowBase(s), nrm = normals(all, f.up), liner = linerPoly[s];
+    // 라이너 안에 든 아랫선 점은 라이너 밖으로 밀어 올린다 (겹치지 않게)
+    const base = all.map((p, i) => (liner ? pushOut(p, nrm[i]!, liner) : p));
+    return [...base, ...base.map((p, i) => add(p, nrm[i]!, Math.max(0, sm[i]!) * taper(i) * f.ew)).reverse()];
   }, "mixed");
 
   // 아래 섀도: 아랫눈꺼풀에서 내려간 높이 → 2차 곡선
