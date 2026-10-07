@@ -11,6 +11,7 @@ import { createLogger } from "./core/log";
 import { createCaptureEvents, type CaptureEvents } from "./core/capture-events";
 import { planRestore, rebuildBaseline, toCapture } from "./core/restore";
 import { createLogStore } from "./core/log-store";
+import { createEventSender } from "./core/event-sender";
 import { emptyJobSource } from "./core/look-jobs";
 import {
   applyResult,
@@ -52,6 +53,9 @@ import { createShell } from "./screens/shell";
 import { partGuideSlot, saveSlot, slotScreen, type PartGuideSlotDeps, type SaveSlotDeps } from "./screens/flow-slots";
 import { inNewFlow } from "./core/screens";
 
+/** 후기 설문 (구글 폼). 끝내기를 누르면 모달로 묻고, 끝 화면에도 한 번 더 둔다 */
+const SURVEY_URL = "https://docs.google.com/forms/d/e/1FAIpQLSeSt5w2auBc_CW-ScpC5bq9TQs3SO1YsFIlT7REj1hlRmgi6g/viewform";
+
 /** 카메라를 못 여는 환경이면 맨 위에 띄운다. 흐름은 막지 않는다 */
 function showWarning(c: SecureCheck): void {
   const box = document.createElement("div");
@@ -71,7 +75,51 @@ function el(id: string): HTMLElement {
   return found;
 }
 
+function showBootError(e: unknown): void {
+  console.error(e);
+  const root = el("screen");
+  root.textContent = "";
+  const box = document.createElement("div");
+  box.className = "unavailable";
+  const h = document.createElement("h1");
+  h.textContent = "앱을 다시 열어 주세요";
+  const p = document.createElement("p");
+  p.className = "muted";
+  p.textContent = "초기 화면을 불러오지 못했어요. 새로고침하면 다시 시작합니다.";
+  const again = document.createElement("button");
+  again.type = "button";
+  again.className = "primary";
+  again.textContent = "새로고침";
+  again.addEventListener("click", () => location.reload());
+  box.append(h, p, again);
+  root.append(box);
+}
+
+/** 앱 첫 진입 스플래시. 세션 화면이 아니라 부팅 중에만 보인다. */
+function showSplash(ms = 3000): Promise<void> {
+  const root = el("screen");
+  root.textContent = "";
+  const splash = document.createElement("div");
+  splash.className = "splash";
+  splash.innerHTML = `
+    <div class="splash-frame">
+      <div class="nudy-logo splash-logo" aria-label="nudy">
+        <span>nudy</span>
+        <i aria-hidden="true"></i>
+      </div>
+    </div>
+  `;
+  root.append(splash);
+  return new Promise((resolve) => {
+    window.setTimeout(() => {
+      splash.classList.add("leaving");
+      window.setTimeout(resolve, 280);
+    }, ms);
+  });
+}
+
 async function boot(): Promise<void> {
+  const splashDone = showSplash();
   let session: Session = createSession();
 
   // 로그는 세션과 같은 IndexedDB 를 쓴다 — DB 를 두 벌 만들지 않는다.
@@ -81,9 +129,25 @@ async function boot(): Promise<void> {
   const logStore = await createLogStore({ backend });
   const sid = crypto.randomUUID();
 
+  // 사용 기록 보내기 (PR #317). 서버는 같은 주소에 있다 — 주소를 따로 주면 그것을 쓴다.
+  // 화면에 들어올 때마다 보낸다: 서버가 이탈 위치를 "마지막 screen_enter" 로 보고,
+  // "나갔다" 신호는 폰에서 안 올 때가 많기 때문이다.
+  const sender = createEventSender({
+    // 같은 주소의 /events 로 보낸다 (PR #317 규격 그대로).
+    // 바깥에서 백엔드 포트(8000)는 안 열려 있어서, 프론트 nginx 가 그 경로를
+    // 백엔드로 넘겨 준다 (client/nginx.conf)
+    base: (import.meta.env.VITE_EVENTS_BASE as string | undefined) ?? "",
+    // 동의하기 전에는 보내지 않는다. 그동안은 기기 안에만 쌓인다
+    enabled: () => session.consent === true,
+  });
   const log = createLogger(
     { sid, screen: session.screen, part: session.currentPart, ver: getVersions() },
-    logStore.sink,
+    (line, ev) => {
+      logStore.sink(line, ev);
+      sender.add(ev);
+      // 화면에 들어왔을 때 · 세션이 끝날 때만 실제로 보낸다 (매 줄 보내면 요청이 너무 잦다)
+      if (ev.name === "screen_enter" || ev.name === "session_end") void sender.send();
+    },
   );
   // 머리카락 분할 (screens/hair-segmenter) — 화면 5 채점용. 실패는 로그에 한 번 남기고 마스크 없이 간다
   const hairMask = createHairMasker(undefined, (e) => log.log({ name: "error", where: "hair", msg: (e instanceof Error ? e.message : String(e)).slice(0, 120) }));
@@ -101,9 +165,18 @@ async function boot(): Promise<void> {
     saving = saving.then(() => sessionStore.saveDraft(draft)).catch(() => {});
   };
 
-  // 복원 중에는 모델을 받느라 몇 초 걸린다 — 빈 화면 대신 한 줄 (shell.render 가 지운다)
-  el("screen").textContent = "준비하고 있어요…";
+  // 복원 중에는 모델을 받느라 몇 초 걸린다. 스플래시가 떠 있는 동안은 그것이
+  // 기다림을 가려 주므로 건드리지 않는다 — 덮어쓰면 스플래시가 지워진다.
+  // 스플래시가 먼저 끝났을 때만 한 줄을 띄운다 (shell.render 가 지운다).
+  let waiting = false;
+  void splashDone.then(() => {
+    if (!waiting) return;
+    const root = el("screen");
+    if (!root.querySelector(".splash")) root.textContent = "준비하고 있어요…";
+  });
+  waiting = true;
   session = await restore(sessionStore, events, session);
+  waiting = false;
   // 새 흐름(2026-10-06)에서 빠진 화면에 멈춘 세션은 가까운 새 화면으로 (화장 선택 · 2-b · 부위 화면 · 리뷰 → screens.inNewFlow)
   if (inNewFlow(session.screen) !== session.screen) session = setScreen(session, inNewFlow(session.screen));
 
@@ -148,13 +221,18 @@ async function boot(): Promise<void> {
     await saving;   // 저장 중인 draft·쌩얼이 지운 뒤에 써지지 않게
     // 로그 저장소를 먼저 닫는다 — 안 닫으면 버퍼·시간 저장이 지운 뒤에 events 키를 다시 만든다
     await logStore.clear();
+    sender.stop();
     const r = await sessionStore.clearAll();
     clearRemaining = r.remaining;
     return r;
   };
 
   // 새 흐름 뼈대 (2026-10-06) — 담당이 진짜 화면을 올리면 여기 등록만 바꾼다 (screens/flow-slots.ts)
-  registerFlowSlots(shell, { getPart: () => session.currentPart, clearAll });
+  // 후기 설문 주소. 공개 구글 폼이라 숨길 것이 아니어서 기본값을 코드에 둔다 —
+  // 그래야 배포 빌드에 따로 값을 넣지 않아도 뜬다. VITE_SURVEY_URL 로 덮어쓸 수 있다.
+  // 빈 문자열을 주면(VITE_SURVEY_URL=) 설문을 끌 수 있다
+  const surveyUrl = (import.meta.env.VITE_SURVEY_URL as string | undefined) ?? SURVEY_URL;
+  registerFlowSlots(shell, { getPart: () => session.currentPart, clearAll, surveyUrl });
 
   registerAll(
     shell,
@@ -270,6 +348,7 @@ async function boot(): Promise<void> {
     },
     {
       remaining: () => clearRemaining,
+      surveyUrl,
       // 세션을 통째로 새로 만든다 — 앞 세션 값이 하나도 안 남게
       restart: () => {
         logStore.reopen();
@@ -286,7 +365,12 @@ async function boot(): Promise<void> {
 
   // 탭을 닫기 전에 버퍼에 남은 로그를 저장
   window.addEventListener("pagehide", () => void logStore.flush());
+  // 화면이 가려질 때(앱 전환·탭 닫기) 남은 줄을 보낸다 — 답을 기다리지 않는다
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") sender.flushBeacon();
+  });
 
+  await splashDone;
   shell.render();
 }
 

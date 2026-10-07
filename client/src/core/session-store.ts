@@ -42,17 +42,33 @@ export function memoryBackend(): KvBackend {
 
 const DB_NAME = "danghaeung", STORE = "session";
 
-/** IndexedDB 백엔드. open 이 실패하면 null (throw 하지 않는다) */
-export async function indexedDbBackend(idb: IDBFactory | undefined = globalThis.indexedDB): Promise<KvBackend | null> {
+/**
+ * IndexedDB 백엔드. open 이 실패하면 null (throw 하지 않는다)
+ *
+ * timeoutMs — 개발 중 흰 화면 방지용 임시 장치다. onerror·onblocked 는 원래도 잡고 있어서,
+ * 이 제한이 더 막아 주는 것은 아무 신호 없이 멈추는 경우뿐이다. 대신 느린 기기에서 1.5초가
+ * 넘으면 조용히 메모리 저장으로 떨어져 하던 작업이 복구되지 않는다. 출시 전에 다시 볼 것.
+ */
+export async function indexedDbBackend(idb: IDBFactory | undefined = globalThis.indexedDB, timeoutMs = 1500): Promise<KvBackend | null> {
   if (!idb) return null;
   let db: IDBDatabase;
   try {
     db = await new Promise<IDBDatabase>((res, rej) => {
+      const timer = setTimeout(() => rej(new Error("timeout")), timeoutMs);
       const req = idb.open(DB_NAME, 1);
       req.onupgradeneeded = () => req.result.createObjectStore(STORE);
-      req.onsuccess = () => res(req.result);
-      req.onerror = () => rej(req.error);
-      req.onblocked = () => rej(new Error("blocked"));
+      req.onsuccess = () => {
+        clearTimeout(timer);
+        res(req.result);
+      };
+      req.onerror = () => {
+        clearTimeout(timer);
+        rej(req.error);
+      };
+      req.onblocked = () => {
+        clearTimeout(timer);
+        rej(new Error("blocked"));
+      };
     });
   } catch {
     return null;

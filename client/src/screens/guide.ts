@@ -119,11 +119,29 @@ export function guideScreen<S>(deps: GuideDeps): Screen<S> {
       const look = deps.getLook();
       const card = partCard(part, look, deps.getFaceShape());
 
-      wrap.append(el("h1", "", card.title));
+      const top = el("div", "guide-topbar");
+      top.innerHTML = `
+        <div class="nudy-logo guide-logo" aria-label="nudy">
+          <span>nudy</span>
+          <i aria-hidden="true"></i>
+        </div>
+      `;
+      const head = el("div", "guide-head");
+      head.innerHTML = `
+        <div class="guide-coach">
+          <img src="/ui/nudy-coach-simple.svg" alt="" aria-hidden="true" />
+          <div><span>${card.rationale ?? "이 선을 기준으로 천천히 따라 해볼게요"}</span><i aria-hidden="true"></i></div>
+        </div>
+        <h1>${card.title}</h1>
+      `;
+      wrap.append(top, head);
       const figure = el("div", "guide-img empty", GUIDE_TEXT.noImage);
       wrap.append(figure);
-      if (card.rationale) wrap.append(el("p", "guide-why", card.rationale));
-      if (card.need) wrap.append(el("p", "guide-need muted", card.need));
+      if (card.need) {
+        const need = el("p", "guide-need");
+        need.textContent = card.need.replace(/^지금 필요한 것:\s*/, "");
+        wrap.append(need);
+      }
       const row = el("div", "row");
       const start = el("button", "primary", GUIDE_TEXT.start);
       start.type = "button";

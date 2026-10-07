@@ -10,7 +10,11 @@ import { mutableJobSource } from "../core/look-jobs";
 import { LOOKS } from "../core/looks";
 import type { CaptureBundle, JobStatus, LookJob, PartId, PartResult, Versions } from "../core/types";
 import { doneScreen } from "./done";
+import { colorPalette } from "./color-palette";
+import { saveSlot, slotScreen } from "./flow-slots";
 import { fullRenderScreen } from "./fullrender";
+import { guideScreen } from "./guide";
+import { DEMO_REF_COLORS } from "./ref-demo";
 import { looksScreen } from "./looks";
 import { processingScreen } from "./processing";
 import { resultScreen } from "./result";
@@ -64,9 +68,32 @@ const ctx = (screen: string): ScreenContext<null> => ({
 let lookId: string | null = "edgy";
 
 const SCREENS: Record<string, () => Promise<Screen<null>>> = {
+  "참고 사진 올리기": async () => slotScreen<null>({
+    title: "참고 사진 · 정답사진", owner: "⑤", todo: [], next: "partguide",
+  }),
+  "저장 · 끝내기": async () => saveSlot<null>({
+    clearAll: async () => ({ remaining: 0 }),
+    surveyUrl: "https://docs.google.com/forms/d/e/1FAIpQLSeSt5w2auBc_CW-ScpC5bq9TQs3SO1YsFIlT7REj1hlRmgi6g/viewform",
+  }),
+  "색조 팔레트": async () => ({
+    mount(c) {
+      const wrap = document.createElement("div");
+      wrap.className = "slot slot-answer";
+      wrap.append(colorPalette(DEMO_REF_COLORS, { step: "2.", title: "참고 사진의 색조 팔레트", note: "올려 주신 사진에서 읽은 색이에요" }));
+      c.root.append(wrap);
+    },
+  }),
   "서버 처리": async () => processingScreen<null>({ jobs: mutableJobSource(LOOKS.map((l) => ({ ...job(l.id, "running", 0) }))) }),
   "2 화장": async () => looksScreen<null>({ getLookId: () => lookId, setLookId: (id) => { lookId = id; } }),
   "2-b 완성 예상": async () => fullRenderScreen<null>({ getLookId: () => lookId }),
+  "3 가이드": async () => {
+    const bare = await bitmapOf(BARE_IMAGE);
+    const baseline = { lm: LMS, unit: { eye: 90, lip: 120, face: 400 }, foreheadL: 70, scleraLab: null, faceShape: { label: "oval" as const, confidence: 1, method: "rule" as const, version: "t" }, bareImage: bare, w: 600, h: 600, expression: null };
+    return guideScreen<null>({
+      getPart: () => "liner", firstPart: () => "liner", getBaseline: () => baseline, getLook: () => LOOKS.find((l) => l.id === lookId) ?? LOOKS[0]!,
+      getFaceShape: () => baseline.faceShape, getGuide: () => guide, toBitmap: async () => bare,
+    });
+  },
   "5 결과 (라이너)": async () => {
     const bare = await bitmapOf(BARE_IMAGE), made = image(linerPaint());
     const frame = await bitmapOf(made);
@@ -88,7 +115,7 @@ const SCREENS: Record<string, () => Promise<Screen<null>>> = {
     store: { clearAll: async () => ({ remaining: 0 }), loadImage: async () => null },
     makeCard: async () => null, shareEnv: { download: () => {} },
   }),
-  끝: async () => doneScreen<null>({ restart: () => {}, remaining: () => 0 }),
+  끝: async () => doneScreen<null>({ restart: () => {}, remaining: () => 0, surveyUrl: "https://docs.google.com/forms/d/e/1FAIpQLSeSt5w2auBc_CW-ScpC5bq9TQs3SO1YsFIlT7REj1hlRmgi6g/viewform" }),
 };
 
 async function show(name: string): Promise<void> {
