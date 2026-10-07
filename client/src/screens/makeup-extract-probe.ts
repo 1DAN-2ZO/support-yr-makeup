@@ -8,8 +8,9 @@
  *     뗀 화장만(회색 바탕 + AI 색) · 맨얼굴 · AI 사진 위 부위별 색 테두리 · 부위 켜고 끄기
  *  ⑤ 가이드: 부위별 화장 영역의 바깥 테두리(core/region-outline) — FLUX 는 칠하지 않은 곳이 원본 그대로라 차이가 깨끗해서
  *     템플릿 모양에 숫자를 읽던 방식(makeup-fit, Stable-Makeup 용)과 AI 맨얼굴 비교 · 피부 변화 거르기는 뺐다 (사용자 2026-10-06)
- *  ⑤ 실시간: 버튼으로 사진 가이드 ↔ 실시간 가이드 — 가이드 점을 맨얼굴 얼굴 그물(core/mesh-pin)에 붙여 두고 웹캠 얼굴로 옮겨 그린다
- *     (얼굴 점 떨림은 화면 4 테두리 값 LIVE_SMOOTH 로 거른다, 사용자 2026-10-07)
+ *  ⑤ 실시간: 버튼으로 사진 가이드 ↔ 실시간 가이드 — 예전 화면 4 실시간 테두리 엔진(core/live-run createLiveRun)에 이 가이드 모양을
+ *     넣어 같은 다듬기(얼굴 그물 붙이기 · 떨림 거르기 LIVE_SMOOTH · 먼 쪽 눈 보정 C+F+G2+G3+H · 크게 돌리면 먼 쪽 흐리게)로 따라간다.
+ *     부위를 고르면 화면 4 처럼 그 부위 확대 창(crop-follow)에 청록 점선 · 블러셔는 퍼지는 방향 표시 (사용자 2026-10-07)
  * 사진은 이 컴퓨터 안에서만 쓴다 (저장은 누를 때만, 다운로드 폴더로).
  */
 
@@ -17,14 +18,18 @@ import type { FaceLandmarker } from "@mediapipe/tasks-vision";
 import { deltaE, foreheadLab, labAt, type RgbaImage } from "@core/color";
 import { applyAffine, robustAffine, type Affine } from "@core/eye-fit";
 import { EXTRACT, FACE_OVAL, extractAll, type ExtractPart, type PartMask } from "@core/makeup-extract";
-import { pinPoints, placePins, type Pin } from "@core/mesh-pin";
+import { cropSpec, type Rect } from "@core/crop";
+import { clampRect, createCropFollow } from "@core/crop-follow";
+import { pageOf, type FeedbackPart } from "@core/guide-feedback";
+import { createLiveRun } from "@core/live-run";
+import type { Outline } from "@core/overlay";
 import { partGuides, type PartGuide } from "@core/part-guide";
-import { LIVE_SMOOTH } from "@core/smooth-params";
-import { LandmarkSmoother } from "@core/smoothing";
+import { spreadMarks } from "@core/spread-marks";
 import { createSnapshotCollector } from "@core/snapshot";
 import type { Pt } from "@core/types";
 import { startFrameLoop } from "./camera-loop";
 import { createLandmarker } from "./landmarker";
+import { strokeOutline } from "./outline-draw";
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -434,7 +439,6 @@ async function extract(): Promise<void> {
   const oval = FACE_OVAL.map((i) => last!.lm[i]!), c = oval.reduce((s, p) => ({ x: s.x + p.x / oval.length, y: s.y + p.y / oval.length }), { x: 0, y: 0 });
   const clip = oval.map((p) => ({ x: c.x + (p.x - c.x) * 0.9, y: c.y + (p.y - c.y) * 0.9 }));
   last.outlines = partGuides(res.parts, last.lm, res.w, res.h, { clip, made: last.made });
-  pinGuides();
   const ms = Math.round(performance.now() - t0);
   drawPartList(res.parts);
   render();
@@ -469,6 +473,7 @@ function drawOutlines(cv: HTMLCanvasElement, im: RgbaImage, crop: Crop, outlines
 
 function renderGuide(): void {
   if (!last) return;
+  if (liveStop) buildRuns();
   drawOutlines(cvFitBare, last.bare, last.crop, last.outlines);
   drawOutlines(cvFitMade, last.made, last.crop, last.outlines);
   const side = (s: PartMask["side"]) => (s === "R" ? " 사진 왼쪽" : s === "L" ? " 사진 오른쪽" : "");
@@ -477,48 +482,96 @@ function renderGuide(): void {
   fitInfo.textContent = lines.length ? lines.join("\n") : "화장 영역을 못 찾았어요";
 }
 
-// ---------- ⑤ 실시간 가이드 ----------
+// ---------- ⑤ 실시간 가이드 (예전 화면 4 엔진) ----------
 
-/** 가이드 테두리 점마다 맨얼굴 얼굴 그물의 삼각형 · 무게 — 웹캠 얼굴의 같은 삼각형에 놓는다 */
-let livePins: { part: ExtractPart; pins: Pin[][] }[] = [];
+const LIVE_NAME: Record<FeedbackPart, string> = { brow: "눈썹", liner: "아이라이너", shadow: "아이섀도", lip: "입술", cheek: "블러셔" };
+const LIVE_ORDER: readonly FeedbackPart[] = ["brow", "liner", "shadow", "lip", "cheek"];
+/** 확대 창 가로/세로 — 눈 부위는 양쪽 눈을 한 창에 */
+const LIVE_ASPECT: Record<FeedbackPart, number> = { brow: 2, liner: 2, shadow: 2, lip: 4 / 3, cheek: 4 / 3 };
+const liveParts = $("liveParts");
+let liveRuns: { part: FeedbackPart; run: ReturnType<typeof createLiveRun<HTMLCanvasElement>> }[] = [];
 let liveStop: (() => void) | null = null;
-const liveSmoother = new LandmarkSmoother(Array.from({ length: 478 }, (_, i) => i), LIVE_SMOOTH);
+/** 고른 부위 (null = 전체 — 확대 없이 모든 부위) */
+let liveFocus: FeedbackPart | null = null;
+let follow: ReturnType<typeof createCropFollow> | null = null;
+let lastShape: Pt[] = [];
 
-function pinGuides(): void {
+/** 켠 부위의 가이드를 화면 부위(아래 섀도는 섀도)별로 묶어 화면 4 엔진에 넣는다. 블러셔만 퍼지는 방향 표시 (모양과 상관없는 방사형) */
+function buildRuns(): void {
   const l = last;
-  livePins = l ? l.outlines.map((o) => ({ part: o.part, pins: o.polys.filter((q) => q.length >= 3).map((q) => pinPoints(l.lm, q)) })) : [];
+  liveRuns = [];
+  if (!l) return;
+  const foreheadL = foreheadLab(l.bare, l.lm)?.L ?? 60;
+  for (const part of LIVE_ORDER) {
+    const polys = l.outlines.filter((o) => on.has(o.part) && pageOf(o.part) === part).flatMap((o) => o.polys).filter((q) => q.length >= 3);
+    if (!polys.length) continue;
+    const m = part === "cheek" ? spreadMarks("cheek", polys) : null;
+    const outline: Outline = m?.dots.length ? { polys, lines: [], dots: m.dots, arrows: m.arrows } : { polys, lines: [] };
+    liveRuns.push({ part, run: createLiveRun<HTMLCanvasElement>({ partId: part, baseline: { lm: l.lm, foreheadL }, outline }) });
+  }
+  if (liveFocus && !liveRuns.some((r) => r.part === liveFocus)) liveFocus = null;
+  drawLiveChips();
+}
+
+function drawLiveChips(): void {
+  const chip = (label: string, focus: FeedbackPart | null): HTMLButtonElement => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = label;
+    b.className = liveFocus === focus ? "main" : "";
+    b.addEventListener("click", () => { liveFocus = focus; follow = null; lastShape = []; drawLiveChips(); });
+    return b;
+  };
+  liveParts.replaceChildren(chip("전체", null), ...liveRuns.map((r) => chip(LIVE_NAME[r.part], r.part)));
+}
+
+/** 창(crop)만 거울로 칸에 맞춰 그리고 그 위에 테두리 — 화면 4 drawView 와 같은 그리기 (청록 점선 · 먼 쪽 눈은 흐리게) */
+function drawLive(crop: Rect, shapes: readonly { outline: Outline | null; alpha: number[] | null }[]): void {
+  const dpr = Math.min(2, window.devicePixelRatio || 1), W = Math.round(liveView.clientWidth * dpr), H = Math.round(liveView.clientHeight * dpr);
+  if (!W || !H) return;
+  if (liveView.width !== W || liveView.height !== H) { liveView.width = W; liveView.height = H; }
+  const g = liveView.getContext("2d")!, k = Math.min(W / crop.w, H / crop.h), ox = (W - crop.w * k) / 2, oy = (H - crop.h * k) / 2;
+  g.fillStyle = "#000";
+  g.fillRect(0, 0, W, H);
+  g.save();
+  g.translate(W, 0);
+  g.scale(-1, 1);
+  g.translate(ox, oy);
+  g.scale(k, k);
+  g.translate(-crop.x, -crop.y);
+  g.drawImage(video, crop.x, crop.y, crop.w, crop.h, crop.x, crop.y, crop.w, crop.h);
+  const lw = Math.max(2, W / 400) / k;
+  for (const { outline: o, alpha } of shapes) {
+    if (!o) continue;
+    strokeOutline(g, alpha ? { ...o, polys: o.polys.filter((_, i) => (alpha[i] ?? 1) >= 1) } : o, lw);
+    alpha?.forEach((a, i) => {
+      if (a >= 1) return;
+      g.globalAlpha = a;
+      strokeOutline(g, { polys: [o.polys[i]!], lines: [] }, lw);
+      g.globalAlpha = 1;
+    });
+  }
+  g.restore();
 }
 
 function liveFrame(now: number): void {
-  if (video.readyState < 2 || !videoLm) return;
+  if (video.readyState < 2 || !videoLm || !last) return;
   const w = video.videoWidth, h = video.videoHeight;
   if (!w || !h) return;
-  if (liveView.width !== w || liveView.height !== h) { liveView.width = w; liveView.height = h; }
   const face = videoLm.detectForVideo(video, now).faceLandmarks[0];
-  const lm = liveSmoother.smooth(face && face.length >= 478 ? face.map((p) => ({ x: p.x * w, y: p.y * h })) : null, now);
-  const g = liveView.getContext("2d")!;
-  // 거울로 — 영상과 선을 같이 뒤집는다
-  g.save();
-  g.translate(w, 0);
-  g.scale(-1, 1);
-  g.drawImage(video, 0, 0, w, h);
-  if (lm) {
-    g.lineWidth = Math.max(2, w / 400);
-    g.lineJoin = "round";
-    for (const { part, pins } of livePins) {
-      if (!on.has(part)) continue;
-      g.strokeStyle = `rgb(${PARTS.find((p) => p.id === part)!.color.join(",")})`;
-      for (const pp of pins) {
-        const pts = placePins(lm, pp);
-        g.beginPath();
-        g.moveTo(pts[0]!.x, pts[0]!.y);
-        for (const p of pts.slice(1)) g.lineTo(p.x, p.y);
-        g.closePath();
-        g.stroke();
-      }
-    }
-  }
-  g.restore();
+  const lm: Pt[] | null = face && face.length >= 478 ? face.map((p) => ({ x: p.x * w, y: p.y * h })) : null;
+  const steps = liveRuns.map((r) => ({ part: r.part, ...r.run.step({ t: now, lm, w, h, image: () => liveView }) }));
+  const shown = liveFocus ? steps.filter((s) => s.part === liveFocus) : steps;
+  let crop: Rect = { x: 0, y: 0, w, h };
+  if (liveFocus) {
+    const aspect = LIVE_ASPECT[liveFocus];
+    liveView.style.aspectRatio = String(aspect);
+    follow ??= createCropFollow(liveFocus, aspect);
+    // 창은 지난 장면 테두리까지 담게 (화면 4 와 같이) — 얼굴이 없으면 맨얼굴 자리
+    crop = lm ? clampRect(follow.step(lm, now, lastShape), w, h) : clampRect(cropSpec(liveFocus, last.lm, aspect), w, h);
+    lastShape = shown.flatMap((s) => s.outline?.polys.flat() ?? []);
+  } else liveView.style.aspectRatio = `${w} / ${h}`;
+  drawLive(crop, shown);
   setMsg(liveMsg, lm ? "" : "얼굴을 찾는 중…");
 }
 
@@ -539,12 +592,13 @@ async function setMode(live: boolean): Promise<void> {
   if (!live) { stopLive(); setMsg(liveMsg, ""); return; }
   if (liveStop) return;
   if (camMode !== "off") { stopCamera(); preview(bareView, bareCv); }
+  buildRuns();
+  follow = null;
   setMsg(liveMsg, "카메라를 여는 중…");
   try {
     videoLm ??= await createLandmarker("VIDEO", { blendshapes: false });
     video.srcObject = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
     await video.play();
-    liveSmoother.reset();
     liveStop = startFrameLoop(video, liveFrame, { onError: (e) => setMsg(liveMsg, String(e), true) });
   } catch (e) {
     await setMode(false);
