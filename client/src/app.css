@@ -1917,7 +1917,25 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   display: grid;
   place-items: center;
 }
-.palette-ink svg { width: 100%; height: 100%; overflow: visible; }
+/* 질감 틀(흑백 PNG)의 모양만 오려 내고 바탕을 뽑은 색으로 칠한다.
+   그래야 사진 같은 질감과 자유로운 색을 둘 다 가져간다 */
+.palette-ink i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: currentColor;
+  -webkit-mask: var(--sw) center / contain no-repeat;
+  mask: var(--sw) center / contain no-repeat;
+}
+/* 못 읽은 부위 — 가는 선 하나 */
+.palette-ink b {
+  display: block;
+  width: 60%;
+  height: 3px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: .35;
+}
 .palette-text {
   display: flex;
   flex-direction: column;
@@ -1938,8 +1956,6 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
 /* 사진에서 못 읽은 부위 — 앞머리에 덮인 눈썹처럼 */
 .color-palette-list li.unread { color: #c9c9c9; }
 .color-palette-list li.unread .palette-text strong { color: #b0b0b0; font-weight: 700; font-size: 15px; }
-/* 필터 보관용 — 그림은 안 그리고 defs 만 들고 있다 */
-.palette-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
 
 /* ───────── 참고 사진 업로드 ───────── */
 /* 파일 입력은 숨기고 칸 전체(label)를 누르게 한다 */
