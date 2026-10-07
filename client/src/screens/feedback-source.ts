@@ -37,6 +37,9 @@ export interface FeedbackView {
   /** 전체 얼굴 사진 두 장 (객체 URL) — 다 쓰면 dispose */
   answerUrl: string;
   attemptUrl: string;
+  /** 같은 두 장의 원본 — 화면 7 이 결과 한 장을 만들 때 쓴다 (screens/feedback-card prepareSave) */
+  answer: Blob;
+  attempt: Blob;
   /** 부위별 문장 · 요약 · 다시 찍기 안내(blocked) — ③ core/feedback-whole */
   feedback: WholeFeedback;
   /** 사진을 풀고 재는 데 걸린 시간 */
@@ -98,7 +101,7 @@ export async function loadFeedback(deps: FeedbackSourceDeps): Promise<FeedbackLo
   return {
     ok: true,
     view: {
-      answerUrl: urls[0]!, attemptUrl: urls[1]!, feedback: run.feedback,
+      answerUrl: urls[0]!, attemptUrl: urls[1]!, answer: answer.image, attempt: open[0]!.blob, feedback: run.feedback,
       ms: Math.round(now() - t0), frames: open.length, movedFailed: movedFailed || run.movedDropped,
       dispose: () => { for (const u of urls) URL.revokeObjectURL(u); },
     },
