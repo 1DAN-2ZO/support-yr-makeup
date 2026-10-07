@@ -52,45 +52,61 @@ const ZONES: Record<PalettePart, readonly Zone[]> = {
   // 눈썹은 전부 갈색 쪽(45~69°)이라 색상보다 밝기가 이름을 가른다.
   // 레드브라운은 붉은 기가 실제로 있어야 한다 — 채도 조건이 없으면 탁한 색까지 끌고 온다
   brow: [
-    { from: 0, to: 50, byL: [{ cMin: 15, name: "레드브라운" }] },
+    // 붉은 기가 분명하면 색상각 앞쪽
+    { from: 0, to: 40, byL: [{ cMin: 20, name: "로즈브라운" }, { cMin: 13, name: "레드브라운" }] },
+    { from: 40, to: 50, byL: [{ cMin: 15, name: "레드브라운" }] },
+    // 노란 기가 강하면 카키 쪽
+    { from: 75, to: 120, byL: [{ cMin: 12, name: "카키브라운" }] },
     { from: 0, to: 360, byL: [
-      { lMax: 22, name: "다크브라운" }, { lMax: 30, name: "브라운" },
+      { lMax: 16, name: "초코브라운" }, { lMax: 22, name: "다크브라운" }, { lMax: 30, name: "브라운" },
       { lMax: 40, name: "밀크브라운" }, { name: "라이트브라운" },
     ] },
   ],
   liner: [
-    { from: 250, to: 330, byL: [{ name: "네이비" }] },
-    { from: 330, to: 20, byL: [{ name: "버건디" }] },
-    { from: 20, to: 250, byL: [{ lMax: 24, name: "다크브라운" }, { name: "브라운" }] },
+    { from: 250, to: 310, byL: [{ name: "네이비" }] },
+    { from: 310, to: 340, byL: [{ name: "플럼" }] },
+    { from: 340, to: 10, byL: [{ lMax: 30, name: "버건디" }, { name: "로즈" }] },
+    { from: 10, to: 32, byL: [{ cMin: 28, name: "코랄" }, { lMax: 24, name: "다크브라운" }, { name: "브라운" }] },
+    { from: 32, to: 70, byL: [
+      { lMax: 24, name: "다크브라운" }, { lMax: 34, name: "브라운" },
+      { lMax: 55, name: "밀크브라운" }, { name: "베이지" },
+    ] },
+    { from: 70, to: 130, byL: [{ cMin: 12, name: "카키" }, { lMax: 24, name: "다크브라운" }, { name: "브라운" }] },
+    { from: 130, to: 250, byL: [{ lMax: 24, name: "다크브라운" }, { name: "브라운" }] },
   ],
   shadow: [
     { from: 300, to: 330, byL: [{ name: "퍼플" }] },
     { from: 330, to: 355, byL: [{ name: "플럼" }] },
     { from: 355, to: 18, byL: [{ lMax: 60, name: "로즈" }, { name: "핑크" }] },
-    { from: 18, to: 30, byL: [{ name: "버건디" }] },
+    { from: 18, to: 30, byL: [
+      { cMin: 22, lMax: 55, name: "버건디" }, { cMin: 22, name: "로즈" },
+      { lMax: 50, name: "모브" }, { name: "누드핑크" },
+    ] },
     // 선명하면 색조(코랄·오렌지), 탁하면 갈색 — 같은 색상각에 둘 다 있다
     { from: 30, to: 52, byL: [{ cMin: 30, name: "코랄" }, { lMax: 52, name: "딥브라운" }, { name: "브라운" }] },
     { from: 52, to: 64, byL: [{ cMin: 30, name: "오렌지" }, { lMax: 52, name: "딥브라운" }, { name: "브라운" }] },
-    { from: 64, to: 85, byL: [{ name: "베이지" }] },
+    { from: 64, to: 85, byL: [{ lMax: 45, name: "카키브라운" }, { cMin: 25, name: "골드" }, { name: "베이지" }] },
     { from: 85, to: 150, byL: [{ name: "올리브" }] },
     { from: 150, to: 300, byL: [{ name: "그레이" }] },
   ],
   lip: [
     { from: 345, to: 16, byL: [
       { lMax: 36, name: "버건디" }, { lMax: 50, name: "플럼" },
-      { lMax: 60, name: "로즈" }, { name: "핑크" },
+      { lMax: 60, name: "로즈" }, { cMin: 30, name: "핑크" }, { name: "모브" },
     ] },
     { from: 16, to: 34, byL: [{ lMax: 45, name: "딥레드" }, { name: "레드" }] },
     { from: 34, to: 52, byL: [{ lMax: 52, name: "브릭" }, { lMax: 68, name: "코랄" }, { name: "피치" }] },
-    { from: 52, to: 100, byL: [{ name: "오렌지" }] },
+    { from: 52, to: 70, byL: [{ cMin: 40, name: "오렌지" }, { lMax: 60, name: "브릭" }, { name: "살구" }] },
+    { from: 70, to: 100, byL: [{ cMin: 35, name: "오렌지" }, { name: "누드베이지" }] },
     { from: 100, to: 345, byL: [{ name: "플럼" }] },
   ],
   cheek: [
     { from: 300, to: 345, byL: [{ name: "라벤더" }] },
     { from: 345, to: 20, byL: [{ name: "로즈" }] },
-    { from: 20, to: 34, byL: [{ lMax: 62, name: "레드" }, { name: "핑크" }] },
+    { from: 20, to: 34, byL: [{ lMax: 62, name: "레드" }, { cMin: 30, name: "핑크" }, { name: "모브" }] },
     { from: 34, to: 46, byL: [{ name: "코랄" }] },
-    { from: 46, to: 100, byL: [{ lMax: 72, name: "코랄" }, { name: "피치" }] },
+    { from: 46, to: 58, byL: [{ lMax: 72, name: "코랄" }, { name: "피치" }] },
+    { from: 58, to: 100, byL: [{ lMax: 70, name: "브릭" }, { name: "살구" }] },
     { from: 100, to: 300, byL: [{ name: "올리브" }] },
   ],
 };
@@ -109,7 +125,12 @@ function special(part: PalettePart, L: number, C: number, h: number): string | n
   return null;
 }
 
-/** 수식어를 붙이는 부위. 눈썹·라이너는 이름 자체가 밝기 단계(다크브라운·라이트브라운)라 중복이다 */
+/**
+ * 밝기 수식어(딥·라이트)를 붙이는 부위. 눈썹·라이너는 이름 자체가 밝기 단계
+ * (다크브라운·라이트브라운)라 "딥 다크브라운" 이 되어 겹말이다.
+ * 채도 수식어(뮤트·비비드)는 겹말이 아니므로 **모든 부위에** 붙인다 —
+ * 같은 다크브라운이어도 붉은 기가 도는 것과 탁한 것은 다르다.
+ */
 const TONED: readonly PalettePart[] = ["lip", "cheek", "shadow"];
 
 /** 이름만으로 이미 탁한 색인 것들 */
@@ -117,9 +138,9 @@ const SOFT_BY_NAME: readonly string[] = ["MLBB", "베이지핑크", "애쉬브�
 
 /** 수식어 — 하나만 붙인다. 두 개 붙이면 이름이 길어 읽기 나쁘다 */
 function toneOf(part: PalettePart, L: number, C: number): ColorName["tone"] {
-  if (!TONED.includes(part)) return "";
   if (C < 24) return "뮤트";
   if (C > 48) return "비비드";
+  if (!TONED.includes(part)) return "";
   if (L < 32) return "딥";
   if (L > 73) return "라이트";
   return "";

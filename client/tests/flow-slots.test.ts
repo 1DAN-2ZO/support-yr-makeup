@@ -35,7 +35,8 @@ function pickPhoto(root: HTMLElement): void {
 /** 가짜 분석기 — 진짜는 MediaPipe 를 부른다 */
 function fakeAnalysis(): RefAnalysis {
   const rgb: [number, number, number] = [150, 104, 97];
-  return { colors: { lip: { hex: "#966861", rgb, name: describeColor(rgb, "lip"), n: 500 } }, preview: "data:,", w: 10, h: 10 };
+  const name = describeColor(rgb, "lip");
+  return { colors: { lip: { hex: "#966861", rgb, name, product: { hex: "#966861", rgb, name }, n: 500 } }, preview: "data:,", w: 10, h: 10 };
 }
 
 const button = (root: HTMLElement, text: string): HTMLButtonElement => {

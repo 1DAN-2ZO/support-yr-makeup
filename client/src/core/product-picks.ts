@@ -16,7 +16,10 @@
  * 사진은 client/public/products/ 에 둔다 (320px, 15KB 안팎).
  */
 
+import { COLOR_FAMILY, PALETTE, hexToRgb } from "./color-family";
 import type { PalettePart } from "./color-family";
+import { deltaE, rgbToLab } from "./color";
+import type { Lab } from "./color";
 
 export interface ProductPick {
   /** 이 제품을 권할 색 계열. color-name.ts 의 base 이름과 같은 말을 쓴다 */
@@ -138,14 +141,39 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
       photo: "/products/fwee-cheek-chip.jpg",
       checked: true,
     },
+    // ── 투에이엔 듀얼 치크 (19색) ──
+    // 호수마다 색이 완전히 달라서 **묶음별로 나눠 넣는다.** 그래야 추천된 계열에 맞는
+    // 사진이 뜬다. 한 줄로 두면 라벤더를 권하면서 코랄 사진을 보여 주게 된다.
+    // 전체 호수: 코튼캔디 바이올렛 · 러브 로지 · 코코 코랄 · 핫 리빙 코랄 · 무드 인 치크
+    // · 핑크 페탈 · 피치 피즈 · 누드 헤이즈 · 하트 벌룬 · 러브 포션 · 쥬시 피치
+    // · 오렌지 플레어 · 베리 큐피드 · 러브 큐피드 · 망고 베리 · 핑크 텐션 · 버블 하트
+    // · 디어 로즈 · 크리미 로지
     {
-      // 19색. 호수 이름에 색이 들어 있다 — 코튼캔디 바이올렛 · 러브 로지 · 코코 코랄
-      // · 핫 리빙 코랄 · 무드 인 치크 · 핑크 페탈 · 피치 피즈 · 누드 헤이즈 · 하트 벌룬
-      // · 러브 포션 · 쥬시 피치 · 오렌지 플레어 · 베리 큐피드 · 러브 큐피드 · 망고 베리
-      // · 핑크 텐션 · 버블 하트 · 디어 로즈 · 크리미 로지
-      families: ["라벤더", "코랄", "로즈", "핑크", "피치", "베이지핑크", "레드"],
-      brand: "투에이엔", name: "듀얼 치크",
+      // 사진으로 확인: 오른쪽 칸 색상각 328.6° — 라벤더 구간에 들어온다
+      families: ["라벤더"], brand: "투에이엔", name: "듀얼 치크",
+      shade: "코튼캔디 바이올렛",
       kind: "한 통에 두 색 — 따로 써도, 섞어 써도 돼요",
+      photo: "/products/2an-dual-cheek-violet.jpg",
+      checked: true,
+    },
+    {
+      // 사진으로 확인: 오른쪽 칸 #fda6a2 (L76.5 C35.3 h25.1)
+      families: ["코랄", "피치"], brand: "투에이엔", name: "듀얼 치크",
+      kind: "한 통에 두 색 — 코코 코랄 · 핫 리빙 코랄 · 피치 피즈 · 쥬시 피치 호수",
+      photo: "/products/2an-dual-cheek.jpg",
+      checked: true,
+    },
+    {
+      families: ["로즈", "모브"], brand: "투에이엔", name: "듀얼 치크",
+      kind: "한 통에 두 색 — 러브 로지 · 디어 로즈 · 크리미 로지 호수",
+    },
+    {
+      families: ["핑크", "베이지핑크"], brand: "투에이엔", name: "듀얼 치크",
+      kind: "한 통에 두 색 — 핑크 페탈 · 핑크 텐션 · 버블 하트 · 누드 헤이즈 호수",
+    },
+    {
+      families: ["레드", "브릭"], brand: "투에이엔", name: "듀얼 치크",
+      kind: "한 통에 두 색 — 베리 큐피드 · 망고 베리 · 러브 포션 호수",
     },
     { families: ["베이지핑크", "코랄", "피치"], brand: "페리페라", name: "퓨어 블러시드 선샤인 치크", kind: "파우더 — 얇게 올라가 뭉치지 않아요" },
   ],
@@ -159,17 +187,100 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
       photo: "/products/laka-perfect-twin-lip.jpg",
       checked: true,
     },
-    { families: ["MLBB", "브릭", "누드베이지"], brand: "롬앤", name: "쥬시 래스팅 틴트", kind: "틴트 — 촉촉하고 오래가요" },
+    {
+      // 색이 아주 많다(30색 가까이). 사진에 보이는 것만으로도 자주·분홍·코랄·오렌지·누드가 있다
+      families: ["MLBB", "브릭", "누드베이지", "로즈", "핑크", "코랄", "오렌지", "플럼"],
+      brand: "롬앤", name: "쥬시 래스팅 틴트",
+      kind: "틴트 — 촉촉하고 오래가요",
+      photo: "/products/romand-juicy-lasting-tint.jpg",
+      checked: true,
+    },
     { families: ["코랄", "피치", "오렌지"], brand: "에스쁘아", name: "꾸뛰르 립 틴트 글레이즈", kind: "틴트 — 광이 돌아요" },
     { families: ["로즈", "핑크", "플럼", "버건디", "레드", "딥레드", "체리"], brand: "3CE", name: "블러 워터 틴트", kind: "틴트 — 뿌옇게 번지는 느낌" },
   ],
 };
 
-/** 그 색 계열에 맞는 제품. 맞는 게 없으면 그 부위의 첫 번째 것 */
+/**
+ * 그 색 계열에 맞는 제품.
+ *
+ * 맞는 것이 없으면 **색이 가장 가까운 계열**의 제품을 준다. 계열을 잘게 쪼갤수록
+ * 제품이 없는 계열이 생기는데, 그때 그냥 첫 번째 제품을 주면 엉뚱한 색을 권하게 된다.
+ * (`뮤트 모브` 를 찾는데 오렌지 틴트를 주는 식)
+ */
 export function pickProduct(part: PalettePart, family: string): ProductPick | null {
+  return pickProducts(part, [family], 1)[0]?.pick ?? null;
+}
+
+export interface Picked {
+  pick: ProductPick;
+  /** 이 제품이 걸린 계열. 화면에 "○○ 계열 호수로" 로 쓴다 */
+  family: string;
+}
+
+/**
+ * 제품을 **여러 개** 고른다.
+ *
+ * 하나만 주면 "이것뿐인가" 싶고, 계열 경계에 걸린 색은 한 끗 차이로 엉뚱한 것이 뽑힌다.
+ * 둘을 주면 고를 여지가 생기고, 보이는 색과 보정한 색이 다를 때 양쪽을 같이 보여 줄 수 있다.
+ *
+ * `families` 에는 찾고 싶은 계열을 우선순위대로 넣는다 (보통 보이는 색·보정한 색 둘).
+ * 그 계열에 딱 맞는 제품을 먼저 담고, 모자라면 색이 가까운 계열에서 채운다.
+ */
+export function pickProducts(part: PalettePart, families: readonly string[], max = 2): Picked[] {
   const list = PRODUCT_PICKS[part];
-  if (!list.length) return null;
-  return list.find((p) => p.families.includes(family)) ?? list[0]!;
+  if (!list.length) return [];
+  const out: Picked[] = [];
+  const seen = new Set<ProductPick>();
+  // 같은 제품은 한 번만. 호수 묶음별로 나눠 넣은 제품(투에이엔·모렛)은 여러 줄이지만
+  // 화면에는 같은 이름으로 보이므로, 두 번 뜨면 "왜 같은 게 두 개지" 가 된다
+  const shown = new Set<string>();
+
+  const add = (pick: ProductPick, family: string): void => {
+    const key = `${pick.brand} ${pick.name}`;
+    if (seen.has(pick) || shown.has(key) || out.length >= max) return;
+    seen.add(pick);
+    shown.add(key);
+    out.push({ pick, family });
+  };
+
+  // ① 찾는 계열에 딱 맞는 것부터
+  for (const f of families) {
+    for (const p of list) if (p.families.includes(f)) add(p, f);
+  }
+  if (out.length >= max) return out;
+
+  // ② 모자라면 색이 가까운 계열에서. 기준 색은 첫 번째 계열
+  const want = families.map((f) => familyLab(part, f)).find((l) => l);
+  const rest = list.filter((p) => !seen.has(p));
+  if (!want) {
+    for (const p of rest) add(p, p.families[0] ?? families[0] ?? "");
+    return out;
+  }
+  const scored = rest.map((p) => {
+    let bd = Infinity, bf = p.families[0] ?? "";
+    for (const f of p.families) {
+      const l = familyLab(part, f);
+      if (!l) continue;
+      const d = deltaE(want, l);
+      if (d < bd) { bd = d; bf = f; }
+    }
+    return { p, bd, bf };
+  }).sort((a, b) => a.bd - b.bd);
+  for (const { p, bf } of scored) add(p, bf);
+  return out;
+}
+
+/** 그 계열 이름을 가진 48색들의 평균. 팔레트에 없는 이름이면 null */
+function familyLab(part: PalettePart, family: string): Lab | null {
+  const hits = PALETTE[part].filter((hex) => COLOR_FAMILY[hex] === family);
+  if (!hits.length) return null;
+  const labs = hits.map((hex) => { const [r, g, b] = hexToRgb(hex); return rgbToLab(r, g, b); });
+  const n = labs.length;
+  return {
+    L: labs.reduce((s, l) => s + l.L, 0) / n,
+    a: labs.reduce((s, l) => s + l.a, 0) / n,
+    b: labs.reduce((s, l) => s + l.b, 0) / n,
+  };
 }
 
 /** 화면에 쓸 한 줄. 호수를 모르면 계열 이름으로 말한다 — 틀린 호수를 말하지 않는다 */

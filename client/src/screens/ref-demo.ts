@@ -25,6 +25,8 @@ const MEASURED: Record<PalettePart, { hex: string; n: number }> = {
 export const DEMO_REF_COLORS: RefColors = Object.fromEntries(
   Object.entries(MEASURED).map(([part, { hex, n }]) => {
     const rgb = hexToRgb(hex);
-    return [part, { hex, rgb, name: describeColor(rgb, part as PalettePart), n }];
+    const name = describeColor(rgb, part as PalettePart);
+    // 더미라 보이는 색과 제품용 색이 같다 (진짜 사진이면 보정이 들어간다)
+    return [part, { hex, rgb, name, product: { hex, rgb, name }, n }];
   }),
 ) as RefColors;

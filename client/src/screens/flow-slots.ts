@@ -5,7 +5,7 @@
 
 import type { ScreenId } from "@core/screens";
 import { nextGuidePart } from "@core/screens";
-import { pickProduct, pickShadeText } from "@core/product-picks";
+import { pickProducts, pickShadeText } from "@core/product-picks";
 import { PART_NAME } from "@core/score";
 import type { PartId } from "@core/types";
 import { colorPalette } from "./color-palette";
@@ -183,8 +183,11 @@ function guideMock(part: PartId): HTMLElement {
   // 이번에 올린 사진에서 읽은 색. 없으면(새로고침 등) 견본으로 돌아간다
   const colors = getRefColors() ?? DEMO_REF_COLORS;
   const read = part === "contour" ? undefined : colors[part];
+  // 동그라미 색과 이름은 **보이는 색** (팔레트 화면과 같아야 한다),
+  // 제품을 고르는 데는 **보정한 색** (제품은 피부에 섞이지 않았다)
   const hex = read?.hex ?? sample.hex;
   const name = read ? `${read.name.text} 계열` : sample.name;
+  const family = read?.product.name.base ?? "";
   const card = document.createElement("div");
   card.className = "slot-guide-card";
   card.style.setProperty("--slot-color", hex);
@@ -199,24 +202,29 @@ function guideMock(part: PartId): HTMLElement {
       <div><strong>${name}</strong><p>${sample.copy}</p></div>
     </div>
   `;
-  // 이 색 계열에 맞는 제품 한 줄 — 호수를 모르면 계열 이름으로만 말한다
-  const family = read?.name.base ?? "";
-  const pick = part === "contour" ? null : pickProduct(part, family);
-  if (pick) {
+  // 이 색 계열에 맞는 제품 둘.
+  // 보이는 색과 보정한 색이 다를 수 있어 **양쪽 계열을 다 넣는다** —
+  // 보이는 색은 피부가 섞여 탁하고, 보정한 색은 제품 쪽에 가깝다. 어느 쪽이 맞는지
+  // 지금은 가릴 길이 없으므로 둘 다 보여 주고 고르게 한다
+  const wanted = [...new Set([read?.name.base, read?.product.name.base].filter((f): f is string => !!f))];
+  const picks = part === "contour" || !wanted.length ? [] : pickProducts(part, wanted, 2);
+  if (picks.length) {
     const box = document.createElement("div");
     box.className = "slot-product";
     box.innerHTML = `
       <b>이런 제품이면 돼요</b>
-      <div class="slot-product-row">
-        ${pick.photo
-          ? `<img class="slot-product-photo" src="${pick.photo}" alt="${pick.brand} ${pick.name}" />`
-          : `<span class="slot-product-dot" aria-hidden="true"></span>`}
-        <div>
-          <strong>${pick.brand} ${pick.name}</strong>
-          <em>${pickShadeText(pick, family)}</em>
-          <p>${pick.kind}</p>
+      ${picks.map(({ pick, family: f }) => `
+        <div class="slot-product-row">
+          ${pick.photo
+            ? `<img class="slot-product-photo" src="${pick.photo}" alt="${pick.brand} ${pick.name}" />`
+            : `<span class="slot-product-dot" aria-hidden="true"></span>`}
+          <div>
+            <strong>${pick.brand} ${pick.name}</strong>
+            <em>${pickShadeText(pick, f)}</em>
+            <p>${pick.kind}</p>
+          </div>
         </div>
-      </div>
+      `).join("")}
     `;
     card.append(box);
   }

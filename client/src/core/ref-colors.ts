@@ -13,6 +13,8 @@
 import { labAt, pointInPoly, rgbToLab } from "./color";
 import type { RgbaImage } from "./color";
 import { rgbToHex } from "./color-family";
+import { skinColor, unmixSkin, whiteBalanceGain } from "./ref-correct";
+import type { Rgb } from "./ref-correct";
 import type { PalettePart } from "./color-family";
 import { describeColor } from "./color-name";
 import type { ColorName } from "./color-name";
@@ -20,11 +22,21 @@ import { BROW, EYES } from "./regions";
 import type { Pt } from "./types";
 
 export interface RefColor {
-  /** 사진에서 뽑은 색 — 화면에 **이 색** 을 보여 준다 */
+  /**
+   * 사진에 **보이는 그대로의 색.** 색조 팔레트 화면이 이것을 보여 준다 —
+   * 그 화면이 하는 일은 "이 사진의 화장이 어떤 색인가" 를 말하는 것이므로,
+   * 눈에 보이는 색과 달라지면 안 된다.
+   */
   hex: string;
   rgb: [number, number, number];
-  /** 규칙으로 지은 이름 — 48색에 없는 색이 와도 나온다 */
+  /** 보이는 색으로 지은 이름 */
   name: ColorName;
+  /**
+   * 조명·피부를 걷어낸 색. **제품을 고를 때 이것을 쓴다** —
+   * 제품은 피부에 섞이지 않은 상태라 보이는 색과 바로 비교할 수 없다.
+   * 기준(흰자·이마)을 못 찾으면 보이는 색과 같다.
+   */
+  product: { hex: string; rgb: [number, number, number]; name: ColorName };
   /** 색을 고른 픽셀 수. 적으면 믿을 수 없다 */
   n: number;
 }
@@ -42,6 +54,15 @@ const BANDS: Record<PalettePart, readonly [number, number]> = {
 
 /** 믿을 만하다고 보는 최소 픽셀 수. 이보다 적으면 그 부위는 안 내보낸다 */
 const MIN_PX = 60;
+
+/**
+ * 피부를 걷어낼 부위. **얇게 얹혀 밑색이 비치는 것만** 해당한다.
+ *
+ * 눈썹·아이라인은 피부를 거의 덮어서 "피부에서 뻗는 방향" 계산이 안 맞는다.
+ * 실제로 넣어 봤더니 까만 아이라인이 "뮤트 다크브라운" 으로 바뀌었다 — 거의 검은색에
+ * 억지로 색기를 더한 꼴이다. 조명 보정(화이트밸런스)은 모든 부위에 그대로 건다.
+ */
+const UNMIX: readonly PalettePart[] = ["shadow", "cheek", "lip"];
 
 const LIPS = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146] as const;
 const CHEEK = {
@@ -101,8 +122,15 @@ function quantile(sorted: readonly number[], q: number): number {
   return sorted[i]!;
 }
 
-/** 한 부위의 색. 픽셀이 모자라면 null — 가려졌거나(앞머리에 덮인 눈썹) 사진이 작다 */
-export function refPartColor(im: RgbaImage, lm: readonly Pt[], part: PalettePart, step = 2): RefColor | null {
+/**
+ * 한 부위의 색. 픽셀이 모자라면 null — 가려졌거나(앞머리에 덮인 눈썹) 사진이 작다.
+ *
+ * `fix` 를 주면 조명·피부를 되돌린 색을 돌려준다 (ref-correct.ts). 안 주면 보이는 그대로.
+ */
+export function refPartColor(
+  im: RgbaImage, lm: readonly Pt[], part: PalettePart, step = 2,
+  fix?: { gain: Rgb | null; skin: Rgb | null },
+): RefColor | null {
   const px = collect(im, polysOf(lm, part), step);
   if (px.length < MIN_PX) return null;
   const [lo, hi] = BANDS[part];
@@ -111,21 +139,45 @@ export function refPartColor(im: RgbaImage, lm: readonly Pt[], part: PalettePart
   const keep = px.filter((p) => p.L >= a && p.L <= b);
   const use = keep.length >= MIN_PX ? keep : px;
   const n = use.length;
-  const rgb: [number, number, number] = [
-    use.reduce((s, p) => s + p.r, 0) / n,
-    use.reduce((s, p) => s + p.g, 0) / n,
-    use.reduce((s, p) => s + p.b, 0) / n,
-  ];
-  return { hex: rgbToHex(rgb[0], rgb[1], rgb[2]), rgb, name: describeColor(rgb, part), n };
+  // ① 보이는 색 — 아무것도 걷어내지 않은 그대로
+  const seen: Rgb = [0, 1, 2].map((k) => {
+    const key = (["r", "g", "b"] as const)[k]!;
+    return use.reduce((s, p) => s + p[key], 0) / n;
+  }) as Rgb;
+
+  // ② 제품 고를 때 쓸 색 — 조명·피부를 걷어낸 것
+  const g = fix?.gain;
+  const w = (p: Px): Rgb => (g ? [p.r * g[0], p.g * g[1], p.b * g[2]] : [p.r, p.g, p.b]);
+  let prod: Rgb = g ? ([0, 1, 2].map((k) => use.reduce((s, p) => s + w(p)[k]!, 0) / n) as Rgb) : seen;
+  if (fix?.skin && UNMIX.includes(part)) {
+    const skin: Rgb = g ? [fix.skin[0] * g[0], fix.skin[1] * g[1], fix.skin[2] * g[2]] : fix.skin;
+    prod = unmixSkin(prod, use.map(w), skin);
+  }
+
+  return {
+    hex: rgbToHex(seen[0], seen[1], seen[2]), rgb: seen, name: describeColor(seen, part),
+    product: { hex: rgbToHex(prod[0], prod[1], prod[2]), rgb: prod, name: describeColor(prod, part) },
+    n,
+  };
 }
 
 export const REF_PARTS: readonly PalettePart[] = ["brow", "liner", "shadow", "lip", "cheek"];
 
-/** 참고 사진 한 장에서 부위별 색을 전부. 못 뽑은 부위는 빠진다 */
+/**
+ * 참고 사진 한 장에서 부위별 색을 전부. 못 뽑은 부위는 빠진다.
+ *
+ * 부위마다 색을 **두 벌** 돌려준다 — 사진에 보이는 색과, 제품을 고를 때 쓸 색.
+ * 두 화면이 하는 일이 달라서다 (RefColor 주석 참고).
+ *
+ * 조명·피부 보정을 **한 번만 구해** 모든 부위가 나눠 쓴다. 기준을 못 찾으면
+ * (흰자가 안 보이거나 앞머리가 이마를 덮으면) 그 보정만 빼고 나머지는 그대로 간다 —
+ * 틀린 보정보다 안 하는 것이 낫다.
+ */
 export function refColors(im: RgbaImage, lm: readonly Pt[], step = 2): RefColors {
+  const fix = { gain: whiteBalanceGain(im, lm, step), skin: skinColor(im, lm, step) };
   const out: RefColors = {};
   for (const part of REF_PARTS) {
-    const c = refPartColor(im, lm, part, step);
+    const c = refPartColor(im, lm, part, step, fix);
     if (c) out[part] = c;
   }
   return out;
