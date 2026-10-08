@@ -528,3 +528,28 @@ describe("live run", () => {
     expect(poseOf(turned).yaw).toBeLessThan(poseOf(FACE).yaw);
   });
 });
+
+describe("화면 4 엔진에 다른 가이드 모양 넣기 — 정답사진에서 만든 부위 가이드 (사용자 2026-10-07: 예전 실시간 가이드 설정 그대로)", () => {
+  // 오른쪽 눈 위 사각형 (맨얼굴 좌표)
+  const box: Pt[] = [{ x: 180, y: 220 }, { x: 250, y: 220 }, { x: 250, y: 245 }, { x: 180, y: 245 }];
+  const given = (part: "shadow" | "lip") => createLiveRun<string>({ partId: part, baseline: { lm: FACE, foreheadL: SKIN.L }, outline: { polys: [box], lines: [] }, smooth: false });
+
+  it("L47 outline 을 주면 템플릿 대신 그 모양 — 정면이면 그 자리, 얼굴이 옮겨 가면 같이 옮겨 간다", () => {
+    expect(given("lip").step(frame()).outline!.polys).toHaveLength(1);
+    samePolys(given("lip").step(frame()).outline!.polys, [box]);
+    const moved = FACE.map((p) => ({ x: p.x + 12, y: p.y - 5 }));
+    samePolys(given("lip").step(frame({ lm: moved })).outline!.polys, [box.map((p) => ({ x: p.x + 12, y: p.y - 5 }))]);
+  });
+
+  it("L48 넣은 모양의 점 · 화살표도 같이 따라가고, 템플릿용 퍼지는 방향 표시는 덧붙이지 않는다 · 눈 부위면 먼 쪽 눈 흐리게도 그대로", () => {
+    // 섀도 퍼지는 방향(spreadMarks)은 템플릿 섀도 모양(눈꺼풀 9점 + 위 9점)을 전제로 해서 다른 모양엔 엉뚱한 자리에 생긴다
+    expect(given("shadow").step(frame()).outline!.dots, "덧붙인 점 없음").toBeUndefined();
+    const dot = { x: 215, y: 232 }, arrow = [{ x: 215, y: 238 }, { x: 215, y: 226 }];
+    const r = createLiveRun<string>({ partId: "shadow", baseline: { lm: FACE, foreheadL: SKIN.L }, outline: { polys: [box], lines: [], dots: [dot], arrows: [arrow] }, smooth: false });
+    const moved = FACE.map((p) => ({ x: p.x + 12, y: p.y - 5 }));
+    const o = r.step(frame({ lm: moved })).outline!;
+    samePolys([o.dots!, ...o.arrows!], [[{ x: 227, y: 227 }], arrow.map((p) => ({ x: p.x + 12, y: p.y - 5 }))]);
+    expect(given("shadow").step(frame()).alpha, "눈 부위면 다각형마다 진하기").toEqual([1]);
+  });
+});
+

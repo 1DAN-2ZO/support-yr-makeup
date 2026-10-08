@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>제품 입력 — 당화응</title>
+    <!-- [dev 전용] 부위별 제품을 손으로 채우는 자리. 긁어 오는 길이 전부 막혀 있어서(네이버 API 저장 금지 ·
+         올리브영/화해 robots.txt) 사람이 보고 적는다. 적은 것은 JSON 으로 내려받아 서버 DB 에 심는다. -->
+    <style>
+      :root { --pink: #ff8095; --line: #e6e1dd; --ink: #2b2b2b; --muted: #8d8d8d; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; padding: 24px 20px 60px; background: #f4f1ee; color: var(--ink);
+        font: 14px/1.6 system-ui, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+      }
+      .wrap { max-width: 980px; margin: 0 auto; }
+      h1 { margin: 0 0 4px; font-size: 22px; letter-spacing: -.02em; }
+      .sub { margin: 0 0 20px; color: var(--muted); font-size: 13px; }
+      .card { padding: 18px 20px; border-radius: 16px; background: #fff; box-shadow: 0 6px 18px rgba(0,0,0,.05); }
+      .card + .card { margin-top: 16px; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px 14px; }
+      label { display: block; font-size: 12px; font-weight: 700; color: #6f6f6f; margin-bottom: 5px; }
+      input, select, textarea {
+        width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px;
+        font: inherit; background: #fff; color: var(--ink);
+      }
+      input:focus, select:focus, textarea:focus { outline: 2px solid rgba(255,128,149,.35); outline-offset: 1px; }
+      .fams { display: flex; flex-wrap: wrap; gap: 6px; }
+      .fams label {
+        display: inline-flex; align-items: center; gap: 5px; margin: 0;
+        padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px;
+        font-size: 12.5px; font-weight: 600; color: #555; cursor: pointer; background: #fff;
+      }
+      .fams label.on { border-color: var(--pink); background: #fff2f4; color: #c2415c; }
+      .fams input { width: auto; }
+      .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+      button {
+        padding: 10px 18px; border: 0; border-radius: 999px; font: inherit; font-weight: 700; cursor: pointer;
+        background: #efeae6; color: #4a4a4a;
+      }
+      button.primary { background: var(--pink); color: #fff; }
+      button.danger { background: transparent; color: #c2415c; }
+      table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+      th, td { padding: 9px 8px; border-bottom: 1px solid #f0ece9; text-align: left; vertical-align: top; }
+      th { font-size: 11.5px; color: var(--muted); font-weight: 700; }
+      td.fam { color: #c2415c; font-weight: 600; }
+      .count { font-size: 13px; color: var(--muted); }
+      .warn { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: #fff6f7; color: #b4475c; font-size: 13px; }
+      .hint { margin: 10px 0 0; font-size: 12.5px; color: var(--muted); }
+      .bar { height: 8px; border-radius: 999px; background: #efeae6; overflow: hidden; margin-top: 6px; }
+      .bar i { display: block; height: 100%; background: var(--pink); }
+      .photo-pick { display: flex; align-items: center; gap: 14px; }
+      .photo-pick img { width: 78px; height: 78px; object-fit: cover; border-radius: 12px; border: 1px solid var(--line); }
+      .photo-empty {
+        display: grid; place-items: center; width: 78px; height: 78px;
+        border: 1px dashed var(--line); border-radius: 12px; color: #bdb6b0; font-size: 12px;
+      }
+      .thumb { width: 40px; height: 40px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
+    </style>
+  </head>
+  <body>
+    <div class="wrap" id="app">불러오는 중…</div>
+    <script type="module" src="/src/screens/product-admin.ts"></script>
+  </body>
+</html>

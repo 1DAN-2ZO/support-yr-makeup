@@ -77,13 +77,13 @@ describe("similarity / retakeFront (1-11)", () => {
   });
   it("정면을 다시 찍으면 새 기준 + 나머지 장이 새 좌표계로 옮겨진다", () => {
     const prev = buildBaseline({ lm: face(), w: 200, h: 240, faceShape: shape });
-    const others = { left_45: face(1, 0, 0, 0.1), front_closed: face() };
+    const others = { turned: face(1, 0, 0, 0.1), front_closed: face() };
     const r = retakeFront(prev, { lm: face(2, 100, 100), w: 400, h: 480, faceShape: shape }, others);
     expect(r.baseline.unit.eye).toBeCloseTo(80);
     expect(r.transform.s).toBeCloseTo(2);
     // 눈 감음 장의 눈 바깥 끝은 새 기준의 눈 바깥 끝과 겹친다
     expect(r.others.front_closed![EYE_A.outer]!.x).toBeCloseTo(r.baseline.lm[EYE_A.outer]!.x, 4);
     expect(r.others.front_closed![EYE_A.outer]!.y).toBeCloseTo(r.baseline.lm[EYE_A.outer]!.y, 4);
-    expect(transformAll(r.transform, others.left_45)).toHaveLength(478);
+    expect(transformAll(r.transform, others.turned)).toHaveLength(478);
   });
 });

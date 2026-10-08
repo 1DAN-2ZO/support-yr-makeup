@@ -11,6 +11,9 @@ import type { ScreenContext } from "@screens/shell";
 /** 첫 화장 (rules/looks.json 순서) — id 를 박지 않는다: 화장 목록이 바뀌어도 "첫 카드" 의 뜻은 같다 */
 const FIRST = LOOKS[0]!.id;
 
+/** 컬러 팔레트는 일곱 칸까지만 (2026-10-06 새 디자인, fullrender.ts 의 slice) */
+const PALETTE_MAX = 7;
+
 const ver: Versions = {
   app: "test",
   score: "score-v0.1",
@@ -122,15 +125,18 @@ describe("화면 2-b — AR 완성 예상 (카메라를 못 열면 서버 그림
     fullRenderScreen<null>({ ...deps, getPlan: () => standardPlan() }).mount(ctx);
     expect(root.querySelector(".ar-why")).toBeNull();
     const items = root.querySelectorAll(".look-detail li");
-    expect(items).toHaveLength((LOOKS[0]?.products.length ?? 0) + CONTOUR_PRODUCTS.length);
+    const all = (LOOKS[0]?.products.length ?? 0) + CONTOUR_PRODUCTS.length;
+    expect(items).toHaveLength(Math.min(all, PALETTE_MAX));
   });
 
-  it("맨 위에도 뒤로 가기가 있다 — 카메라·제품 목록에 밀려 아래 버튼이 안 보여도 (2026-09-29 폰)", () => {
+  // 2026-10-06 새 디자인: 맨 윗줄(.ar-topbar)의 '다른 룩' 버튼이 옛 .back 자리를 대신한다
+  it("맨 위에도 룩을 바꿀 길이 있다 — 카메라·제품 목록에 밀려 아래 버튼이 안 보여도 (2026-09-29 폰)", () => {
     const { root, ctx, go, deps } = setup(FIRST);
     fullRenderScreen<null>(deps).mount(ctx);
-    const top = root.querySelector<HTMLButtonElement>(".fullrender > .back");
+    const bar = root.querySelector(".fullrender > .ar-topbar");
+    expect(root.querySelector(".fullrender")?.firstElementChild).toBe(bar);
+    const top = bar?.querySelector<HTMLButtonElement>(".ar-change") ?? null;
     expect(top).not.toBeNull();
-    expect(root.querySelector(".fullrender")?.firstElementChild).toBe(top);
     top!.click();
     expect(go).toHaveBeenCalledWith("looks");
   });

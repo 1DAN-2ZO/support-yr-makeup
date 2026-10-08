@@ -2,6 +2,7 @@
 // 화면 3 (부위 완성본) — 글·버튼·부위 없을 때. 그림(완성본 크롭)은 브라우저에서만
 import { describe, expect, it, vi } from "vitest";
 import { createLogger, memorySink } from "@core/log";
+import { partCard } from "@core/guide-view";
 import { LOOKS } from "@core/looks";
 import type { Versions } from "@core/types";
 import { GUIDE_TEXT, guideScreen, type GuideDeps } from "@screens/guide";
@@ -25,12 +26,16 @@ function setup(over: Partial<GuideDeps> = {}) {
 }
 
 describe("화면 3", () => {
-  it("GS1 제목 · 근거 한 줄 · 필요한 것 한 줄", () => {
+  // 2026-10-06 새 디자인: '지금 필요한 것:' 라벨을 떼고 제품 이름만 한 줄로 보여 준다
+  it("GS1 제목 · 근거 한 줄 · 필요한 제품 한 줄 (라벨 없이)", () => {
     const { root, ctx, deps } = setup();
     guideScreen<null>(deps).mount(ctx);
     expect(root.textContent).toContain("아이라이너");
     expect(root.textContent).toContain(look.rationale.liner!);
-    expect(root.textContent).toContain("지금 필요한 것:");
+    const need = partCard("liner", look, null).need;
+    expect(need).not.toBeNull();
+    expect(root.querySelector(".guide-need")?.textContent).toBe(need!.replace(/^지금 필요한 것:\s*/, ""));
+    expect(root.textContent).not.toContain("지금 필요한 것:");
   });
 
   it("GS2 '따라 하기' → 화면 4", () => {
