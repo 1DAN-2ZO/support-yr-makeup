@@ -17,6 +17,8 @@ import { DEMO_REF_COLORS } from "./ref-demo";
 import { surveyModal } from "./survey-modal";
 import { getRefColors, setRefColors } from "./ref-store";
 import type { RefFailure } from "./ref-analyze";
+import type { FeedbackLoad } from "./feedback-source";
+import type { FeedbackLine } from "@core/feedback-whole";
 import type { Screen, ScreenContext } from "./shell";
 
 export interface SlotSpec {
@@ -168,13 +170,14 @@ function uploadWarn(text: string): HTMLElement {
   return el;
 }
 
-function loadingCard(): HTMLElement {
+/** 기다리는 동안. 문구를 안 주면 정답사진 만들 때 쓰는 문구 (화면 3) */
+function loadingCard(title = "정답사진을 만들고 있어요", sub = "참고 사진의 화장을 맨얼굴 사진에 맞춰 정리하는 중이에요."): HTMLElement {
   const card = document.createElement("div");
   card.className = "slot-answer-loading";
   card.innerHTML = `
     <span aria-hidden="true"></span>
-    <strong>정답사진을 만들고 있어요</strong>
-    <p>참고 사진의 화장을 맨얼굴 사진에 맞춰 정리하는 중이에요.</p>
+    <strong>${title}</strong>
+    <p>${sub}</p>
   `;
   return card;
 }
@@ -251,20 +254,73 @@ function guideMock(part: PartId): HTMLElement {
   return card;
 }
 
-function feedbackCards(): HTMLElement {
+/** 못 그리는 까닭 — 왜 아직 피드백을 못 주는지 사람 말로 (feedback-run FeedbackMissing) */
+const FEEDBACK_MISSING: Record<string, string> = {
+  bare: "맨얼굴 사진이 없어요. 처음 촬영부터 다시 해 주세요",
+  answer: "정답사진이 아직 없어요. 참고 사진을 올리는 화면부터 다시 해 주세요",
+  attempt: "화장한 사진이 없어요. 시도사진을 먼저 찍어 주세요",
+  answer_size: "정답사진이 맨얼굴과 크기가 달라요. 참고 사진을 다시 올려 주세요",
+};
+
+/** 종류 — 화면에서 어떻게 보일지 (#318: ok · fix · info 를 구분해 보인다) */
+const TONE_LABEL: Record<string, string> = { ok: "비슷해요", fix: "다시 볼 곳", info: "알림" };
+
+/** 사진 두 장 — 전체 얼굴. 부위 확대는 없다 (#318 정해진 것) */
+function feedbackPhotos(answerUrl: string, attemptUrl: string): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "fb-photos";
+  for (const [url, label] of [[answerUrl, "정답사진"], [attemptUrl, "내 화장"]] as const) {
+    const fig = document.createElement("figure");
+    fig.innerHTML = `<img src="${url}" alt="${label}" /><figcaption>${label}</figcaption>`;
+    row.append(fig);
+  }
+  return row;
+}
+
+/** 요약 묶음 둘 — 부위 이름만. 비어 있으면 그 묶음을 안 그린다 (#318: 비어 있을 수 있어요) */
+function feedbackSummary(ok: readonly string[], fix: readonly string[]): HTMLElement | null {
+  if (!ok.length && !fix.length) return null;
+  const box = document.createElement("div");
+  box.className = "fb-summary";
+  const add = (cls: string, label: string, names: readonly string[]): void => {
+    if (!names.length) return;
+    const line = document.createElement("div");
+    line.className = `fb-sum ${cls}`;
+    line.innerHTML = `<b>${label}</b><span>${names.join(" · ")}</span>`;
+    box.append(line);
+  };
+  add("is-ok", "비슷한 곳", ok);
+  add("is-fix", "다시 볼 곳", fix);
+  return box;
+}
+
+/**
+ * 부위별 줄. 순서·문장은 ③ 가 정한 그대로 그린다 — 화면에서 문장을 만들지 않는다 (#318).
+ * 문장 길이가 바뀌어도 깨지지 않게 길이를 박아 두지 않는다 (문장 30자 · 안내 두 줄까지 본다)
+ */
+function feedbackLines(parts: readonly FeedbackLine[]): HTMLElement {
   const wrap = document.createElement("div");
-  wrap.className = "slot-feedback-list";
-  const rows = [
-    ["눈썹", "결 방향은 좋아요. 앞머리 쪽만 조금 더 연하게 풀면 자연스러워요."],
-    ["아이라인", "꼬리 길이가 정답사진보다 살짝 길어요. 끝을 조금만 줄여 주세요."],
-    ["입술", "중앙 컬러감은 잘 맞아요. 바깥 경계만 손끝으로 흐려 주세요."],
-  ];
-  for (const [name, copy] of rows) {
-    const card = document.createElement("div");
-    card.innerHTML = `<strong>${name}</strong><p>${copy}</p>`;
-    wrap.append(card);
+  wrap.className = "fb-lines";
+  for (const p of parts) {
+    const row = document.createElement("div");
+    row.className = `fb-line is-${p.tone}`;
+    const more = p.more ? `<p class="fb-more">${p.more}</p>` : "";
+    const fix = p.fix ? `<p class="fb-fix">${p.fix}</p>` : "";
+    row.innerHTML = `
+      <div class="fb-head"><strong>${p.name}</strong><em>${TONE_LABEL[p.tone] ?? ""}</em></div>
+      <p class="fb-say">${p.line}</p>${more}${fix}
+    `;
+    wrap.append(row);
   }
   return wrap;
+}
+
+/** 안내 한 줄 — 왜 못 보여 주는지 · 왜 다시 찍어야 하는지 (두 줄까지 들어간다) */
+function note(text: string): HTMLElement {
+  const e = document.createElement("p");
+  e.className = "fb-note";
+  e.textContent = text;
+  return e;
 }
 
 function saveCard(): HTMLElement {
@@ -403,7 +459,6 @@ export function slotScreen<S>(spec: SlotSpec, deps: SlotDeps = {}): Screen<S> {
           testMeta(spec.title, spec.owner, spec.todo),
           coach("정답사진과 시도사진을 비교해서 말로 알려드릴게요"),
           title("피드백", "점수 없이, 어디가 잘 맞고 어디를 조정하면 되는지만 보여줘요"),
-          feedbackCards(),
           action(ctx as ScreenContext<unknown>, "다음 · 저장하러 가기", spec.next),
         );
       }
@@ -452,6 +507,94 @@ export function partGuideSlot<S>(deps: PartGuideSlotDeps): Screen<S> {
         }),
       );
       ctx.root.append(root);
+    },
+  };
+}
+
+export interface FeedbackSlotDeps {
+  /** 재료 모으기 (⑥ main.ts) — 사진 두 장 · 부위별 문장. 화면은 그리기만 한다 */
+  getFeedback: () => Promise<FeedbackLoad>;
+}
+
+/**
+ * 화면 6 피드백 (#318 재료 · #332 연결).
+ *
+ * 상태 네 가지를 그린다 — 들어오면 **다 준비될 때까지 기다렸다가 한 번에** 보여 준다 (부위별로 채우지 않는다).
+ *   기다리는 중 → 결과 / 다시 찍기(blocked) / 못 그림(missing)
+ *
+ * 점수·숫자는 보여 주지 않는다. 문장은 ③ 가 준 그대로 쓴다 — 화면에서 만들지 않는다.
+ */
+export function feedbackSlot<S>(deps: FeedbackSlotDeps): Screen<S> {
+  return {
+    mount(ctx: ScreenContext<S>) {
+      const root = page("slot-feedback");
+      ctx.root.append(root);
+      let alive = true;
+      let drop: (() => void) | null = null;
+
+      const show = (...kids: (HTMLElement | null)[]): void => {
+        resetPage(root);
+        for (const k of kids) if (k) root.append(k);
+      };
+
+      // 사진 두 장은 객체 URL 이라 화면을 떠날 때 돌려줘야 한다
+      const next = (): HTMLButtonElement =>
+        button("다음 · 저장하러 가기", () => {
+          ctx.log.log({ name: "button", button: "slot_next:save" });
+          ctx.go("save");
+        });
+
+      show(
+        coach("정답사진과 견줘서 어디를 다시 보면 좋을지 알려드릴게요"),
+        title("피드백", "점수 없이, 어디가 잘 맞고 어디를 다듬으면 되는지만 보여줘요"),
+        // 부위별로 하나씩 채우지 않는다 — 다 준비되면 한 번에 바꾼다 (#318). 10초쯤 걸릴 수 있다
+        loadingCard("찍은 사진을 보고 있어요", "정답사진과 견주는 중이에요. 잠시만 기다려 주세요."),
+      );
+
+      void deps.getFeedback().then((r) => {
+        if (!alive) { if (r.ok) r.view.dispose(); return; }
+        if (!r.ok) {
+          ctx.log.log({ name: "button", button: `feedback_missing:${r.missing}` });
+          show(
+            coach("아직 견줄 것이 없어요"),
+            title("피드백", "조금만 더 준비하면 바로 보여드릴게요"),
+            note(FEEDBACK_MISSING[r.missing] ?? "지금은 피드백을 만들 수 없어요"),
+            next(),
+          );
+          return;
+        }
+        const v = r.view;
+        drop = v.dispose;
+        const fb = v.feedback;
+        // 사진 조건이 많이 다르면 판정하지 않는다 — 안내 한 줄과 다시 찍으러 가는 버튼만 (#318 "다시 찍기")
+        if (fb.blocked) {
+          ctx.log.log({ name: "button", button: "feedback_blocked" });
+          show(
+            coach("사진을 한 번만 다시 찍어 주세요"),
+            title("다시 찍기", "처음 찍은 사진과 조건이 많이 달라서 견주기 어려워요"),
+            feedbackPhotos(v.answerUrl, v.attemptUrl),
+            note(fb.blocked),
+            button("시도사진 다시 찍기", () => {
+              ctx.log.log({ name: "button", button: "feedback_retake" });
+              ctx.go("attempt");
+            }),
+          );
+          return;
+        }
+        show(
+          coach("정답사진과 견줘서 어디를 다시 보면 좋을지 알려드릴게요"),
+          title("피드백", "점수 없이, 어디가 잘 맞고 어디를 다듬으면 되는지만 보여줘요"),
+          feedbackPhotos(v.answerUrl, v.attemptUrl),
+          feedbackSummary(fb.ok, fb.fix),
+          feedbackLines(fb.parts),
+          next(),
+        );
+      });
+
+      return () => {
+        alive = false;
+        drop?.();
+      };
     },
   };
 }
