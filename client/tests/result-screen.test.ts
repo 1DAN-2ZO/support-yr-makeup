@@ -82,6 +82,13 @@ describe("화면 5 — 부위 결과", () => {
     expect(ctx.goPart).toHaveBeenCalledWith("shadow");
   });
 
+  it("RO1 가로 부위만 data-want=landscape — 가로 레이아웃 CSS 용 (결과가 없을 때도 같다)", () => {
+    for (const [part, want] of [["brow", "landscape"], ["liner", "landscape"], ["shadow", "landscape"], ["lip", "portrait"], ["cheek", "portrait"], ["contour", "portrait"]] as const) {
+      const { root } = setup(part, null);
+      expect(root.querySelector<HTMLElement>(".result")?.dataset.want, part).toBe(want);
+    }
+  });
+
   it("확인받기 묶음 전체를 채점한다 — 가려진 장은 빼고, 점수는 안 가려진 장들로 (3-3)", async () => {
     const good = image(linerPaint()), bad = image(linerPaint({ R: 14, L: 14 }));
     const b: CaptureBundle = {

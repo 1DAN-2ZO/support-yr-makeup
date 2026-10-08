@@ -17,6 +17,7 @@ import { guideOutline } from "../core/overlay";
 import { frameOf, type HairMask } from "../core/sampling";
 import { scoreBundle, type GuideSource } from "../core/score-part";
 import { PARAMS, PART_NAME } from "../core/score";
+import { wantedOrientation } from "../core/screens";
 import type { Baseline, CaptureBundle, PartId, PartStatus } from "../core/types";
 import type { Screen, ScreenContext } from "./shell";
 
@@ -91,6 +92,7 @@ export function resultScreen<S>(deps: ResultDeps): Screen<S> {
     mount(ctx: ScreenContext<S>) {
       const part = deps.getPart();
       const wrap = el("div", "result");
+      wrap.dataset.want = wantedOrientation(part);
       ctx.root.append(wrap);
       if (!part) {
         wrap.append(line("muted", "부위가 정해지지 않았어요"));

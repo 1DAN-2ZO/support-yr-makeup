@@ -103,13 +103,35 @@ const SCREENS: Record<string, () => Promise<Screen<null>>> = {
 async function show(name: string): Promise<void> {
   if (typeof cleanup === "function") cleanup();
   root.innerHTML = "";
-  for (const b of document.querySelectorAll<HTMLButtonElement>("#pick button")) b.classList.toggle("on", b.textContent === name);
+  for (const b of document.querySelectorAll<HTMLButtonElement>("#pick button:not(.rot)")) b.classList.toggle("on", b.textContent === name);
   const s = await SCREENS[name]!();
   cleanup = s.mount(ctx(name));
   history.replaceState(null, "", `#${encodeURIComponent(name)}`);
 }
 
+// 폰 방향 — 실제 앱에서는 껍데기가 root.dataset.orient 를 단다. 미리보기는 틀 모양으로 대신한다 (#가로)
+const frame = document.getElementById("frame")!;
+function setOrient(land: boolean): void {
+  frame.classList.toggle("land", land);
+  root.dataset.orient = land ? "landscape" : "portrait";
+  const b = document.getElementById("rot");
+  if (b) b.classList.toggle("on", land);
+}
+setOrient(new URLSearchParams(location.search).has("land"));
+
 const pick = document.getElementById("pick")!;
+const rot = document.createElement("button");
+rot.id = "rot";
+rot.className = "rot";
+rot.textContent = "가로";
+rot.onclick = () => {
+  const land = !frame.classList.contains("land");
+  setOrient(land);
+  history.replaceState(null, "", `${location.pathname}${land ? "?land" : ""}${location.hash}`);
+  void show(decodeURIComponent(location.hash.slice(1)) || "2 화장");
+};
+rot.classList.toggle("on", frame.classList.contains("land"));
+pick.append(rot);
 for (const name of Object.keys(SCREENS)) {
   const b = document.createElement("button");
   b.textContent = name;

@@ -101,6 +101,7 @@ export function guideScreen<S>(deps: GuideDeps): Screen<S> {
       const wrap = el("div", "guide");
       ctx.root.append(wrap);
       const part = deps.getPart();
+      wrap.dataset.want = wantedOrientation(part);
       if (!part) {
         const first = deps.firstPart();
         // mount 안에서 바로 다시 그리면 안쪽 화면의 정리 함수가 바깥 render 에 덮여 안 불린다 → 끝난 뒤로 미룬다 (#167 리뷰)

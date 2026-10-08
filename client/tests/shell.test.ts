@@ -19,7 +19,7 @@ interface Session {
   parts: ChipInput[];
 }
 
-function setup(start: Partial<Session> = {}) {
+function setup(start: Partial<Session> = {}, now: "portrait" | "landscape" = "portrait") {
   document.body.innerHTML = `<div id="root"></div><div id="chips"></div><div id="hint"></div>`;
   const root = document.getElementById("root") as HTMLElement;
   const chipsRoot = document.getElementById("chips") as HTMLElement;
@@ -45,7 +45,7 @@ function setup(start: Partial<Session> = {}) {
     setPart: (p) => {
       session.currentPart = p;
     },
-    orientation: () => "portrait",
+    orientation: () => now,
   });
   return { shell, session, events: m.events, root, chipsRoot, hintRoot };
 }
@@ -125,6 +125,15 @@ describe("껍데기", () => {
     shell.render();
     expect(hintRoot.hidden).toBe(false);
     expect(hintRoot.textContent).toBe("폰을 가로로 돌리세요");
+  });
+
+  it("지금 폰 방향을 화면 루트에 data-orient 로 알린다 — 가로 레이아웃 CSS 가 이걸 본다", () => {
+    const a = setup({ screen: "guide", currentPart: "liner" }, "landscape");
+    a.shell.render();
+    expect(a.root.dataset.orient).toBe("landscape");
+    const b = setup({ screen: "guide", currentPart: "liner" }, "portrait");
+    b.shell.render();
+    expect(b.root.dataset.orient).toBe("portrait");
   });
 
   it("부위 화면이 아니면(리뷰 등) 마지막 부위가 남아 있어도 방향 안내를 안 띄운다 (#169 3번)", () => {

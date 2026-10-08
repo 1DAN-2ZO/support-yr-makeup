@@ -98,6 +98,8 @@ export function createShell<S>(opts: ShellOptions<S>) {
     shown = screen;
 
     opts.root.textContent = "";
+    // 가로 레이아웃 CSS 가 보는 값 — @media(orientation) 은 데스크톱·미리보기 틀에서 폰 방향과 달라서 쓰지 않는다
+    opts.root.dataset.orient = opts.orientation?.() ?? "portrait";
     renderChips(parts, currentPart, screen);
     // 방향 안내는 부위 화면(3·4·5)에서만 — 리뷰에 마지막 부위 기준 "세로로" 가 떴다 (#169 3번)
     renderHint(isPartScreen(screen) ? currentPart : null);

@@ -2061,3 +2061,79 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   font-weight: var(--weight-strong);
   box-shadow: 0 14px 30px rgba(255, 137, 155, 0.19);
 }
+
+/* 화면 3·5 가로 레이아웃 — 가로 부위(눈썹·아이라이너·섀도우)를 폰을 가로로 든 채 볼 때만.
+   방향은 @media 가 아니라 껍데기가 단 data-orient 로 본다(미리보기 틀에서도 같게 동작) */
+#app:has(.screen[data-orient="landscape"] :is(.guide, .result)[data-want="landscape"]) {
+  width: 100%;
+  max-width: 900px;
+}
+.screen[data-orient="landscape"]:has(.guide[data-want="landscape"]) {
+  display: flex;
+}
+.screen[data-orient="landscape"] .guide[data-want="landscape"] {
+  display: grid;
+  grid-template-columns: minmax(210px, 38%) minmax(0, 1fr);
+  grid-template-rows: auto auto auto 1fr;
+  grid-template-areas:
+    "top img"
+    "head img"
+    "need img"
+    "row img";
+  column-gap: 18px;
+  min-height: 100dvh;
+  padding:
+    calc(12px + env(safe-area-inset-top))
+    calc(18px + env(safe-area-inset-right))
+    calc(12px + env(safe-area-inset-bottom))
+    calc(18px + env(safe-area-inset-left));
+}
+.screen[data-orient="landscape"] .guide[data-want="landscape"] .guide-topbar { grid-area: top; }
+.screen[data-orient="landscape"] .guide[data-want="landscape"] .guide-logo { font-size: 24px; }
+.screen[data-orient="landscape"] .guide[data-want="landscape"] .guide-head { grid-area: head; margin-top: 10px; }
+.screen[data-orient="landscape"] .guide[data-want="landscape"] .guide-head h1 { margin-top: 10px; font-size: 20px; }
+.screen[data-orient="landscape"] .guide[data-want="landscape"] .guide-need { grid-area: need; margin-top: 10px; padding: 9px 12px; font-size: 12px; }
+.screen[data-orient="landscape"] .guide[data-want="landscape"] .row { grid-area: row; align-self: end; padding-top: 10px; }
+.screen[data-orient="landscape"] .guide[data-want="landscape"] .primary { min-height: 46px; font-size: 16px; }
+.screen[data-orient="landscape"] .guide[data-want="landscape"] .guide-img {
+  grid-area: img;
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  min-height: 0;
+  margin: 0;
+  border-radius: 24px;
+}
+.screen[data-orient="landscape"] .guide[data-want="landscape"] .guide-img.empty { justify-content: center; padding: 0; }
+.screen[data-orient="landscape"] .guide[data-want="landscape"] .guide-canvas { flex: 1; min-height: 0; height: 100%; object-fit: cover; }
+.screen[data-orient="landscape"] .guide[data-want="landscape"] .guide-note { padding: 6px 10px; font-size: 11px; }
+
+.screen[data-orient="landscape"] .result[data-want="landscape"] {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  grid-template-rows: repeat(7, auto) 1fr;
+  column-gap: 18px;
+  min-height: calc(100dvh - 34px);
+}
+.screen[data-orient="landscape"] .result[data-want="landscape"] > * { grid-column: 2; }
+.screen[data-orient="landscape"] .result[data-want="landscape"] .result-photo {
+  grid-column: 1;
+  grid-row: 1 / span 8;
+  align-self: stretch;
+  margin: -14px 0 -20px -16px;
+  aspect-ratio: auto;
+}
+/* 캔버스 원래 크기(예: 600×600)가 행 높이를 밀지 않게 칸 안에 고정한다 */
+.screen[data-orient="landscape"] .result[data-want="landscape"] .result-photo { position: relative; min-height: 0; }
+.screen[data-orient="landscape"] .result[data-want="landscape"] .result-photo canvas { position: absolute; inset: 0; object-fit: contain; }
+.screen[data-orient="landscape"] .result[data-want="landscape"] .result-part {
+  grid-row: 1;
+  margin: 0;
+  color: var(--muted);
+  text-shadow: none;
+}
+.screen[data-orient="landscape"] .result[data-want="landscape"] .result-score { padding-top: 8px; }
+.screen[data-orient="landscape"] .result[data-want="landscape"] .result-num { font-size: 44px; }
+.screen[data-orient="landscape"] .result[data-want="landscape"] .result-buttons { grid-row: 8; align-self: end; }
+.screen[data-orient="landscape"] .result[data-want="landscape"] .btns { margin-top: 8px; gap: 6px; }
+.screen[data-orient="landscape"] .result[data-want="landscape"] .btns button { padding: 9px 12px; }

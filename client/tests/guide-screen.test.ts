@@ -32,6 +32,14 @@ describe("화면 3", () => {
     expect(root.textContent).toContain("지금 필요한 것:");
   });
 
+  it("GS5 가로 부위(눈썹·아이라이너·섀도우)만 data-want=landscape — 가로 레이아웃 CSS 용", () => {
+    for (const [part, want] of [["brow", "landscape"], ["liner", "landscape"], ["shadow", "landscape"], ["lip", "portrait"], ["cheek", "portrait"], ["contour", "portrait"]] as const) {
+      const { root, ctx, deps } = setup({ getPart: () => part });
+      guideScreen<null>(deps).mount(ctx);
+      expect(root.querySelector<HTMLElement>(".guide")?.dataset.want, part).toBe(want);
+    }
+  });
+
   it("GS2 '따라 하기' → 화면 4", () => {
     const { root, ctx, go, deps } = setup();
     guideScreen<null>(deps).mount(ctx);
