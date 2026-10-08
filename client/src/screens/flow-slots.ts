@@ -6,11 +6,13 @@
 import type { ScreenId } from "@core/screens";
 import { nextGuidePart } from "@core/screens";
 import { pickProducts, pickShadeText } from "@core/product-picks";
+import { FEEDBACK_ORDER, type FeedbackPart } from "@core/guide-feedback";
 import type { MakeResult } from "@core/picture-maker";
 import { PART_NAME } from "@core/score";
 import type { PartId } from "@core/types";
 import { MAKE_WAIT_TEXT, makeFailText, shrinkForUpload } from "./answer-make";
 import { colorPalette } from "./color-palette";
+import { drawGuidePage, type GuideLoad, type GuideView } from "./guide-source";
 import { analyzeRefPhoto, REF_FAIL_TEXT } from "./ref-analyze";
 import type { RefAnalysis } from "./ref-analyze";
 import { DEMO_REF_COLORS } from "./ref-demo";
@@ -42,7 +44,17 @@ export interface SlotDeps {
 
 export interface PartGuideSlotDeps {
   getPart: () => PartId | null;
+  /**
+   * 정답사진에서 만든 부위 가이드 재료 (⑥ 잇기 — main.ts 의 getGuide, screens/guide-source). 주면 견본 그림 대신
+   * 정답사진을 그 부위로 자른 그림 + 가이드 테두리를 보여 준다. 안 주거나 재료가 없으면 견본 그림 그대로
+   */
+  getGuide?: () => Promise<GuideLoad>;
+  /** 자른 그림을 캔버스에 그리는 함수. 안 주면 진짜 (drawGuidePage) — 테스트에서 바꿔 끼운다 */
+  paintGuide?: (out: HTMLCanvasElement, view: GuideView, part: FeedbackPart) => boolean;
 }
+
+/** 정답사진 가이드가 있는 부위인가 — 쉐딩(contour)은 없다 */
+const hasPhotoGuide = (p: PartId): p is FeedbackPart => (FEEDBACK_ORDER as readonly PartId[]).includes(p);
 
 export interface SaveSlotDeps {
   clearAll: () => Promise<unknown>;
@@ -453,6 +465,34 @@ export function partGuideSlot<S>(deps: PartGuideSlotDeps): Screen<S> {
         }),
       );
       ctx.root.append(root);
+
+      // 정답사진을 이 부위로 잘라 견본 그림 자리에 넣는다 (⑥ 잇기). 못 만들면 견본 그림으로 돌아간다 — 화면이 비지 않게
+      const photo = guide.querySelector<HTMLElement>(".slot-guide-photo");
+      if (!deps.getGuide || !photo || !hasPhotoGuide(part)) return;
+      let alive = true;
+      const mock = [...photo.children];
+      const wait = document.createElement("p");
+      wait.className = "muted slot-status";
+      wait.style.cssText = "position:absolute;inset:0;display:grid;place-items:center;margin:0;";
+      wait.textContent = "가이드를 준비하고 있어요…";
+      photo.replaceChildren(wait);
+      const paint = deps.paintGuide ?? drawGuidePage;
+      void deps.getGuide().then((r) => {
+        if (!alive) return;
+        const out = document.createElement("canvas");
+        if (!r.ok || !paint(out, r.view, part)) { photo.replaceChildren(...mock); return; }
+        out.style.cssText = "display:block;width:100%;height:auto;";
+        // 견본용 틀(세로로 긴 칸 · 얼굴 모양 바탕)을 자른 그림 크기에 맞춘다
+        photo.style.cssText = "min-height:0;flex:0 0 auto;background:#000;";
+        photo.replaceChildren(out);
+        if (!r.view.found.includes(part)) {
+          const none = document.createElement("p");
+          none.className = "muted slot-status";
+          none.textContent = "정답사진에서 이 부위의 화장은 찾지 못했어요. 사진을 보고 따라 해 주세요.";
+          photo.after(none);
+        }
+      }).catch(() => { if (alive) photo.replaceChildren(...mock); });
+      return () => { alive = false; };
     },
   };
 }
