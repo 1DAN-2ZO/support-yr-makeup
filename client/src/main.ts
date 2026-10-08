@@ -9,6 +9,7 @@
 
 import { createLogger } from "./core/log";
 import { createCaptureEvents, type CaptureEvents } from "./core/capture-events";
+import { createMadePictures, type MadeKey } from "./core/made-pictures";
 import { planRestore, rebuildBaseline, toCapture } from "./core/restore";
 import { createLogStore } from "./core/log-store";
 import { createEventSender } from "./core/event-sender";
@@ -183,6 +184,16 @@ async function boot(): Promise<void> {
   });
   waiting = true;
   session = await restore(sessionStore, events, session);
+  // 만든 그림(정답사진 · 옮긴 그림)도 폰 저장소에서 되살린다 — 다시 켤 때마다 15초씩 다시 만들지 않게 (#331).
+  // 세션이 만료됐으면 저장소가 사진을 같이 지웠으니 빈 채로 돌아온다
+  const made = createMadePictures(sessionStore);
+  await made.restore();
+  /** 만든 그림을 넣거나 지운다 — draft 저장과 같은 줄에 세워 끝내기(clearAll)가 끝난 뒤에 써지지 않게 */
+  const putMade = (key: MadeKey, picture: Blob | null): Promise<void> => {
+    const done = saving.then(() => made.set(key, picture));
+    saving = done.catch(() => {});
+    return done;
+  };
   waiting = false;
   // 새 흐름(2026-10-06)에서 빠진 화면에 멈춘 세션은 가까운 새 화면으로 (화장 선택 · 2-b · 부위 화면 · 리뷰 → screens.inNewFlow)
   if (inNewFlow(session.screen) !== session.screen) session = setScreen(session, inNewFlow(session.screen));
@@ -240,13 +251,12 @@ async function boot(): Promise<void> {
   const getAttempt = (): AttemptShots | null => attempt;
   shell.register("attempt", attemptScreen<Session>({ setAttempt: (shots) => { attempt = shots; judged = null; }, next: "feedback" }));
 
-  // 3 정답사진 — 화면 3(정답사진 만들기 연결, 방식은 #331)이 setAnswer 로 넣는다. 맨얼굴과 같은 크기 · 같은 자리여야 한다
-  // (docs/feedback-input-contract.md). 메모리에만 둔다
-  let answer: AnswerPhoto | null = null;
+  // 3 정답사진 — 화면 3(정답사진 만들기 연결)이 setAnswer 로 넣는다. 맨얼굴과 같은 크기 · 같은 자리여야 한다
+  // (docs/feedback-input-contract.md). 폰 세션 저장소에 둔다 (core/made-pictures) — 새로고침해도 남고, 끝내기 · 만료 때 지워진다
   /** 마지막으로 판정한 것 — 화면 7 이 결과 한 장을 만든다. 시도사진을 다시 찍으면 비운다 */
   let judged: SaveSource | null = null;
-  const getAnswer = (): AnswerPhoto | null => answer;
-  const setAnswer = (a: AnswerPhoto | null): void => { answer = a; judged = null; };
+  const getAnswer = (): AnswerPhoto | null => { const image = made.get("answer"); return image ? { image } : null; };
+  const setAnswer = (a: AnswerPhoto | null): Promise<void> => { judged = null; return putMade("answer", a?.image ?? null); };
 
   // 6 피드백 재료 (⑥ 연결, #332) — 화면(⑤)은 getFeedback 이 준 것(문장 · 사진 두 장)을 그리기만 한다.
   // 옮긴 그림(getMoved)은 아직 넣지 않는다 — 라이너 줄만 "볼 수 없었어요". 넣기 전에 ③ 의 라이너 재기 수정이 먼저다:
@@ -291,6 +301,9 @@ async function boot(): Promise<void> {
       setBaseline: (b) => {
         // 세션에 남아 있던 옛 계획(#181)은 withBaseline 이 비운다 — 앱은 이제 그 계획을 읽지 않는다
         set(withBaseline(session, b));
+        // 맨얼굴이 바뀌면 만든 그림은 못 쓴다 — 옛 맨얼굴에 겹치던 그림이다
+        judged = null;
+        saving = saving.then(() => made.clear()).catch(() => {});
       },
       // 쌩얼 저장도 draft 와 같은 줄에 세운다 — 끝내기(clearAll)가 인코딩·저장이 끝날 때까지 기다린다 (#162 리뷰)
       saveBare: (blob) => {
@@ -395,8 +408,9 @@ async function boot(): Promise<void> {
       restart: () => {
         logStore.reopen();
         attempt = null;
-        answer = null;
         judged = null;
+        // 끝내기가 저장소는 이미 지웠다 — 메모리에 들고 있던 것도 버린다
+        saving = saving.then(() => made.clear()).catch(() => {});
         set(createSession());
         clearRemaining = 0;
         shell.render();
