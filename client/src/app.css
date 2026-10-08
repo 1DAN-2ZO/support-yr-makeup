@@ -2381,3 +2381,38 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   font-size: 14px;
   line-height: 1.6;
 }
+
+/* ── 뒤로 가기 (#369) ──
+   로고 왼쪽에 동그란 화살표. 글자가 없으므로 어디로 가는지는 aria-label 로 읽어 준다.
+   화살표가 없는 화면(첫 화면)에서도 로고 자리가 그대로이게 줄로 감싼다 */
+.slot-logo-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  align-self: stretch;
+}
+.slot-logo-row .slot-logo { align-self: center; margin: 0; }
+.slot-back {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  /* 손가락으로 누르는 자리는 작아도 40px 는 돼야 한다 */
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #f7f4f2;
+  color: #8d8d8d;
+  cursor: pointer;
+}
+.slot-back svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.slot-back:active { background: #efe9e6; }

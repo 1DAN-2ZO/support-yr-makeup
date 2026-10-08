@@ -87,6 +87,23 @@ function nudyLogo(): HTMLElement {
   return e;
 }
 
+/**
+ * 로고 줄 — 왼쪽에 뒤로 가는 화살표 (#369). flow-slots 와 같은 class 를 쓴다.
+ * 화살표는 글자가 없으므로 어디로 가는지는 aria-label 에 적는다
+ */
+function logoRow(label: string, onBack: () => void): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "slot-logo-row";
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "slot-back";
+  b.setAttribute("aria-label", label);
+  b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5 8 12l7 7" /></svg>`;
+  b.addEventListener("click", onBack);
+  row.append(b, nudyLogo());
+  return row;
+}
+
 function coach(text: string): HTMLElement {
   const e = document.createElement("div");
   e.className = "slot-coach";
@@ -161,7 +178,10 @@ export function attemptScreen<S>(deps: AttemptDeps): Screen<S> {
           ctx.log.log({ name: "button", button: "attempt_confirm" });
           void Promise.resolve(deps.setAttempt(shots)).then(() => { if (alive) ctx.go(deps.next); });
         });
-        wrap.append(nudyLogo(), head(ATTEMPT_TEXT.previewTitle, ATTEMPT_TEXT.previewSub), row, retake, confirm);
+        wrap.append(logoRow("부위 가이드로 돌아가기", () => {
+          ctx.log.log({ name: "button", button: "back:partguide" });
+          ctx.go("partguide");
+        }), head(ATTEMPT_TEXT.previewTitle, ATTEMPT_TEXT.previewSub), row, retake, confirm);
       }
 
       function intro(): void {
@@ -173,7 +193,10 @@ export function attemptScreen<S>(deps: AttemptDeps): Screen<S> {
           try { audio ??= new AudioContext(); void audio.resume(); } catch { /* */ }
           camera();
         });
-        wrap.append(nudyLogo(), coach(ATTEMPT_TEXT.coach), head(ATTEMPT_TEXT.title, ATTEMPT_TEXT.intro), btn);
+        wrap.append(logoRow("부위 가이드로 돌아가기", () => {
+          ctx.log.log({ name: "button", button: "back:partguide" });
+          ctx.go("partguide");
+        }), coach(ATTEMPT_TEXT.coach), head(ATTEMPT_TEXT.title, ATTEMPT_TEXT.intro), btn);
       }
 
       function failed(e: unknown): void {
@@ -182,7 +205,10 @@ export function attemptScreen<S>(deps: AttemptDeps): Screen<S> {
         const btn = el("button", "primary", ATTEMPT_TEXT.retry);
         btn.type = "button";
         btn.addEventListener("click", () => camera());
-        wrap.append(nudyLogo(), el("p", "cam-gate", ATTEMPT_TEXT.cameraFail), btn);
+        wrap.append(logoRow("부위 가이드로 돌아가기", () => {
+          ctx.log.log({ name: "button", button: "back:partguide" });
+          ctx.go("partguide");
+        }), el("p", "cam-gate", ATTEMPT_TEXT.cameraFail), btn);
       }
 
       function camera(): void {
