@@ -98,6 +98,10 @@ class SessionSummary:
     """VLM 개인화 호출 (복원 때 규칙 계획 restored_rule 은 호출이 아니라 빼고 따로 센다)"""
     vlm: list[Event] = field(default_factory=list)
     vlm_restored_rule: int = 0
+    """작업 시간 기록 (task, 2026-10-08 — client/src/core/task-timer.ts)"""
+    tasks: list[Event] = field(default_factory=list)
+    """화면마다 머문 시간 합 (ms) — 들어간 때부터 다음 화면에 들어간 때까지. 마지막 화면은 마지막 기록까지"""
+    dwell_ms: dict[str, int] = field(default_factory=dict)
 
 
 def summarize_session(events: list[Event]) -> SessionSummary:
@@ -149,13 +153,27 @@ def summarize_session(events: list[Event]) -> SessionSummary:
                 s.vlm_restored_rule += 1
             else:
                 s.vlm.append(e)
+        elif name == "task":
+            s.tasks.append(e)
         elif name == "session_end":
             s.end_reason = str(e.get("reason"))
+
+    # 화면에 머문 시간 — 같은 화면에 다시 들어오면 더한다
+    timed = sorted((e for e in events if isinstance(e.get("t"), (int, float))), key=lambda e: e["t"])
+    enters = [e for e in timed if e.get("name") == "screen_enter" and isinstance(e.get("screen"), str)]
+    for i, a in enumerate(enters):
+        until = enters[i + 1]["t"] if i + 1 < len(enters) else timed[-1]["t"]
+        if until > a["t"]:
+            s.dwell_ms[a["screen"]] = s.dwell_ms.get(a["screen"], 0) + int(until - a["t"])
 
     for sc in FUNNEL_SCREENS:
         if sc in s.reached:
             s.furthest = sc
     return s
+
+
+def _num(v: Any) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
 
 
 def _pct(part: int, whole: int) -> float | str:
@@ -281,6 +299,55 @@ def aggregate(events: Iterable[Event]) -> list[dict]:
         f"시도 {len(tried)}",
         len(tried),
     )
+
+    # 7-b. 화면에 머문 시간 — 들어간 세션만
+    for sc in FUNNEL_SCREENS:
+        secs = [s.dwell_ms[sc] // 1000 for s in sessions if sc in s.dwell_ms]
+        if secs:
+            row(f"화면 · {sc} 머문 시간 중앙값(초)", _median(secs), "들어간 세션만", len(secs))
+
+    # 7-c. 작업 시간 (task) — 기록이 있을 때만. 성공률은 한 것 전부에서, 시간은 된 것만
+    # (실패는 시간 제한까지 기다린 값이 섞여 흐려진다)
+    tasks = [e for s in sessions for e in s.tasks]
+    for task in sorted({str(e.get("task")) for e in tasks}):
+        mine = [e for e in tasks if str(e.get("task")) == task]
+        ok = [e for e in mine if e.get("ok") is True]
+        row(f"작업 · {task} 성공률(%)", _pct(len(ok), len(mine)), f"{len(ok)}/{len(mine)}", len(mine))
+        why: Counter = Counter(_name(e.get("why")) for e in mine if e.get("ok") is not True)
+        for r, c in why.most_common():
+            row(f"작업 · {task} 실패 · {r}(회)", c, "세션 합계", len(mine))
+        ms = [int(e["ms"]) for e in ok if _num(e.get("ms"))]
+        row(f"작업 · {task} 시간 중앙값(ms)", _median(ms), "된 것만", len(ms))
+        row(f"작업 · {task} 시간 p95(ms)", _p95(ms), "된 것만", len(ms))
+        # 서버가 나눠 알려 준 시간 (정답사진 · 옮긴 그림): 줄 선 시간 · FLUX 가 스스로 잰 시간 · 오가는 길.
+        # 느릴 때 GPU 가 느린지 길이 느린지 여기서 갈린다
+        split = [e for e in ok if all(_num(e.get(k)) for k in ("ms", "gen_ms", "queue_ms", "flux_ms"))]
+        if split:
+            k = len(split)
+            row(
+                f"작업 · {task} 줄 선 시간 중앙값(ms)",
+                _median([int(e["queue_ms"]) for e in split]),
+                "서버에서 앞사람을 기다림",
+                k,
+            )
+            row(
+                f"작업 · {task} FLUX 그리는 시간 중앙값(ms)",
+                _median([int(e["flux_ms"]) for e in split]),
+                "FLUX 가 스스로 잰 값",
+                k,
+            )
+            row(
+                f"작업 · {task} 서버 ↔ GPU 오가는 시간 중앙값(ms)",
+                _median([int(e["gen_ms"] - e["flux_ms"]) for e in split]),
+                "서버가 부르고 받기까지 − FLUX 가 그린 시간",
+                k,
+            )
+            row(
+                f"작업 · {task} 폰 ↔ 서버 오가는 시간 중앙값(ms)",
+                _median([int(e["ms"] - e["queue_ms"] - e["gen_ms"]) for e in split]),
+                "앱이 기다린 시간 − 줄 − 서버가 부르고 받기까지",
+                k,
+            )
 
     # 8. VLM 개인화 — 기록이 있을 때만 (규칙 모드·옛 로그엔 줄을 안 만든다)
     calls = [e for s in sessions for e in s.vlm]

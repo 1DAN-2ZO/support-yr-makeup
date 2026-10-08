@@ -56,8 +56,12 @@ import { createPictureMaker, type MakeResult } from "./core/picture-maker";
 import { requestTransfer } from "./core/transfer-client";
 import { prepareSave, type SaveKit, type SaveSource } from "./screens/feedback-card";
 import { loadFeedback, type AnswerPhoto, type FeedbackLoad } from "./screens/feedback-source";
-import { createGuideKeeper } from "./screens/guide-source";
-import { feedbackSlot, partGuideSlot, saveSlot, slotScreen, type PartGuideSlotDeps, type SaveSlotDeps } from "./screens/flow-slots";
+import { createGuideKeeper, loadPartGuide } from "./screens/guide-source";
+import { analyzeRefPhoto } from "./screens/ref-analyze";
+import { shrinkForUpload } from "./screens/answer-make";
+import { noteOfFeedback, noteOfGuide, noteOfMake, noteOfRef, noteOfSave, noteOfShrink } from "./screens/task-notes";
+import { timeTask } from "./core/task-timer";
+import { feedbackSlot, partGuideSlot, saveSlot, slotScreen, type PartGuideSlotDeps, type SaveSlotDeps, type SlotDeps } from "./screens/flow-slots";
 import { inNewFlow } from "./core/screens";
 
 /** 후기 설문 (구글 폼). 끝내기를 누르면 모달로 묻고, 끝 화면에도 한 번 더 둔다 */
@@ -277,7 +281,8 @@ async function boot(): Promise<void> {
   // 지금 코드는 꼬리를 틀리게 읽어서 getMoved 가 붙으면 틀린 라이너 문장이 화면에 나간다 (#336 ③ 리뷰, 실험 44).
   // 붙일 때는 옮긴 그림을 기다리는 동안 입술 · 섀도우 · 눈썹을 먼저 재 둔다 (서버가 한 장에 15초쯤)
   const getFeedback = async (): Promise<FeedbackLoad> => {
-    const r = await loadFeedback({ getBaseline: () => session.baseline, getAttempt, getAnswer });
+    // 걸린 시간을 사용 기록에 남긴다 (task feedback_run — core/task-timer)
+    const r = await timeTask(log, "feedback_run", () => loadFeedback({ getBaseline: () => session.baseline, getAttempt, getAnswer }), noteOfFeedback);
     judged = r.ok ? { feedback: r.view.feedback, answer: r.view.answer, attempt: r.view.attempt } : null;
     return r;
   };
@@ -285,7 +290,8 @@ async function boot(): Promise<void> {
   // 4 부위 가이드 재료 (⑥ 잇기) — 정답사진을 부위로 자를 자리 · 가이드 테두리 (screens/guide-source → core/guide-run, 계산은 ② 것).
   // 화면은 getGuide 가 준 것을 그리기만 한다. 한 번 만든 것은 정답사진이 바뀔 때까지 들고 있는다 — 부위를 넘길 때마다 다시 만들지 않게.
   // 정답사진이 바뀌거나 없어지면(끝내기 · 맨얼굴 다시 찍기 → made 칸이 비워짐) 다음에 부를 때 스스로 놓는다
-  const guides = createGuideKeeper({ getBaseline: () => session.baseline, getAnswer });
+  // 만드는 데 걸린 시간을 사용 기록에 남긴다 (task guide_build) — 보관해 둔 것을 다시 줄 때는 남지 않는다 (만든 때만)
+  const guides = createGuideKeeper({ getBaseline: () => session.baseline, getAnswer }, (d) => timeTask(log, "guide_build", () => loadPartGuide(d), noteOfGuide));
   const getGuide = guides.get;
 
   // 그림 만들기 (⑥ 백 연결) — 백엔드 POST /transfer → GPU 의 FLUX 서버 (server/app/flux.py). 받은 그림은 폰 저장소 칸에 넣는다.
@@ -305,12 +311,14 @@ async function boot(): Promise<void> {
     },
     request: (bare, ref) => requestTransfer(bare, ref, { base: (import.meta.env.VITE_TRANSFER_BASE as string | undefined) ?? "" }),
   });
-  const makeAnswer = (ref: Blob): Promise<MakeResult> => maker.makeAnswer(ref);
-  const makeMoved = (): Promise<MakeResult> => maker.makeMoved();
+  // 누른 뒤 받을 때까지 걸린 시간을 사용 기록에 남긴다 (task answer_make · moved_make) — 서버가 나눠 알려 준 시간(줄 · FLUX)도 같이
+  const makeAnswer = (ref: Blob): Promise<MakeResult> => timeTask(log, "answer_make", () => maker.makeAnswer(ref), noteOfMake);
+  const makeMoved = (): Promise<MakeResult> => timeTask(log, "moved_make", () => maker.makeMoved(), noteOfMake);
 
   // 7 저장 · 공유 재료 (⑥ 연결) — 마지막으로 본 피드백으로 결과 한 장을 미리 만들어 둔다. 화면(⑤)은 kit.save() 를 버튼에 걸기만 한다.
   // 저장할 판정이 없으면 null (피드백을 안 거쳤거나 "다시 찍어 주세요" 로 끝났을 때). 폰에만 내보낸다 — 서버로는 안 보낸다
-  const getSave = (): Promise<SaveKit | null> => prepareSave(judged);
+  // 저장할 판정이 있을 때만 만드는 시간을 남긴다 (task save_card) — 없을 때는 만들지 않으니 잴 것이 없다
+  const getSave = (): Promise<SaveKit | null> => (judged ? timeTask(log, "save_card", () => prepareSave(judged), noteOfSave) : prepareSave(null));
 
   // 개발할 때만: 정답사진 만들기가 붙기 전에도 화면 6 을 돌려 볼 수 있게 콘솔에서 넣는 길 (배포 빌드에는 없다)
   //   __nudyDev.setAnswer(blob)  ·  await __nudyDev.getFeedback()  ·  (await __nudyDev.getSave())?.save()
@@ -322,7 +330,10 @@ async function boot(): Promise<void> {
   // 그래야 배포 빌드에 따로 값을 넣지 않아도 뜬다. VITE_SURVEY_URL 로 덮어쓸 수 있다.
   // 빈 문자열을 주면(VITE_SURVEY_URL=) 설문을 끌 수 있다
   const surveyUrl = (import.meta.env.VITE_SURVEY_URL as string | undefined) ?? SURVEY_URL;
-  registerFlowSlots(shell, { getPart: () => session.currentPart, getGuide, clearAll, surveyUrl, getAttempt, getAnswer, getFeedback, getSave, makeAnswer, makeMoved, making: maker.busy });
+  // 참고 사진 읽기 · 줄이기 시간 (task ref_analyze · ref_shrink) — 화면 코드는 그대로 두고 넘기는 함수만 감싼다
+  const analyzeRef = (file: File) => timeTask(log, "ref_analyze", () => analyzeRefPhoto(file), noteOfRef);
+  const shrinkRef = (photo: Blob) => timeTask(log, "ref_shrink", () => shrinkForUpload(photo), noteOfShrink);
+  registerFlowSlots(shell, { getPart: () => session.currentPart, getGuide, analyzeRef, shrinkRef, clearAll, surveyUrl, getAttempt, getAnswer, getFeedback, getSave, makeAnswer, makeMoved, making: maker.busy });
 
   registerAll(
     shell,
@@ -518,7 +529,7 @@ function registerAll(
  * 새 흐름(2026-10-06)의 빈 자리 — 순서는 core/screens.ts SCREEN_ORDER.
  * 옛 흐름 화면(looks · fullrender · guide · live · result · review)은 registerAll 에 그대로 등록돼 있지만 흐름이 가지 않는다
  */
-function registerFlowSlots(shell: ReturnType<typeof createShell<Session>>, deps: PartGuideSlotDeps & SaveSlotDeps & { getAttempt: () => AttemptShots | null; getAnswer: () => AnswerPhoto | null; getFeedback: () => Promise<FeedbackLoad>; getSave: () => Promise<SaveKit | null>; makeAnswer: (ref: Blob) => Promise<MakeResult>; makeMoved: () => Promise<MakeResult>; making: (key: MadeKey) => boolean }): void {
+function registerFlowSlots(shell: ReturnType<typeof createShell<Session>>, deps: PartGuideSlotDeps & SaveSlotDeps & { getAttempt: () => AttemptShots | null; getAnswer: () => AnswerPhoto | null; getFeedback: () => Promise<FeedbackLoad>; getSave: () => Promise<SaveKit | null>; makeAnswer: (ref: Blob) => Promise<MakeResult>; makeMoved: () => Promise<MakeResult>; making: (key: MadeKey) => boolean; analyzeRef: NonNullable<SlotDeps["analyze"]>; shrinkRef: NonNullable<SlotDeps["shrink"]> }): void {
   shell.register("answer", slotScreen<Session>({
     title: "2 · 3 참고 사진 · 정답사진",
     owner: "① · ② · ④",
@@ -528,7 +539,7 @@ function registerFlowSlots(shell: ReturnType<typeof createShell<Session>>, deps:
       "정답사진 보여 주기 → 화장하러 가기",
     ],
     next: "partguide",
-  }, { makeAnswer: deps.makeAnswer }));
+  }, { makeAnswer: deps.makeAnswer, analyze: deps.analyzeRef, shrink: deps.shrinkRef }));
   shell.register("partguide", partGuideSlot<Session>(deps));
   // 화면 6 피드백 — 임시 자리를 치우고 진짜 화면으로 (#318 모양 · #332 연결).
   // 재료는 getFeedback() 이 다 모아서 준다 — 화면은 그리기만 한다

@@ -13,7 +13,12 @@
 export type TransferFail = "off" | "busy" | "down" | "rejected" | "too_large" | "timeout" | "network";
 
 export type TransferResult =
-  | { ok: true; picture: Blob; /** 서버가 그리는 데 걸린 시간 (모르면 null) */ ms: number | null }
+  | {
+      ok: true; picture: Blob;
+      /** 서버가 FLUX 를 부르고 그림을 받기까지 걸린 시간 (모르면 null) */ ms: number | null;
+      /** 서버에서 앞사람을 기다린 시간 · FLUX 가 스스로 잰 그리는 시간 (모르면 null) — 느릴 때 어디가 느린지 가린다 */
+      queueMs?: number | null; fluxMs?: number | null;
+    }
   | { ok: false; why: TransferFail; /** 서버가 한 말 (rejected 일 때 — 예: 얼굴을 못 찾았어요) */ message?: string };
 
 export interface TransferOptions {
@@ -59,8 +64,11 @@ export async function requestTransfer(bare: Blob, ref: Blob, opt: TransferOption
     if (!res.ok) return await failOf(res);
     const picture = await res.blob();
     if (!picture.size || !(res.headers.get("content-type") ?? "").startsWith("image/")) return { ok: false, why: "down" };
-    const ms = Number(res.headers.get("x-gen-ms"));
-    return { ok: true, picture, ms: Number.isFinite(ms) && res.headers.has("x-gen-ms") ? ms : null };
+    const num = (name: string): number | null => {
+      const v = res.headers.get(name);
+      return v !== null && v.trim() !== "" && Number.isFinite(Number(v)) ? Number(v) : null;
+    };
+    return { ok: true, picture, ms: num("x-gen-ms"), queueMs: num("x-queue-ms"), fluxMs: num("x-flux-ms") };
   } catch {
     return { ok: false, why: timedOut ? "timeout" : "network" };
   } finally {

@@ -342,3 +342,40 @@ def test_tr17_needs_a_length(monkeypatch):
 
     r = c.post("/transfer", content=chunks(), headers={"content-type": "multipart/form-data; boundary=zz"})
     assert r.status_code == 411
+
+
+# ---------- 시간 나눠 보기 (2026-10-08) — 줄 선 시간 · FLUX 가 스스로 잰 시간 ----------
+
+
+def test_tr18_tells_how_long_flux_itself_took(monkeypatch):
+    # app_klein 은 그림과 함께 "8.6초 (FLUX.2 klein 4B …) · VRAM peak 8.7GB" 같은 측정 문장을 준다.
+    # 맨 앞의 초를 읽어 넘긴다.
+    # x-gen-ms(부르고 받기까지)와 견주면 GPU 가 느린지 오가는 길이 느린지 갈린다
+    said = "8.6초 (FLUX.2 klein 4B 영역 다시 그리기, steps=4, 강도=0.70, 얼굴 512px → 768) · VRAM peak 8.7GB"
+    done = "event: complete\ndata: " + json.dumps([{"path": "o.png"}, said]) + "\n\n"
+    r = post(client_with(FakeFlux(sse=done), monkeypatch))
+    assert r.status_code == 200
+    assert r.headers["x-flux-ms"] == "8600"
+    assert int(r.headers["x-queue-ms"]) >= 0
+
+
+@pytest.mark.parametrize("said", ["", "측정 없음", None, 12, "초"])
+def test_tr19_no_flux_time_when_it_does_not_say(monkeypatch, said):
+    # 측정 문장이 없거나 모양이 달라도 그림은 그대로 준다 — 시간만 비운다
+    done = "event: complete\ndata: " + json.dumps([{"path": "o.png"}, said]) + "\n\n"
+    r = post(client_with(FakeFlux(sse=done), monkeypatch))
+    assert r.status_code == 200
+    assert "x-flux-ms" not in r.headers
+
+
+def test_tr20_waiting_in_line_is_counted_apart():
+    # 앞사람이 그리는 동안 기다린 시간은 그리는 시간과 따로 센다
+    async def go():
+        f = flux.FluxClient("http://gpu:7861", transport=httpx.MockTransport(SlowFlux(draw=0.15)))
+        return await asyncio.gather(*(f.transfer(WEBP, "image/webp", JPEG, "image/jpeg") for _ in range(2)))
+
+    first, second = asyncio.run(go())
+    assert first.queue_ms < 80
+    assert second.queue_ms >= 120
+    # 그리는 시간에는 줄 선 시간이 들어가지 않는다
+    assert second.ms < 300
