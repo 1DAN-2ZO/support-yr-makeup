@@ -78,7 +78,7 @@ jobs:
             --arg note "${NOTE}" \
             --argjson color "${COLOR}" \
             '{
-              username: "당화응 PR",
+              username: "nudy PR",
               embeds: [{
                 title: (("[" + $head + "] #" + $num + " " + $title)[0:250]),
                 url: $url,
