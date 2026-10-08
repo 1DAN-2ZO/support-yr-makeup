@@ -443,6 +443,15 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
   cursor: pointer;
 }
 
+/* 제품 사진의 권리는 각 브랜드에 있다 — 묶음 맨 아래 작게 (#338) */
+.slot-product-credit {
+  display: block;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: right;
+}
+
 /* 화면 2 · 2-b (모듈 6) */
 .row { display: flex; gap: 8px; margin-top: 16px; }
 button.primary {
