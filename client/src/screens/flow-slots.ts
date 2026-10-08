@@ -6,8 +6,10 @@
 import type { ScreenId } from "@core/screens";
 import { nextGuidePart } from "@core/screens";
 import { pickProducts, pickShadeText } from "@core/product-picks";
+import type { MakeResult } from "@core/picture-maker";
 import { PART_NAME } from "@core/score";
 import type { PartId } from "@core/types";
+import { MAKE_WAIT_TEXT, makeFailText, shrinkForUpload } from "./answer-make";
 import { colorPalette } from "./color-palette";
 import { analyzeRefPhoto, REF_FAIL_TEXT } from "./ref-analyze";
 import type { RefAnalysis } from "./ref-analyze";
@@ -29,6 +31,13 @@ export interface SlotSpec {
 export interface SlotDeps {
   /** 참고 사진을 재는 함수. 안 주면 진짜 분석기 — 테스트에서 가짜로 바꿔 끼운다 */
   analyze?: (file: File) => Promise<RefAnalysis | RefFailure>;
+  /**
+   * 정답사진 만들기 (⑥ 백 연결 — main.ts 의 makeAnswer). 주면 "적용하기" 가 참고 사진을 서버로 보내 정답사진을 받아 보여 준다.
+   * 안 주면 색만 읽고 참고 사진을 보여 준다 (서버 없이 화면만 볼 때 — ui-preview)
+   */
+  makeAnswer?: (ref: Blob) => Promise<MakeResult>;
+  /** 올리기 전에 참고 사진을 줄이는 함수. 안 주면 진짜 (screens/answer-make) — 테스트에서 바꿔 끼운다 */
+  shrink?: (photo: Blob) => Promise<Blob>;
 }
 
 export interface PartGuideSlotDeps {
@@ -126,7 +135,7 @@ function resetPage(root: HTMLElement): void {
 
 /**
  * 참고 사진 업로드. label 로 감싸서 칸 아무 데나 눌러도 사진 고르는 창이 열린다.
- * 고른 사진은 미리보기로 바꿔 보여 준다 — 서버로 보내지 않는다.
+ * 고른 사진은 미리보기로 바꿔 보여 준다 — 고르는 것만으로는 서버로 가지 않는다 ("적용하기" 를 눌러야 간다).
  */
 function uploadCard(previewUrl: string | null, onPick: (file: File) => void): HTMLElement {
   const card = document.createElement("label");
@@ -170,12 +179,12 @@ function loadingCard(): HTMLElement {
   return card;
 }
 
-function answerPhotoCard(previewUrl?: string): HTMLElement {
+function answerPhotoCard(previewUrl?: string, alt = "올린 참고 사진"): HTMLElement {
   const card = document.createElement("div");
   card.className = "slot-answer-photo";
   card.innerHTML = `
     <div class="slot-answer-photo-frame${previewUrl ? " has-ref" : ""}">
-      ${previewUrl ? `<img class="slot-answer-ref" src="${previewUrl}" alt="올린 참고 사진" />` : ""}
+      ${previewUrl ? `<img class="slot-answer-ref" src="${previewUrl}" alt="${alt}" />` : ""}
       <span class="slot-answer-face" aria-hidden="true"></span>
       <span class="slot-answer-line one" aria-hidden="true"></span>
       <span class="slot-answer-line two" aria-hidden="true"></span>
@@ -273,11 +282,14 @@ function saveCard(): HTMLElement {
 
 export function slotScreen<S>(spec: SlotSpec, deps: SlotDeps = {}): Screen<S> {
   const analyze = deps.analyze ?? analyzeRefPhoto;
+  const shrink = deps.shrink ?? shrinkForUpload;
   return {
     mount(ctx: ScreenContext<S>) {
       const root = page(`slot-${spec.next === "partguide" ? "answer" : spec.next}`);
       let alive = true;
       let previewUrl: string | null = null;
+      /** 받은 정답사진을 보여 주는 주소 — 화면을 떠날 때 놓는다 */
+      let madeUrl: string | null = null;
       if (spec.next === "partguide") {
         let picked: File | null = null;
         const dropPreview = () => {
@@ -313,8 +325,17 @@ export function slotScreen<S>(spec: SlotSpec, deps: SlotDeps = {}): Screen<S> {
             title("Beauty AI가 분석중입니다.", "참고 사진의 색감과 위치를 확인하고 있어요"),
             loadingCard(),
           );
+          if (deps.makeAnswer) {
+            const wait = document.createElement("p");
+            wait.className = "muted slot-status";
+            wait.textContent = MAKE_WAIT_TEXT;
+            root.append(wait);
+          }
         };
-        /** 사진 한 장을 재서 색조 팔레트까지. 이 폰 안에서만 돈다 */
+        /**
+         * 사진 한 장을 재서 색조 팔레트까지 (이 폰 안에서). makeAnswer 가 있으면 이어서 서버에 정답사진을 만들어 달라고 한다 —
+         * 얼굴을 못 찾은 참고 사진으로는 서버를 부르지 않는다
+         */
         const run = async (file: File): Promise<void> => {
           renderLoading();
           let res: RefAnalysis | string;
@@ -329,17 +350,37 @@ export function slotScreen<S>(spec: SlotSpec, deps: SlotDeps = {}): Screen<S> {
             renderUpload(REF_FAIL_TEXT[res as keyof typeof REF_FAIL_TEXT]);
             return;
           }
+          let made: Blob | null = null;
+          if (deps.makeAnswer) {
+            // 줄이지 못하면(구형 브라우저 등) 고른 사진 그대로 — 너무 크면 서버가 too_large 로 답한다
+            const ref = await shrink(file).catch(() => file);
+            if (!alive) return;
+            const r = await deps.makeAnswer(ref);
+            if (!alive) return;
+            if (!r.ok) {
+              ctx.log.log({ name: "button", button: `answer_make_fail:${r.why}` });
+              renderUpload(makeFailText(r.why) ?? undefined);
+              return;
+            }
+            ctx.log.log({ name: "button", button: "answer_make_ok" });
+            made = r.picture;
+            // 다른 사람 사진(참고 사진)은 정답사진을 만든 뒤 바로 놓는다 (서비스 정의서 원칙)
+            picked = null;
+            dropPreview();
+          }
           setRefColors(res.colors);
-          renderAnswer(res);
+          renderAnswer(res, made);
         };
-        const renderAnswer = (res: RefAnalysis) => {
+        const renderAnswer = (res: RefAnalysis, made: Blob | null) => {
+          if (madeUrl) URL.revokeObjectURL(madeUrl);
+          madeUrl = made ? URL.createObjectURL(made) : null;
           resetPage(root);
           const read = Object.keys(res.colors).length;
           root.append(
             testMeta(spec.title, spec.owner, spec.todo),
             coach("정답사진이 완성됐어요. 이제 부위별로 따라 해볼게요"),
             title("정답사진 완성", "이 사진을 기준으로 화장 가이드가 만들어져요"),
-            answerPhotoCard(res.preview),
+            madeUrl ? answerPhotoCard(madeUrl, "정답사진") : answerPhotoCard(res.preview),
             colorPalette(res.colors, {
               step: "2.",
               title: "참고 사진의 색조 팔레트",
@@ -378,6 +419,7 @@ export function slotScreen<S>(spec: SlotSpec, deps: SlotDeps = {}): Screen<S> {
       return () => {
         alive = false;
         if (previewUrl) URL.revokeObjectURL(previewUrl);
+        if (madeUrl) URL.revokeObjectURL(madeUrl);
       };
     },
   };

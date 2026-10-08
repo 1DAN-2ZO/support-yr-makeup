@@ -96,9 +96,18 @@ def test_tr3_off_when_no_flux_url(monkeypatch):
     assert r.json()["detail"]["code"] == "off"
 
 
-def test_tr4_flux_says_no_face(monkeypatch):
+@pytest.mark.parametrize(
+    "said",
+    [
+        '"얼굴 사진에서 얼굴을 못 찾았어요."',
+        # 진짜 Gradio 6.29 가 gr.Error 를 주는 모양 (2026-10-08 실제 서버에서 확인) — 문장이 묶음 안에 있다.
+        # json.dumps 는 Gradio 처럼 한글을 \uXXXX 로 적는다
+        json.dumps({"error": "얼굴 사진에서 얼굴을 못 찾았어요.", "duration": 10, "title": "Error"}),
+    ],
+)
+def test_tr4_flux_says_no_face(monkeypatch, said):
     # FLUX 가 얼굴을 못 찾았다고 하면 사진 탓 — 정해 둔 문장으로 알린다
-    fake = FakeFlux(sse='event: error\ndata: "얼굴 사진에서 얼굴을 못 찾았어요."\n\n')
+    fake = FakeFlux(sse=f"event: error\ndata: {said}\n\n")
     r = post(client_with(fake, monkeypatch))
     assert r.status_code == 422
     assert r.json()["detail"] == {"code": "rejected", "message": flux.NO_FACE}
@@ -106,7 +115,13 @@ def test_tr4_flux_says_no_face(monkeypatch):
 
 @pytest.mark.parametrize(
     "said",
-    ['"CUDA out of memory. Tried to allocate 2.00 GiB (D:\\\\flux2\\\\model.py)"', "null", '{"error": "x"}'],
+    [
+        '"CUDA out of memory. Tried to allocate 2.00 GiB (D:\\\\flux2\\\\model.py)"',
+        "null",
+        '{"error": "x"}',
+        json.dumps({"error": "CUDA out of memory (D:\\flux2\\model.py)", "title": "Error"}),
+        '{"error": null, "title": "Error"}',
+    ],
 )
 def test_tr5_other_flux_errors_are_server_faults_and_stay_inside(monkeypatch, said):
     # 얼굴 못 찾음이 아닌 FLUX 오류(그래픽 메모리 부족 등)는 사진 탓이 아니다 — down 으로 답하고,
