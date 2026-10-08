@@ -30,7 +30,7 @@ const $ = <T extends HTMLElement>(id: string): T => {
 };
 
 const AI_SERVER = "http://127.0.0.1:7861";
-const AI_STEPS = 4, AI_STRENGTH = 0.7, AI_SEED = 1234;
+const AI_STEPS = 4, AI_STRENGTH = 0.85, AI_SEED = 1234;
 const COUNTDOWN_MS = 3000;
 
 const STEP_NAME = ["맨얼굴", "참고 사진", "정답사진", "부위 가이드", "시도사진", "피드백", "저장"] as const;

@@ -47,9 +47,11 @@ REF_SIZE = 512      # 참고 사진 크기 (작아도 화장은 옮겨 오고 �
 FACE_MARGIN = 1.3   # 얼굴 점 상자 긴 변의 몇 배로 자를지 (이마 꼭대기 ~ 턱이 이미 들어 있다)
 FEATHER = 0.08      # 원본에 되붙일 때 가장자리를 섞는 폭
 OVAL_KEEP = 0.9     # 칠할 영역은 얼굴 윤곽을 가운데 쪽으로 이만큼 줄인 안에서만
-# 눈썹(eyebrow shape and color)도 옮긴다 — 빠져 있어 정답사진의 눈썹이 맨얼굴 그대로였고, 부위 가이드 · 피드백이 눈썹을 못 찾았다 (#371)
-PROMPT = ("Apply the makeup from the reference image (eyebrow shape and color, eyeshadow colors and placement, eyeliner, blush, lip color) to this woman's face. "
-          "Keep her own skin tone, eye shape and identity.")
+# 짧게 — 화장 항목(눈썹 · 섀도 · 라이너 · 블러셔 · 입술)을 늘어놓으면 모델이 참고 사진 대신 '흔한 화장'을 그렸다:
+# 화장 없는 사진을 참고로 넣어도 빨간 입술 · 아이라인 · 진한 눈썹이 생기고, 초록 입술 참고에도 빨간 입술 (2026-10-08 ref_follow_check.py).
+# 모델이 받는 사진 순서대로 부른다 — image 1 = 얼굴(다시 그릴 사진), image 2 = 참고 사진 (Flux2KleinInpaintPipeline: [image, image_reference]).
+# 눈썹도 칠할 영역에 있어서(#371) 참고 사진에 눈썹 화장이 있으면 따라 그린다
+PROMPT = "Copy the makeup of image 2 onto the face in image 1."
 
 # 눈마다: 윗눈꺼풀 · 아랫눈꺼풀 · 눈썹 아랫선 · 눈썹 윗선 · 바깥 눈꼬리 · 안쪽 눈꼬리
 EYES = (
@@ -166,7 +168,7 @@ def paste_back(original, result, box):
 JOBS: "queue.Queue[tuple[Future, tuple]]" = queue.Queue()
 
 
-def run(id_image, makeup_image, steps=4, strength=0.7, keep_size=True, seed=1234):
+def run(id_image, makeup_image, steps=4, strength=0.85, keep_size=True, seed=1234):
     if id_image is None or makeup_image is None:
         raise gr.Error("얼굴 사진과 참고 화장 사진을 둘 다 넣으세요.")
     job: Future = Future()
@@ -220,7 +222,7 @@ demo = gr.Interface(
         gr.Image(type="pil", label="얼굴 사진 (id_image)"),
         gr.Image(type="pil", label="참고 화장 사진 (makeup_image)"),
         gr.Slider(minimum=2, maximum=12, value=4, step=1, label="steps (klein 4B 증류 모델 — 4 권장)"),
-        gr.Slider(minimum=0.5, maximum=1.0, value=0.7, step=0.05, label="강도 (칠할 영역을 얼마나 다시 그릴지 — 0.7 자연스러움, 0.85 진함)"),
+        gr.Slider(minimum=0.5, maximum=1.0, value=0.85, step=0.05, label="강도 (칠할 영역을 얼마나 다시 그릴지 — 0.7 이면 seed 에 따라 입술 등을 빼먹었다)"),
         gr.Checkbox(value=True, label="원본 크기 유지 (얼굴만 잘라 그리고 원본에 되붙이기)"),
         gr.Number(value=1234, precision=0, label="seed (같은 값이면 같은 잡음에서 그림 · -1 이면 매번 무작위)"),
     ],

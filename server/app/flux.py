@@ -34,9 +34,11 @@ from urllib.parse import quote
 
 import httpx
 
-# app_klein.py 의 기본값과 같다 (steps 4 · 강도 0.7 · 원본 크기 유지 · seed 1234)
+# app_klein.py 의 기본값과 같다 (steps 4 · 강도 0.85 · 원본 크기 유지 · seed 1234).
+# 강도 0.7 이면 seed 에 따라 참고 사진의 입술 등을 빼먹었다 — 0.85 에서 seed 를 바꿔도 따라 그렸다
+# (2026-10-08, poc/look-tryon/server-bench/ref_follow_check.py)
 STEPS = 4
-STRENGTH = 0.7
+STRENGTH = 0.85
 SEED = 1234
 
 # 앱에 알리는 문장 — FLUX 가 한 말을 그대로 옮기지 않고 정해 둔 문장을 쓴다

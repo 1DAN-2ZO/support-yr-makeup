@@ -41,7 +41,7 @@ const $ = <T extends HTMLElement>(id: string): T => {
  * 강도 = 칠할 영역(눈두덩 · 볼 · 입술)을 얼마나 다시 그릴지 — 그냥 두 장을 넣으면 참고 인물 얼굴로 바뀌어서 영역만 다시 그린다
  */
 const AI_SERVER = "http://127.0.0.1:7861";
-const AI_STEPS = 4, AI_STRENGTH = 0.7;
+const AI_STEPS = 4, AI_STRENGTH = 0.85;
 const COUNTDOWN_MS = 3000;
 
 const video = $<HTMLVideoElement>("v");
