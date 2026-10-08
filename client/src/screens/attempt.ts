@@ -98,6 +98,9 @@ export function attemptScreen<S>(deps: AttemptDeps): Screen<S> {
         dropPreview();
         wrap.textContent = "";
         const row = el("div", "attempt-preview");
+        // 사진은 원본 크기라(#330) 크기를 잡아 주지 않으면 구석만 보이고 버튼이 화면 밖으로 밀린다 (폰 확인 2026-10-08, #344).
+        // 꾸밈은 ⑤ 몫 — 여기서는 화면 안에 들어오게만 한다 (class 스타일이 있으면 그쪽이 다듬는다)
+        Object.assign(row.style, { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" });
         for (const [id, label] of [["front_open", ATTEMPT_TEXT.openLabel], ["front_closed", ATTEMPT_TEXT.closedLabel]] as const) {
           const fig = el("figure");
           const img = el("img");
@@ -105,6 +108,8 @@ export function attemptScreen<S>(deps: AttemptDeps): Screen<S> {
           previewUrls.push(url);
           img.src = url;
           img.alt = label;
+          fig.style.margin = "0";
+          Object.assign(img.style, { width: "100%", height: "auto", display: "block" });
           fig.append(img, el("figcaption", "", label));
           row.append(fig);
         }

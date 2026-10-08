@@ -204,6 +204,20 @@ const buttonOf = (ctx: ScreenContext<null>, text: string) => [...ctx.root.queryS
     expect(shots.front_closed).toHaveLength(1);
   });
 
+  it("AS11 미리보기 사진은 화면 폭 안에 두 장이 나란히 들어온다 — 원본 크기 사진이라 그대로 두면 구석만 보이고 버튼이 화면 밖으로 밀린다 (폰 확인 2026-10-08, #344)", async () => {
+    const { ctx } = mount();
+    await start(ctx);
+    await shootBoth(ctx);
+    const row = ctx.root.querySelector<HTMLElement>(".attempt-preview")!;
+    expect(row.style.display).toBe("grid");
+    expect(row.style.gridTemplateColumns).toBe("1fr 1fr");
+    for (const img of row.querySelectorAll<HTMLImageElement>("img")) {
+      expect(img.style.width).toBe("100%");     // 칸 폭에 맞춘다
+      expect(img.style.height).toBe("auto");    // 비율은 그대로
+    }
+    for (const fig of row.querySelectorAll<HTMLElement>("figure")) expect(fig.style.margin).toBe("0px");   // 브라우저 기본 여백(양옆 40px)이 칸을 좁힌다
+  });
+
   it("AS3 눈을 감지 않으면 감은 장을 찍지 않는다 — 넘어가지 않는다", async () => {
     const { ctx, setAttempt } = mount();
     await start(ctx);
