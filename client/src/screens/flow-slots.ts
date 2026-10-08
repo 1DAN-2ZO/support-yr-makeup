@@ -90,6 +90,29 @@ function logo(): HTMLElement {
   return el;
 }
 
+/**
+ * 로고 줄 — 왼쪽에 뒤로 가는 화살표, 그 옆에 로고 (#369).
+ * 뒤로 갈 곳을 안 주면 로고만 (첫 화면처럼 돌아갈 데가 없는 자리).
+ *
+ * 화살표가 어디로 가는지는 글자로 안 보이므로 **aria-label 에 적는다** —
+ * 화면 읽어 주는 기기를 쓰는 사람에게는 그것이 유일한 안내다.
+ */
+function logoRow(back?: { label: string; onBack: () => void }): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "slot-logo-row";
+  if (back) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "slot-back";
+    b.setAttribute("aria-label", back.label);
+    b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5 8 12l7 7" /></svg>`;
+    b.addEventListener("click", back.onBack);
+    row.append(b);
+  }
+  row.append(logo());
+  return row;
+}
+
 function coach(text: string): HTMLElement {
   const el = document.createElement("div");
   el.className = "slot-coach";
@@ -119,10 +142,10 @@ function liveButton(label: string, onClick: () => void): HTMLButtonElement {
   return b;
 }
 
-function page(cls = ""): HTMLElement {
+function page(cls = "", back?: { label: string; onBack: () => void }): HTMLElement {
   const el = document.createElement("div");
   el.className = `slot ${cls}`.trim();
-  el.append(logo());
+  el.append(logoRow(back));
   return el;
 }
 
@@ -152,8 +175,10 @@ function action(ctx: ScreenContext<unknown>, label: string, next: ScreenId): HTM
   });
 }
 
+/** 화면을 다시 그릴 때 로고 줄(뒤로 화살표 포함)은 그대로 둔다 — 다시 그렸다고 돌아갈 길이 사라지면 안 된다 */
 function resetPage(root: HTMLElement): void {
-  root.replaceChildren(logo());
+  const row = root.querySelector(".slot-logo-row");
+  root.replaceChildren(row ?? logoRow());
 }
 
 /**
@@ -509,7 +534,11 @@ export function partGuideSlot<S>(deps: PartGuideSlotDeps): Screen<S> {
       const part = deps.getPart() ?? nextGuidePart(null);
       if (!part) return;
       const next = nextGuidePart(part);
-      const root = page("slot-partguide");
+      // 정답사진을 다시 보거나 참고 사진을 바꾸고 싶을 때 (#369)
+      const root = page("slot-partguide", { label: "정답사진으로 돌아가기", onBack: () => {
+        ctx.log.log({ name: "button", button: "back:answer" });
+        ctx.go("answer");
+      } });
       const guide = guideMock(part);
       // 실시간 가이드(예전 화면 4 — core/live-run 테두리 엔진)로 보내는 길. #334
       // 처음에는 사진 가이드가 보인다 — 카메라 권한을 묻지 않고 바로 볼 수 있게.
@@ -583,7 +612,11 @@ export interface FeedbackSlotDeps {
 export function feedbackSlot<S>(deps: FeedbackSlotDeps): Screen<S> {
   return {
     mount(ctx: ScreenContext<S>) {
-      const root = page("slot-feedback");
+      // 다시 찍고 싶을 때 (#369) — 판정이 막혔을 때만 버튼이 나오던 것을 늘 갈 수 있게
+      const root = page("slot-feedback", { label: "시도사진으로 돌아가기", onBack: () => {
+        ctx.log.log({ name: "button", button: "back:attempt" });
+        ctx.go("attempt");
+      } });
       ctx.root.append(root);
       let alive = true;
       let drop: (() => void) | null = null;
@@ -661,7 +694,11 @@ export function feedbackSlot<S>(deps: FeedbackSlotDeps): Screen<S> {
 export function saveSlot<S>(deps: SaveSlotDeps): Screen<S> {
   return {
     mount(ctx: ScreenContext<S>) {
-      const root = page("slot-save");
+      // 결과를 다시 보고 싶을 때 (#369)
+      const root = page("slot-save", { label: "피드백으로 돌아가기", onBack: () => {
+        ctx.log.log({ name: "button", button: "back:feedback" });
+        ctx.go("feedback");
+      } });
       root.append(
         coach("결과를 저장한 뒤 세션 사진은 기기에서 지울게요"),
         title("저장 · 공유", "원하면 오늘의 결과를 폰에 남길 수 있어요"),
