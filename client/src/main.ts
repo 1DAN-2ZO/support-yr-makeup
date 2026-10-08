@@ -56,6 +56,7 @@ import { createPictureMaker, type MakeResult } from "./core/picture-maker";
 import { requestTransfer } from "./core/transfer-client";
 import { prepareSave, type SaveKit, type SaveSource } from "./screens/feedback-card";
 import { loadFeedback, type AnswerPhoto, type FeedbackLoad } from "./screens/feedback-source";
+import { createGuideKeeper } from "./screens/guide-source";
 import { partGuideSlot, saveSlot, slotScreen, type PartGuideSlotDeps, type SaveSlotDeps } from "./screens/flow-slots";
 import { inNewFlow } from "./core/screens";
 
@@ -281,6 +282,12 @@ async function boot(): Promise<void> {
     return r;
   };
 
+  // 4 부위 가이드 재료 (⑥ 잇기) — 정답사진을 부위로 자를 자리 · 가이드 테두리 (screens/guide-source → core/guide-run, 계산은 ② 것).
+  // 화면은 getGuide 가 준 것을 그리기만 한다. 한 번 만든 것은 정답사진이 바뀔 때까지 들고 있는다 — 부위를 넘길 때마다 다시 만들지 않게.
+  // 정답사진이 바뀌거나 없어지면(끝내기 · 맨얼굴 다시 찍기 → made 칸이 비워짐) 다음에 부를 때 스스로 놓는다
+  const guides = createGuideKeeper({ getBaseline: () => session.baseline, getAnswer });
+  const getGuide = guides.get;
+
   // 그림 만들기 (⑥ 백 연결) — 백엔드 POST /transfer → GPU 의 FLUX 서버 (server/app/flux.py). 받은 그림은 폰 저장소 칸에 넣는다.
   //   makeAnswer(참고 사진): 화면 3 이 부른다 → 정답사진.  makeMoved(): 시도사진을 찍은 뒤 → 옮긴 그림 (계산에만 쓴다. 화면에 안 보여 준다)
   // 화면(⑤)은 결과의 ok · why 만 보고 그린다. 서버 주소(DHE_FLUX_URL)를 넣기 전에는 why: "off" 로 돌아온다
@@ -315,7 +322,7 @@ async function boot(): Promise<void> {
   // 그래야 배포 빌드에 따로 값을 넣지 않아도 뜬다. VITE_SURVEY_URL 로 덮어쓸 수 있다.
   // 빈 문자열을 주면(VITE_SURVEY_URL=) 설문을 끌 수 있다
   const surveyUrl = (import.meta.env.VITE_SURVEY_URL as string | undefined) ?? SURVEY_URL;
-  registerFlowSlots(shell, { getPart: () => session.currentPart, clearAll, surveyUrl, getAttempt, getAnswer, getFeedback, getSave, makeAnswer, makeMoved, making: maker.busy });
+  registerFlowSlots(shell, { getPart: () => session.currentPart, getGuide, clearAll, surveyUrl, getAttempt, getAnswer, getFeedback, getSave, makeAnswer, makeMoved, making: maker.busy });
 
   registerAll(
     shell,

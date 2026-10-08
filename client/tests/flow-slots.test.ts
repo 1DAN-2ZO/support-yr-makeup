@@ -6,6 +6,7 @@ import type { MakeResult } from "@core/picture-maker";
 import { PART_NAME } from "@core/score";
 import { PART_IDS, type PartId, type Versions } from "@core/types";
 import { partGuideSlot, saveSlot, slotScreen } from "@screens/flow-slots";
+import type { GuideLoad, GuideView } from "@screens/guide-source";
 import type { RefAnalysis, RefFailure } from "@screens/ref-analyze";
 import { describeColor } from "@core/color-name";
 import type { ScreenContext } from "@screens/shell";
@@ -230,6 +231,82 @@ describe("빈 자리 화면", () => {
     expect(ctx.root.textContent).toContain(PART_NAME[PART_IDS[0]!]);
     button(ctx.root, "다음").click();
     expect(ctx.goPart).toHaveBeenCalledWith(PART_IDS[1]);
+  });
+
+  describe("부위 가이드 — 정답사진을 잘라 보여 주기", () => {
+    const view = { pages: {}, found: ["brow", "lip"], size: { w: 600, h: 600 }, picture: {}, ms: 1, dispose: () => {} } as unknown as GuideView;
+    const photo = (root: HTMLElement): HTMLElement => root.querySelector<HTMLElement>(".slot-guide-photo")!;
+    const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+
+    it("FS5 정답사진이 있으면 견본 그림 대신 그 부위로 자른 정답사진을 그린다", async () => {
+      const paintGuide = vi.fn(() => true);
+      const ctx = ctxOf();
+      partGuideSlot<null>({ getPart: () => "lip", getGuide: async () => ({ ok: true, view }), paintGuide }).mount(ctx);
+      await vi.waitFor(() => expect(paintGuide).toHaveBeenCalledTimes(1));
+      const canvas = photo(ctx.root).querySelector("canvas");
+      expect(canvas).not.toBeNull();
+      expect(paintGuide).toHaveBeenCalledWith(canvas, view, "lip");
+      // 견본(점선 · 점)은 치운다 — 진짜 그림 위에 가짜 선이 남으면 안 된다
+      expect(photo(ctx.root).querySelector(".slot-guide-line, .slot-guide-dot")).toBeNull();
+      expect(ctx.root.textContent).not.toContain("찾지 못했어요");
+    });
+
+    it("FS5b 기다리는 동안은 견본 그림을 보여 주지 않는다 — 가짜 얼굴이 먼저 떴다 바뀌지 않게", () => {
+      const ctx = ctxOf();
+      partGuideSlot<null>({ getPart: () => "lip", getGuide: () => new Promise(() => {}), paintGuide: () => true }).mount(ctx);
+      expect(photo(ctx.root).querySelector(".slot-guide-line, .slot-guide-dot")).toBeNull();
+      expect(photo(ctx.root).textContent).toContain("준비");
+    });
+
+    it("FS5c 그 부위의 화장을 못 찾았으면 자른 그림은 보여 주되 못 찾았다고 알린다", async () => {
+      const paintGuide = vi.fn(() => true);
+      const ctx = ctxOf();
+      partGuideSlot<null>({ getPart: () => "cheek", getGuide: async () => ({ ok: true, view }), paintGuide }).mount(ctx);
+      await vi.waitFor(() => expect(paintGuide).toHaveBeenCalledWith(expect.anything(), view, "cheek"));
+      expect(ctx.root.textContent).toContain("찾지 못했어요");
+    });
+
+    it.each(["answer", "bare", "answer_size"] as const)("FS5d 재료가 없으면(%s) 견본 그림 그대로 — 화면이 비지 않는다", async (missing) => {
+      const paintGuide = vi.fn(() => true);
+      const ctx = ctxOf();
+      partGuideSlot<null>({ getPart: () => "lip", getGuide: async () => ({ ok: false, missing }), paintGuide }).mount(ctx);
+      await flush();
+      expect(paintGuide).not.toHaveBeenCalled();
+      expect(photo(ctx.root).querySelector(".slot-guide-line")).not.toBeNull();
+      expect(photo(ctx.root).querySelector("canvas")).toBeNull();
+    });
+
+    it("FS5e 만들다 실패하거나 캔버스를 못 열어도 견본 그림으로 돌아온다", async () => {
+      const ctx = ctxOf();
+      partGuideSlot<null>({ getPart: () => "lip", getGuide: async () => { throw new Error("풀지 못함"); }, paintGuide: () => true }).mount(ctx);
+      await flush();
+      expect(photo(ctx.root).querySelector(".slot-guide-line")).not.toBeNull();
+      const ctx2 = ctxOf();
+      partGuideSlot<null>({ getPart: () => "lip", getGuide: async () => ({ ok: true, view }), paintGuide: () => false }).mount(ctx2);
+      await flush();
+      expect(photo(ctx2.root).querySelector(".slot-guide-line")).not.toBeNull();
+      expect(photo(ctx2.root).querySelector("canvas")).toBeNull();
+    });
+
+    it("FS5f 쉐딩은 정답사진 가이드가 없는 부위다 — 재료를 부르지 않고 견본 그대로", async () => {
+      const getGuide = vi.fn(async (): Promise<GuideLoad> => ({ ok: true, view }));
+      const ctx = ctxOf();
+      partGuideSlot<null>({ getPart: () => "contour", getGuide, paintGuide: () => true }).mount(ctx);
+      await flush();
+      expect(getGuide).not.toHaveBeenCalled();
+      expect(photo(ctx.root).querySelector(".slot-guide-line")).not.toBeNull();
+    });
+
+    it("FS5g 기다리다 화면을 떠나면 뒤늦게 온 재료로 그리지 않는다", async () => {
+      let done: (r: GuideLoad) => void = () => {};
+      const paintGuide = vi.fn(() => true);
+      const ctx = ctxOf();
+      const leave = partGuideSlot<null>({ getPart: () => "lip", getGuide: () => new Promise<GuideLoad>((r) => { done = r; }), paintGuide }).mount(ctx);
+      if (typeof leave === "function") leave();
+      done({ ok: true, view });
+      await flush();
+      expect(paintGuide).not.toHaveBeenCalled();
+    });
   });
 
   it("FS3 저장 · 공유 자리 — '끝내기' 는 폰에 남은 사진 · 기록을 다 지운 뒤에 끝 화면으로", async () => {

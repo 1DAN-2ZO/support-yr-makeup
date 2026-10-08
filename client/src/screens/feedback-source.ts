@@ -61,7 +61,7 @@ export type FeedbackLoad = { ok: true; view: FeedbackView } | { ok: false; missi
  */
 export const ATTEMPT_DECODE_SIDE = 1920;
 
-async function blobToRgba(src: Blob | ImageBitmap, maxSide = Infinity): Promise<RgbaImage> {
+export async function blobToRgba(src: Blob | ImageBitmap, maxSide = Infinity): Promise<RgbaImage> {
   const bmp = src instanceof Blob ? await createImageBitmap(src) : src;
   const k = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
   const c = document.createElement("canvas");
