@@ -52,6 +52,8 @@ import { reviewScreen, type ReviewDeps } from "./screens/review";
 import { startReviewShot } from "./screens/review-shot";
 import { createShell } from "./screens/shell";
 import { attemptScreen, type AttemptShots } from "./screens/attempt";
+import { createPictureMaker, type MakeResult } from "./core/picture-maker";
+import { requestTransfer } from "./core/transfer-client";
 import { prepareSave, type SaveKit, type SaveSource } from "./screens/feedback-card";
 import { loadFeedback, type AnswerPhoto, type FeedbackLoad } from "./screens/feedback-source";
 import { partGuideSlot, saveSlot, slotScreen, type PartGuideSlotDeps, type SaveSlotDeps } from "./screens/flow-slots";
@@ -236,6 +238,8 @@ async function boot(): Promise<void> {
 
   // 끝내기 — 폰에 남은 사진 · 기록을 다 지운다 (F-11). 새 흐름 7 저장 · 공유와 옛 흐름 리뷰가 같이 쓴다
   const clearAll = async (): Promise<Awaited<ReturnType<SessionStore["clearAll"]>>> => {
+    // 만드는 중인 그림은 버린다 — 서버 답이 지운 뒤에 도착해 얼굴 그림이 폰에 다시 써지지 않게 (#352 리뷰)
+    maker.cancel();
     await saving;   // 저장 중인 draft·쌩얼이 지운 뒤에 써지지 않게
     // 로그 저장소를 먼저 닫는다 — 안 닫으면 버퍼·시간 저장이 지운 뒤에 events 키를 다시 만든다
     await logStore.clear();
@@ -249,7 +253,16 @@ async function boot(): Promise<void> {
   // 메모리에만 둔다 — 앱을 다시 켜면 다시 찍는다 (저장소 사진 키는 ① 의 session-store 라 아직 안 늘렸다)
   let attempt: AttemptShots | null = null;
   const getAttempt = (): AttemptShots | null => attempt;
-  shell.register("attempt", attemptScreen<Session>({ setAttempt: (shots) => { attempt = shots; judged = null; }, next: "feedback" }));
+  shell.register("attempt", attemptScreen<Session>({
+    setAttempt: (shots) => {
+      attempt = shots;
+      judged = null;
+      // 옛 시도사진으로 만든 옮긴 그림은 못 쓴다 — 만드는 중이던 것도 버린다
+      maker.cancel("moved");
+      void putMade("moved", null);
+    },
+    next: "feedback",
+  }));
 
   // 3 정답사진 — 화면 3(정답사진 만들기 연결)이 setAnswer 로 넣는다. 맨얼굴과 같은 크기 · 같은 자리여야 한다
   // (docs/feedback-input-contract.md). 폰 세션 저장소에 둔다 (core/made-pictures) — 새로고침해도 남고, 끝내기 · 만료 때 지워진다
@@ -268,20 +281,41 @@ async function boot(): Promise<void> {
     return r;
   };
 
+  // 그림 만들기 (⑥ 백 연결) — 백엔드 POST /transfer → GPU 의 FLUX 서버 (server/app/flux.py). 받은 그림은 폰 저장소 칸에 넣는다.
+  //   makeAnswer(참고 사진): 화면 3 이 부른다 → 정답사진.  makeMoved(): 시도사진을 찍은 뒤 → 옮긴 그림 (계산에만 쓴다. 화면에 안 보여 준다)
+  // 화면(⑤)은 결과의 ok · why 만 보고 그린다. 서버 주소(DHE_FLUX_URL)를 넣기 전에는 why: "off" 로 돌아온다
+  const maker = createPictureMaker({
+    getBare: async () => {
+      const held = session.baseline?.bareImage;
+      if (held instanceof Blob) return held;
+      const saved = await sessionStore.loadImage("bare").catch(() => null);
+      return saved instanceof Blob ? saved : saved ? new Blob([saved]) : null;
+    },
+    getAttempt: () => attempt?.front_open[0]?.blob ?? null,
+    put: (key, picture) => {
+      if (key === "answer") judged = null;
+      return putMade(key, picture);
+    },
+    request: (bare, ref) => requestTransfer(bare, ref, { base: (import.meta.env.VITE_TRANSFER_BASE as string | undefined) ?? "" }),
+  });
+  const makeAnswer = (ref: Blob): Promise<MakeResult> => maker.makeAnswer(ref);
+  const makeMoved = (): Promise<MakeResult> => maker.makeMoved();
+
   // 7 저장 · 공유 재료 (⑥ 연결) — 마지막으로 본 피드백으로 결과 한 장을 미리 만들어 둔다. 화면(⑤)은 kit.save() 를 버튼에 걸기만 한다.
   // 저장할 판정이 없으면 null (피드백을 안 거쳤거나 "다시 찍어 주세요" 로 끝났을 때). 폰에만 내보낸다 — 서버로는 안 보낸다
   const getSave = (): Promise<SaveKit | null> => prepareSave(judged);
 
   // 개발할 때만: 정답사진 만들기가 붙기 전에도 화면 6 을 돌려 볼 수 있게 콘솔에서 넣는 길 (배포 빌드에는 없다)
   //   __nudyDev.setAnswer(blob)  ·  await __nudyDev.getFeedback()  ·  (await __nudyDev.getSave())?.save()
-  if (import.meta.env.DEV) (window as unknown as { __nudyDev?: unknown }).__nudyDev = { setAnswer: (image: Blob) => setAnswer({ image }), getFeedback, getSave };
+  //   await __nudyDev.makeAnswer(참고사진Blob)  ·  await __nudyDev.makeMoved()
+  if (import.meta.env.DEV) (window as unknown as { __nudyDev?: unknown }).__nudyDev = { setAnswer: (image: Blob) => setAnswer({ image }), getFeedback, getSave, makeAnswer, makeMoved };
 
   // 새 흐름 뼈대 (2026-10-06) — 담당이 진짜 화면을 올리면 여기 등록만 바꾼다 (screens/flow-slots.ts)
   // 후기 설문 주소. 공개 구글 폼이라 숨길 것이 아니어서 기본값을 코드에 둔다 —
   // 그래야 배포 빌드에 따로 값을 넣지 않아도 뜬다. VITE_SURVEY_URL 로 덮어쓸 수 있다.
   // 빈 문자열을 주면(VITE_SURVEY_URL=) 설문을 끌 수 있다
   const surveyUrl = (import.meta.env.VITE_SURVEY_URL as string | undefined) ?? SURVEY_URL;
-  registerFlowSlots(shell, { getPart: () => session.currentPart, clearAll, surveyUrl, getAttempt, getAnswer, getFeedback, getSave });
+  registerFlowSlots(shell, { getPart: () => session.currentPart, clearAll, surveyUrl, getAttempt, getAnswer, getFeedback, getSave, makeAnswer, makeMoved, making: maker.busy });
 
   registerAll(
     shell,
@@ -301,8 +335,9 @@ async function boot(): Promise<void> {
       setBaseline: (b) => {
         // 세션에 남아 있던 옛 계획(#181)은 withBaseline 이 비운다 — 앱은 이제 그 계획을 읽지 않는다
         set(withBaseline(session, b));
-        // 맨얼굴이 바뀌면 만든 그림은 못 쓴다 — 옛 맨얼굴에 겹치던 그림이다
+        // 맨얼굴이 바뀌면 만든 그림은 못 쓴다 — 옛 맨얼굴에 겹치던 그림이다. 만드는 중이던 것도 버린다
         judged = null;
+        maker.cancel();
         saving = saving.then(() => made.clear()).catch(() => {});
       },
       // 쌩얼 저장도 draft 와 같은 줄에 세운다 — 끝내기(clearAll)가 인코딩·저장이 끝날 때까지 기다린다 (#162 리뷰)
@@ -409,6 +444,7 @@ async function boot(): Promise<void> {
         logStore.reopen();
         attempt = null;
         judged = null;
+        maker.cancel();
         // 끝내기가 저장소는 이미 지웠다 — 메모리에 들고 있던 것도 버린다
         saving = saving.then(() => made.clear()).catch(() => {});
         set(createSession());
@@ -475,7 +511,7 @@ function registerAll(
  * 새 흐름(2026-10-06)의 빈 자리 — 순서는 core/screens.ts SCREEN_ORDER.
  * 옛 흐름 화면(looks · fullrender · guide · live · result · review)은 registerAll 에 그대로 등록돼 있지만 흐름이 가지 않는다
  */
-function registerFlowSlots(shell: ReturnType<typeof createShell<Session>>, deps: PartGuideSlotDeps & SaveSlotDeps & { getAttempt: () => AttemptShots | null; getAnswer: () => AnswerPhoto | null; getFeedback: () => Promise<FeedbackLoad>; getSave: () => Promise<SaveKit | null> }): void {
+function registerFlowSlots(shell: ReturnType<typeof createShell<Session>>, deps: PartGuideSlotDeps & SaveSlotDeps & { getAttempt: () => AttemptShots | null; getAnswer: () => AnswerPhoto | null; getFeedback: () => Promise<FeedbackLoad>; getSave: () => Promise<SaveKit | null>; makeAnswer: (ref: Blob) => Promise<MakeResult>; makeMoved: () => Promise<MakeResult>; making: (key: MadeKey) => boolean }): void {
   shell.register("answer", slotScreen<Session>({
     title: "2 · 3 참고 사진 · 정답사진",
     owner: "① · ② · ④",
