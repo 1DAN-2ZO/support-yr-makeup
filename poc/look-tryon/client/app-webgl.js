@@ -38,6 +38,11 @@ const LIPS = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 31
 const FOREHEAD = [10, 109, 108, 151, 337, 338]; // poc/app.js와 동일 — 비화장 기준 영역(C1 전역 편향 추정용)
 const EYESHADOW_REACH = 0.45;
 
+// C3 페더링 반경(px, UV 캔버스 1024 기준). 립·눈썹은 경계가 또렷해야 하고(작게), 섀도우·볼은
+// 부드럽게 번져야 자연스럽다(크게). 라이너는 아직 별도 부위로 안 나눠서 섀도우 밴드에 포함.
+// 컨투어·하이라이터는 아직 범위 밖(별도 부위 정의 필요).
+const FEATHER = { browR: 2, browL: 2, lips: 2, eyeR: 8, eyeL: 8, cheekR: 8, cheekL: 8 };
+
 const $ = (id) => document.getElementById(id);
 const statusEl = $("status");
 const setStatus = (t, cls = "") => { statusEl.textContent = t; statusEl.className = "status " + cls; };
@@ -165,8 +170,18 @@ async function generateLook() {
     const baseImg = baseCv.getContext("2d").getImageData(0, 0, baseCv.width, baseCv.height);
     const genImg = genCv.getContext("2d").getImageData(0, 0, genCv.width, genCv.height);
 
-    const layer = extractLayer(baseImg, genImg, masks);
-    const uvCanvas = bakeLayer(layer, genLm, state.faceUV, state.faceTriangles, 1024);
+    // C1을 부위별로 따로 호출(각 호출은 forehead 기준 마스크 + 그 부위 마스크 하나만) → 부위별로
+    // 구워서 자기 반경으로 페더링한 뒤 합성. 부위마다 통째로 한 레이어에 섞어서 구우면 전부 같은
+    // 반경으로 블러되는데, 입술처럼 경계가 또렷해야 하는 부위와 볼터치처럼 부드러워야 하는 부위가
+    // 섞여 있어서 부위별로 나눠야 한다(C3 반경표, 1024 기준).
+    const uvCanvas = document.createElement("canvas");
+    uvCanvas.width = 1024; uvCanvas.height = 1024;
+    const uvCtx = uvCanvas.getContext("2d");
+    for (const [partId, featherPx] of Object.entries(FEATHER)) {
+      const partLayer = extractLayer(baseImg, genImg, { forehead: masks.forehead, [partId]: masks[partId] });
+      const partUV = bakeLayer(partLayer, genLm, state.faceUV, state.faceTriangles, 1024, featherPx);
+      uvCtx.drawImage(partUV, 0, 0);
+    }
 
     state.lookResult = { uvCanvas };
     bakedTexture.image = uvCanvas;
@@ -204,6 +219,11 @@ function initThree(w, h) {
 
   const video = $("video");
   const videoTex = new THREE.VideoTexture(video);
+  // C6에서 textureLod로 저주파(흐린) 버전을 뽑아 쓰려면 밉맵이 있어야 한다. VideoTexture는 기본
+  // NearestFilter라 밉맵이 꺼져 있어서 명시적으로 켠다(WebGL2라 NPOT 밉맵 제약 없음).
+  videoTex.generateMipmaps = true;
+  videoTex.minFilter = THREE.LinearMipmapLinearFilter;
+  videoTex.magFilter = THREE.LinearFilter;
   const videoGeo = new THREE.PlaneGeometry(w, h);
   const videoMat = new THREE.MeshBasicMaterial({ map: videoTex, depthTest: false, depthWrite: false });
   videoMesh = new THREE.Mesh(videoGeo, videoMat);
@@ -228,7 +248,72 @@ function initThree(w, h) {
   // 뒤집기가 두 곳에서 일어나 눈썹이 헤어라인 쪽으로 밀리는 식으로 어긋난다(실측으로 발견함).
   // 여기서 명시적으로 꺼서 뒤집기를 extract-face-uv.js 한 곳으로만 고정한다.
   bakedTexture.flipY = false;
-  const mat = new THREE.MeshBasicMaterial({ map: bakedTexture, transparent: true, depthTest: false, depthWrite: false });
+
+  // C2 최종: 명도 보존 합성 셰이더. globalAlpha 선형보간(피부 결이 지워짐) 대신, 화장색을
+  // 자기 명도로 나눠 색조만 남기고 원본에 곱한다 — 원본의 명암 구조(모공·주름)가 그대로 보존된다.
+  // uVideoTex는 화면 좌표(vScreenPos, 정점 셰이더에서 클립 좌표로 계산)로 다시 샘플링한다 —
+  // faceMesh의 uv는 캐노니컬 UV(구운 텍스처용)라 비디오 샘플링엔 못 쓴다, 별도 좌표가 필요하다.
+  // GLSL3(glslVersion:GLSL3)로 쓰는 이유: C6이 textureLod로 비디오의 저주파(흐린) 버전을 뽑아야
+  // 하는데, textureLod는 GLSL ES 3.00 내장 함수라 기본 GLSL ES 1.00(texture2D)로는 못 쓴다.
+  const mat = new THREE.ShaderMaterial({
+    glslVersion: THREE.GLSL3,
+    uniforms: {
+      uMakeupTex: { value: bakedTexture },
+      uVideoTex: { value: videoTex },
+      uSpecThreshold: { value: 0.6 }, // C5: 이 명도 이상만 하이라이트
+      uSpecPower: { value: 8.0 },
+      uGloss: { value: 0.5 }, // 0=매트, 1=고광택. 부위별 값은 룩 템플릿에 아직 없어서 전역 하나로 근사
+      uTextureStrength: { value: 0.8 }, // C6: 고주파(모공·주름) 복원 강도
+    },
+    vertexShader: `
+      out vec2 vUv;
+      out vec4 vScreenPos;
+      void main() {
+        vUv = uv;
+        vec4 clip = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        vScreenPos = clip;
+        gl_Position = clip;
+      }
+    `,
+    fragmentShader: `
+      precision highp float;
+      uniform sampler2D uMakeupTex;
+      uniform sampler2D uVideoTex;
+      uniform float uSpecThreshold, uSpecPower, uGloss, uTextureStrength;
+      in vec2 vUv;
+      in vec4 vScreenPos;
+      out vec4 fragColor;
+      float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+      void main() {
+        vec2 screenUV = (vScreenPos.xy / vScreenPos.w) * 0.5 + 0.5;
+        vec4 makeup = texture(uMakeupTex, vUv);
+        vec3 orig = texture(uVideoTex, screenUV).rgb;
+
+        // C2(개정): makeup.rgb는 "절대 색"이 아니라 lib/extractLayer.js가 저장한 "base 대비 배율"
+        // (인코딩: stored = ratio/2.0, 디코드: ratio = stored*2.0, 1.0=무변화). 처음엔 촬영 사진의
+        // 절대 색을 그대로 합성했는데, 촬영 당시 조명과 지금 라이브 조명이 다르면 색이 안 맞아서
+        // "사진을 오려 붙인 캐릭터 필터" 느낌이 났다(실사용 피드백) — 절대색 대신 "지금 이 픽셀의
+        // 실제 피부색"에 그 배율을 곱해서, 조명이 달라도 이 사람 지금 피부톤 기준으로 화장이 얹힌다.
+        vec3 ratio = makeup.rgb * 2.0;
+        vec3 tinted = orig * ratio;
+        vec3 result = mix(orig, tinted, makeup.a);
+
+        // C5: 스페큘러 — 조명 방향을 몰라도, 원래 밝은 곳이 더 밝아지는 것만으로 광택으로 읽힌다.
+        float l = luma(orig);
+        float spec = pow(max(0.0, l - uSpecThreshold), uSpecPower) * uGloss * makeup.a;
+        result += spec;
+
+        // C6: 고주파(모공·주름) 복원 — 밉맵으로 비디오의 저주파(흐린) 버전을 뽑아 빼면 고주파만
+        // 남는다. 이걸 합성 후 다시 더해서, 화장 위에도 피부 결이 얹혀 보이게 한다.
+        vec3 lowFreq = textureLod(uVideoTex, screenUV, 2.0).rgb;
+        vec3 highFreq = orig - lowFreq;
+        result += highFreq * uTextureStrength * makeup.a;
+
+        fragColor = vec4(result, 1.0);
+      }
+    `,
+    depthTest: false, depthWrite: false,
+  });
   faceMesh = new THREE.Mesh(geo, mat);
   faceMesh.renderOrder = 1;
   faceMesh.visible = false;
@@ -264,7 +349,14 @@ function updateMeshPositions(lm) {
 
 // ---------- 실시간 루프 ----------
 const TRACKED_IDX = Array.from({ length: 468 }, (_, i) => i); // 전체 메시라 전부 스무딩 대상
-const smoother = new LandmarkSmoother(TRACKED_IDX, { smoothZ: true });
+const smoother = new LandmarkSmoother(TRACKED_IDX, { smoothZ: true, minCutoff: 3.5, beta: 0.15 });
+function updateSmoothingParams() {
+  const minCutoff = parseFloat($("minCutoff").value);
+  const beta = parseFloat($("beta").value);
+  smoother.setParams(minCutoff, beta);
+  $("minCutoffVal").textContent = minCutoff.toFixed(1);
+  $("betaVal").textContent = beta.toFixed(2);
+}
 
 function liveLoop() {
   if (!state.liveOn) return;
@@ -312,6 +404,9 @@ $("btnGenerate").onclick = generateLook;
 $("btnLive").onclick = goLive;
 $("btnReset").onclick = reset;
 $("wireframe").onchange = (e) => { if (faceMesh) faceMesh.material.wireframe = e.target.checked; };
+$("minCutoff").oninput = updateSmoothingParams;
+$("beta").oninput = updateSmoothingParams;
+updateSmoothingParams();
 
 window.__pocgl = {
   state, THREE, updateMeshPositions, smoother,

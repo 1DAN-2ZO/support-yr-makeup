@@ -8,6 +8,7 @@
 // 단계 딱 한 곳에서만 일어난다 — 다른 데서 또 뒤집으면 안 된다.
 
 import { solveAffine } from "./affine.js";
+import { featherAlpha } from "./blur.js";
 
 function toCanvas(imageDataLike) {
   const cv = document.createElement("canvas");
@@ -34,9 +35,10 @@ function inflate(pts, px) {
  * @param {Array<[number,number]>} faceUV assets/face-uv.json (468개, 이미 flipY 적용됨)
  * @param {number[]} faceTriangles assets/face-triangles.json (눈 구멍 제거된 인덱스 목록)
  * @param {number} [canvasSize] UV 캔버스 한 변 크기 (기본 1024)
+ * @param {number} [feather] 알파 페더링 반경(px, canvasSize=1024 기준). 0이면 경계 그대로(하드 엣지).
  * @returns {HTMLCanvasElement} 구운 UV 텍스처 (RGBA, 마스크 밖·눈 안쪽은 투명)
  */
-export function bakeLayer(layerImageData, landmarks, faceUV, faceTriangles, canvasSize = 1024) {
+export function bakeLayer(layerImageData, landmarks, faceUV, faceTriangles, canvasSize = 1024, feather = 0) {
   const srcCanvas = toCanvas(layerImageData);
   const srcW = layerImageData.width, srcH = layerImageData.height;
 
@@ -65,6 +67,9 @@ export function bakeLayer(layerImageData, landmarks, faceUV, faceTriangles, canv
     ctx.drawImage(srcCanvas, 0, 0);
     ctx.restore();
   }
+
+  // C3: 알파만 블러 — 경계를 부드럽게(색은 안 번짐). canvasSize가 1024가 아니면 반경을 비례 조정.
+  featherAlpha(uvCanvas, feather * (canvasSize / 1024));
 
   return uvCanvas;
 }

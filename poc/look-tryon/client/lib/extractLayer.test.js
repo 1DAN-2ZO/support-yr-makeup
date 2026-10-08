@@ -79,5 +79,26 @@ console.log("3) 실제 화장: 입술만 색을 크게 바꾼 입력에서 입�
   assert(outsideAlphaSum === 0, `입술 밖 알파 0 (실제 sum=${outsideAlphaSum})`);
 }
 
+console.log("4) 배율 인코딩: 절대색이 아니라 base 대비 배율(ratio)로 저장되는지");
+{
+  // base=[200,170,150], gen 입술=[200,30,60] → 기대 배율 R=1.0, G≈0.176, B=0.4
+  // 인코딩: stored = ratio/2.0*255 (RATIO_RANGE=2.0, extractLayer.js 상단 주석과 동일)
+  const base = solidImage(W, H, BASE_COLOR);
+  const gen = solidImage(W, H, BASE_COLOR);
+  for (let y = 20; y < 26; y++) for (let x = 12; x < 20; x++) {
+    const i = (y * W + x) * 4;
+    gen.data[i] = 200; gen.data[i + 1] = 30; gen.data[i + 2] = 60;
+  }
+  const layer = extractLayer(base, gen, masks);
+  const px = ((20 + 23) / 2 | 0) * W + 16; // 입술 영역 대략 중앙
+  const o = px * 4;
+  const expected = [1.0, 30 / 170, 60 / 150].map((r) => Math.round((r / 2.0) * 255));
+  const actual = [layer.data[o], layer.data[o + 1], layer.data[o + 2]];
+  const closeEnough = expected.every((e, ch) => Math.abs(e - actual[ch]) <= 6); // Lab 왕복 오차 여유
+  assert(closeEnough, `배율 인코딩 기대값≈[${expected}] 실제=[${actual}] (오차 6 이내)`);
+  // 다른 채널보다 훨씬 어두워지는 G채널이 128(배율 1.0, 무변화)보다 뚜렷이 작은지도 직접 확인
+  assert(actual[1] < 100, `G채널(많이 어두워짐)이 무변화(128)보다 확실히 작음 (실제=${actual[1]})`);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail > 0) process.exit(1);

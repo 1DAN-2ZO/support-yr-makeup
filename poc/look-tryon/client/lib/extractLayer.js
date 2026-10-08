@@ -6,8 +6,17 @@
 //                  3) base와 편향-보정된 gen의 Lab 잔차(ΔE) 계산
 //                  4) 임계 이하는 알파 0으로 절단
 // 2)를 건너뛰면 diffusion의 재구성 편향이 "옅은 화장"으로 오인된다 — extractLayer.test.js 테스트 2번이 이를 잡는다.
-
+//
+// 출력 색은 "절대 색"이 아니라 "원본 대비 배율(ratio)"이다 — 처음엔 gen의 보정된 절대 RGB를 그대로
+// 저장했는데, 그러면 촬영 당시 조명과 지금 라이브 조명이 다를 때 색이 안 맞아서 "사진을 오려 붙인"
+// 느낌이 났다(실사용 피드백: "캐릭터 필터 같다", "마스크팩 입힌 느낌"). 대신 채널별로
+// ratio = gen보정색 / base색 을 저장해두면, 렌더링 시점에 "지금 이 픽셀의 실제 피부색"에 그 비율을
+// 곱해서 얹을 수 있다 — 조명이 바뀌어도 "이 사람 지금 피부톤 기준" 화장이 된다.
+// ratio는 0~2 범위로 클램프해서 0..255에 인코딩(1.0 = 변화 없음 = 128). app-webgl.js 프래그먼트
+// 셰이더가 이 인코딩을 그대로 알고 있어야 한다(디코드: ratio = texel * 2.0).
 import { rgb2lab, lab2rgb, deltaE } from "./color.js";
+
+const RATIO_RANGE = 2.0;
 
 function median(arr) {
   if (arr.length === 0) return 0;
@@ -63,9 +72,16 @@ export function extractLayer(baseImageData, genImageData, masks, options = {}) {
       const de = deltaE(baseLab, genCorrected);
       if (de < threshold) continue; // 알파 0 유지
       const alpha = Math.min(1, Math.max(0, (de * gain) / 100)) * coverage;
-      const [r, g, b] = lab2rgb(genCorrected);
+
+      // 절대색이 아니라 base 대비 배율을 저장(파일 상단 주석 참고)
+      const genCorrectedRGB = lab2rgb(genCorrected);
       const o = i * 4;
-      out.data[o] = r; out.data[o + 1] = g; out.data[o + 2] = b; out.data[o + 3] = Math.round(alpha * 255);
+      const baseRGB = [baseImageData.data[o], baseImageData.data[o + 1], baseImageData.data[o + 2]];
+      for (let ch = 0; ch < 3; ch++) {
+        const ratio = genCorrectedRGB[ch] / Math.max(baseRGB[ch], 8); // 8 = 0 나눗셈 방지 바닥값
+        out.data[o + ch] = Math.round(Math.min(1, Math.max(0, ratio / RATIO_RANGE)) * 255);
+      }
+      out.data[o + 3] = Math.round(alpha * 255);
     }
   }
   return out;
