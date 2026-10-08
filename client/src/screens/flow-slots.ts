@@ -213,6 +213,7 @@ function guideMock(part: PartId): HTMLElement {
   card.style.setProperty("--slot-color", hex);
   card.innerHTML = `
     <div class="slot-guide-photo">
+      <span class="slot-guide-sample">예시</span>
       <span class="slot-guide-line one"></span>
       <span class="slot-guide-line two"></span>
       <span class="slot-guide-dot"></span>
@@ -442,7 +443,9 @@ export function partGuideSlot<S>(deps: PartGuideSlotDeps): Screen<S> {
         ctx.go("live");
       }));
       root.append(
-        coach("정답사진에서 이 부위만 크게 잘라서 보여드릴게요"),
+        // 지금 그림은 정답사진에서 만든 것이 아니라 **견본**이다 (#334 ⑥ 알림).
+        // 정답사진이 세션에 들어오면(#331) ⑥ 이 가이드 재료를 바꿔 넣는다 — 그때 "예시" 딱지와 이 문구를 되돌린다
+        coach("예시 그림이에요. 올려 주신 사진의 화장이 준비되면 바뀌어요"),
         title(PART_NAME[part], "점과 선을 기준으로 거울 앞에서 천천히 따라 해 주세요"),
         guide,
         button(next ? `다음 — ${PART_NAME[next]}` : "다음 · 시도사진 찍기", () => {

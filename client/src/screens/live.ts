@@ -200,6 +200,10 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
       video.playsInline = true; video.muted = true; video.autoplay = true;
       const view = el("canvas", "live-view");
       stage.append(video, view);
+      // 지금 그리는 테두리는 올린 참고 사진의 화장이 아니라 **옛 표준 틀(lookGuide)** 이다 (#334 ⑥ 알림).
+      // 정답사진이 들어오면(#331) ⑥ 이 createLiveRun 에 그 모양을 넣는다 — 그때 이 딱지를 뺀다
+      const sample = el("span", "live-sample", "예시");
+      stage.append(sample);
       // 개발용 떨림 재기 (#23 "적용 전후 30초 비교")
       const q = new URLSearchParams(window.location.search);
       const stab = q.get("stab") !== "0";
