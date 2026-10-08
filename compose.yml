@@ -11,10 +11,14 @@ services:
 
     volumes:
       - ./server:/app/server
+      # 사용 기록(/events) 저장 — 저장소 밖, 서버 PC 의 D:/nudy-data 에 쌓인다 (eval/funnel 이 읽음)
+      - D:/nudy-data:/data
 
     environment:
       # 배포 프론트(https)에서 이 API를 부를 수 있게 허용 (CORS). 개발용 localhost 도 유지
       - DHE_CORS_ORIGINS=https://nudy.shelldocs.cloud,http://localhost:5173,http://127.0.0.1:5173,https://localhost:5173,https://127.0.0.1:5173
+      # 사용 기록 저장 폴더 — 없으면 /events 가 503 (server/app/events.py)
+      - DHE_DATA_DIR=/data
 
     restart: unless-stopped
 
