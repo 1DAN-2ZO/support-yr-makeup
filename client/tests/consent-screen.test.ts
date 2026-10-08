@@ -50,6 +50,33 @@ describe("동의 화면", () => {
     expect(go).not.toHaveBeenCalled();
   });
 
+  // 2026-10-08 (#338 ③): 촬영 안내 화면이 여기로 옮겨오면서 소리를 열어 두던 호출이 같이 사라졌었다.
+  // iOS 는 **사용자가 누르는 그 순간**에 열어 둬야 나중에 "삑" 이 난다. 눈 감은 장은 화면을 못 보니
+  // 그 소리가 찍혔다는 유일한 신호다 — 다시 없어지면 폰에서만 드러나므로 여기서 지킨다
+  it("C4 '동의하고 시작' 을 누르면 소리를 열어 둔다 (iOS) — '닫기' 로는 열지 않는다", () => {
+    const made: { resumed: boolean }[] = [];
+    class FakeAudioContext {
+      resumed = false;
+      constructor() { made.push(this); }
+      resume(): Promise<void> { this.resumed = true; return Promise.resolve(); }
+    }
+    vi.stubGlobal("AudioContext", FakeAudioContext);
+    try {
+      const { root, ctx } = setup();
+      consentScreen<null>({ setConsent: vi.fn(), onConsent: vi.fn() }).mount(ctx);
+      root.querySelector<HTMLButtonElement>(".intro-camera-start")!.click();
+      click(root, CONSENT_TEXT.deny);
+      expect(made).toHaveLength(0);
+
+      root.querySelector<HTMLButtonElement>(".intro-camera-start")!.click();
+      click(root, CONSENT_TEXT.agree);
+      expect(made).toHaveLength(1);
+      expect(made[0]!.resumed).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("C3 이용 불가 화면은 정의서 문구 그대로, 다시 동의 화면으로만 갈 수 있다", () => {
     const { root, ctx, go } = setup();
     deniedScreen<null>().mount(ctx);

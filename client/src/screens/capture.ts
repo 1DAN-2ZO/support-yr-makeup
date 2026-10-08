@@ -93,6 +93,19 @@ function thumb(cv: HTMLCanvasElement | null, w = 160): HTMLCanvasElement {
  * 진동은 기기 진동 세기 설정을 따라 안 느껴지기도 해서(같은 날 Android: 소리만 들림) 소리를 모든 장에 낸다. iOS 는 진동이 없다.
  */
 let audio: AudioContext | null = null;
+
+/**
+ * 소리를 미리 열어 둔다. **사용자가 누르는 그 순간에 불러야 한다** —
+ * iOS 는 탭 밖에서 만든 AudioContext 를 멈춤 상태로 두어, 나중에 찍을 때 "삑" 이 안 난다.
+ *
+ * 새 흐름에서 촬영 안내 화면(showGuide)이 동의 화면으로 옮겨가면서 이 호출도 같이 없어졌다 (#338 ③).
+ * 지금은 동의 화면의 "동의하고 시작" 이 부른다 (screens/consent.ts).
+ * 눈 감은 장은 화면을 못 보니 이 소리가 찍혔다는 **유일한 신호**다.
+ */
+export function unlockShutterCue(): void {
+  try { audio ??= new AudioContext(); void audio.resume(); } catch { /* 소리 못 염 */ }
+}
+
 function shutterCue(eyesClosed: boolean): void {
   try { navigator.vibrate?.(200); } catch { /* 지원 안 함 */ }
   try {
