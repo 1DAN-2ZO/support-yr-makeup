@@ -1,7 +1,7 @@
 // 그림 만들기 부르기 (⑥ 백 연결) — 앱 → 백엔드 POST /transfer → (GPU 의 FLUX) → 그림 한 장
 import { describe, expect, it, vi } from "vitest";
 import { createPictureMaker } from "@core/picture-maker";
-import { requestTransfer, type TransferResult } from "@core/transfer-client";
+import { TRANSFER_TIMEOUT_MS, requestTransfer, type TransferResult } from "@core/transfer-client";
 
 const bare = new Blob(["bare"], { type: "image/webp" }), ref = new Blob(["ref"], { type: "image/jpeg" });
 const png = new Blob(["made"], { type: "image/png" });
@@ -49,6 +49,12 @@ describe("그림 만들기 부르기 (requestTransfer)", () => {
     expect(await requestTransfer(bare, ref, { fetchFn: async () => html(502) })).toMatchObject({ ok: false, why: "down" });
     expect(await requestTransfer(bare, ref, { fetchFn: async () => html(504) })).toMatchObject({ ok: false, why: "down" });
     expect(await requestTransfer(bare, ref, { fetchFn: async () => html(413) })).toMatchObject({ ok: false, why: "too_large" });
+    // Cloudflare 가 100초에서 끊으면 524 — 서버 쪽 문제로 안내한다
+    expect(await requestTransfer(bare, ref, { fetchFn: async () => html(524) })).toMatchObject({ ok: false, why: "down" });
+  });
+
+  it("TC4b 기다리는 한도는 Cloudflare 가 끊는 100초보다 짧다 — 그보다 길면 닿지도 못하고, 서버는 그동안 계속 그린다", () => {
+    expect(TRANSFER_TIMEOUT_MS).toBeLessThan(100_000);
   });
 
   it("TC5 인터넷이 끊겼으면 network, 너무 오래 걸리면 timeout", async () => {
@@ -133,5 +139,61 @@ describe("그림 만들어 보관하기 (createPictureMaker)", () => {
     done(made("A"));
     await p;
     expect(maker.busy("answer")).toBe(false);
+  });
+
+  it("PM7 만드는 중에 다른 사진으로 또 부르면 앞의 결과를 그 사진의 결과인 것처럼 돌려주지 않는다 — 만드는 중이라고 답한다", async () => {
+    let done: (r: TransferResult) => void = () => {};
+    const request = vi.fn((_b: Blob, _r: Blob) => new Promise<TransferResult>((res) => { done = res; }));
+    const { put, maker } = setup({ request });
+    const lookA = new Blob(["A"]), lookB = new Blob(["B"]);
+    const first = maker.makeAnswer(lookA);
+    expect(await maker.makeAnswer(lookB)).toEqual({ ok: false, why: "busy" });
+    await Promise.resolve(); await Promise.resolve();
+    done(made("A"));
+    expect((await first).ok).toBe(true);
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(put).toHaveBeenCalledTimes(1);
+  });
+
+  it("PM8 버린 뒤에 도착한 그림은 칸에 넣지 않는다 — 끝내기 · 맨얼굴 다시 찍기 뒤에 옛 그림이 되살아나지 않게", async () => {
+    let done: (r: TransferResult) => void = () => {};
+    const { put, maker } = setup({ request: () => new Promise<TransferResult>((res) => { done = res; }) });
+    const p = maker.makeAnswer(ref);
+    await Promise.resolve(); await Promise.resolve();
+    maker.cancel();
+    done(made("A"));
+    expect(await p).toEqual({ ok: false, why: "cancelled" });
+    expect(put).not.toHaveBeenCalled();
+    expect(maker.busy("answer")).toBe(false);
+  });
+
+  it("PM9 한 가지만 버릴 수 있다 — 시도사진을 다시 찍으면 옮긴 그림만 버리고 정답사진 만들기는 그대로 간다", async () => {
+    const waits: ((r: TransferResult) => void)[] = [];
+    const { put, maker } = setup({ request: () => new Promise<TransferResult>((res) => { waits.push(res); }) });
+    const a = maker.makeAnswer(new Blob(["look"])), m = maker.makeMoved();
+    await Promise.resolve(); await Promise.resolve();
+    maker.cancel("moved");
+    waits.forEach((w) => w(made("X")));
+    expect((await a).ok).toBe(true);
+    expect(await m).toEqual({ ok: false, why: "cancelled" });
+    expect(put.mock.calls.map((c) => c[0])).toEqual(["answer"]);
+  });
+
+  it("PM10 버린 뒤에는 바로 새로 만들 수 있다 — 앞의 것이 아직 안 끝났어도", async () => {
+    const waits: ((r: TransferResult) => void)[] = [];
+    const request = vi.fn(() => new Promise<TransferResult>((res) => { waits.push(res); }));
+    const { put, maker } = setup({ request });
+    const old = maker.makeMoved();
+    await Promise.resolve(); await Promise.resolve();
+    maker.cancel("moved");
+    const fresh = maker.makeMoved();
+    await Promise.resolve(); await Promise.resolve();
+    expect(request).toHaveBeenCalledTimes(2);
+    waits[1]!(made("new"));
+    waits[0]!(made("old"));
+    expect((await fresh).ok).toBe(true);
+    expect((await old).ok).toBe(false);
+    expect(put).toHaveBeenCalledTimes(1);
+    expect(await put.mock.calls[0]![1].text()).toBe("new");
   });
 });

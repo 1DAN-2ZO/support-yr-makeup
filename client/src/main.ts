@@ -238,6 +238,8 @@ async function boot(): Promise<void> {
 
   // 끝내기 — 폰에 남은 사진 · 기록을 다 지운다 (F-11). 새 흐름 7 저장 · 공유와 옛 흐름 리뷰가 같이 쓴다
   const clearAll = async (): Promise<Awaited<ReturnType<SessionStore["clearAll"]>>> => {
+    // 만드는 중인 그림은 버린다 — 서버 답이 지운 뒤에 도착해 얼굴 그림이 폰에 다시 써지지 않게 (#352 리뷰)
+    maker.cancel();
     await saving;   // 저장 중인 draft·쌩얼이 지운 뒤에 써지지 않게
     // 로그 저장소를 먼저 닫는다 — 안 닫으면 버퍼·시간 저장이 지운 뒤에 events 키를 다시 만든다
     await logStore.clear();
@@ -251,7 +253,16 @@ async function boot(): Promise<void> {
   // 메모리에만 둔다 — 앱을 다시 켜면 다시 찍는다 (저장소 사진 키는 ① 의 session-store 라 아직 안 늘렸다)
   let attempt: AttemptShots | null = null;
   const getAttempt = (): AttemptShots | null => attempt;
-  shell.register("attempt", attemptScreen<Session>({ setAttempt: (shots) => { attempt = shots; judged = null; }, next: "feedback" }));
+  shell.register("attempt", attemptScreen<Session>({
+    setAttempt: (shots) => {
+      attempt = shots;
+      judged = null;
+      // 옛 시도사진으로 만든 옮긴 그림은 못 쓴다 — 만드는 중이던 것도 버린다
+      maker.cancel("moved");
+      void putMade("moved", null);
+    },
+    next: "feedback",
+  }));
 
   // 3 정답사진 — 화면 3(정답사진 만들기 연결)이 setAnswer 로 넣는다. 맨얼굴과 같은 크기 · 같은 자리여야 한다
   // (docs/feedback-input-contract.md). 폰 세션 저장소에 둔다 (core/made-pictures) — 새로고침해도 남고, 끝내기 · 만료 때 지워진다
@@ -324,8 +335,9 @@ async function boot(): Promise<void> {
       setBaseline: (b) => {
         // 세션에 남아 있던 옛 계획(#181)은 withBaseline 이 비운다 — 앱은 이제 그 계획을 읽지 않는다
         set(withBaseline(session, b));
-        // 맨얼굴이 바뀌면 만든 그림은 못 쓴다 — 옛 맨얼굴에 겹치던 그림이다
+        // 맨얼굴이 바뀌면 만든 그림은 못 쓴다 — 옛 맨얼굴에 겹치던 그림이다. 만드는 중이던 것도 버린다
         judged = null;
+        maker.cancel();
         saving = saving.then(() => made.clear()).catch(() => {});
       },
       // 쌩얼 저장도 draft 와 같은 줄에 세운다 — 끝내기(clearAll)가 인코딩·저장이 끝날 때까지 기다린다 (#162 리뷰)
@@ -432,6 +444,7 @@ async function boot(): Promise<void> {
         logStore.reopen();
         attempt = null;
         judged = null;
+        maker.cancel();
         // 끝내기가 저장소는 이미 지웠다 — 메모리에 들고 있던 것도 버린다
         saving = saving.then(() => made.clear()).catch(() => {});
         set(createSession());

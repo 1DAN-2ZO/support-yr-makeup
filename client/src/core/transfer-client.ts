@@ -20,12 +20,15 @@ export interface TransferOptions {
   /** 서버 주소. 없으면 같은 주소 */
   base?: string;
   fetchFn?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
-  /** 이만큼 지나면 그만 기다린다. 서버를 켜고 첫 장은 1분 넘게 걸릴 수 있다 */
+  /** 이만큼 지나면 그만 기다린다 */
   timeoutMs?: number;
 }
 
-/** 한 장 8~9초 · 줄을 서면 그 몇 배 · 서버를 막 켰으면 100초쯤 (#342) */
-export const TRANSFER_TIMEOUT_MS = 180_000;
+/**
+ * 한 장 8~9초 · 줄을 서면 그 몇 배. 서버는 85초(줄 + 그리기)에서 스스로 끊는다 (server/app/flux.py).
+ * Cloudflare 가 답 없는 요청을 100초에서 끊으므로(524) 그보다 짧게 둔다 — 더 길게 기다려도 닿지 못한다
+ */
+export const TRANSFER_TIMEOUT_MS = 95_000;
 
 const CODES: readonly TransferFail[] = ["off", "busy", "down", "rejected", "too_large"];
 

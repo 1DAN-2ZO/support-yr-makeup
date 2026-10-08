@@ -7,9 +7,15 @@
 
 - 주소는 DHE_FLUX_URL (예: http://100.110.57.95:7861). 없으면 꺼져 있다 — 실수로 켜지지 않게
 - 한 번에 한 장만 보낸다 (그래픽카드 한 장). 줄이 꽉 차면 더 세우지 않고 "바쁘다"
+- 전체 시간 한도가 있다 (줄에서 기다린 시간 포함). FLUX 는 그리는 동안 "기다리는 중" 을 계속 보내서
+  읽기 한도만으로는 멈춘 서버를 못 끊는다 — 한도가 없으면 줄이 영영 막힌다.
+  한도는 Cloudflare 가 끊는 100초보다 짧게 둔다
+- 앱이 끊으면 그만둔다 (unless_gone) — 받을 사람이 없는 요청이 줄을 차지하지 않게
 - 받은 사진 · 만든 그림은 메모리에서만 쓴다. 저장하지 않고 로그에도 남기지 않는다
 - 단계 수 · 강도 · seed 는 고정 — 정답사진과 옮긴 그림이 같은 설정이어야 견줄 수 있다
   (docs/feedback-input-contract.md 지킬 것 2)
+- FLUX 가 낸 오류 문장은 밖으로 내보내지 않는다 (GPU PC 의 경로 · 내부 오류가 실려 올 수 있다).
+  "얼굴을 못 찾음" 만 사진 탓(rejected)으로 알리고, 나머지는 서버 고장(down)이다
 
 GPU PC 를 여러 대로 늘리면 여기서 "비어 있는 PC 로 보내기" 를 하면 된다 (지금은 한 대).
 """
@@ -22,6 +28,8 @@ import json
 import os
 import re
 import time
+from collections.abc import Awaitable, Callable, Coroutine
+from typing import Any, TypeVar
 from urllib.parse import quote
 
 import httpx
@@ -31,16 +39,22 @@ STEPS = 4
 STRENGTH = 0.7
 SEED = 1234
 
+# 앱에 알리는 문장 — FLUX 가 한 말을 그대로 옮기지 않고 정해 둔 문장을 쓴다
+NO_FACE = "얼굴 사진에서 얼굴을 못 찾았어요."
+
+T = TypeVar("T")
+
 
 class FluxError(Exception):
-    """앱에 전할 실패 — code 는 앱이 안내를 고르는 데 쓴다"""
+    """앱에 전할 실패 — code 는 앱이 안내를 고르는 데 쓴다. message 는 밖으로 나가는 말, note 는 로그에만"""
 
     status = 502
     code = "down"
 
-    def __init__(self, message: str = "") -> None:
-        super().__init__(message)
+    def __init__(self, message: str = "", note: str = "") -> None:
+        super().__init__(note or message)
         self.message = message
+        self.note = note or message
 
 
 class FluxBusy(FluxError):
@@ -49,7 +63,7 @@ class FluxBusy(FluxError):
 
 
 class FluxRejected(FluxError):
-    """FLUX 가 그리지 않은 것 — 얼굴을 못 찾음 등. message 는 FLUX 가 한 말 그대로"""
+    """사진 탓에 그리지 못한 것 — 얼굴을 못 찾음"""
 
     status = 422
     code = "rejected"
@@ -58,6 +72,10 @@ class FluxRejected(FluxError):
 class FluxDown(FluxError):
     status = 502
     code = "down"
+
+
+class Gone(Exception):
+    """앱이 연결을 끊었다 — 답할 곳이 없다"""
 
 
 _SSE = re.compile(r"event: (\w+)\ndata: (.*)")
@@ -70,35 +88,53 @@ def _file_data(photo: bytes, media_type: str) -> dict:
     }
 
 
+def _no_face(said: object) -> bool:
+    """app_klein 이 얼굴을 못 찾았을 때 하는 말인가 (gr.Error — "얼굴 사진에서 얼굴을 못 찾았어요.")"""
+    return isinstance(said, str) and "얼굴" in said and "못 찾" in said
+
+
 class FluxClient:
     def __init__(
         self,
         url: str,
         *,
         transport: httpx.AsyncBaseTransport | None = None,
-        timeout: float = 150.0,
+        timeout: float = 30.0,
+        total: float = 85.0,
         max_waiting: int = 6,
     ) -> None:
         self.url = url.rstrip("/")
         self._transport = transport
+        # 한 번 읽기 한도 — 서버가 아예 말이 없을 때.
+        # 그리는 동안에는 "기다리는 중" 이 계속 와서 여기에 안 걸린다
         self._timeout = timeout
+        # 전체 한도 — 줄에서 기다린 시간 + 그리는 시간
+        self._total = total
         self._max_waiting = max_waiting
         self._lock = asyncio.Lock()
         # 그리는 중 + 기다리는 중인 요청 수
         self._waiting = 0
 
+    def full(self) -> bool:
+        """줄이 꽉 찼나 (그리는 1 + 기다리는 max_waiting)"""
+        return self._waiting > self._max_waiting
+
     async def transfer(
         self, bare: bytes, bare_type: str, ref: bytes, ref_type: str
     ) -> tuple[bytes, str, int]:
         """(그림, 종류, 걸린 ms). 실패는 FluxError"""
-        if self._waiting > self._max_waiting:
+        if self.full():
             raise FluxBusy()
         self._waiting += 1
         try:
-            async with self._lock:
-                t0 = time.perf_counter()
-                picture, media_type = await self._call(bare, bare_type, ref, ref_type)
-                return picture, media_type, round((time.perf_counter() - t0) * 1000)
+            try:
+                async with asyncio.timeout(self._total):
+                    async with self._lock:
+                        t0 = time.perf_counter()
+                        picture, media_type = await self._call(bare, bare_type, ref, ref_type)
+                        return picture, media_type, round((time.perf_counter() - t0) * 1000)
+            except TimeoutError as e:
+                raise FluxDown(note="total timeout") from e
         finally:
             self._waiting -= 1
 
@@ -119,9 +155,11 @@ class FluxClient:
                     if kind in ("complete", "error"):
                         break
                 if kind == "error":
-                    raise FluxRejected(data if isinstance(data, str) else "")
+                    if _no_face(data):
+                        raise FluxRejected(NO_FACE)
+                    raise FluxDown(note=f"flux error: {str(data)[:120]}")
                 if kind != "complete":
-                    raise FluxDown("no result")
+                    raise FluxDown(note="no result")
                 path = data[0]["path"]
                 r = await c.get(f"/gradio_api/file={quote(path, safe='')}")
                 r.raise_for_status()
@@ -131,7 +169,26 @@ class FluxClient:
         except FluxError:
             raise
         except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as e:
-            raise FluxDown(type(e).__name__) from e
+            raise FluxDown(note=type(e).__name__) from e
+
+
+async def unless_gone(
+    work: Coroutine[Any, Any, T], is_gone: Callable[[], Awaitable[bool]], poll: float = 1.0
+) -> T:
+    """work 를 돌리되, 앱이 끊었으면(is_gone) 그만두고 Gone 을 던진다. poll 초마다 확인한다"""
+    task = asyncio.ensure_future(work)
+    try:
+        while True:
+            done, _ = await asyncio.wait({task}, timeout=poll)
+            if done:
+                return task.result()
+            if await is_gone():
+                raise Gone()
+    finally:
+        if not task.done():
+            task.cancel()
+            # 취소가 끝나 줄 · 잠금이 풀린 뒤에 돌아간다
+            await asyncio.gather(task, return_exceptions=True)
 
 
 def flux_url() -> str:

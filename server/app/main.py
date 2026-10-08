@@ -16,12 +16,13 @@ from __future__ import annotations
 import logging
 import os
 
-from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.datastructures import UploadFile
 
 from . import events
 from .config import settings
-from .flux import FluxError, get_flux
+from .flux import FluxError, Gone, get_flux, unless_gone
 from .schemas import Health
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -67,37 +68,72 @@ async def post_events(request: Request) -> Response:
 
 # 사진 한 장의 크기 한도. 폰 원본 크기 사진(2160x3840 JPEG · WebP)이 넉넉히 들어간다
 MAX_PHOTO = 15 * 1024 * 1024
+# 올리는 몸통 전체의 한도 — 사진 두 장 + multipart 머리말. 몸통을 받기 전에 Content-Length 로 본다
+MAX_BODY = 2 * MAX_PHOTO + 64 * 1024
 
 
 def _fail(status: int, code: str, message: str = "", headers: dict[str, str] | None = None) -> HTTPException:
     return HTTPException(status, {"code": code, "message": message}, headers=headers)
 
 
-async def _photo(f: UploadFile) -> tuple[bytes, str]:
-    media_type = f.content_type or ""
-    if not media_type.startswith("image/"):
-        raise _fail(422, "not_image")
+def _kind(data: bytes) -> str | None:
+    """사진 종류를 내용의 첫머리로 정한다 — 올린 쪽이 적은 종류는 믿지 않고 FLUX 로 넘기지도 않는다"""
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+async def _photo(f: object) -> tuple[bytes, str]:
+    if not isinstance(f, UploadFile):
+        raise _fail(422, "missing")
     data = await f.read(MAX_PHOTO + 1)
     if len(data) > MAX_PHOTO:
         raise _fail(413, "too_large")
     if not data:
         raise _fail(422, "empty")
-    return data, media_type
+    kind = _kind(data)
+    if kind is None:
+        raise _fail(422, "not_image")
+    return data, kind
 
 
 @app.post("/transfer")
-async def transfer(bare: UploadFile = File(...), ref: UploadFile = File(...)) -> Response:
-    """맨얼굴(bare)에 화장 사진(ref)의 화장을 입힌 그림 한 장. 정답사진 · 옮긴 그림이 같은 길이다"""
+async def transfer(request: Request) -> Response:
+    """맨얼굴(bare)에 화장 사진(ref)의 화장을 입힌 그림 한 장. 정답사진 · 옮긴 그림이 같은 길이다.
+
+    몸통(사진 두 장)을 받기 전에 걸러 낸다 — 꺼짐 · 너무 큼 · 줄이 꽉 참.
+    다 받은 뒤에 거절하면 그동안 디스크와 메모리를 내준다
+    """
     flux = get_flux()
     if flux is None:
         raise _fail(503, "off", "transfer off (DHE_FLUX_URL)")
-    b, bt = await _photo(bare)
-    r, rt = await _photo(ref)
+    length = request.headers.get("content-length", "")
+    if not length.isdigit():
+        raise _fail(411, "length")
+    if int(length) > MAX_BODY:
+        raise _fail(413, "too_large")
+    if flux.full():
+        raise _fail(503, "busy", headers={"Retry-After": "10"})
     try:
-        picture, media_type, ms = await flux.transfer(b, bt, r, rt)
+        form = await request.form()
+    except Exception as e:  # noqa: BLE001 — 깨진 multipart 는 종류가 여럿이다
+        raise _fail(422, "missing") from e
+    b, bt = await _photo(form.get("bare"))
+    r, rt = await _photo(form.get("ref"))
+    try:
+        # 앱이 끊으면(화면을 떠남 · 시간 초과) 그만둔다 — 받을 사람이 없는 요청이 줄을 차지하지 않게
+        picture, media_type, ms = await unless_gone(flux.transfer(b, bt, r, rt), request.is_disconnected)
+    except Gone:
+        log.info("transfer gone (bare %d · ref %d bytes)", len(b), len(r))
+        return Response(status_code=499)
     except FluxError as e:
-        # 사진 내용은 남기지 않는다 — 무슨 일이었는지와 크기만
-        log.warning("transfer %s %s (bare %d · ref %d bytes)", e.code, e.message[:80], len(b), len(r))
+        # 사진 내용은 남기지 않는다 — 무슨 일이었는지와 크기만.
+        # FLUX 가 한 말(note)은 로그에만 두고 밖으로는 안 내보낸다
+        log.warning("transfer %s %s (bare %d · ref %d bytes)", e.code, e.note[:120], len(b), len(r))
         raise _fail(e.status, e.code, e.message, {"Retry-After": "10"} if e.code == "busy" else None) from e
     log.info("transfer ok %dms (bare %d · ref %d → %d bytes)", ms, len(b), len(r), len(picture))
     return Response(
