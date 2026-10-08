@@ -126,7 +126,7 @@ async def transfer(request: Request) -> Response:
     r, rt = await _photo(form.get("ref"))
     try:
         # 앱이 끊으면(화면을 떠남 · 시간 초과) 그만둔다 — 받을 사람이 없는 요청이 줄을 차지하지 않게
-        picture, media_type, ms = await unless_gone(flux.transfer(b, bt, r, rt), request.is_disconnected)
+        made = await unless_gone(flux.transfer(b, bt, r, rt), request.is_disconnected)
     except Gone:
         log.info("transfer gone (bare %d · ref %d bytes)", len(b), len(r))
         return Response(status_code=499)
@@ -135,7 +135,19 @@ async def transfer(request: Request) -> Response:
         # FLUX 가 한 말(note)은 로그에만 두고 밖으로는 안 내보낸다
         log.warning("transfer %s %s (bare %d · ref %d bytes)", e.code, e.note[:120], len(b), len(r))
         raise _fail(e.status, e.code, e.message, {"Retry-After": "10"} if e.code == "busy" else None) from e
-    log.info("transfer ok %dms (bare %d · ref %d → %d bytes)", ms, len(b), len(r), len(picture))
-    return Response(
-        picture, media_type=media_type, headers={"x-gen-ms": str(ms), "cache-control": "no-store"}
+    log.info(
+        "transfer ok %dms · 줄 %dms · flux %s (bare %d · ref %d → %d bytes)",
+        made.ms,
+        made.queue_ms,
+        f"{made.flux_ms}ms" if made.flux_ms is not None else "?",
+        len(b),
+        len(r),
+        len(made.picture),
     )
+    # 시간을 나눠 알린다 — 앱이 사용 기록(task answer_make)에 남긴다.
+    # x-gen-ms 부르고 받기까지 · x-queue-ms 줄 선 시간 ·
+    # x-flux-ms FLUX 가 스스로 잰 그리는 시간(못 읽었으면 없음)
+    headers = {"x-gen-ms": str(made.ms), "x-queue-ms": str(made.queue_ms), "cache-control": "no-store"}
+    if made.flux_ms is not None:
+        headers["x-flux-ms"] = str(made.flux_ms)
+    return Response(made.picture, media_type=made.media_type, headers=headers)

@@ -17,7 +17,7 @@ import type { TransferFail, TransferResult } from "./transfer-client";
 export type MakeFail = TransferFail | "no_bare" | "no_attempt" | "cancelled";
 
 export type MakeResult =
-  | { ok: true; picture: Blob; ms: number | null }
+  | { ok: true; picture: Blob; ms: number | null; queueMs?: number | null; fluxMs?: number | null }
   | { ok: false; why: MakeFail; message?: string };
 
 export interface PictureMakerDeps {

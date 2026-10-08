@@ -29,7 +29,7 @@ import os
 import re
 import time
 from collections.abc import Awaitable, Callable, Coroutine
-from typing import Any, TypeVar
+from typing import Any, NamedTuple, TypeVar
 from urllib.parse import quote
 
 import httpx
@@ -98,6 +98,27 @@ def _no_face(said: object) -> bool:
     return isinstance(said, str) and "얼굴" in said and "못 찾" in said
 
 
+class Made(NamedTuple):
+    """만든 그림과 걸린 시간들 (ms) — 느릴 때 어디가 느린지 가리려고 나눠 잰다"""
+
+    picture: bytes
+    media_type: str
+    ms: int
+    """FLUX 서버를 부르고 그림을 받기까지 (올리기 + 그리기 + 받기). 줄 선 시간은 빼고"""
+    queue_ms: int
+    """앞사람이 끝나기를 기다린 시간"""
+    flux_ms: int | None
+    """FLUX 가 스스로 잰 그리는 시간 — app_klein 이 그림과 함께 주는 측정 문장("8.6초 …")의 맨 앞"""
+
+
+_FLUX_SAID_SEC = re.compile(r"^\s*(\d+(?:\.\d+)?)초")
+
+
+def _flux_ms(said: object) -> int | None:
+    m = _FLUX_SAID_SEC.match(said) if isinstance(said, str) else None
+    return round(float(m.group(1)) * 1000) if m else None
+
+
 class FluxClient:
     def __init__(
         self,
@@ -124,26 +145,28 @@ class FluxClient:
         """줄이 꽉 찼나 (그리는 1 + 기다리는 max_waiting)"""
         return self._waiting > self._max_waiting
 
-    async def transfer(
-        self, bare: bytes, bare_type: str, ref: bytes, ref_type: str
-    ) -> tuple[bytes, str, int]:
-        """(그림, 종류, 걸린 ms). 실패는 FluxError"""
+    async def transfer(self, bare: bytes, bare_type: str, ref: bytes, ref_type: str) -> Made:
+        """그림과 걸린 시간들. 실패는 FluxError"""
         if self.full():
             raise FluxBusy()
         self._waiting += 1
         try:
             try:
+                came = time.perf_counter()
                 async with asyncio.timeout(self._total):
                     async with self._lock:
                         t0 = time.perf_counter()
-                        picture, media_type = await self._call(bare, bare_type, ref, ref_type)
-                        return picture, media_type, round((time.perf_counter() - t0) * 1000)
+                        picture, media_type, said = await self._call(bare, bare_type, ref, ref_type)
+                        ms = round((time.perf_counter() - t0) * 1000)
+                        return Made(picture, media_type, ms, round((t0 - came) * 1000), _flux_ms(said))
             except TimeoutError as e:
                 raise FluxDown(note="total timeout") from e
         finally:
             self._waiting -= 1
 
-    async def _call(self, bare: bytes, bare_type: str, ref: bytes, ref_type: str) -> tuple[bytes, str]:
+    async def _call(
+        self, bare: bytes, bare_type: str, ref: bytes, ref_type: str
+    ) -> tuple[bytes, str, object]:
         body = {"data": [_file_data(bare, bare_type), _file_data(ref, ref_type), STEPS, STRENGTH, True, SEED]}
         try:
             async with httpx.AsyncClient(
@@ -170,7 +193,8 @@ class FluxClient:
                 r.raise_for_status()
                 media_type = r.headers.get("content-type", "")
                 # Gradio 가 종류를 안 알려 주면 webp 다 (app_klein 의 기본 출력)
-                return r.content, media_type if media_type.startswith("image/") else "image/webp"
+                said = data[1] if len(data) > 1 else None
+                return r.content, media_type if media_type.startswith("image/") else "image/webp", said
         except FluxError:
             raise
         except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as e:

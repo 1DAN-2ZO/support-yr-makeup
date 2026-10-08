@@ -9,7 +9,19 @@ const ok = (): Response => new Response(png, { status: 200, headers: { "content-
 const fail = (status: number, code: string, message = ""): Response => new Response(JSON.stringify({ detail: { code, message } }), { status, headers: { "content-type": "application/json" } });
 
 describe("그림 만들기 부르기 (requestTransfer)", () => {
-  it("TC1 맨얼굴 · 화장 사진 두 장을 올리고 그림을 받는다", async () => {
+  it("TC0 서버가 나눠 알려 준 시간을 같이 돌려준다 — 줄 선 시간 · FLUX 가 스스로 잰 시간 (없으면 null)", async () => {
+    const withTimes = new Response(png, { status: 200, headers: { "content-type": "image/png", "x-gen-ms": "21000", "x-queue-ms": "12000", "x-flux-ms": "8600" } });
+    const a = await requestTransfer(bare, ref, { fetchFn: async () => withTimes });
+    expect(a).toMatchObject({ ok: true, ms: 21000, queueMs: 12000, fluxMs: 8600 });
+    // 옛 서버 · 측정 문장을 못 읽은 때 — 숫자가 아니면 0 이 아니라 null
+    const b = await requestTransfer(bare, ref, { fetchFn: async () => ok() });
+    expect(b).toMatchObject({ ok: true, ms: 8600, queueMs: null, fluxMs: null });
+    const odd = new Response(png, { status: 200, headers: { "content-type": "image/png", "x-queue-ms": "abc", "x-flux-ms": "" } });
+    const c = await requestTransfer(bare, ref, { fetchFn: async () => odd });
+    expect(c).toMatchObject({ ok: true, ms: null, queueMs: null, fluxMs: null });
+  });
+
+  it("TC1맨얼굴 · 화장 사진 두 장을 올리고 그림을 받는다", async () => {
     const fetchFn = vi.fn(async (_u: RequestInfo | URL, _i?: RequestInit) => ok());
     const r = await requestTransfer(bare, ref, { fetchFn });
     expect(r.ok).toBe(true);

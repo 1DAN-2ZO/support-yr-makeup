@@ -157,3 +157,17 @@ def test_ev13_cors_allows_post_from_dev_client(client):
         },
     )
     assert r.headers.get("access-control-allow-origin") == "http://localhost:5173"
+
+
+def test_ev_task_timing_line_is_stored_as_is(client, tmp_path):
+    # 작업 시간 기록 (2026-10-08, client/src/core/task-timer.ts) — 앱이 보내는 모양 그대로 쌓인다.
+    # 집계는 eval/funnel
+    times = {"gen_ms": 21000, "queue_ms": 0, "flux_ms": 8600, "kb": 16}
+    task = ev(screen="answer", name="task", task="answer_make", ms=23400, ok=True, why=None, **times)
+    failed = ev(name="task", task="ref_shrink", ms=40, ok=False, why="error")
+    r = client.post("/events", json={"events": [task, failed]})
+    assert r.status_code == 204
+    got = lines(tmp_path)
+    assert got[0]["task"] == "answer_make" and got[0]["ms"] == 23400 and got[0]["ok"] is True
+    assert {k: got[0][k] for k in times} == times
+    assert got[1]["ok"] is False and got[1]["why"] == "error"

@@ -310,3 +310,115 @@ def test_동의_안내를_열고_동의하지_않은_세션도_거부로_센다(
     m = rows_by_metric(aggregate(a + b + c + d))
     assert m["동의 거부율(%)"] == 50.0
     assert m["동의 안내 연 비율(%)"] == 50.0
+
+
+# ---------- 작업 시간 (task, 2026-10-08) · 화면에 머문 시간 ----------
+
+
+def _metric(rows: list[dict], name: str) -> dict | None:
+    return next((r for r in rows if r["metric"] == name), None)
+
+
+def test_작업별_걸린_시간과_성공률():
+    evs = []
+    for i, ms in enumerate([20000, 22000, 60000]):
+        evs += [
+            ev(f"s{i}", 0, "consent", ok=True),
+            ev(f"s{i}", 1, "screen_enter", screen="answer"),
+            ev(
+                f"s{i}",
+                2,
+                "task",
+                screen="answer",
+                task="answer_make",
+                ms=ms,
+                ok=True,
+                why=None,
+                gen_ms=ms - 2000,
+                queue_ms=1000 * i,
+                flux_ms=8600,
+            ),
+            ev(f"s{i}", 3, "task", screen="partguide", task="guide_build", ms=1200, ok=True, why=None, n=4),
+        ]
+    evs.append(ev("s0", 4, "task", screen="answer", task="answer_make", ms=900, ok=False, why="busy"))
+    evs.append(ev("s1", 4, "task", screen="answer", task="answer_make", ms=95000, ok=False, why="timeout"))
+    rows = aggregate(evs)
+
+    # 성공률은 한 것 전부에서, 시간은 된 것만 — 실패는 시간 제한까지 기다린 값이 섞여 흐려진다
+    assert _metric(rows, "작업 · answer_make 성공률(%)")["current"] == 60.0
+    assert _metric(rows, "작업 · answer_make 성공률(%)")["n"] == 5
+    assert _metric(rows, "작업 · answer_make 시간 중앙값(ms)")["current"] == 22000
+    assert _metric(rows, "작업 · answer_make 시간 중앙값(ms)")["n"] == 3
+    assert _metric(rows, "작업 · answer_make 시간 p95(ms)")["current"] == 60000
+    assert _metric(rows, "작업 · answer_make 실패 · busy(회)")["current"] == 1
+    assert _metric(rows, "작업 · answer_make 실패 · timeout(회)")["current"] == 1
+    assert _metric(rows, "작업 · guide_build 시간 중앙값(ms)")["current"] == 1200
+
+
+def test_정답사진_시간을_나눠_본다():
+    # 서버가 알려 준 시간 셋 — 줄 선 시간 · FLUX 가 스스로 잰 시간 · 그 나머지(오가는 길)
+    evs = [ev("a", 0, "consent", ok=True)]
+    for i, (ms, gen, queue, flux_ms) in enumerate(
+        [(23000, 21000, 0, 8600), (40000, 21500, 16000, 8700), (58000, 56000, 0, 9000)]
+    ):
+        evs.append(
+            ev(
+                "a",
+                1 + i,
+                "task",
+                screen="answer",
+                task="answer_make",
+                ms=ms,
+                ok=True,
+                why=None,
+                gen_ms=gen,
+                queue_ms=queue,
+                flux_ms=flux_ms,
+            )
+        )
+    rows = aggregate(evs)
+    assert _metric(rows, "작업 · answer_make 줄 선 시간 중앙값(ms)")["current"] == 0
+    assert _metric(rows, "작업 · answer_make FLUX 그리는 시간 중앙값(ms)")["current"] == 8700
+    # 서버가 부르고 받기까지(gen) − FLUX 가 그린 시간 = 백엔드 PC ↔ GPU PC 를 오간 시간
+    assert _metric(rows, "작업 · answer_make 서버 ↔ GPU 오가는 시간 중앙값(ms)")["current"] == 12800
+    # 앱이 기다린 시간 − 줄 − 서버가 부르고 받기까지 = 폰 ↔ 서버를 오간 시간
+    assert _metric(rows, "작업 · answer_make 폰 ↔ 서버 오가는 시간 중앙값(ms)")["current"] == 2000
+
+
+def test_시간을_못_받은_기록은_나눈_줄에서_뺀다():
+    evs = [
+        ev("a", 0, "consent", ok=True),
+        ev("a", 1, "task", screen="answer", task="answer_make", ms=23000, ok=True, why=None),
+    ]
+    rows = aggregate(evs)
+    assert _metric(rows, "작업 · answer_make 시간 중앙값(ms)")["current"] == 23000
+    assert _metric(rows, "작업 · answer_make FLUX 그리는 시간 중앙값(ms)") is None
+
+
+def test_작업_기록이_없으면_작업_줄도_없다():
+    rows = aggregate(full_session("a"))
+    assert not [r for r in rows if r["metric"].startswith("작업 · ")]
+
+
+def test_화면에_머문_시간():
+    # 들어간 시각부터 다음 화면에 들어간 시각까지. 마지막 화면은 그 세션의 마지막 기록까지
+    evs = [
+        ev("a", 0, "consent", ok=True),
+        ev("a", 1000, "screen_enter", screen="capture"),
+        ev("a", 31000, "screen_enter", screen="answer"),
+        ev("a", 91000, "screen_enter", screen="partguide"),
+        ev("a", 95000, "button", screen="partguide", button="slot_next_part:liner"),
+        ev("b", 0, "consent", ok=True),
+        ev("b", 0, "screen_enter", screen="capture"),
+        ev("b", 50000, "screen_enter", screen="answer"),
+        ev("b", 70000, "screen_enter", screen="capture"),
+        ev("b", 80000, "screen_enter", screen="answer"),
+        ev("b", 90000, "session_end", screen="answer", reason="finish", last_screen="answer"),
+    ]
+    rows = aggregate(evs)
+    # a: 30초 · b: 50초 + 10초(다시 들어옴) = 60초 → 가운데값 45초
+    assert _metric(rows, "화면 · capture 머문 시간 중앙값(초)")["current"] == 45
+    # a: 60초 · b: 20초 + 10초 = 30초
+    assert _metric(rows, "화면 · answer 머문 시간 중앙값(초)")["current"] == 45
+    assert _metric(rows, "화면 · partguide 머문 시간 중앙값(초)")["current"] == 4
+    assert _metric(rows, "화면 · partguide 머문 시간 중앙값(초)")["n"] == 1

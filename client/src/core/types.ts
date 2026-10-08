@@ -177,8 +177,16 @@ export type EventName =
   | "look_job"
   | "vlm_plan"
   | "restore"
+  | "task"
   | "session_end"
   | "error";
+
+/**
+ * 시간을 남기는 작업 (core/task-timer). ref_analyze 참고 사진에서 얼굴 · 색 읽기 · ref_shrink 올리기 전에 줄이기 ·
+ * answer_make 정답사진 만들기(누른 뒤 받을 때까지) · moved_make 옮긴 그림 · guide_build 부위 가이드 재료 ·
+ * feedback_run 피드백 계산 · save_card 결과 한 장
+ */
+export type TaskName = "ref_analyze" | "ref_shrink" | "answer_make" | "moved_make" | "guide_build" | "feedback_run" | "save_card";
 
 export interface EventBase {
   sid: string;
@@ -204,6 +212,12 @@ export type EventFields =
    */
   | { name: "vlm_plan"; look_id: string; ms: number; tries: number; first_rejected: number; left_rejected: number; model: string | null; fail: string | null }
   | { name: "restore"; ok: boolean; had_images: boolean }
+  /**
+   * 기다리는 작업 하나가 끝남 (2026-10-08, core/task-timer): ms 걸린 시간 · ok 됐나 · why 못 한 까닭(짧은 이름).
+   * gen_ms · queue_ms · flux_ms: 서버가 알려 준 시간(부르고 받기까지 · 줄 선 시간 · FLUX 가 스스로 잰 시간) — 정답사진 · 옮긴 그림만.
+   * n: 개수(작업마다 뜻이 다름) · kb: 크기
+   */
+  | { name: "task"; task: TaskName; ms: number; ok: boolean; why: string | null; gen_ms?: number; queue_ms?: number; flux_ms?: number; n?: number; kb?: number }
   | { name: "session_end"; reason: "finish" | "abandon" | "error"; last_screen: string }
   | { name: "error"; where: string; msg: string };
 
