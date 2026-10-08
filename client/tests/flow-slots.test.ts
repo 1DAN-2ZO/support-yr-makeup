@@ -5,7 +5,7 @@ import { createLogger, memorySink } from "@core/log";
 import type { MakeResult } from "@core/picture-maker";
 import { PART_NAME } from "@core/score";
 import { PART_IDS, type PartId, type Versions } from "@core/types";
-import { partGuideSlot, saveSlot, slotScreen } from "@screens/flow-slots";
+import { partGuideSlot, saveSlot, slotScreen, type PartGuideSlotDeps } from "@screens/flow-slots";
 import type { GuideLoad, GuideView } from "@screens/guide-source";
 import type { RefAnalysis, RefFailure } from "@screens/ref-analyze";
 import { describeColor } from "@core/color-name";
@@ -295,6 +295,35 @@ describe("빈 자리 화면", () => {
       await flush();
       expect(getGuide).not.toHaveBeenCalled();
       expect(photo(ctx.root).querySelector(".slot-guide-line")).not.toBeNull();
+    });
+
+    // #361 이 견본 그림에 "예시" 딱지 · 말풍선을 붙였다 — 진짜 정답사진 그림이 뜨면 "예시" 라고 말하면 안 된다
+    const coachText = (root: HTMLElement): string => root.querySelector(".slot-coach")?.textContent?.trim() ?? "";
+
+    it("FS5h 진짜 정답사진 그림이 뜨면 말풍선이 '예시' 가 아니라 정답사진을 잘라 보여 준다고 말한다 — 딱지도 없다", async () => {
+      const paintGuide = vi.fn(() => true);
+      const ctx = ctxOf();
+      partGuideSlot<null>({ getPart: () => "lip", getGuide: async () => ({ ok: true, view }), paintGuide }).mount(ctx);
+      await vi.waitFor(() => expect(paintGuide).toHaveBeenCalled());
+      expect(coachText(ctx.root)).toBe("정답사진에서 이 부위만 크게 잘라서 보여드릴게요");
+      expect(ctx.root.textContent).not.toContain("예시");
+    });
+
+    it("FS5i 견본 그림일 때(재료 없음 · 못 그림 · 쉐딩 · 재료를 안 받음)는 '예시' 말풍선과 딱지 그대로", async () => {
+      const cases: PartGuideSlotDeps[] = [
+        { getPart: () => "lip" },
+        { getPart: () => "lip", getGuide: async () => ({ ok: false, missing: "answer" }), paintGuide: () => true },
+        { getPart: () => "lip", getGuide: async () => ({ ok: true, view }), paintGuide: () => false },
+        { getPart: () => "lip", getGuide: async () => { throw new Error("풀지 못함"); }, paintGuide: () => true },
+        { getPart: () => "contour", getGuide: async () => ({ ok: true, view }), paintGuide: () => true },
+      ];
+      for (const [i, deps] of cases.entries()) {
+        const ctx = ctxOf();
+        partGuideSlot<null>(deps).mount(ctx);
+        await flush();
+        expect(coachText(ctx.root), `경우 ${i}`).toContain("예시 그림이에요");
+        expect(photo(ctx.root).querySelector(".slot-guide-sample")?.textContent, `경우 ${i}`).toBe("예시");
+      }
     });
 
     it("FS5g 기다리다 화면을 떠나면 뒤늦게 온 재료로 그리지 않는다", async () => {
