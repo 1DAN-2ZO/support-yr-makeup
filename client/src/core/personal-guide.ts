@@ -16,8 +16,9 @@ import { contourOutline } from "./contour";
 import { faceAxis, mmPerPx } from "./face-measure";
 import { GUIDE_PARAMS, lookGuide, type GuideFrame } from "./guides";
 import { LM, at } from "./landmarks";
+import { PICKED, pickedPts, pickedShadowRegion } from "./picked";
 import type { LookPart, LookPartId } from "./looks";
-import { PLAN_RULES, type BrowArch, type LinerStyle, type PersonalPlan } from "./personalize";
+import { type BrowArch, type LinerStyle, type PersonalPlan } from "./personalize";
 import type { GuideSource, PartGeometry } from "./score-part";
 import type { Side } from "./score";
 import type { Pt } from "./types";
@@ -51,15 +52,6 @@ const norm = (a: Pt): Pt => {
   return { x: a.x / l, y: a.y / l };
 };
 const mix = (a: Pt, b: Pt, t: number): Pt => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
-
-function ellipse(c: Pt, rx: number, ry: number, deg: number, n = 28): Pt[] {
-  const t = (deg * Math.PI) / 180, out: Pt[] = [];
-  for (let i = 0; i < n; i++) {
-    const a = (i / n) * 2 * Math.PI, x = rx * Math.cos(a), y = ry * Math.sin(a);
-    out.push({ x: c.x + x * Math.cos(t) - y * Math.sin(t), y: c.y + x * Math.sin(t) + y * Math.cos(t) });
-  }
-  return out;
-}
 
 const SIDES = [
   { key: "R" as Side, eye: LM.eyeA, brow: LM.browA, cheek: LM.cheekA, face: LM.faceL, ala: ALA.R, sign: -1 },
@@ -109,8 +101,8 @@ export function styledGuide(lookParts: Partial<Record<LookPartId, LookPart>> = {
  * 순서: 속눈썹 선(안쪽 → 바깥) → 꼬리 끝 → 위 테두리(바깥 → 안쪽).
  */
 export function linerOutline(f: GuideFrame, thick: number, style?: LinerStyle): Record<Side, Pt[]> {
-  return both(({ eye }) => {
-    const lid = eye.upper.map((i) => at(f.lm, i)).reverse();
+  return both(({ key, eye }) => {
+    const lid = pickedPts(f.lm, PICKED.liner[key]);   // ④ 가 점 찍기로 고른 속눈썹 선 (안쪽 → 바깥, 눈꼬리 바깥 점까지)
     const off = thick * f.unit.eye;
     const top = lid.map((p, i) => {
       const a = lid[Math.max(0, i - 1)]!, b = lid[Math.min(lid.length - 1, i + 1)]!;
@@ -134,22 +126,17 @@ export const SHADOW_TAIL_RATIO = 0.35;
  */
 export function shadowTail(f: GuideFrame, regions: Record<Side, readonly Pt[]>, linerThick: number, style?: LinerStyle): Record<Side, [Pt, Pt]> {
   const liner = linerOutline(f, linerThick, style);
-  return both(({ key, eye }): [Pt, Pt] => {
-    const r = regions[key], outer = r[0]!, top = r[r.length - 1]!, tip = liner[key][eye.upper.length]!;
+  return both(({ key }): [Pt, Pt] => {
+    const r = regions[key], outer = r[0]!, top = r[r.length - 1]!, tip = liner[key][PICKED.liner[key].length]!;
     const dx = tip.x - outer.x, dy = tip.y - outer.y, len = Math.hypot(dx, dy) || 1;
     const end = { x: outer.x + (dx / len) * SHADOW_TAIL_RATIO * f.unit.eye, y: outer.y + (dy / len) * SHADOW_TAIL_RATIO * f.unit.eye };
     return [mix(top, end, 0.5), end];
   });
 }
 
-/** 섀도 영역: 윗눈꺼풀 → 눈썹 아랫선 쪽으로 ratio 만큼 (② lookGuide 와 같은 계산). 눈꺼풀 점들 → 위 테두리(거꾸로) */
-export function shadowRegions(f: GuideFrame, ratio: number): Record<Side, Pt[]> {
-  const P = (i: number): Pt => at(f.lm, i);
-  return both(({ eye, brow }) => {
-    const lid = eye.upper.map(P), browLo = brow.lower.map(P);
-    const top = lid.map((p, i) => mix(p, browLo[Math.min(browLo.length - 1, Math.round((i / (lid.length - 1)) * (browLo.length - 1)))]!, ratio));
-    return [...lid, ...top.reverse()];
-  });
+/** 섀도 영역: ④ 가 점 찍기로 고른 두 경계(속눈썹 쪽 · 눈썹 쪽) 사이 — picked.ts. 범위 비율은 더 이상 쓰지 않는다 */
+export function shadowRegions(f: GuideFrame): Record<Side, Pt[]> {
+  return both(({ key }) => pickedShadowRegion(f.lm, key));
 }
 
 export interface BrowPlan {
@@ -237,12 +224,8 @@ export function planGuide(lookParts: Partial<Record<LookPartId, LookPart>> = {},
   };
   if (!plan) return (partId, f) => (partId === "shadow" ? withTail(base(partId, f), f) : base(partId, f));
   return (partId, f): PartGeometry => {
-    const P = (i: number): Pt => at(f.lm, i);
-    if (partId === "shadow") return withTail({ regions: shadowRegions(f, GUIDE_PARAMS.shadow.rangeRatio * plan.shadow.range) }, f);
-    if (partId === "brow") {
-      const b = browOnFace(f, plan.brow);
-      return b ? { regions: { R: b.R.outline, L: b.L.outline } } : {};
-    }
+    if (partId === "shadow") return withTail({ regions: shadowRegions(f) }, f);
+    if (partId === "brow") return { regions: both(({ key }) => pickedPts(f.lm, PICKED.brow[key])) };
     if (partId === "liner") {
       const g = base(partId, f).liner!;
       return { liner: { ...g, thick: g.thick * plan.linerThick.scale } };
@@ -251,15 +234,7 @@ export function planGuide(lookParts: Partial<Record<LookPartId, LookPart>> = {},
       const g = base(partId, f);
       return plan.lip.overline > 0 ? { lip: { ...g.lip!, upperOverline: plan.lip.overline } } : g;
     }
-    if (partId === "cheek") {
-      const c = GUIDE_PARAMS.cheek, faceW = f.unit.face, u = faceAxis(f.lm);
-      const shift = plan.blush.position === "higher" ? PLAN_RULES.blushShift : plan.blush.position === "lower" ? -PLAN_RULES.blushShift : 0;
-      const up = { x: u.y, y: -u.x };
-      return {
-        regions: both(({ cheek, face, sign }) =>
-          ellipse(add(mix(P(cheek), P(face), c.toward), mul(up, shift * faceW)), faceW * c.rx * plan.blush.size, faceW * c.ry * plan.blush.size, sign * c.tilt)),
-      };
-    }
+    if (partId === "cheek") return { regions: both(({ key }) => pickedPts(f.lm, PICKED.cheek[key])) };
     if (partId === "contour") return { contour: contourOutline(f.lm, plan.faceShape ?? "oval", { tZone: plan.highlight.tZone }) };
     return base(partId, f);
   };

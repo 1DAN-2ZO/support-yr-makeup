@@ -108,6 +108,17 @@
           <p id="pickStatus" style="font-size:12px;opacity:.75;margin:6px 0"></p>
           <textarea id="pickOut" readonly rows="10" style="width:100%;font:11px monospace;white-space:pre"></textarea>
         </details>
+        <details>
+          <summary>화장 추출 시험 (0단계 — 사진 찍기 먼저)</summary>
+          <p class="note" style="margin:6px 0">맨얼굴은 "사진 찍기"로 찍은 것을 쓴다. 생성된 화장 이미지 파일을 올리면 — 정렬·조명보정 없이, 두 사진이 같은 자리라는 전제로 diff + ray-walk 로 부위별 점선을 그린다.</p>
+          <div class="buttons">
+            <input id="extractFile" type="file" accept="image/*" />
+            <button id="extractBtn" type="button" disabled>추출 (맨얼굴에 올리기)</button>
+            <button id="extractPartsBtn" type="button" disabled>화장 사진만 보기 (눈썹·아이라인·쉐도우·립)</button>
+          </div>
+          <canvas id="extractcv" width="640" height="640" style="max-width:480px"></canvas>
+          <p id="extractStatus" style="font-size:12px;opacity:.75;margin:6px 0"></p>
+        </details>
         <details open>
           <summary>VLM 개인화 제안 붙여 넣기</summary>
           <textarea id="vlm" rows="5" style="width:100%;font:12px monospace" placeholder='{"liner":{"style":"winged"},"faceShape":{"label":"oval"},...}'></textarea>

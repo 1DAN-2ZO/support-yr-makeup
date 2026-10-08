@@ -5,6 +5,7 @@ import { EYE_CONTOUR, FAR_EYE_DEFAULT, computeFarEyeFix, farEyeWeight, robustAff
 import { applyAffine } from "@core/eye-fit";
 import { LM } from "@core/landmarks";
 import type { Pt } from "@core/types";
+import { correctFarEye } from "@screens/fullrender";
 
 /** 정면 눈: 폭 90 · 높이 30 타원 둘레 16점 (0 = 눈꼬리, 8 = 눈머리) */
 const EYE: Pt[] = Array.from({ length: 16 }, (_, k) => {
@@ -110,16 +111,13 @@ describe("computeFarEyeFix (화면 4·2-b AR 공용)", () => {
     expect(r!.weight).toBeGreaterThan(0);
   });
 
-  it("D3 보정을 먼 쪽 눈 점에만 적용하면(실제 호출부와 같은 패턴) 그 눈 점만 바뀌고 나머지는 그대로", () => {
+  it("D3 2-b AR의 실제 호출부(fullrender.correctFarEye)를 직접 불러 — 먼 쪽 눈 점만 바뀌고 나머지는 그대로", () => {
+    // 반복문을 여기서 다시 쓰지 않는다 — fullrender.ts가 바뀌면(예: 다른 눈에 적용) 이 시험이 그대로 잡아야 한다(#298)
     const base = face();
     const cur = turned(base, 40, 0.5);
     const r = computeFarEyeFix(base, cur, FAR_EYE_DEFAULT)!;
     expect(r).not.toBeNull();
-    const out = cur.map((p) => ({ ...p }));
-    for (const i of EYE_CONTOUR[r.far]) {
-      const q = r.place(base[i]!);
-      out[i] = { x: out[i]!.x + (q.x - out[i]!.x) * r.weight, y: out[i]!.y + (q.y - out[i]!.y) * r.weight };
-    }
+    const out = correctFarEye(base, cur);
     // 먼 쪽(eyeB) 눈꺼풀 점은 적어도 하나는 바뀌어야 한다
     expect(EYE_CONTOUR[r.far].some((i) => Math.abs(out[i]!.x - cur[i]!.x) > 0.5 || Math.abs(out[i]!.y - cur[i]!.y) > 0.5)).toBe(true);
     // 가까운 쪽 눈·눈썹 둘·코끝·이마·미간은 전혀 안 바뀐다

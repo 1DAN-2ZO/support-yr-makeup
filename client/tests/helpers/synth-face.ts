@@ -31,6 +31,16 @@ export function faceLandmarks(): Pt[] {
   put(LM.browB.lower, arc(160, 270, 214, 4, 5).map(mirror));
   put(LM.lipsOuter, Array.from({ length: 20 }, (_, k) => ({ x: 300 - 60 * Math.cos((k * Math.PI) / 10), y: 420 - 25 * Math.sin((k * Math.PI) / 10) })));
   put([LM.faceL, LM.faceR, LM.cheekA, LM.cheekB], [{ x: 100, y: 300 }, { x: 500, y: 300 }, { x: 190, y: 340 }, { x: 410, y: 340 }]);
+  // ④ 가 점 찍기로 고른 번호(core/picked) — 눈 바깥 점 · 섀도 눈썹 쪽 경계 · 볼 영역을 제자리에
+  put([130], [{ x: 160, y: 256 }]);
+  put([359], [mirror({ x: 160, y: 256 })]);
+  put([243], [{ x: 266, y: 250 }]);
+  put([463], [mirror({ x: 266, y: 250 })]);
+  put([190, 221, 222, 223, 224, 225, 124, 226], arc(262, 165, 232, 14, 8));
+  put([414, 441, 442, 443, 444, 445, 353, 446], arc(262, 165, 232, 14, 8).map(mirror));
+  const cheekLoop = Array.from({ length: 7 }, (_, k) => ({ x: 167 + 44 * Math.cos((k * 2 * Math.PI) / 7), y: 330 + 28 * Math.sin((k * 2 * Math.PI) / 7) }));
+  put([117, 118, 101, 36, 205, 123, 116], cheekLoop);
+  put([346, 347, 330, 266, 425, 352, 345], cheekLoop.map(mirror));
   put([168, 6, 197, 195, 5, 4], [260, 275, 290, 305, 320, 335].map((y) => ({ x: 300, y })));
   put([10, 338, 297, 332, 284, 251, 21, 54, 103, 67, 109], [
     { x: 300, y: 100 }, { x: 340, y: 102 }, { x: 380, y: 110 }, { x: 410, y: 125 }, { x: 430, y: 150 }, { x: 440, y: 180 },

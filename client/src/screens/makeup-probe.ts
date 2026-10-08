@@ -12,15 +12,19 @@ import { measureFace } from "@core/face-measure";
 import { contourOutline } from "@core/contour";
 import { faceAxis } from "@core/face-measure";
 import { GUIDE_PARAMS } from "@core/guides";
-import { browStandard, linerOutline, lipOutline, planGuide } from "@core/personal-guide";
+import { browStandard, linerOutline, lipOutline, planGuide, shadowRegions } from "@core/personal-guide";
 import { guideOutline } from "@core/overlay";
 import type { SampleFrame } from "@core/sampling";
-import { LM, at, dist } from "@core/landmarks";
+import { LM, RIGID_IDS, at, dist } from "@core/landmarks";
+import { similarityFit } from "@core/score";
 import { LOOKS } from "@core/looks";
 import { PLAN_RULES, droopDeg, planLiner, resolvePlan, type LinerStyle, type PersonalPlan } from "@core/personalize";
 import type { Pt } from "@core/types";
 import { buildVlmPrompt } from "@core/vlm-prompt";
 import type { LashState } from "@core/lash";
+import { createHairlineTrack, type HairlinePoint } from "@core/hairline";
+import { extractGuide, extractGuideSingle } from "@core/makeup-extract";
+import { createHairMasker } from "./hair-segmenter";
 import { LashTextures, drawLashes } from "./lash-render";
 import { MakeupGl } from "./makeup-gl";
 
@@ -457,7 +461,28 @@ const aCol = atlasCol.getContext("2d")!;
 let glr: MakeupGl | null = null;
 /** 무늬를 그린 기준 얼굴. 찍은 사진이 있으면 그것, 아니면 카메라를 켜고 처음 잡힌 얼굴 */
 let liveRef: Pt[] | null = null;
-$("reref").addEventListener("click", () => { liveRef = null; });
+// 머리선(#312) — 점찍기와 확장 그물(피부 보정 포함) 둘 다 기준 얼굴(stillLm ?? liveRef) 하나에 붙는다.
+// 기준이 바뀔 때만 분할을 한 번 돌리고(update), 매 프레임은 그 결과를 지금 얼굴로 다시 놓기만(place) 한다.
+const hairMasker = createHairMasker();
+const hairlineTrack = createHairlineTrack();
+let hairlineReady = false;
+function refreshHairline(refPts: readonly Pt[], px: ImageData, w: number, h: number): void {
+  hairlineReady = false;
+  hairMasker({ data: px.data, w, h })
+    .then((mask) => {
+      if (!mask || (stillLm ?? liveRef) !== refPts) return;   // 그 사이 다시 찍거나 reref 했으면 버린다
+      hairlineTrack.update(refPts, mask, { w, h });
+      hairlineReady = true;
+      pickStatusEl.textContent = "머리선 점 찾음 — 점찍기에서 바깥쪽(옅은 초록) 점, 확장 그물에서 피부 보정으로 보여요.";
+      drawPicker();
+    })
+    .catch((e: unknown) => console.warn("머리선 분할을 못 했어요 (점찍기·확장 그물 없이 진행)", e));
+}
+$("reref").addEventListener("click", () => {
+  liveRef = null;
+  hairlineReady = false;
+  hairlineTrack.reset();
+});
 
 // ── 가이드 선 (화면 4 테두리 시험) ───────────────────
 // 앱 채점과 같은 planGuide 로 그린다 — 계획이 있으면 그 정답, 없으면 규칙 계획. 테두리만, 면 채우기 없음(F-07)
@@ -786,8 +811,11 @@ const VLM_RELAY = "http://localhost:5199/vlm";
 shotBtn.addEventListener("click", () => {
   if (stillLm) {
     stillLm = null;
+    hairlineReady = false;
+    hairlineTrack.reset();
     shotBtn.textContent = "사진 찍기";
     sendBtn.disabled = true;
+    extractBtn.disabled = true;
     drawPicker();
     return;
   }
@@ -798,8 +826,11 @@ shotBtn.addEventListener("click", () => {
   stillLm = lastLm;
   shotBtn.textContent = "다시 찍기";
   sendBtn.disabled = false;
+  extractBtn.disabled = !madeupImg;
   pickFit();
   drawPicker();
+  // 머리선은 분할이 끝나야 나와서 따로 — 끝나면 picker를 다시 그려 점을 보여준다(refreshHairline 안에서)
+  refreshHairline(stillLm, still.getContext("2d")!.getImageData(0, 0, still.width, still.height), still.width, still.height);
 });
 
 const promptFor = (lm: readonly Pt[]): string => {
@@ -988,6 +1019,11 @@ function updatePickOut(): void {
 // CSS 반전을 쓰면 숫자까지 뒤집힌다 — 그래서 좌표 변환 자체를 좌우 반전해서 "그림만" 거울처럼 보이게 한다(실측 피드백: 반전 안 하니 헷갈림)
 const pickToImage = (px: number, py: number): Pt => ({ x: still.width - (px - pickPanX) / pickZoom, y: (py - pickPanY) / pickZoom });
 const pickToCanvas = (p: Pt): Pt => ({ x: (still.width - p.x) * pickZoom + pickPanX, y: p.y * pickZoom + pickPanY });
+/** 점찍기용 머리선 점 — 찍은 사진 기준으로 다시 놓은 것(#312). 분할이 아직이면 null */
+const stillHairlinePts = (): HairlinePoint[] | null => (hairlineReady && stillLm ? hairlineTrack.place(stillLm) : null);
+/** 478 랜드마크 + 머리선 점(있으면, #312) — 점찍기에서 하나의 인덱스 공간으로 다룬다. 478 이상 = stillHairlinePts()[478-] */
+const pickPointAt = (idx: number): Pt => (idx < 478 ? at(stillLm!, idx) : stillHairlinePts()![idx - 478]!.at);
+const pickPointCount = (): number => 478 + (stillHairlinePts()?.length ?? 0);
 
 function drawPicker(): void {
   pickCtx.clearRect(0, 0, pickcv.width, pickcv.height);
@@ -1014,17 +1050,28 @@ function drawPicker(): void {
     pickCtx.arc(q.x, q.y, dotR, 0, Math.PI * 2);
     pickCtx.fill();
   }
+  // 머리선 점(#312, 478 밖) — 478점과 다른 색으로, 이마 위쪽(랜드마크 10번 위)에 없던 자리를 보여준다
+  const hairlinePts = stillHairlinePts();
+  if (hairlinePts) {
+    pickCtx.fillStyle = "#4ade8099";
+    for (const hp of hairlinePts) {
+      const q = pickToCanvas(hp.at);
+      pickCtx.beginPath();
+      pickCtx.arc(q.x, q.y, dotR, 0, Math.PI * 2);
+      pickCtx.fill();
+    }
+  }
   if (pickCurrent.length) {   // 지금 찍은 점들 — 순서·번호·선
     pickCtx.strokeStyle = "#f59e0b";
     pickCtx.lineWidth = Math.min(4, 2 * zoomed);
     pickCtx.beginPath();
     pickCurrent.forEach((idx, i) => {
-      const q = pickToCanvas(at(lm, idx));
+      const q = pickToCanvas(pickPointAt(idx));
       if (i === 0) pickCtx.moveTo(q.x, q.y); else pickCtx.lineTo(q.x, q.y);
     });
     pickCtx.stroke();
     pickCurrent.forEach((idx, i) => {
-      const q = pickToCanvas(at(lm, idx));
+      const q = pickToCanvas(pickPointAt(idx));
       pickCtx.fillStyle = "#f59e0b";
       pickCtx.beginPath();
       pickCtx.arc(q.x, q.y, pickR, 0, Math.PI * 2);
@@ -1064,19 +1111,149 @@ pickcv.addEventListener("pointerup", (e) => {
   const scale = pickcv.width / r.width;
   const clickImg = pickToImage((e.clientX - r.left) * scale, (e.clientY - r.top) * scale);
   let best = -1, bestD = Infinity;
-  stillLm.forEach((p, i) => {
-    const d = dist(p, clickImg);
+  for (let i = 0; i < pickPointCount(); i++) {   // 478 랜드마크 + 머리선 점(있으면, #312) 통째로 찾는다
+    const d = dist(pickPointAt(i), clickImg);
     if (d < bestD) { bestD = d; best = i; }
-  });
+  }
   const tolImg = 14 / pickZoom;   // 화면 14px 반경을 이미지 좌표로 환산 — 확대할수록 더 정밀하게 찍힘
   if (best < 0 || bestD > tolImg) return;
   if (pickCurrent.length && pickCurrent[pickCurrent.length - 1] === best) pickCurrent.pop();   // 같은 점 다시 클릭 = 취소
   else pickCurrent.push(best);
-  pickStatusEl.textContent = `${pickCurrent.length}점 찍음 — 방금 ${best}번`;
+  pickStatusEl.textContent = `${pickCurrent.length}점 찍음 — 방금 ${best}번${best >= 478 ? `(머리선 ${best - 478}칸)` : ""}`;
   drawPicker();
 });
 
 refreshPickControls();
+
+// ── 화장 추출 시험 (0단계, #makeup-extract) — 정렬·조명보정 없이 diff+ray-walk 로 GuideSource 를 바로 내서 점선으로 보여준다 ──
+const extractFile = $<HTMLInputElement>("extractFile");
+const extractBtn = $<HTMLButtonElement>("extractBtn");
+const extractPartsBtn = $<HTMLButtonElement>("extractPartsBtn");
+const extractCv = $<HTMLCanvasElement>("extractcv");
+const extractCtx = extractCv.getContext("2d")!;
+const extractStatusEl = $("extractStatus");
+let madeupImg: HTMLImageElement | null = null;
+
+extractFile.addEventListener("change", () => {
+  const file = extractFile.files?.[0];
+  if (!file) return;
+  const img = new Image();
+  img.onload = () => { madeupImg = img; extractBtn.disabled = !stillLm; extractPartsBtn.disabled = false; };
+  img.src = URL.createObjectURL(file);
+});
+
+function dashPoly(ctx: CanvasRenderingContext2D, pts: readonly Pt[], color: string): void {
+  if (pts.length < 2) return;
+  ctx.save();
+  ctx.setLineDash([6, 4]);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  pts.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
+  ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
+}
+
+extractBtn.addEventListener("click", () => {
+  if (!stillLm || !madeupImg || !landmarker) return;
+  const w = still.width, h = still.height;
+  // stillLm 은 "사진 찍기" 순간 영상(video)에서 잡힌 것 — drawImage 로 떠낸 still 사진 자체에서 다시 잡아서 쓴다.
+  // 같은 사람·같은 프레임이라도 영상 디코딩과 캔버스 픽셀이 완전히 같진 않아서, 단위(unit)·영역 반지름이
+  // 이 작은 차이에도 민감하게 커질 수 있다 — 사진 자체 기준으로 다시 잡는 게 더 정확하다
+  const freshBareNorm = landmarker.detectForVideo(still, performance.now()).faceLandmarks[0];
+  const lm = freshBareNorm && freshBareNorm.length >= 478 ? freshBareNorm.map((p) => ({ x: p.x * w, y: p.y * h })) : stillLm;
+  const unit = unitScale(lm);
+  const bareImg = still.getContext("2d")!.getImageData(0, 0, w, h);
+
+  // 생성 이미지를 원래 해상도로 먼저 그려서 자기 랜드마크를 찾고(크기부터 맞추면 비율이 안 맞을 때 얼굴이 뭉개짐),
+  // 강체 점(RIGID_IDS)으로 맨얼굴 사진 자리에 맞춘 뒤(similarityFit) 그 변환으로 캔버스에 다시 그린다 — "선이 밀림"(정렬 필요) 대응
+  const nativeCv = document.createElement("canvas");
+  nativeCv.width = madeupImg.naturalWidth; nativeCv.height = madeupImg.naturalHeight;
+  nativeCv.getContext("2d")!.drawImage(madeupImg, 0, 0);
+  const nw = nativeCv.width, nh = nativeCv.height;
+  const madeLmNorm = landmarker.detectForVideo(nativeCv, performance.now()).faceLandmarks[0];
+  const madeCv = document.createElement("canvas");
+  madeCv.width = w; madeCv.height = h;
+  const mctx = madeCv.getContext("2d")!;
+  let alignNote: string;
+  if (madeLmNorm && madeLmNorm.length >= 478) {
+    const madeLm = madeLmNorm.map((p) => ({ x: p.x * nw, y: p.y * nh }));
+    const fit = similarityFit(RIGID_IDS.map((i) => at(madeLm, i)), RIGID_IDS.map((i) => at(lm, i)));
+    const o0 = fit.apply({ x: 0, y: 0 }), ox = fit.apply({ x: 1, y: 0 }), oy = fit.apply({ x: 0, y: 1 });
+    mctx.setTransform(ox.x - o0.x, ox.y - o0.y, oy.x - o0.x, oy.y - o0.y, o0.x, o0.y);
+    mctx.drawImage(nativeCv, 0, 0);
+    mctx.setTransform(1, 0, 0, 1, 0, 0);
+    alignNote = `정렬함(잔차 ${fit.residual.toFixed(1)}px)`;
+  } else {
+    mctx.drawImage(nativeCv, 0, 0, w, h);   // 얼굴을 못 찾으면 그냥 늘려서 — 전처럼
+    alignNote = "정렬 못 함(얼굴 못 찾음) — 선이 밀릴 수 있음";
+  }
+  const madeImg = mctx.getImageData(0, 0, w, h);
+  const guide = extractGuide({ data: bareImg.data, w, h }, { data: madeImg.data, w, h }, lm, unit);
+  const frame: SampleFrame = { im: { data: bareImg.data, w, h }, lm, unit };
+
+  extractCv.width = w; extractCv.height = h;
+  extractCtx.drawImage(still, 0, 0, w, h);
+  const liner = guide("liner", frame).liner!;
+  for (const s of ["R", "L"] as const) dashPoly(extractCtx, liner.wing[s], "#f59e0b");
+  const lip = guide("lip", frame).lip!;
+  const lipPts = LM.lipsOuter.map((i) => at(lm, i));
+  const lipC = { x: lipPts.reduce((a, p) => a + p.x, 0) / lipPts.length, y: lipPts.reduce((a, p) => a + p.y, 0) / lipPts.length };
+  dashPoly(extractCtx, lipPts.map((p) => ({ x: lipC.x + (p.x - lipC.x) * (1 + lip.offset), y: lipC.y + (p.y - lipC.y) * (1 + lip.offset) })), "#ef4444");
+  const shadow = guide("shadow", frame).regions!;
+  dashPoly(extractCtx, shadow.R, "#3b82f6"); dashPoly(extractCtx, shadow.L, "#3b82f6");
+  const cheek = guide("cheek", frame).regions!;
+  dashPoly(extractCtx, cheek.R, "#ec4899"); dashPoly(extractCtx, cheek.L, "#ec4899");
+  const contour = guide("contour", frame).contour!;
+  contour.shading.forEach((p) => dashPoly(extractCtx, p, "#6b7280"));
+  contour.highlight.forEach((p) => dashPoly(extractCtx, p, "#facc15"));
+  extractStatusEl.textContent = `${alignNote} · 라이너 두께 비율 ${liner.thick.toFixed(3)} · 입술 offset ${lip.offset.toFixed(3)} (주황=라이너 빨강=입술 파랑=섀도 분홍=볼 회색=쉐딩 노랑=하이라이트)`;
+});
+
+// 맨얼굴에 올리는 건 나중 — 화장 사진 한 장만으로, 랜드마크 기준 표준 위치(눈썹·라이너·섀도·입술)를 보여준다.
+// 실제로 칠해진 자리가 아니라 해부학적 표준 자리(기존 가이드 공식, personal-guide.ts 의 "점찍기"로 보정된 값) — diff 없음
+extractPartsBtn.addEventListener("click", () => {
+  if (!madeupImg || !landmarker) return;
+  const nativeCv = document.createElement("canvas");
+  nativeCv.width = madeupImg.naturalWidth; nativeCv.height = madeupImg.naturalHeight;
+  const nctx = nativeCv.getContext("2d")!;
+  nctx.drawImage(madeupImg, 0, 0);
+  const nw = nativeCv.width, nh = nativeCv.height;
+  const res = landmarker.detectForVideo(nativeCv, performance.now()).faceLandmarks[0];
+  if (!res || res.length < 478) { extractStatusEl.textContent = "화장 사진에서 얼굴을 못 찾았어요."; return; }
+  const lm = res.map((p) => ({ x: p.x * nw, y: p.y * nh }));
+  const unit = unitScale(lm);
+  const px = nctx.getImageData(0, 0, nw, nh);
+  const frame: SampleFrame = { im: { data: px.data, w: nw, h: nh }, lm, unit };
+  extractCv.width = nw; extractCv.height = nh;
+  extractCtx.drawImage(nativeCv, 0, 0);
+
+  // 눈썹은 PartGeometry 에 자리가 없고 맨얼굴 없이는 "눈썹 털 vs 그린 색"을 못 가려서 표준 위치 그대로
+  const brow = browStandard(frame);
+  if (brow) { dashPoly(extractCtx, brow.R.outline, "#22c55e"); dashPoly(extractCtx, brow.L.outline, "#22c55e"); }
+
+  // 라이너·섀도·립은 이마 피부색(foreheadLab) 하나를 기준으로 실제 칠해진 자리를 분석(extractGuideSingle)
+  const guide = extractGuideSingle(frame.im, lm, unit);
+  if (!guide) {
+    const liner = linerOutline(frame, GUIDE_PARAMS.liner.thick);
+    dashPoly(extractCtx, liner.R, "#f59e0b"); dashPoly(extractCtx, liner.L, "#f59e0b");
+    dashPoly(extractCtx, lipOutline(lm), "#ef4444");
+    const shadow = shadowRegions(frame);
+    dashPoly(extractCtx, shadow.R, "#3b82f6"); dashPoly(extractCtx, shadow.L, "#3b82f6");
+    extractStatusEl.textContent = `이마 피부색을 못 재서(앞머리 등) 라이너·섀도·립은 표준 위치로 대신 보여줘요${brow ? "" : " · 눈썹도 mm 기준을 못 재서 생략"}`;
+    return;
+  }
+  const liner = guide("liner", frame).liner!;
+  for (const s of ["R", "L"] as const) dashPoly(extractCtx, liner.wing[s], "#f59e0b");
+  const lip = guide("lip", frame).lip!;
+  const lipPts = LM.lipsOuter.map((i) => at(lm, i));
+  const lipC = { x: lipPts.reduce((a, p) => a + p.x, 0) / lipPts.length, y: lipPts.reduce((a, p) => a + p.y, 0) / lipPts.length };
+  dashPoly(extractCtx, lipPts.map((p) => ({ x: lipC.x + (p.x - lipC.x) * (1 + lip.offset), y: lipC.y + (p.y - lipC.y) * (1 + lip.offset) })), "#ef4444");
+  const shadow = guide("shadow", frame).regions!;
+  dashPoly(extractCtx, shadow.R, "#3b82f6"); dashPoly(extractCtx, shadow.L, "#3b82f6");
+  extractStatusEl.textContent = `실제 분석(이마 피부색 기준) — 라이너 두께비율 ${liner.thick.toFixed(3)} · 입술 offset ${lip.offset.toFixed(3)} (주황=라이너 빨강=립 파랑=섀도 초록=눈썹·표준위치)`;
+});
 
 function tick(): void {
   if (!landmarker || video.readyState < 2) { requestAnimationFrame(tick); return; }
@@ -1103,14 +1280,18 @@ function tick(): void {
     showPlan(plan);
     const style = proposal === undefined ? ruleStyle : plan.liner.plan.style;
     if (meshMode()) {
+      const freshRef = !stillLm && liveRef === null;   // 처음 잡힌 기준 얼굴 — 머리선 분할을 한 번 걸어둔다(#312)
       const ref = stillLm ?? (liveRef ??= lm.map((p) => ({ ...p })));
+      if (freshRef) refreshHairline(ref, g.getImageData(0, 0, w, h), w, h);
       if (atlasMul.width !== w || atlasMul.height !== h) { atlasMul.width = atlasCol.width = atlasLight.width = w; atlasMul.height = atlasCol.height = atlasLight.height = h; }
       aMul.clearRect(0, 0, w, h);
       aCol.clearRect(0, 0, w, h);
       aLight.clearRect(0, 0, w, h);
       if (!bare) drawMakeup(ref, style);
       glr ??= new MakeupGl(glcv);
-      glr.render(stillLm ? still : video, w, h, atlasMul, atlasCol, atlasLight, { lm, ref, beauty: bare ? 0 : Number(beautyIn.value), radius: unitScale(lm).face * 0.012 });
+      // 머리선 확장 그물(#312) — 분할이 끝났으면 지금·기준 얼굴 둘 다 다시 놓아서 피부 보정·화장이 머리선까지 간다
+      const hairline = hairlineReady ? { lm: hairlineTrack.place(lm)!, ref: hairlineTrack.place(ref)! } : null;
+      glr.render(stillLm ? still : video, w, h, atlasMul, atlasCol, atlasLight, { lm, ref, beauty: bare ? 0 : Number(beautyIn.value), radius: unitScale(lm).face * 0.012, hairline });
     } else {
       if (!bare) drawMakeup(lm, style);
       if (linesChk.checked) drawBrowLines(lm);

@@ -41,7 +41,7 @@ describe("섀도 꼬리 테두리 (#30)", () => {
     for (const p of [plan(), null]) {
       const g = planGuide(chic.parts, p)("shadow", BARE);
       for (const [s, eye] of [["R", LM.eyeA], ["L", LM.eyeB]] as const) {
-        const outer = LMS[eye.outer]!, inner = LMS[eye.inner]!, tip = g.regions![s].at(-1)!;
+        const outer = g.regions![s][0]!, inner = LMS[eye.inner]!, tip = g.regions![s].at(-1)!;   // 영역 첫 점 = 점 찍기로 고른 눈꼬리 바깥 끝
         expect(dist(outer, tip)).toBeCloseTo(SHADOW_TAIL_RATIO * BARE.unit.eye, 6);
         expect(dist(inner, tip)).toBeGreaterThan(dist(inner, outer));
       }

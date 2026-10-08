@@ -7,6 +7,7 @@
 
 import { LM, at } from "./landmarks";
 import { lipOutline } from "./personal-guide";
+import { PICKED } from "./picked";
 import type { PartGeometry } from "./score-part";
 import type { PartId, Pt } from "./types";
 
@@ -23,8 +24,8 @@ export function guideOutline(partId: PartId, lm: readonly Pt[], g: PartGeometry)
   switch (partId) {
     case "liner": {
       // 속눈썹 선 + 꼬리 선. 두께는 선 하나로 대신한다 (밴드를 면으로 칠하지 않는다)
-      for (const [eye, s] of [[LM.eyeA, "R"], [LM.eyeB, "L"]] as const) {
-        lines.push(eye.upper.map(P));
+      for (const [, s] of [[LM.eyeA, "R"], [LM.eyeB, "L"]] as const) {
+        lines.push(PICKED.liner[s].map(P));
         const w = g.liner?.wing[s];
         if (w) lines.push([w[0], w[1]]);
       }

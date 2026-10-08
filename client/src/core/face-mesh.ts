@@ -7,6 +7,7 @@
  */
 
 import { FaceLandmarker } from "@mediapipe/tasks-vision";
+import { HAIRLINE } from "./hairline";
 
 export type Triangle = readonly [number, number, number];
 
@@ -24,3 +25,23 @@ export function trianglesFromTesselation(edges: readonly { start: number; end: n
 }
 
 export const FACE_TRIANGLES: readonly Triangle[] = trianglesFromTesselation(FaceLandmarker.FACE_LANDMARKS_TESSELATION);
+
+/**
+ * 머리선 확장 그물(#312) — 468개 뒤에 칸마다 두 점(이마 위 선 위의 base, 머리선 at)을 더해
+ * 이마 위 선과 머리선 사이를 삼각형 띠로 잇는다. base는 기존 그물의 맨 위 변(FOREHEAD_ARC) 위에
+ * 있어서 틈이 안 생긴다. 머리선을 못 찾은 칸(at === base)은 삼각형 넓이가 0이라 저절로 안 그려진다.
+ * 점 순서: base_0, at_0, base_1, at_1, ... (칸마다 2개, HAIRLINE.columns개)
+ */
+export const HAIRLINE_VERT_BASE = 468;
+export const MESH_VERTEX_COUNT = HAIRLINE_VERT_BASE + HAIRLINE.columns * 2;
+
+function hairlineStripTriangles(): Triangle[] {
+  const out: Triangle[] = [];
+  for (let k = 0; k < HAIRLINE.columns - 1; k++) {
+    const base0 = HAIRLINE_VERT_BASE + k * 2, at0 = base0 + 1, base1 = base0 + 2, at1 = base0 + 3;
+    out.push([base0, base1, at0], [at0, base1, at1]);
+  }
+  return out;
+}
+
+export const EXTENDED_TRIANGLES: readonly Triangle[] = [...FACE_TRIANGLES, ...hairlineStripTriangles()];

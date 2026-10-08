@@ -12,7 +12,9 @@
  * 무늬 캔버스는 영상과 같은 크기라, 기준 얼굴 점 px ÷ 크기 가 그대로 무늬 좌표다.
  */
 
-import { FACE_TRIANGLES } from "@core/face-mesh";
+import { EXTENDED_TRIANGLES, HAIRLINE_VERT_BASE, MESH_VERTEX_COUNT } from "@core/face-mesh";
+import type { HairlinePoint } from "@core/hairline";
+import { HAIRLINE } from "@core/hairline";
 import type { HairMask } from "@core/sampling";
 import type { Pt } from "@core/types";
 
@@ -125,6 +127,11 @@ export interface GlFrame {
   radius: number;
   /** 머리카락 확률 마스크 (영상과 같은 구도, 크기는 달라도 됨). 있으면 그 위엔 보정·화장을 안 한다. 없으면 전과 같다 */
   hair?: HairMask | null;
+  /**
+   * 머리선 확장(#312) — lm·ref 각각 HAIRLINE.columns개(core/hairline.ts createHairlineTrack().place() 결과).
+   * 없으면 확장 칸을 전부 0점(넓이 0)으로 둬 그물에서 안 보인다 — 전과 같다.
+   */
+  hairline?: { lm: readonly HairlinePoint[]; ref: readonly HairlinePoint[] } | null;
 }
 
 /** 머리카락 마스크 텍스처 칸 — 0 영상 · 1 곱하기 · 2 색 · 3 밝히기 다음 */
@@ -153,7 +160,7 @@ export class MakeupGl {
   private tLight: WebGLTexture;
   private tHair: WebGLTexture;
   private hairShown: HairMask | null = null;
-  private verts = new Float32Array(468 * 4);
+  private verts = new Float32Array(MESH_VERTEX_COUNT * 4);
 
   /**
    * GPU 자원을 돌려준다. 화면을 떠날 때 부른다 — 브라우저는 살아 있는 WebGL 을 16개쯤으로 막아서,
@@ -180,7 +187,7 @@ export class MakeupGl {
     this.vBuf = gl.createBuffer()!;
     this.iBuf = gl.createBuffer()!;
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.iBuf);
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(FACE_TRIANGLES.flat()), gl.STATIC_DRAW);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(EXTENDED_TRIANGLES.flat()), gl.STATIC_DRAW);
     this.tVideo = texture(gl);
     this.tMul = texture(gl);
     this.tCol = texture(gl);
@@ -244,6 +251,17 @@ export class MakeupGl {
       const p = f.lm[i]!, r = f.ref[i]!;
       this.verts.set([p.x, p.y, r.x, r.y], i * 4);
     }
+    // 머리선 확장(#312) — 없으면 전부 0점(이웃 칸과 넓이 0)으로 둬 안 그려지게(이전 프레임 값이 남지 않게 매번 쓴다)
+    if (f.hairline) {
+      for (let k = 0; k < HAIRLINE.columns; k++) {
+        const lp = f.hairline.lm[k]!, rp = f.hairline.ref[k]!;
+        const base0 = (HAIRLINE_VERT_BASE + k * 2) * 4;
+        this.verts.set([lp.base.x, lp.base.y, rp.base.x, rp.base.y], base0);
+        this.verts.set([lp.at.x, lp.at.y, rp.at.x, rp.at.y], base0 + 4);
+      }
+    } else {
+      this.verts.fill(0, HAIRLINE_VERT_BASE * 4);
+    }
     gl.useProgram(this.mesh);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.vBuf);
     gl.bufferData(gl.ARRAY_BUFFER, this.verts, gl.DYNAMIC_DRAW);
@@ -262,7 +280,7 @@ export class MakeupGl {
     this.bindUnit(this.mesh, "uLight", 3, this.tLight);
     this.bindUnit(this.mesh, "uHair", HAIR_UNIT, this.tHair);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.iBuf);
-    gl.drawElements(gl.TRIANGLES, FACE_TRIANGLES.length * 3, gl.UNSIGNED_SHORT, 0);
+    gl.drawElements(gl.TRIANGLES, EXTENDED_TRIANGLES.length * 3, gl.UNSIGNED_SHORT, 0);
     gl.disableVertexAttribArray(aPos);
     gl.disableVertexAttribArray(aRef);
   }

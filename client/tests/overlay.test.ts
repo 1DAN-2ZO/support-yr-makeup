@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { LM } from "@core/landmarks";
 import { guideOutline } from "@core/overlay";
+import { PICKED } from "@core/picked";
 import { pocGuide } from "@core/guide-poc";
 import { BARE, LMS, guide } from "./helpers/synth-face";
 
@@ -12,7 +13,7 @@ describe("guideOutline", () => {
     expect(o.polys).toEqual([]);
     expect(o.lines).toHaveLength(4);
     expect(o.lines[1]).toEqual([g.liner!.wing.R[0], g.liner!.wing.R[1]]);
-    expect(o.lines[0]![0]).toEqual(LMS[LM.eyeA.upper[0]!]);
+    expect(o.lines[0]).toEqual(PICKED.liner.R.map((i) => LMS[i]));   // ④ 가 점 찍기로 고른 속눈썹 선
   });
 
   it("눈썹·입술: 랜드마크 윤곽 다각형", () => {

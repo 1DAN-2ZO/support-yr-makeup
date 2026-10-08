@@ -3,9 +3,10 @@
 import { describe, expect, it } from "vitest";
 import type { EyeMeasure, FaceMeasure } from "@core/face-measure";
 import { GUIDE_PARAMS, lookGuide } from "@core/guides";
-import { browOnFace, lipOutline, planGuide, styledGuide } from "@core/personal-guide";
+import { lipOutline, planGuide, styledGuide } from "@core/personal-guide";
+import { PICKED, pickedPts, pickedShadowRegion } from "@core/picked";
 import { contourOutline } from "@core/contour";
-import { LM, dist } from "@core/landmarks";
+import { LM } from "@core/landmarks";
 import { lookById } from "@core/looks";
 import { guideOutline } from "@core/overlay";
 import { resolvePlan, type PersonalPlan } from "@core/personalize";
@@ -41,30 +42,21 @@ describe("개인화 가이드 — 계획이 정답을 바꾼다", () => {
     expect(g("liner", BARE)).toEqual(styledGuide(edgy, "extend")("liner", BARE));
   });
 
-  it("섀도 범위는 계획의 배율만큼 눈썹 쪽으로 넓어진다", () => {
-    const base = lookGuide(edgy)("shadow", BARE).regions!.R;
-    const wide = planGuide(edgy, plan({ shadow: { range: 1.2 } }))("shadow", BARE).regions!.R;
-    const n = LM.eyeA.upper.length;               // 영역 = 눈꺼풀 n 점 + 위 테두리 n 점(거꾸로)
-    const lid = base[0]!;
-    const topOf = (r: readonly { x: number; y: number }[]) => r[r.length - 1]!;   // 눈꺼풀 첫 점의 위 테두리
-    expect(wide.slice(0, n)).toEqual(base.slice(0, n));
-    expect(dist(lid, topOf(wide))).toBeCloseTo(dist(lid, topOf(base)) * 1.2, 6);
+  it("섀도는 ④ 가 점 찍기로 고른 두 경계 사이 — 계획의 범위 배율은 쓰지 않는다 (core/picked)", () => {
+    const a = planGuide(edgy, plan({}))("shadow", BARE).regions!;
+    const b = planGuide(edgy, plan({ shadow: { range: 1.2 } }))("shadow", BARE).regions!;
+    expect(a).toEqual({ R: pickedShadowRegion(BARE.lm, "R"), L: pickedShadowRegion(BARE.lm, "L") });
+    expect(b).toEqual(a);
   });
 
-  it("눈썹은 표준 눈썹(얼굴형 조정 포함)을 실제 눈썹 높이에 맞춘 것이 정답 영역 (폰 시험 2026-09-30)", () => {
-    const p = plan({ faceShape: { label: "round" } });
-    const g = planGuide(edgy, p)("brow", MEASURED);
-    const std = browOnFace(MEASURED, p.brow)!;
-    expect(g.regions).toEqual({ R: std.R.outline, L: std.L.outline });
+  it("눈썹은 ④ 가 점 찍기로 고른 윤곽이 정답 영역 — mm 를 몰라도 낸다", () => {
+    const want = { R: pickedPts(BARE.lm, PICKED.brow.R), L: pickedPts(BARE.lm, PICKED.brow.L) };
+    expect(planGuide(edgy, plan({}))("brow", BARE).regions).toEqual(want);
+    expect(planGuide(edgy, plan({ faceShape: { label: "round" } }))("brow", MEASURED).regions).toEqual({ R: pickedPts(MEASURED.lm, PICKED.brow.R), L: pickedPts(MEASURED.lm, PICKED.brow.L) });
   });
 
-  it("mm 를 모르면(동공 점이 없음) 눈썹 정답 영역을 내지 않는다 — 채점은 지금처럼 랜드마크 눈썹", () => {
-    expect(planGuide(edgy, plan({}))("brow", BARE)).toEqual({});
-  });
-
-  it("계획이 기본값이면 입술·볼은 지금 가이드 그대로", () => {
-    const g = planGuide(edgy, plan({}));
-    for (const p of ["lip", "cheek"] as PartId[]) expect(g(p, BARE)).toEqual(lookGuide(edgy)(p, BARE));
+  it("계획이 기본값이면 입술은 지금 가이드 그대로", () => {
+    expect(planGuide(edgy, plan({}))("lip", BARE)).toEqual(lookGuide(edgy)("lip", BARE));
   });
 
   it("쉐딩·하이라이트: 계획의 얼굴형 규칙 밴드 (모르면 계란형), T존은 계획대로", () => {
@@ -73,14 +65,10 @@ describe("개인화 가이드 — 계획이 정답을 바꾼다", () => {
     expect(planGuide(edgy, plan({}))("contour", BARE).contour).toEqual(contourOutline(BARE.lm, "oval", { tZone: true }));
   });
 
-  it("볼: 위치 higher 는 얼굴 폭 × 0.03 위로, 크기는 타원 크기 배율", () => {
-    const c = (r: readonly { x: number; y: number }[]) => ({ x: r.reduce((a, q) => a + q.x, 0) / r.length, y: r.reduce((a, q) => a + q.y, 0) / r.length });
-    const base = lookGuide(edgy)("cheek", BARE).regions!.R;
-    const g = planGuide(edgy, plan({ blush: { position: "higher", size: 1.2 } }))("cheek", BARE).regions!.R;
-    expect(c(g).y).toBeCloseTo(c(base).y - 0.03 * BARE.unit.face, 6);
-    expect(c(g).x).toBeCloseTo(c(base).x, 6);
-    const w = (r: readonly { x: number }[]) => Math.max(...r.map((q) => q.x)) - Math.min(...r.map((q) => q.x));
-    expect(w(g)).toBeCloseTo(w(base) * 1.2, 6);
+  it("볼은 ④ 가 점 찍기로 고른 영역 — 계획의 위치·크기는 쓰지 않는다 (core/picked)", () => {
+    const want = { R: pickedPts(BARE.lm, PICKED.cheek.R), L: pickedPts(BARE.lm, PICKED.cheek.L) };
+    expect(planGuide(edgy, plan({}))("cheek", BARE).regions).toEqual(want);
+    expect(planGuide(edgy, plan({ blush: { position: "higher", size: 1.2 } }))("cheek", BARE).regions).toEqual(want);
   });
 
   it("라이너: 두께에 계획의 배율을 곱한다", () => {

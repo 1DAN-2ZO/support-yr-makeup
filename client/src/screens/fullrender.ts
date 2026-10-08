@@ -52,8 +52,10 @@ export const HAIR_AR = { intervalMs: 200, width: 320 };   // 폰(2026-09-30 Andr
  * 공식 자체는 eye-fit.ts 하나뿐). 화면 4는 테두리 다각형에, 여기는 랜드마크 배열 자체에 적용하는 차이뿐이다.
  * 메시 워프(makeup-gl)가 이 배열을 그대로 꼭짓점으로 쓰므로, 여기서 고치면 그 눈 위의 모든 화장(섀도우·라이너
  * 등)이 같이 고쳐진다. yaw 12° 안쪽이면(computeFarEyeFix가 null) 그대로 cur 를 돌려준다 — 보정 없음.
+ * export: eye-fit.test.ts가 이 함수를 직접 불러 시험한다(전엔 시험이 이 반복문을 따로 다시 써서, 여기가
+ * 바뀌어도(예: 다른 눈에 적용) 못 잡았다 — #298 리뷰).
  */
-function correctFarEye(baseLm: readonly Pt[], cur: readonly Pt[]): Pt[] {
+export function correctFarEye(baseLm: readonly Pt[], cur: readonly Pt[]): Pt[] {
   const r = computeFarEyeFix(baseLm, cur);
   if (!r) return [...cur];
   const out = [...cur];
@@ -199,15 +201,18 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
               const face = lmk.detectForVideo(video, now).faceLandmarks[0];
               const raw = face && face.length >= 478 ? face.map((p) => ({ x: p.x * w, y: p.y * hh })) : null;
               const lm = smoother ? smoother.smooth(raw, now) : raw;
-              if (lm && !ref && goodRef(raw!, w, hh)) {
+              // ?looseref — 기준 얼굴 판정을 느슨하게(테스트용, 캠 각도가 안 좋아 못 들어갈 때, #298)
+              const refTol = q.has("looseref") ? { margin: 0.08, yaw: 0.3 } : undefined;
+              if (lm && !ref && goodRef(raw!, w, hh, refTol)) {
                 // 기준 얼굴: 정면으로 다 보이는 첫 얼굴(goodRef). 화장 층은 여기에 한 번만 그린다 (계획은 정해져 있다)
                 ref = lm;
                 for (const c of [atlas.mul, atlas.col, atlas.light, off]) { c.width = w; c.height = hh; }
                 paintMakeup({ mul: atlas.mul.getContext("2d")!, col: atlas.col.getContext("2d")!, light: atlas.light.getContext("2d")! }, off, ref, paintLook, plan, plan.liner.plan.style, LASHES);
               }
               if (hairOn && lm && ref && ticker.due(now)) segment(now, w, hh);
-              // 먼 쪽 눈 보정(#277) — 메시 워프 꼭짓점으로 그대로 들어가니 그 눈 위 화장 전부가 같이 고쳐진다
-              const fixedLm = lm && ref ? correctFarEye(ref, lm) : lm;
+              // 먼 쪽 눈 보정(#277) — 메시 워프 꼭짓점으로 그대로 들어가니 그 눈 위 화장 전부가 같이 고쳐진다.
+              // 비교용으로 ?nofareye 면 끈다 (#298 — 켠 것·끈 것을 같은 자세로 비교)
+              const fixedLm = lm && ref && !q.has("nofareye") ? correctFarEye(ref, lm) : lm;
               gl.render(video, w, hh, atlas.mul, atlas.col, atlas.light, fixedLm && ref ? { lm: fixedLm, ref, beauty: 0.3, radius: w * 0.004, hair } : null);
               if (!live) {
                 live = true;
@@ -261,13 +266,14 @@ export function fullRenderScreen<S>(deps: FullRenderDeps): Screen<S> {
  * 그린 화장이 세션 내내 따라다녔다). 얼굴 전체가 화면 안(가장자리 2%)에 있고, 코끝이 두 눈 바깥 끝의 가운데에서
  * 눈 사이 거리의 12% 안(대략 정면 ±10°)이어야 한다. 그때까지는 화장 없이 영상만 보인다
  */
-export function goodRef(lm: readonly Pt[], w: number, h: number): boolean {
-  const mx = w * 0.02, my = h * 0.02;
+/** margin: 프레임 가장자리 여유 비율(기본 2%). yaw: 코끝 치우침 허용(기본 0.12) — ?looseref 로 테스트할 때 풀어 쓴다(#298) */
+export function goodRef(lm: readonly Pt[], w: number, h: number, tol: { margin: number; yaw: number } = { margin: 0.02, yaw: 0.12 }): boolean {
+  const mx = w * tol.margin, my = h * tol.margin;
   if (lm.some((p) => p.x < mx || p.x > w - mx || p.y < my || p.y > h - my)) return false;
   const a = lm[33], b = lm[263], n = lm[1];
   if (!a || !b || !n) return false;
   const eye = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-  return Math.abs(n.x - (a.x + b.x) / 2) / eye < 0.12;
+  return Math.abs(n.x - (a.x + b.x) / 2) / eye < tol.yaw;
 }
 
 /** 쓰는 제품 — 접기 없이 전부 (F-04). 룩 화면에서 옮겨 왔다 */

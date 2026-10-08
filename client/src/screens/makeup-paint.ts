@@ -9,12 +9,12 @@
 
 import { unitScale } from "../core/baseline";
 import { contourOutline } from "../core/contour";
-import { faceAxis } from "../core/face-measure";
 import { GUIDE_PARAMS } from "../core/guides";
 import { LM, at } from "../core/landmarks";
 import type { Look } from "../core/looks";
-import { browOnFace, linerOutline, lipOutline, shadowRegions, shadowTail } from "../core/personal-guide";
-import { PLAN_RULES, type LinerStyle, type PersonalPlan } from "../core/personalize";
+import { PICKED, pickedPts } from "../core/picked";
+import { linerOutline, lipOutline, shadowRegions, shadowTail } from "../core/personal-guide";
+import { type LinerStyle, type PersonalPlan } from "../core/personalize";
 import type { Pt } from "../core/types";
 import { drawLashes, type LashTextures } from "./lash-render";
 
@@ -208,16 +208,14 @@ export function paintMakeup(layers: Layers, off: HTMLCanvasElement, lm: readonly
     o.fillStyle = color;
     o.beginPath();
     if (p.id === "brow") {
-      // 가이드 테두리와 같은 자리 — 표준 모양을 실제 눈썹 높이에 맞춘 것 (personal-guide browOnFace)
-      const std = browOnFace({ lm, unit }, plan?.brow);
-      if (std) for (const s of ["R", "L"] as const) path(o, std[s].outline);
-      else for (const { brow } of SIDES) path(o, [...brow.upper.map(P), ...[...brow.lower].reverse().map(P)]);
+      // 가이드 테두리와 같은 자리 — ④ 가 점 찍기로 고른 눈썹 (core/picked)
+      for (const s of ["R", "L"] as const) path(o, pickedPts(lm, PICKED.brow[s]));
       o.fill();
     } else if (p.id === "shadow") {
       // 속눈썹 선에서 가장 진하고 위로 갈수록 옅어진다. 두 색 화장은 속눈썹 쪽 → 눈썹 쪽 두 색 (④ 실험 화면과 같은 방법)
       // 띠 = 섀도 영역(눈꺼풀 → 위 테두리 거꾸로) + 눈꼬리 연장 쐐기 — 화면 3·4 테두리와 같은 계산 (personal-guide, #30)
       const f = { lm, unit };
-      const regions = shadowRegions(f, GUIDE_PARAMS.shadow.rangeRatio * (plan?.shadow.range ?? 1));
+      const regions = shadowRegions(f);
       const tails = look.shadowTail ? shadowTail(f, regions, look.linerThick * (plan?.linerThick.scale ?? 1), style) : null;
       for (const side of ["R", "L"] as const) {
         const r = regions[side], n = r.length / 2;
@@ -247,26 +245,19 @@ export function paintMakeup(layers: Layers, off: HTMLCanvasElement, lm: readonly
       path(o, outline.L);
       o.fill();
     } else if (p.id === "cheek") {
-      // 가운데에서 바깥으로 사라지는 블러셔. 위치·크기는 계획대로 (personal-guide planGuide 의 cheek 과 같은 계산)
-      const c0 = GUIDE_PARAMS.cheek, sz = plan?.blush.size ?? 1;
-      const ax = faceAxis(lm), shift = plan?.blush.position === "higher" ? PLAN_RULES.blushShift : plan?.blush.position === "lower" ? -PLAN_RULES.blushShift : 0;
-      for (const { cheek, face, sign } of SIDES) {
-        const c1 = mix(P(cheek), P(face), c0.toward);
-        const ctr = { x: c1.x + ax.y * shift * faceW, y: c1.y - ax.x * shift * faceW };
-        o.save();
-        o.translate(ctr.x, ctr.y);
-        o.rotate((sign * c0.tilt * Math.PI) / 180);
-        o.scale(1, c0.ry / c0.rx);
-        const r = faceW * c0.rx * sz * 1.3;
-        const grad = o.createRadialGradient(0, 0, 0, 0, 0, r);
+      // 가운데에서 바깥으로 사라지는 블러셔 — ④ 가 점 찍기로 고른 볼 영역(core/picked) 안에서
+      for (const s of ["R", "L"] as const) {
+        const poly = pickedPts(lm, PICKED.cheek[s]);
+        const cx = poly.reduce((t, q) => t + q.x, 0) / poly.length, cy = poly.reduce((t, q) => t + q.y, 0) / poly.length;
+        const r = Math.max(...poly.map((q) => Math.hypot(q.x - cx, q.y - cy)));
+        const grad = o.createRadialGradient(cx, cy, 0, cx, cy, r);
         grad.addColorStop(0, rgba(color, 1));
         grad.addColorStop(0.5, rgba(color, 0.55));
         grad.addColorStop(1, rgba(color, 0));
         o.fillStyle = grad;
         o.beginPath();
-        o.arc(0, 0, r, 0, Math.PI * 2);
+        path(o, poly);
         o.fill();
-        o.restore();
       }
     } else if (p.id === "aegyo") {
       // 애교살: 아랫속눈썹 선 → 볼 점 사이 10~35% 띠 (④ 실험 화면과 같은 눈대중 시작값)
