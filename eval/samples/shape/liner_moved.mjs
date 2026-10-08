@@ -20,8 +20,8 @@ const core = await import(pathToFileURL(join(OUT, "liner-moved-core.mjs")).href)
 for (const [env, key] of [["SIDE", "side"], ["MIN", "min"], ["DARK", "dark"]]) if (process.env[env]) core.TAIL_RIDGE[key] = Number(process.env[env]);
 console.log(`기준 — 양옆 폭 ${core.TAIL_RIDGE.side} · 선 값 ${core.TAIL_RIDGE.min} · 어두워짐 ${core.TAIL_RIDGE.dark}`);
 const png = (f) => { const p = PNG.sync.read(readFileSync(f)); return { data: p.data, w: p.width, h: p.height }; };
-// BASE=<이름>: 맨얼굴 대신 그 판을 기준으로 (화장 없는 사진을 모델에 넣어 받은 판 — 모델이 눈 모양을 바꿔 생기는 선을 빼려고)
-const bare = core.frameOf(png(process.env.BASE ? `${H}/moved_${process.env.BASE}.png` : `${H}/${BARE}.png`), JSON.parse(readFileSync(`${H}/${BARE}.lm.json`, "utf8")));
+// BASEFILE=<파일 이름> 또는 BASE=<이름>: 맨얼굴 대신 그 판을 기준으로 (화장 없는 사진을 모델에 넣어 받은 판 — 모델이 눈 모양을 바꿔 생기는 선을 빼려고)
+const bare = core.frameOf(png(process.env.BASEFILE ? `${H}/${process.env.BASEFILE}.png` : process.env.BASE ? `${H}/moved_${process.env.BASE}.png` : `${H}/${BARE}.png`), JSON.parse(readFileSync(`${H}/${BARE}.lm.json`, "utf8")));
 if (process.env.BASE) console.log(`기준 그림: ${process.env.BASE}`);
 const o = core.at(bare.lm, core.LM.eyeA.outer), i = core.at(bare.lm, core.LM.eyeA.inner), f2 = (v) => (v == null ? "  없음" : v.toFixed(2).padStart(6));
 console.log(`맨얼굴 ${bare.im.w} x ${bare.im.h} · 눈 폭 ${Math.hypot(o.x - i.x, o.y - i.y).toFixed(0)}px   (R = 본인 오른쪽 눈 = 사진 왼쪽)`);
