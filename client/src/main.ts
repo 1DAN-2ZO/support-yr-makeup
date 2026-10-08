@@ -521,7 +521,7 @@ function registerFlowSlots(shell: ReturnType<typeof createShell<Session>>, deps:
       "정답사진 보여 주기 → 화장하러 가기",
     ],
     next: "partguide",
-  }));
+  }, { makeAnswer: deps.makeAnswer }));
   shell.register("partguide", partGuideSlot<Session>(deps));
   shell.register("feedback", slotScreen<Session>({
     title: "6 피드백",

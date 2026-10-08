@@ -89,7 +89,12 @@ def _file_data(photo: bytes, media_type: str) -> dict:
 
 
 def _no_face(said: object) -> bool:
-    """app_klein 이 얼굴을 못 찾았을 때 하는 말인가 (gr.Error — "얼굴 사진에서 얼굴을 못 찾았어요.")"""
+    """app_klein 이 얼굴을 못 찾았을 때 하는 말인가 (gr.Error — "얼굴 사진에서 얼굴을 못 찾았어요.").
+
+    Gradio 6 은 문장을 묶음에 담아 준다 — {"error": "…", "title": "Error", …} (2026-10-08 진짜 서버에서 확인)
+    """
+    if isinstance(said, dict):
+        said = said.get("error")
     return isinstance(said, str) and "얼굴" in said and "못 찾" in said
 
 

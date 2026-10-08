@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 // 새 흐름 뼈대 (2026-10-06) — 담당이 화면을 올리기 전 자리. 흐름을 끝까지 눌러 볼 수 있게 "다음" 이 있다
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createLogger, memorySink } from "@core/log";
+import type { MakeResult } from "@core/picture-maker";
 import { PART_NAME } from "@core/score";
 import { PART_IDS, type PartId, type Versions } from "@core/types";
 import { partGuideSlot, saveSlot, slotScreen } from "@screens/flow-slots";
@@ -82,6 +83,108 @@ describe("빈 자리 화면", () => {
     button(ctx.root, "적용하기").click();
     await vi.waitFor(() => expect(ctx.root.textContent).toContain("얼굴을 못 찾았어요"));
     expect(button(ctx.root, "적용하기").disabled).toBe(false);
+  });
+
+  describe("정답사진 만들기 (서버 부르기)", () => {
+    const made = new Blob([new Uint8Array([9, 9, 9])], { type: "image/webp" });
+    const small = new Blob([new Uint8Array([7])], { type: "image/webp" });
+    const img = (root: HTMLElement): HTMLImageElement | null => root.querySelector<HTMLImageElement>(".slot-answer-ref");
+    // 가로챈 것(createObjectURL 등)은 테스트가 실패해도 돌려놓는다 — 다음 테스트가 같이 깨지지 않게
+    afterEach(() => { vi.restoreAllMocks(); });
+
+    it("FS4 '적용하기' → 줄인 참고 사진으로 정답사진을 만들어 달라고 하고, 받은 그림을 보여 준다", async () => {
+      const urls = new Map<string, Blob>();
+      vi.spyOn(URL, "createObjectURL").mockImplementation((b) => { const u = `blob:${urls.size}`; urls.set(u, b as Blob); return u; });
+      let done: (r: MakeResult) => void = () => {};
+      const makeAnswer = vi.fn(() => new Promise<MakeResult>((r) => { done = r; }));
+      const shrink = vi.fn(async () => small);
+      const ctx = ctxOf();
+      slotScreen<null>(SPEC, { analyze: async () => fakeAnalysis(), makeAnswer, shrink }).mount(ctx);
+      pickPhoto(ctx.root);
+      button(ctx.root, "적용하기").click();
+      await vi.waitFor(() => expect(makeAnswer).toHaveBeenCalledTimes(1));
+      // 폰 사진첩의 큰 사진을 그대로 올리지 않는다 — 줄인 것을 보낸다
+      expect(makeAnswer).toHaveBeenCalledWith(small);
+      // 기다리는 동안: 만들고 있다는 것과 얼마나 걸리는지
+      expect(ctx.root.textContent).toContain("정답사진을 만들고 있어요");
+      expect(ctx.root.textContent).toContain("1분");
+      expect(ctx.root.textContent).not.toContain("정답사진 완성");
+      done({ ok: true, picture: made, ms: 8600 });
+      await vi.waitFor(() => expect(ctx.root.textContent).toContain("정답사진 완성"));
+      // 보여 주는 것은 참고 사진이 아니라 받은 정답사진
+      expect(urls.get(img(ctx.root)!.src)).toBe(made);
+      expect(img(ctx.root)!.alt).toBe("정답사진");
+      expect(ctx.root.textContent).toContain("뮤트 브릭");
+      button(ctx.root, "다음").click();
+      expect(ctx.goPart).toHaveBeenCalledWith(PART_IDS[0]);
+    });
+
+    it.each([
+      ["busy", "사람이 많아요"],
+      ["down", "답하지 않아요"],
+      ["off", "만들 수 없어요"],
+      ["timeout", "오래 걸려서"],
+      ["network", "인터넷"],
+      ["too_large", "너무 커요"],
+      ["rejected", "맨얼굴"],
+      ["no_bare", "맨얼굴"],
+    ] as const)("FS4b 못 만들면(%s) 까닭을 알리고 업로드 화면으로 — 다시 누를 수 있다", async (why, text) => {
+      const makeAnswer = vi.fn(async (): Promise<MakeResult> => ({ ok: false, why }));
+      const ctx = ctxOf();
+      slotScreen<null>(SPEC, { analyze: async () => fakeAnalysis(), makeAnswer, shrink: async (b) => b }).mount(ctx);
+      pickPhoto(ctx.root);
+      button(ctx.root, "적용하기").click();
+      await vi.waitFor(() => expect(ctx.root.querySelector(".slot-upload-warn")?.textContent).toContain(text));
+      expect(ctx.root.textContent).not.toContain("정답사진 완성");
+      expect(button(ctx.root, "적용하기").disabled).toBe(false);
+      button(ctx.root, "적용하기").click();
+      await vi.waitFor(() => expect(makeAnswer).toHaveBeenCalledTimes(2));
+    });
+
+    it("FS4c 참고 사진에서 얼굴을 못 찾으면 서버를 부르지 않는다 — 못 쓸 사진으로 GPU 를 쓰지 않는다", async () => {
+      const makeAnswer = vi.fn(async (): Promise<MakeResult> => ({ ok: true, picture: made, ms: null }));
+      const ctx = ctxOf();
+      slotScreen<null>(SPEC, { analyze: async (): Promise<RefFailure> => "noFace", makeAnswer, shrink: async (b) => b }).mount(ctx);
+      pickPhoto(ctx.root);
+      button(ctx.root, "적용하기").click();
+      await vi.waitFor(() => expect(ctx.root.textContent).toContain("얼굴을 못 찾았어요"));
+      expect(makeAnswer).not.toHaveBeenCalled();
+    });
+
+    it("FS4d 사진을 줄이지 못하면 고른 사진 그대로 보낸다", async () => {
+      const makeAnswer = vi.fn(async (_ref: Blob): Promise<MakeResult> => ({ ok: true, picture: made, ms: null }));
+      const ctx = ctxOf();
+      slotScreen<null>(SPEC, { analyze: async () => fakeAnalysis(), makeAnswer, shrink: async () => { throw new Error("못 줄임"); } }).mount(ctx);
+      pickPhoto(ctx.root);
+      button(ctx.root, "적용하기").click();
+      await vi.waitFor(() => expect(ctx.root.textContent).toContain("정답사진 완성"));
+      expect(makeAnswer.mock.calls[0]![0]).toBeInstanceOf(File);
+    });
+
+    it("FS4e 기다리다 화면을 떠나면 뒤늦게 온 답으로 화면을 그리지 않는다", async () => {
+      let done: (r: MakeResult) => void = () => {};
+      const makeAnswer = vi.fn(() => new Promise<MakeResult>((r) => { done = r; }));
+      const ctx = ctxOf();
+      const leave = slotScreen<null>(SPEC, { analyze: async () => fakeAnalysis(), makeAnswer, shrink: async (b) => b }).mount(ctx);
+      pickPhoto(ctx.root);
+      button(ctx.root, "적용하기").click();
+      await vi.waitFor(() => expect(makeAnswer).toHaveBeenCalled());
+      if (typeof leave === "function") leave();
+      done({ ok: true, picture: made, ms: null });
+      await new Promise((r) => setTimeout(r, 0));
+      expect(ctx.root.textContent).not.toContain("정답사진 완성");
+    });
+
+    it("FS4f 만든 뒤에는 참고 사진을 들고 있지 않는다 — 다른 사람 사진이라 바로 놓는다", async () => {
+      const revoke = vi.spyOn(URL, "revokeObjectURL");
+      const ctx = ctxOf();
+      slotScreen<null>(SPEC, { analyze: async () => fakeAnalysis(), makeAnswer: async () => ({ ok: true, picture: made, ms: null }), shrink: async (b) => b }).mount(ctx);
+      pickPhoto(ctx.root);
+      button(ctx.root, "적용하기").click();
+      await vi.waitFor(() => expect(ctx.root.textContent).toContain("정답사진 완성"));
+      // 고른 참고 사진의 미리보기 주소를 놓았다
+      expect(revoke).toHaveBeenCalledWith("blob:test");
+    });
   });
 
   it("FS1b 부위 가이드가 아닌 다음 화면은 그대로 go", () => {
