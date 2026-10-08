@@ -12,6 +12,7 @@ import { PART_NAME } from "@core/score";
 import type { PartId } from "@core/types";
 import { MAKE_WAIT_TEXT, makeFailText, shrinkForUpload } from "./answer-make";
 import { colorPalette } from "./color-palette";
+import { SAVE_TEXT, SHARE_HINT, type SaveKit } from "./feedback-card";
 import { drawGuidePage, type GuideLoad, type GuideView } from "./guide-source";
 import { analyzeRefPhoto, REF_FAIL_TEXT } from "./ref-analyze";
 import type { RefAnalysis } from "./ref-analyze";
@@ -65,6 +66,11 @@ export interface SaveSlotDeps {
   clearAll: () => Promise<unknown>;
   /** 후기 설문 주소. 있으면 "끝내기" 를 누른 그 화면 위에 모달로 묻는다 */
   surveyUrl?: string | null;
+  /**
+   * 결과 한 장 저장 재료 (⑥ 잇기 — main.ts 의 getSave, screens/feedback-card). 주면 미리 만든 결과 그림과 "저장하기" 를 보여 준다.
+   * null 이면 저장할 결과가 없는 것이다 (피드백을 안 거쳤거나 "다시 찍기" 로 끝남). 안 주면 지금까지처럼 "끝내기" 만
+   */
+  getSave?: () => Promise<SaveKit | null>;
 }
 
 const SAMPLE_COLOR: Record<PartId, { hex: string; name: string; copy: string }> = {
@@ -679,6 +685,49 @@ export function saveSlot<S>(deps: SaveSlotDeps): Screen<S> {
         finish();
       }));
       ctx.root.append(root);
+
+      // 결과 한 장 저장 (⑥ 잇기) — 재료가 준비되면 "끝내기" 위에 그림 · 저장하기를 끼운다. 폰에만 내보낸다 (서버로 안 보낸다)
+      if (!deps.getSave) return;
+      let alive = true, cardUrl: string | null = null;
+      const end = root.querySelector<HTMLElement>("button.primary");
+      const say = (text: string): HTMLElement => {
+        const e = document.createElement("p");
+        e.className = "muted slot-status";
+        e.setAttribute("role", "status");
+        e.textContent = text;
+        return e;
+      };
+      const none = (): void => { if (alive) end?.before(say("이번에는 저장할 결과가 없어요. 피드백을 본 뒤에 저장할 수 있어요.")); };
+      void deps.getSave().then((kit) => {
+        if (!alive) return;
+        if (!kit) { none(); return; }
+        if (!kit.card) { end?.before(say(SAVE_TEXT.unavailable)); return; }
+        cardUrl = URL.createObjectURL(kit.card);
+        const img = document.createElement("img");
+        img.className = "slot-save-preview";
+        img.src = cardUrl;
+        img.alt = "저장할 결과 그림";
+        img.style.cssText = "display:block;width:100%;height:auto;margin-top:12px;border:1px solid #ebe6e8;border-radius:4px;";
+        const result = say(kit.usesShareSheet ? SHARE_HINT : "");
+        let saving = false;
+        const save = liveButton("저장하기", () => {
+          if (saving) return;
+          saving = true;
+          ctx.log.log({ name: "button", button: "save_card" });
+          // 누른 그 자리에서 바로 부른다 — await 뒤에 부르면 iOS 가 공유 창을 안 연다 (feedback-card SaveKit)
+          void kit.save().then((outcome) => {
+            ctx.log.log({ name: "button", button: `save_card:${outcome}` });
+            if (alive) result.textContent = SAVE_TEXT[outcome];
+          }).catch(() => { if (alive) result.textContent = SAVE_TEXT.unavailable; }).finally(() => { saving = false; });
+        });
+        // 테두리 버튼 모양 — app.css 의 slot-live 는 부위 가이드 카드 안에서만 먹어서 같은 값을 여기 적는다
+        save.style.cssText = "flex:0 0 auto;width:100%;height:48px;margin-top:12px;border:1.5px solid #ffc3cd;border-radius:999px;background:#fff;color:#ef6b85;font:inherit;font-size:15px;font-weight:700;line-height:1;cursor:pointer;";
+        end?.before(img, save, result);
+      }).catch(none);
+      return () => {
+        alive = false;
+        if (cardUrl) URL.revokeObjectURL(cardUrl);
+      };
     },
   };
 }

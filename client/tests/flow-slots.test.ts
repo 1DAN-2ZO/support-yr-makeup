@@ -6,6 +6,7 @@ import type { MakeResult } from "@core/picture-maker";
 import { PART_NAME } from "@core/score";
 import { PART_IDS, type PartId, type Versions } from "@core/types";
 import { partGuideSlot, saveSlot, slotScreen, type PartGuideSlotDeps } from "@screens/flow-slots";
+import { SAVE_TEXT, SHARE_HINT, type SaveKit } from "@screens/feedback-card";
 import type { GuideLoad, GuideView } from "@screens/guide-source";
 import type { RefAnalysis, RefFailure } from "@screens/ref-analyze";
 import { describeColor } from "@core/color-name";
@@ -349,5 +350,113 @@ describe("빈 자리 화면", () => {
     finish();
     await new Promise((r) => setTimeout(r, 0));
     expect(ctx.go).toHaveBeenCalledWith("done");
+  });
+
+  describe("저장 · 공유 — 결과 한 장 저장하기", () => {
+    const card = new Blob([new Uint8Array([5, 5])], { type: "image/jpeg" });
+    const kitOf = (over: Partial<SaveKit> = {}): SaveKit => ({ card, usesShareSheet: false, save: vi.fn(async () => "downloaded" as const), ...over });
+    const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+    const has = (root: HTMLElement, text: string): boolean => [...root.querySelectorAll("button")].some((b) => b.textContent?.includes(text));
+    afterEach(() => { vi.restoreAllMocks(); });
+
+    it("FS6 결과 한 장이 준비되면 그 그림과 '저장하기' 를 보여 준다 — 누르면 그 자리에서 바로 저장을 부른다", async () => {
+      const urls = new Map<string, Blob>();
+      vi.spyOn(URL, "createObjectURL").mockImplementation((b) => { const u = `blob:${urls.size}`; urls.set(u, b as Blob); return u; });
+      const kit = kitOf();
+      const ctx = ctxOf();
+      saveSlot<null>({ clearAll: async () => {}, getSave: async () => kit }).mount(ctx);
+      await vi.waitFor(() => expect(has(ctx.root, "저장하기")).toBe(true));
+      const img = ctx.root.querySelector<HTMLImageElement>(".slot-save-preview")!;
+      expect(urls.get(img.src)).toBe(card);
+      button(ctx.root, "저장하기").click();
+      // await 뒤에 부르면 iOS 가 공유 창을 안 연다 — 누른 그 순간에 불려 있어야 한다
+      expect(kit.save).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => expect(ctx.root.textContent).toContain(SAVE_TEXT.downloaded));
+    });
+
+    it.each(["shared", "downloaded", "cancelled", "unavailable"] as const)("FS6b 저장 결과(%s)를 정해 둔 문장으로 알린다", async (outcome) => {
+      const ctx = ctxOf();
+      saveSlot<null>({ clearAll: async () => {}, getSave: async () => kitOf({ save: async () => outcome }) }).mount(ctx);
+      await vi.waitFor(() => expect(has(ctx.root, "저장하기")).toBe(true));
+      button(ctx.root, "저장하기").click();
+      await vi.waitFor(() => expect(ctx.root.textContent).toContain(SAVE_TEXT[outcome]));
+    });
+
+    it("FS6c 공유 창을 쓰는 기기(아이폰)면 누르기 전에 '이미지 저장' 을 누르라고 알린다 — 아니면 안 알린다", async () => {
+      const ctx = ctxOf();
+      saveSlot<null>({ clearAll: async () => {}, getSave: async () => kitOf({ usesShareSheet: true }) }).mount(ctx);
+      await vi.waitFor(() => expect(ctx.root.textContent).toContain(SHARE_HINT));
+      const ctx2 = ctxOf();
+      saveSlot<null>({ clearAll: async () => {}, getSave: async () => kitOf() }).mount(ctx2);
+      await vi.waitFor(() => expect(has(ctx2.root, "저장하기")).toBe(true));
+      expect(ctx2.root.textContent).not.toContain(SHARE_HINT);
+    });
+
+    it("FS6d 저장할 결과가 없으면(피드백을 안 거침 · 다시 찍기로 끝남) '저장하기' 없이 그렇다고 알린다 — 끝내기는 된다", async () => {
+      const clearAll = vi.fn(async () => {});
+      const ctx = ctxOf();
+      saveSlot<null>({ clearAll, getSave: async () => null }).mount(ctx);
+      await vi.waitFor(() => expect(ctx.root.textContent).toContain("저장할 결과가 없어요"));
+      expect(has(ctx.root, "저장하기")).toBe(false);
+      button(ctx.root, "끝내기").click();
+      expect(clearAll).toHaveBeenCalledTimes(1);
+    });
+
+    it("FS6e 결과 그림을 못 만들었으면 '저장하기' 를 두지 않고 캡처하라고 알린다", async () => {
+      const ctx = ctxOf();
+      saveSlot<null>({ clearAll: async () => {}, getSave: async () => kitOf({ card: null }) }).mount(ctx);
+      await vi.waitFor(() => expect(ctx.root.textContent).toContain(SAVE_TEXT.unavailable));
+      expect(has(ctx.root, "저장하기")).toBe(false);
+    });
+
+    it("FS6f 준비하다 오류가 나도 화면은 그대로 — 끝내기는 된다", async () => {
+      const ctx = ctxOf();
+      saveSlot<null>({ clearAll: async () => {}, getSave: async () => { throw new Error("못 만듦"); } }).mount(ctx);
+      await flush();
+      expect(has(ctx.root, "저장하기")).toBe(false);
+      expect(has(ctx.root, "끝내기")).toBe(true);
+      expect(ctx.root.textContent).toContain("저장할 결과가 없어요");
+    });
+
+    it("FS6g 저장하는 중에 또 눌러도 한 번만 부른다", async () => {
+      let done: (o: "downloaded") => void = () => {};
+      const save = vi.fn(() => new Promise<"downloaded">((r) => { done = r; }));
+      const ctx = ctxOf();
+      saveSlot<null>({ clearAll: async () => {}, getSave: async () => kitOf({ save }) }).mount(ctx);
+      await vi.waitFor(() => expect(has(ctx.root, "저장하기")).toBe(true));
+      button(ctx.root, "저장하기").click();
+      button(ctx.root, "저장하기").click();
+      expect(save).toHaveBeenCalledTimes(1);
+      done("downloaded");
+      await flush();
+      // 끝난 뒤에는 다시 저장할 수 있다
+      button(ctx.root, "저장하기").click();
+      expect(save).toHaveBeenCalledTimes(2);
+    });
+
+    it("FS6h 준비되기 전에 화면을 떠나면 뒤늦게 그리지 않는다 — 떠날 때 그림 주소를 놓는다", async () => {
+      let done: (k: SaveKit) => void = () => {};
+      const ctx = ctxOf();
+      const leave = saveSlot<null>({ clearAll: async () => {}, getSave: () => new Promise<SaveKit>((r) => { done = r; }) }).mount(ctx);
+      if (typeof leave === "function") leave();
+      done(kitOf());
+      await flush();
+      expect(has(ctx.root, "저장하기")).toBe(false);
+
+      const revoke = vi.spyOn(URL, "revokeObjectURL");
+      const ctx2 = ctxOf();
+      const leave2 = saveSlot<null>({ clearAll: async () => {}, getSave: async () => kitOf() }).mount(ctx2);
+      await vi.waitFor(() => expect(has(ctx2.root, "저장하기")).toBe(true));
+      if (typeof leave2 === "function") leave2();
+      expect(revoke).toHaveBeenCalledWith("blob:test");
+    });
+
+    it("FS6i 재료를 안 넘기면 지금까지와 같다 — '저장하기' 도 안내도 없다", async () => {
+      const ctx = ctxOf();
+      saveSlot<null>({ clearAll: async () => {} }).mount(ctx);
+      await flush();
+      expect(has(ctx.root, "저장하기")).toBe(false);
+      expect(ctx.root.textContent).not.toContain("저장할 결과가 없어요");
+    });
   });
 });
