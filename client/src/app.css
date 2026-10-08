@@ -529,6 +529,23 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 }
 .attempt > button.ghost + button.primary { margin-top: 10px; }
 
+/* "예시" 딱지 (#334) — 지금 보이는 가이드 모양은 올린 참고 사진의 화장이 아니라 견본이다.
+   정답사진 연결(#331)이 붙으면 이 딱지와 함께 지운다 */
+.slot-guide-sample,
+.live-sample {
+  position: absolute;
+  z-index: 2;
+  top: 10px;
+  left: 10px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(43, 43, 43, 0.62);
+  color: #fff;
+  font-size: 11px;
+  font-weight: var(--weight-title);
+  letter-spacing: 0.02em;
+  pointer-events: none;
+}
 /* 화면 2 · 2-b (모듈 6) */
 .row { display: flex; gap: 8px; margin-top: 16px; }
 button.primary {
