@@ -1,5 +1,5 @@
 /**
- * 세션 저장소 (1-7·1-11): 상태 JSON + 사진 3장(쌩얼·전체 완성 예상·최종 프레임) 을 IndexedDB 에.
+ * 세션 저장소 (1-7·1-11): 상태 JSON + 사진(쌩얼·전체 완성 예상·최종 프레임 + 새 흐름의 정답사진·옮긴 그림) 을 IndexedDB 에.
  *  - 메모리 → IndexedDB 순으로 읽고, 둘 다 쓴다. IndexedDB 가 없거나 막히면 메모리만 (사생활 보호 모드)
  *  - draft 는 savedAt 을 같이 저장하고 2시간 지나면 만료 (1-11). 만료된 draft 는 읽을 때 지운다
  *  - clearAll(): 메모리·IndexedDB·localStorage 를 동시에 지운다 (F-11 끝내기). 잔존 0 이 검증 대상
@@ -9,7 +9,11 @@
 import type { SessionDraft } from "./flow";
 
 export const DRAFT_TTL_MS = 2 * 60 * 60 * 1000;
-export const IMAGE_KEYS = ["bare", "fullrender", "lastframe"] as const;
+/**
+ * answer · moved (2026-10-08, ⑥ — #331): 서버가 만든 정답사진 · 옮긴 그림. 맨얼굴과 같은 크기로 겹치는 그림이라 같은 저장소에 둔다
+ * (쓰는 쪽은 core/made-pictures.ts). 끝내기 · 만료 때 다른 사진과 같이 지워진다
+ */
+export const IMAGE_KEYS = ["bare", "fullrender", "lastframe", "answer", "moved"] as const;
 export type ImageKey = (typeof IMAGE_KEYS)[number];
 export const DRAFT_KEY = "draft";
 /** localStorage 에 남길 수 있는 옛 키들 (POC 호환). clearAll 이 같이 지운다 */
@@ -110,6 +114,8 @@ export interface SessionStore {
   loadDraft(): Promise<{ draft: SessionDraft; savedAt: number; ageMs: number } | { draft: null; reason: "none" | "expired" | "corrupt" }>;
   saveImage(key: ImageKey, blob: Blob | ArrayBuffer): Promise<void>;
   loadImage(key: ImageKey): Promise<Blob | ArrayBuffer | null>;
+  /** 사진 한 칸만 지운다 (모든 층에서) */
+  deleteImage(key: ImageKey): Promise<void>;
   hasImages(): Promise<boolean>;
   /** 끝내기: 메모리·IndexedDB·localStorage 전부. 남은 키 수를 돌려준다 (0 이어야 함) */
   clearAll(): Promise<{ remaining: number }>;
@@ -171,6 +177,7 @@ export async function createSessionStore(opts: SessionStoreOptions = {}): Promis
     },
     async saveImage(key, blob) { await setAll(`img:${key}`, blob); },
     async loadImage(key) { return ((await getAny(`img:${key}`)) as Blob | ArrayBuffer | undefined) ?? null; },
+    async deleteImage(key) { await delAll(`img:${key}`); },
     async hasImages() {
       for (const k of IMAGE_KEYS) if (await getAny(`img:${k}`)) return true;
       return false;
