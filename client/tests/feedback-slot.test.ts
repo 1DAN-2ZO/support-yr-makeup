@@ -110,4 +110,25 @@ describe("화면 6 피드백", () => {
     off();
     expect(dispose).toHaveBeenCalledTimes(1);
   });
+
+  // 2026-10-08 (⑥): 재료 모으기가 오류로 끝나면(사진을 못 풂 등) 기다리는 화면에서 멈췄다 — 나갈 길이 없었다
+  it("FB9 재료 모으기가 오류로 끝나도 멈추지 않는다 — 안내하고 흐름은 막지 않는다", async () => {
+    const { root, go } = await mount(async () => { throw new Error("사진을 풀지 못함"); });
+    expect(root.textContent).not.toContain("찍은 사진을 보고 있어요");
+    expect(root.querySelector(".fb-note")?.textContent).toContain("지금은 피드백을 만들 수 없어요");
+    expect(root.querySelector(".fb-lines")).toBeNull();
+    [...root.querySelectorAll("button")].find((b) => b.textContent?.includes("다음"))!.click();
+    expect(go).toHaveBeenCalledWith("save");
+  });
+
+  it("FB10 화면을 떠난 뒤에 난 오류로는 아무것도 그리지 않는다", async () => {
+    let fail: (e: Error) => void = () => {};
+    const s = setup();
+    const off = feedbackSlot<null>({ getFeedback: () => new Promise<FeedbackLoad>((_r, j) => { fail = j; }) }).mount(s.ctx) as () => void;
+    off();
+    const before = s.root.innerHTML;
+    fail(new Error("늦은 오류"));
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    expect(s.root.innerHTML).toBe(before);
+  });
 });

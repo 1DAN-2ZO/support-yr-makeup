@@ -55,6 +55,9 @@ export interface PartGuideSlotDeps {
   paintGuide?: (out: HTMLCanvasElement, view: GuideView, part: FeedbackPart) => boolean;
 }
 
+/** 진짜 정답사진 그림이 떴을 때의 말풍선 */
+const GUIDE_COACH = "정답사진에서 이 부위만 크게 잘라서 보여드릴게요";
+
 /** 정답사진 가이드가 있는 부위인가 — 쉐딩(contour)은 없다 */
 const hasPhotoGuide = (p: PartId): p is FeedbackPart => (FEEDBACK_ORDER as readonly PartId[]).includes(p);
 
@@ -510,10 +513,11 @@ export function partGuideSlot<S>(deps: PartGuideSlotDeps): Screen<S> {
         ctx.log.log({ name: "button", button: `slot_live:${part}` });
         ctx.go("live");
       }));
+      // 견본 그림일 때의 말풍선 (#361). 진짜 정답사진 그림이 뜨면 아래에서 GUIDE_COACH 로 바꾼다 (#364) —
+      // "예시" 딱지는 견본 그림 안에 있어서 그림을 바꿔 끼울 때 같이 빠진다
+      const say = coach("예시 그림이에요. 올려 주신 사진의 화장이 준비되면 바뀌어요");
       root.append(
-        // 지금 그림은 정답사진에서 만든 것이 아니라 **견본**이다 (#334 ⑥ 알림).
-        // 정답사진이 세션에 들어오면(#331) ⑥ 이 가이드 재료를 바꿔 넣는다 — 그때 "예시" 딱지와 이 문구를 되돌린다
-        coach("예시 그림이에요. 올려 주신 사진의 화장이 준비되면 바뀌어요"),
+        say,
         title(PART_NAME[part], "점과 선을 기준으로 거울 앞에서 천천히 따라 해 주세요"),
         guide,
         button(next ? `다음 — ${PART_NAME[next]}` : "다음 · 시도사진 찍기", () => {
@@ -543,6 +547,8 @@ export function partGuideSlot<S>(deps: PartGuideSlotDeps): Screen<S> {
         // 견본용 틀(세로로 긴 칸 · 얼굴 모양 바탕)을 자른 그림 크기에 맞춘다
         photo.style.cssText = "min-height:0;flex:0 0 auto;background:#000;";
         photo.replaceChildren(out);
+        const words = say.querySelector("span");
+        if (words) words.textContent = GUIDE_COACH;
         if (!r.view.found.includes(part)) {
           const none = document.createElement("p");
           none.className = "muted slot-status";
@@ -595,18 +601,20 @@ export function feedbackSlot<S>(deps: FeedbackSlotDeps): Screen<S> {
         loadingCard("찍은 사진을 보고 있어요", "정답사진과 견주는 중이에요. 잠시만 기다려 주세요."),
       );
 
+      // 못 보여 줄 때 — 까닭을 말하고 흐름은 막지 않는다
+      const cannot = (why: string): void => {
+        ctx.log.log({ name: "button", button: `feedback_missing:${why}` });
+        show(
+          coach("아직 견줄 것이 없어요"),
+          title("피드백", "조금만 더 준비하면 바로 보여드릴게요"),
+          note(FEEDBACK_MISSING[why] ?? "지금은 피드백을 만들 수 없어요"),
+          next(),
+        );
+      };
+
       void deps.getFeedback().then((r) => {
         if (!alive) { if (r.ok) r.view.dispose(); return; }
-        if (!r.ok) {
-          ctx.log.log({ name: "button", button: `feedback_missing:${r.missing}` });
-          show(
-            coach("아직 견줄 것이 없어요"),
-            title("피드백", "조금만 더 준비하면 바로 보여드릴게요"),
-            note(FEEDBACK_MISSING[r.missing] ?? "지금은 피드백을 만들 수 없어요"),
-            next(),
-          );
-          return;
-        }
+        if (!r.ok) { cannot(r.missing); return; }
         const v = r.view;
         drop = v.dispose;
         const fb = v.feedback;
@@ -633,7 +641,8 @@ export function feedbackSlot<S>(deps: FeedbackSlotDeps): Screen<S> {
           feedbackLines(fb.parts),
           next(),
         );
-      });
+      // 재료 모으기가 오류로 끝나도(사진을 못 풂 등) 기다리는 화면에서 멈추지 않는다
+      }).catch(() => { if (alive) cannot("error"); });
 
       return () => {
         alive = false;
