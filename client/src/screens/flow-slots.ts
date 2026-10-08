@@ -236,6 +236,7 @@ function guideMock(part: PartId): HTMLElement {
           </div>
         </div>
       `).join("")}
+      ${picks.some((x) => x.pick.photo) ? `<small class="slot-product-credit">제품 사진: 각 브랜드</small>` : ""}
     `;
     card.append(box);
   }
