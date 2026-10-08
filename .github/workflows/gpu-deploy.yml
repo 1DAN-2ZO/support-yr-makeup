@@ -1,0 +1,53 @@
+name: Deploy FLUX (GPU)
+
+# FLUX 화장 입히기 서버 자동 배포.
+# main 의 app_klein.py 가 바뀌면 GPU 서버(nudy-gpu 러너)에서 FLUX 를 재시작한다.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "poc/look-tryon/server-bench/app_klein.py"
+  workflow_dispatch:
+
+jobs:
+  deploy-flux:
+    runs-on: [self-hosted, gpu]   # GPU 서버 러너에서만 (nudy-gpu)
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Copy app_klein.py to run location
+        shell: powershell
+        run: |
+          Copy-Item "poc/look-tryon/server-bench/app_klein.py" "D:\app_klein.py" -Force
+          Write-Host "app_klein.py 복사 완료"
+
+      - name: Stop FLUX (free port 7861)
+        shell: powershell
+        run: |
+          Get-Process python -ErrorAction SilentlyContinue | Stop-Process -Force
+          Start-Sleep 3
+          Write-Host "기존 FLUX 종료"
+
+      - name: Start FLUX (via NudyFlux task, hi 권한)
+        shell: powershell
+        run: |
+          schtasks /Run /TN NudyFlux
+          Write-Host "FLUX 재시작 요청 — 모델 로드까지 약 70초"
+
+      - name: Wait for FLUX ready
+        shell: powershell
+        run: |
+          $ok = $false
+          for ($i=0; $i -lt 30; $i++) {
+            Start-Sleep 10
+            try {
+              $r = Invoke-WebRequest "http://127.0.0.1:7861" -TimeoutSec 8 -UseBasicParsing
+              if ($r.StatusCode -eq 200) { $ok = $true; break }
+            } catch {}
+            Write-Host "대기 중... ($($i*10)s)"
+          }
+          if (-not $ok) { throw "FLUX 가 5분 안에 안 떴습니다 — D:\flux.log 확인" }
+          Write-Host "FLUX 기동 확인 (127.0.0.1:7861 → 200)"
