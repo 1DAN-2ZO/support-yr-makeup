@@ -2,6 +2,8 @@
 
 앱 통합(⑥)과 채점(③)을 맡은 사람이 만든 브랜치마다, 무엇을 했고 결과가 어땠고 어떤 문제를 어떻게 풀었는지 모은 기록이다. 브랜치 46개, PR 113개 (2026-09-18 ~ 2026-10-08).
 
+가이드(②) 브랜치 30개는 아래 「가이드(②) 브랜치」 표에 따로 모았다.
+
 ## 읽는 법
 
 - 브랜치 이름을 누르면 그 브랜치의 기록이 열린다. PR 마다 **한 일 · 결과 · 트러블슈팅(증상 → 원인 → 해결) · 남긴 것** 순서로 적혀 있다
@@ -61,6 +63,45 @@
 | [`app-attempt-preview-fit`](app-attempt-preview-fit.md) | 10-08 | 1 | 병합 1 | 1 | 시도사진 미리보기 — 사진이 화면 폭 안에 두 장 나란히 들어오게 (폰 확인 10/8, #344) |
 | [`app-transfer-wire`](app-transfer-wire.md) | 10-08 | 1 | 열림 1 | 12 | 그림 만들기 잇기 — 앱 → 백엔드 POST /transfer → GPU 의 FLUX 서버 (꺼진 채로 미리 만듦) |
 | [`ci-notify-nudy-name`](ci-notify-nudy-name.md) | 10-08 | 1 | 열림 1 | 0 | 디스코드 PR 알림 이름을 "당화응 PR" → "nudy PR" |
+
+## 가이드(②) 브랜치 — 30개 (시작한 날 순서)
+
+가이드 담당(②)이 2026-10-08 에 따로 정리해 더한 표다. 파일 모양은 위와 조금 다르다: 브랜치마다 **한 일 · 트러블슈팅(문제 → 원인 → 해결) · 남긴 것**. PR 본문 · 커밋 기록과 그때 작업 대화에서 옮겼다. 사진은 넣지 않았다.
+
+| 브랜치 | 기간 | PR | 상태 | 무엇 |
+|---|---|---|---|---|
+| [`guide`](guide.md) | 09-21 ~ 09-29 | 7 | 병합 7 | 모듈 ② 기본 브랜치 — 초기 설계 · 화면 3 · 4 첫 구현 |
+| [`guide-jitter`](guide-jitter.md) | 09-28 ~ 09-29 | 1 | 닫힘 1 | 화면 4 흔들림 1차 · 이벤트 · 표정 게이트. 내용은 ⑥ 이 main 에 직접 합침, 빠진 커밋은 `guide-rigid` 로 |
+| [`guide-rigid`](guide-rigid.md) | 09-29 | 1 | 병합 1 | 입을 벌려도 "같은 각도로" 안 뜨게 (강체 점 13개) |
+| [`guide-arframe`](guide-arframe.md) | 09-29 | 1 | 병합 1 | 화면 3 완성본 = 2-b AR 장면 |
+| [`guide-bare-paint`](guide-bare-paint.md) | 09-29 | 1 | 병합 1 | 화면 3 완성본 = 쌩얼 정면 + 개인화 화장 |
+| [`guide-crop`](guide-crop.md) | 09-30 | 2 | 병합 2 | 눈 부위 확대 창 · 가로 화면에서만 (자동 회전 꺼짐 대응) |
+| [`guide-paint-safe`](guide-paint-safe.md) | 09-30 | 1 | 병합 1 | 화면 3: 화장을 그리다 오류가 나도 쌩얼 + 테두리 |
+| [`guide-light`](guide-light.md) | 09-30 | 1 | 병합 1 | 화면 4 조명: 밝기는 채점 한계까지 통과 · 조명 색은 안내만 |
+| [`guide-pose`](guide-pose.md) | 09-30 | 1 | 병합 1 | 화면 4 정면 각도도 턱 없이 |
+| [`guide-rotate-lock`](guide-rotate-lock.md) | 09-30 | 1 | 병합 1 | 눈 부위는 화면 3 · 5 도 가로에서만 (빠진 커밋 다시) |
+| [`guide-gate-readout`](guide-gate-readout.md) | 09-30 | 1 | 병합 1 | 화면 4 개발용 `?gate`: 게이트가 본 숫자 표시 |
+| [`guide-pose-dir`](guide-pose-dir.md) | 09-30 | 1 | 병합 1 | 화면 4 각도 안내에 방향 (가로로 들면 카메라가 옆) |
+| [`guide-frame-loop`](guide-frame-loop.md) | 10-01 | 1 | 병합 1 | 공용 카메라 루프: 카메라 새 장면에만 얼굴 찾기 |
+| [`guide-gate-relax`](guide-gate-relax.md) | 10-01 | 1 | 병합 1 | 화면 4 완화: 3초 규칙 · 한계 완화 · 테두리 떨림 필터 |
+| [`guide-portrait-lock`](guide-portrait-lock.md) | 10-01 | 1 | 병합 1 | 입술 · 볼 · 쉐딩은 세로에서만 · 섀도 꼬리를 테두리에도 |
+| [`guide-mesh-pin`](guide-mesh-pin.md) | 10-02 | 1 | 병합 1 | 화면 4 테두리를 얼굴 그물에 붙이기 · 크게 돌려도 먼 쪽 눈에 붙게 |
+| [`guide-dev-options`](guide-dev-options.md) | 10-02 ~ 10-05 | 1 | 병합 1 | 개발용 `?norotate` · `?jump` |
+| [`guide-shadow-score-tail`](guide-shadow-score-tail.md) | 10-05 | 1 | 병합 1 | 섀도 채점 영역도 꼬리까지 |
+| [`guide-live-run-tidy`](guide-live-run-tidy.md) | 10-05 | 1 | 병합 1 | `live-run.ts` 정리 (#288 리뷰) |
+| [`guide-spread-marks`](guide-spread-marks.md) | 10-05 | 1 | 병합 1 | 블러셔 · 섀도우 · 쉐딩 테두리 안에 퍼지는 방향 표시 |
+| [`guide-fade-25-40`](guide-fade-25-40.md) | 10-05 | 1 | 병합 1 | 먼 쪽 눈 흐리게 구간을 5° 씩 일찍 |
+| [`guide-hairline-probe`](guide-hairline-probe.md) | 10-05 | 1 | 병합 1 | 머리선 점: 머리카락 분할로 이마 위 끝 찾기 (2-b 용) |
+| [`guide-photo-poc`](guide-photo-poc.md) | 10-06 ~ 10-07 | 1 | 병합 1 | 정답사진에서 부위별 화장을 떼서 4 부위 가이드 모양으로 |
+| [`flow-poc`](flow-poc.md) | 10-07 | 1 | 병합 1 | 부위 가이드 사진 · 실시간 같이 보기 · 새 흐름 한 바퀴 POC |
+| [`page-titles-nudy`](page-titles-nudy.md) | 10-07 | 1 | 병합 1 | 개발 페이지 제목 "당화응" → "nudy" |
+| [`decide-answer-method`](decide-answer-method.md) | 10-07 | 1 | 병합 1 | 정답사진 만드는 방식 확정 (#331) · `makeup-fit` 지우기 |
+| [`klein-stable`](klein-stable.md) | 10-08 | 1 | 병합 1 | klein 서버 안 꺼지게 · 2배 빠르게 · 임시 파일 2분 뒤 지우기 |
+| [`live-perf`](live-perf.md) | 10-08 | 1 | 병합 1 | 실시간 가이드 끊김 (#343) · 개발용 `?perf` |
+| [`pin-spike`](pin-spike.md) | 10-08 | 1 | 병합 1 | 실시간 가이드 볼 테두리 점 튐 (#343) |
+| [`klein-brow`](klein-brow.md) | 10-08 | 1 | 열림 1 | 정답사진에 눈썹도 옮기기 (#371) |
+
+`guide-crop` 은 위 표에도 있다 (⑥ 이 #217 을 열어서). 파일은 #213 까지 넣은 이 판으로 바꿨다.
 
 ## 문제를 푼 기록이 많은 곳
 
