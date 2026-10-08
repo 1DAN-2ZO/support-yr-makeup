@@ -19,6 +19,8 @@ services:
       - DHE_CORS_ORIGINS=https://nudy.shelldocs.cloud,http://localhost:5173,http://127.0.0.1:5173,https://localhost:5173,https://127.0.0.1:5173
       # 사용 기록 저장 폴더 — 없으면 /events 가 503 (server/app/events.py)
       - DHE_DATA_DIR=/data
+      # 그림 만들기(/transfer)가 부르는 GPU PC 의 FLUX 서버 (Tailscale 주소) — 없으면 /transfer 가 503 off (server/app/flux.py)
+      - DHE_FLUX_URL=http://100.110.57.95:7861
 
     restart: unless-stopped
 
