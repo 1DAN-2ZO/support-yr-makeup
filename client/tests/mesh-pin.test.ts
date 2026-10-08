@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { FACE_TRIANGLES } from "@core/face-mesh";
 import { pinOutline, pinPoints, placeOutline, placePins } from "@core/mesh-pin";
 import type { Pt } from "@core/types";
+import { CANON } from "./helpers/canonical-face";
 import { LMS } from "./helpers/synth-face";
 
 const close = (a: readonly Pt[], b: readonly Pt[], eps = 1e-6): void => {
@@ -39,14 +40,16 @@ describe("mesh pin", () => {
     close(placePins(moved, pins), [moved[33]!, moved[61]!]);
   });
 
-  it("M4 고개를 돌린 것처럼 한쪽이 좁아지면 그쪽에 붙인 모양도 좁아진다 — 원근", () => {
+  it("M4 고개를 돌린 것처럼 한쪽이 좁아지면 그쪽에 붙인 모양도 좁아진다 — 원근 (진짜 얼굴 그물)", () => {
+    // 합성 얼굴은 볼 자리가 그물 밖(점이 가운데에 모여 있어서)이라, 늘려 붙인 삼각형에 따라 값이 달라졌다 — 진짜 그물에서 본다 (#343)
     const cx = 300;
     // 화면 왼쪽 절반만 가로로 0.7 배 (먼 쪽 얼굴이 좁아 보이는 것)
-    const turned = LMS.map((p) => (p.x < cx ? { x: cx + (p.x - cx) * 0.7, y: p.y } : p));
+    const turned = CANON.map((p) => (p.x < cx ? { x: cx + (p.x - cx) * 0.7, y: p.y } : p));
     // 양쪽 볼에 같은 크기 가로 막대
-    const left = [{ x: 180, y: 380 }, { x: 240, y: 380 }], right = [{ x: 360, y: 380 }, { x: 420, y: 380 }];
+    const yc = CANON[50]!.y, xl = CANON[50]!.x, xr = CANON[280]!.x;
+    const left = [{ x: xl - 20, y: yc }, { x: xl + 10, y: yc }], right = [{ x: xr - 10, y: yc }, { x: xr + 20, y: yc }];
     const w = (s: readonly Pt[]) => s[1]!.x - s[0]!.x;
-    const L = placePins(turned, pinPoints(LMS, left)), R = placePins(turned, pinPoints(LMS, right));
+    const L = placePins(turned, pinPoints(CANON, left)), R = placePins(turned, pinPoints(CANON, right));
     expect(w(L) / w(left)).toBeCloseTo(0.7, 2);
     expect(w(R) / w(right)).toBeCloseTo(1, 2);
   });
@@ -81,5 +84,19 @@ describe("mesh pin", () => {
 
   it("M6 그물은 MediaPipe 삼각형 852개", () => {
     expect(FACE_TRIANGLES).toHaveLength(852);
+  });
+
+  it("M9 얼굴 윤곽 바로 밖 점은 윤곽 점이 흔들려도 몇 배로 튀지 않는다 — 가장 덜 늘어나는 삼각형에 붙인다 (#343 볼 테두리 점이 화면 끝까지 튐)", () => {
+    // 진짜 얼굴 그물. 가까운 삼각형에 붙이던 때는 윤곽 30px 밖 점이 꼭짓점 흔들림의 40배까지 움직였다
+    const ew = Math.hypot(CANON[263]!.x - CANON[33]!.x, CANON[263]!.y - CANON[33]!.y), d = 0.05 * ew;
+    for (const [id, dx] of [[234, -1], [454, 1], [132, -1], [361, 1], [172, -1], [397, 1]] as const) for (const out of [5, 15, 30]) {
+      const p = { x: CANON[id]!.x + dx * out, y: CANON[id]!.y };
+      const [pin] = pinPoints(CANON, [p]);
+      for (const v of FACE_TRIANGLES[pin!.tri]!) {
+        const moved = CANON.map((q, i) => (i === v ? { x: q.x + d, y: q.y } : q));
+        const [q] = placePins(moved, [pin!]);
+        expect(Math.hypot(q!.x - p.x, q!.y - p.y) / d, `윤곽 ${id} 밖 ${out}px · 꼭짓점 ${v}`).toBeLessThan(5);
+      }
+    }
   });
 });

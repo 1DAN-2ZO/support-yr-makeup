@@ -17,10 +17,10 @@ import { createBundleCollector, type BundleState } from "./capture-bundle";
 import { exprDiff } from "./expression";
 import { gateStep, rigidPoseDiff, softFail, type LiveLimits, LIVE_LIMITS, livePose, type LiveMeasure } from "./gate";
 import { linerOutline, GUIDE_PARAMS } from "./guides";
-import { LM, partInRect } from "./landmarks";
+import { LM, RIGID_IDS, partInRect } from "./landmarks";
 import { pinOutline, placeOutline } from "./mesh-pin";
 import type { Side } from "./score";
-import { FAR_EYE_DEFAULT, type FarEyeOptions, computeFarEyeFix, eyeCenter, farSide } from "./eye-fit";
+import { FAR_EYE_DEFAULT, type FarEyeOptions, applyAffine, computeFarEyeFix, eyeCenter, farSide, robustAffine } from "./eye-fit";
 import { foreheadStep, startForeheadTrack, type ForeheadTrack } from "./occlusion";
 import { spreadMarks } from "./spread-marks";
 import { guideOutline, type Outline } from "./overlay";
@@ -121,6 +121,42 @@ function withSpread(partId: PartId, o: Outline): Outline {
 const optExpr = (d: number | undefined): { exprDiff?: number } => (d === undefined ? {} : { exprDiff: d });
 
 /**
+ * 안전장치 (#343) — tol: 이웃과 다르게 움직인 양이 눈꼬리 거리의 이만큼을 넘으면 튄 점 · reach: 앞뒤 몇 칸 이웃과 견주나.
+ * 진짜 얼굴 그물을 좌우 45° · 위아래 −25 ~ 20° · 카메라 25cm 까지 돌려 보니 정상 원근으로는 이웃과 다르게 움직이는 양이 0.29 (눈썹 꼬리) 밑이었다
+ */
+export const STEADY = { tol: 0.5, reach: 3 } as const;
+
+const median = (xs: number[]): number => {
+  const s = [...xs].sort((a, b) => a - b), h = s.length >> 1;
+  return s.length % 2 ? s[h]! : (s[h - 1]! + s[h]!) / 2;
+};
+
+/**
+ * 테두리 점 하나가 이웃 점들과 다르게 혼자 크게 움직이면 이웃들의 움직임으로 바로잡는다 — 얼굴이 화면 가장자리에 걸려 MediaPipe 가
+ * 윤곽 점 하나를 크게 잘못 찍으면 거기 붙은 볼 테두리 점만 화면 아래까지 날아갔다 (#343). 원근으로 바뀐 모양은 이웃이 같이 부드럽게
+ * 움직여서 건드리지 않는다. predicted: 기준 모양을 머리 전체 움직임(강체 점 아핀)으로 옮긴 것 — 점마다 '여기서 벗어난 양' 을
+ * 앞뒤 reach 칸 이웃의 가운데값과 견줘 scale(눈꼬리 거리) × tol 넘게 다르면 그 점 = 예측 + 이웃 가운데값. 점 · 화살표는 그대로
+ */
+export function steadyOutline(placed: Outline, predicted: Outline, scale: number, opt: typeof STEADY = STEADY): Outline {
+  const fix = (pts: readonly Pt[], pre: readonly Pt[] | undefined, closed: boolean): Pt[] => {
+    const n = pts.length;
+    if (!pre || pre.length !== n || n < 3) return [...pts];
+    const res = pts.map((p, i) => ({ x: p.x - pre[i]!.x, y: p.y - pre[i]!.y }));
+    return pts.map((p, k) => {
+      const nb: Pt[] = [];
+      for (let d = -opt.reach; d <= opt.reach; d++) {
+        const j = closed ? (((k + d) % n) + n) % n : k + d;
+        if (d !== 0 && j !== k && j >= 0 && j < n) nb.push(res[j]!);
+      }
+      if (nb.length < 2) return p;
+      const m = { x: median(nb.map((v) => v.x)), y: median(nb.map((v) => v.y)) };
+      return Math.hypot(res[k]!.x - m.x, res[k]!.y - m.y) > opt.tol * scale ? { x: pre[k]!.x + m.x, y: pre[k]!.y + m.y } : p;
+    });
+  };
+  return { ...placed, polys: placed.polys.map((q, i) => fix(q, predicted.polys[i], true)), lines: placed.lines.map((q, i) => fix(q, predicted.lines[i], false)) };
+}
+
+/**
  * 후보 1 — 크게 돌리면 먼 쪽 눈 테두리를 흐리게 (2026-10-02 PC) — 틀린 선을 믿고 따라 그리지 않게.
  * 각도 차(rigidPoseDiff 눈금, 화면 4 한계 12 와 같은 눈금) from 까지 그대로 → to 부터 min.
  * PC 에서 화면 4 ?fade=from-to 로 맞춰 보고 30 → 45 를 골랐다가 (먼 쪽 눈 틀 맞추기 C · F · G · H 를 켠 채)
@@ -206,7 +242,8 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
   const shape = opt.outline ?? outlineOf(opt.partId, opt.baseline.lm, opt.guide!);
   const pinned = pinOutline(shape, opt.baseline.lm);
   // 눈 부위: 테두리 다각형마다 어느 눈 쪽인지 — 고개를 많이 돌리면 먼 쪽은 눈 모양 틀로(C안) · 흐리게(후보 1, 화면이 고름)
-  const baseOutline = placeOutline(pinned, opt.baseline.lm).polys;
+  const baseShape = placeOutline(pinned, opt.baseline.lm), baseOutline = baseShape.polys;
+  const rigidBase = RIGID_IDS.map((i) => opt.baseline.lm[i]!);
   const sides = EYE_PARTS.includes(opt.partId) ? baseOutline.map((poly) => nearerEye(poly, opt.baseline.lm)) : null;
   const weights = sides ? baseOutline.map((poly, i) => fitWeights(opt.partId, poly, sides[i]!, opt.baseline.lm)) : null;
 
@@ -251,6 +288,13 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
         measure = { ...m, stableCount: r.stable };
         const cur = smoother?.smooth(f.lm, f.t) ?? f.lm;
         outline = placeOutline(pinned, cur);
+        // 튄 점 바로잡기 (#343) — 기준 모양을 머리 전체 움직임(강체 점 13개 아핀)으로 옮긴 것과 견준다
+        const rigid = robustAffine(rigidBase, RIGID_IDS.map((i) => cur[i]!), 1);
+        if (rigid) {
+          const move = (ps: readonly Pt[]) => ps.map((p) => applyAffine(rigid, p));
+          const predicted: Outline = { polys: baseShape.polys.map(move), lines: baseShape.lines.map(move) };
+          outline = steadyOutline(outline, predicted, Math.hypot(cur[LM.eyeB.outer]!.x - cur[LM.eyeA.outer]!.x, cur[LM.eyeB.outer]!.y - cur[LM.eyeA.outer]!.y));
+        }
         if (sides) {
           outline = farEyeFit(outline, baseOutline, sides, weights!, opt.baseline.lm, cur, opt.farEye);
           const fade = opt.fade === undefined ? FAR_FADE : opt.fade;

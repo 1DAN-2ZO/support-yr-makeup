@@ -5,7 +5,9 @@
  * 지금 얼굴의 같은 삼각형에 같은 무게로 놓는다. 풍선에 그린 그림처럼 얼굴과 같이 돌고, 고개를 돌리면 먼 쪽은 원근대로 좁아진다.
  * 2-b AR 이 화장을 기준 얼굴에 한 번 그려 삼각형마다 휘어 붙이는 것(makeup-gl)과 같은 방식.
  *
- * 그물 밖 점(얼굴 옆)은 가장 가까운 삼각형으로 늘려 붙인다 — 그 삼각형과 같이 움직인다.
+ * 그물 밖 점(얼굴 옆)은 가장 덜 늘어나는 삼각형(세 무게 중 가장 작은 것이 가장 큰)으로 늘려 붙인다 — 그 삼각형과 같이 움직인다.
+ * 가운데가 가장 가까운 삼각형에 붙였더니 윤곽 바로 밖 점이 작은 삼각형에서 무게가 수십 배로 늘어나, 윤곽 점이 조금만 흔들려도
+ * 점이 화면 끝까지 튀었다 (#343 — 윤곽 30px 밖 점이 꼭짓점 흔들림의 40배, 바꾼 뒤 4배 밑, 시험 M9).
  */
 
 import { FACE_TRIANGLES, type Triangle } from "./face-mesh";
@@ -33,20 +35,17 @@ function pinOne(base: readonly Pt[], p: Pt, tris: readonly Triangle[]): Pin {
     const c = tris[tri]!.findIndex((k) => { const q = base[k]; return !!q && Math.abs(q.x - p.x) < 1e-9 && Math.abs(q.y - p.y) < 1e-9; });
     if (c >= 0) return { tri, w: [c === 0 ? 1 : 0, c === 1 ? 1 : 0, c === 2 ? 1 : 0] };
   }
-  let inside: Pin | null = null, insideMin = -Infinity;
-  let near: Pin | null = null, nearD = Infinity;
+  // 품은 삼각형이 있으면 그중 가장 안쪽(코 옆처럼 겹쳐 보이는 곳), 없으면(그물 밖) 가장 덜 늘어나는 삼각형 —
+  // 둘 다 "세 무게 중 가장 작은 것이 가장 큰" 삼각형이다
+  let pin: Pin | null = null, best = -Infinity;
   tris.forEach(([i, j, k], tri) => {
     const a = base[i], b = base[j], c = base[k];
     if (!a || !b || !c) return;
     const w = bary(p, a, b, c);
     if (!w) return;
     const m = Math.min(...w);
-    // 품은 삼각형이 여럿이면(코 옆처럼 겹쳐 보이는 곳) 가장 안쪽
-    if (m >= -1e-9 && m > insideMin) { inside = { tri, w }; insideMin = m; }
-    const cx = (a.x + b.x + c.x) / 3, cy = (a.y + b.y + c.y) / 3, d = (p.x - cx) ** 2 + (p.y - cy) ** 2;
-    if (d < nearD) { near = { tri, w }; nearD = d; }
+    if (m > best) { pin = { tri, w }; best = m; }
   });
-  const pin = inside ?? near;
   if (!pin) throw new Error("얼굴 그물이 비었다");
   return pin;
 }

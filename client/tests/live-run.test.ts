@@ -1,16 +1,17 @@
 // 화면 4 진행 (2-1 넷째 조각, #21) 검증 — 카메라 없이 프레임 측정값만 넣는다
 // 프레임마다: 게이트 한 줄 · 가이드 테두리 · (확인받기 뒤) 묶음 모으기
 import { describe, expect, it } from "vitest";
-import { FAR_FADE, createLiveRun, outlineOf, type LiveFrame } from "@core/live-run";
-import { FAR_EYE_DEFAULT } from "@core/eye-fit";
+import { FAR_FADE, STEADY, createLiveRun, outlineOf, steadyOutline, type LiveFrame } from "@core/live-run";
+import { FAR_EYE_DEFAULT, applyAffine, robustAffine } from "@core/eye-fit";
 import { pinOutline, placeOutline } from "@core/mesh-pin";
 import { GATE_TEXT, LIVE_LIMITS, RIGID_POSE, poseOf, rigidPoseDiff } from "@core/gate";
 import { linerOutline, lookGuide } from "@core/guides";
 import type { GuideSource } from "@core/score-part";
 import { unitScale } from "@core/baseline";
-import { LM } from "@core/landmarks";
+import { LM, RIGID_IDS } from "@core/landmarks";
 import type { Lab } from "@core/color";
 import type { Pt } from "@core/types";
+import { CANON, canonPose } from "./helpers/canonical-face";
 import { LMS, W, H } from "./helpers/synth-face";
 import { LandmarkSmoother } from "@core/smoothing";
 import { LIVE_SMOOTH } from "@core/smooth-params";
@@ -339,10 +340,11 @@ describe("live run", () => {
   });
 
   it("L31 화면 4 테두리는 맨얼굴 정면에서 그린 모양을 얼굴 그물에 붙여 옮긴다 — 고개를 돌려 한쪽이 좁아지면 그쪽 테두리도 좁아진다 (2026-10-02 PC)", () => {
-    // 화면 왼쪽 절반만 가로로 0.7 배 (먼 쪽 얼굴이 좁아 보이는 것). 볼 타원은 얼굴 폭 비율로 그려서, 매번 새로 그리면 양쪽 크기가 같다
+    // 화면 왼쪽 절반만 가로로 0.7 배 (먼 쪽 얼굴이 좁아 보이는 것). 볼 타원은 얼굴 폭 비율로 그려서, 매번 새로 그리면 양쪽 크기가 같다.
+    // 진짜 얼굴 그물로 — 합성 얼굴은 볼 자리가 그물 밖이라 늘려 붙인 삼각형에 따라 값이 달라졌다 (#343)
     const cx = 300;
-    const turned = FACE.map((p) => (p.x < cx ? { x: cx + (p.x - cx) * 0.7, y: p.y } : p));
-    const o = createLiveRun<string>({ partId: "cheek", baseline: { lm: FACE, foreheadL: SKIN.L }, guide: lookGuide({}), smooth: false }).step(frame({ lm: turned })).outline!;
+    const turned = CANON.map((p) => (p.x < cx ? { x: cx + (p.x - cx) * 0.7, y: p.y } : p));
+    const o = createLiveRun<string>({ partId: "cheek", baseline: { lm: CANON, foreheadL: SKIN.L }, guide: lookGuide({}), smooth: false }).step(frame({ lm: turned })).outline!;
     const width = (poly: readonly Pt[]) => Math.max(...poly.map((p) => p.x)) - Math.min(...poly.map((p) => p.x));
     const [a, b] = o.polys;
     const [narrow, wide] = Math.min(...a!.map((p) => p.x)) < cx ? [a!, b!] : [b!, a!];
@@ -550,6 +552,68 @@ describe("화면 4 엔진에 다른 가이드 모양 넣기 — 정답사진에�
     const o = r.step(frame({ lm: moved })).outline!;
     samePolys([o.dots!, ...o.arrows!], [[{ x: 227, y: 227 }], arrow.map((p) => ({ x: p.x + 12, y: p.y - 5 }))]);
     expect(given("shadow").step(frame()).alpha, "눈 부위면 다각형마다 진하기").toEqual([1]);
+  });
+});
+
+describe("안전장치 — 테두리 점 하나가 혼자 튀면 이웃 움직임으로 바로잡기 (#343: 볼 테두리 점이 화면 아래까지 길게 튐)", () => {
+  // 기준 모양: 원 위 24점 (예측 = 머리 전체 움직임으로 옮긴 자리). scale = 눈꼬리 거리
+  const SCALE = 100;
+  const ring: Pt[] = Array.from({ length: 24 }, (_, k) => ({ x: 300 + 60 * Math.cos((k * Math.PI) / 12), y: 300 + 40 * Math.sin((k * Math.PI) / 12) }));
+  const shift = (ps: readonly Pt[], f: (p: Pt, k: number) => Pt) => ps.map(f);
+  const smooth = (p: Pt, k: number): Pt => ({ x: p.x + 0.3 * SCALE * Math.sin((k * Math.PI) / 12), y: p.y + 0.2 * SCALE });
+
+  it("L49 원근처럼 이웃이 같이 부드럽게 움직이면 그대로", () => {
+    const placed = shift(ring, smooth);
+    const r = steadyOutline({ polys: [placed], lines: [] }, { polys: [ring], lines: [] }, SCALE);
+    samePolys(r.polys, [placed]);
+  });
+
+  it("L50 한 점만 크게 튀면 그 점은 이웃들처럼 움직인 자리로 · 다른 점은 그대로", () => {
+    const placed = shift(ring, (p, k) => ({ x: p.x + 5, y: p.y + 3 + (k === 7 ? 3 * SCALE : 0) }));
+    const r = steadyOutline({ polys: [placed], lines: [] }, { polys: [ring], lines: [] }, SCALE);
+    const want = shift(ring, (p) => ({ x: p.x + 5, y: p.y + 3 }));
+    samePolys(r.polys, [want]);
+  });
+
+  it("L51 붙어 있는 두 점이 같이 튀어도 (같은 윤곽 점에 붙은 점들) 바로잡는다", () => {
+    const placed = shift(ring, (p, k) => ({ x: p.x + (k === 11 || k === 12 ? 4 * SCALE : 0), y: p.y }));
+    samePolys(steadyOutline({ polys: [placed], lines: [] }, { polys: [ring], lines: [] }, SCALE).polys, [ring]);
+  });
+
+  it("L52 열린 선의 끝 점이 튀어도 한쪽 이웃으로 바로잡는다 · 이웃보다 조금(문턱 밑) 다른 건 그대로", () => {
+    const line: Pt[] = Array.from({ length: 6 }, (_, k) => ({ x: 200 + 20 * k, y: 300 }));
+    const placed = line.map((p, k) => ({ x: p.x, y: p.y + (k === 5 ? 2 * SCALE : k === 2 ? 0.3 * SCALE * STEADY.tol : 0) }));
+    const r = steadyOutline({ polys: [], lines: [placed] }, { polys: [], lines: [line] }, SCALE);
+    samePolys(r.lines, [line.map((p, k) => (k === 2 ? placed[2]! : p))]);
+  });
+
+  it("L54 정상적인 고개 돌림(좌우 45° · 위아래 −25 ~ 20° · 카메라 25cm)은 안전장치가 건드리지 않는다 — 진짜 얼굴 그물, 모든 부위", () => {
+    const pts = (o: { polys: Pt[][]; lines: Pt[][] }) => [...o.polys.flat(), ...o.lines.flat()];
+    for (const part of ["brow", "liner", "shadow", "lip", "cheek"] as const) {
+      const pinned = pinOutline(outlineOf(part, CANON, lookGuide({})), CANON), base = placeOutline(pinned, CANON);
+      for (const yaw of [-45, -25, 0, 25, 45]) for (const pitch of [-25, 0, 20]) {
+        const cur = canonPose(pitch, yaw, 25), placed = placeOutline(pinned, cur);
+        const A = robustAffine(RIGID_IDS.map((i) => CANON[i]!), RIGID_IDS.map((i) => cur[i]!), 1)!;
+        const move = (ps: readonly Pt[]) => ps.map((p) => applyAffine(A, p));
+        const ed = Math.hypot(cur[LM.eyeB.outer]!.x - cur[LM.eyeA.outer]!.x, cur[LM.eyeB.outer]!.y - cur[LM.eyeA.outer]!.y);
+        const r = steadyOutline(placed, { polys: base.polys.map(move), lines: base.lines.map(move) }, ed);
+        expect(pts(r), `${part} yaw ${yaw} pitch ${pitch}`).toEqual(pts(placed));
+      }
+    }
+  });
+
+  it("L53 화면 4 엔진에서 — 볼 테두리 끝이 얼굴 윤곽 밖일 때 윤곽 점이 튀어도 테두리가 길게 뻗지 않는다 (진짜 얼굴 그물)", () => {
+    const ew = Math.hypot(CANON[263]!.x - CANON[33]!.x, CANON[263]!.y - CANON[33]!.y);
+    // 왼쪽 볼 타원 — 왼쪽 끝이 얼굴 윤곽(234) 바깥 20px
+    const c = { x: (CANON[234]!.x + CANON[50]!.x) / 2 + 5, y: CANON[50]!.y }, rx = c.x - CANON[234]!.x + 20, ry = 0.6 * rx;
+    const cheek = Array.from({ length: 28 }, (_, k) => ({ x: c.x + rx * Math.cos((2 * k * Math.PI) / 28 + Math.PI), y: c.y + ry * Math.sin((2 * k * Math.PI) / 28 + Math.PI) }));
+    const run = createLiveRun<string>({ partId: "cheek", baseline: { lm: CANON, foreheadL: SKIN.L }, outline: { polys: [cheek], lines: [] }, smooth: false });
+    const still = run.step(frame({ lm: CANON })).outline!.polys[0]!;
+    // 얼굴이 화면 가장자리에 걸려 MediaPipe 가 윤곽 점 하나(234)를 크게 잘못 찍은 장면
+    const jumped = CANON.map((p, i) => (i === 234 ? { x: p.x + 0.4 * ew, y: p.y + 1.5 * ew } : p));
+    const r = run.step(frame({ lm: jumped })).outline!.polys[0]!;
+    const far = Math.max(...r.map((p, k) => Math.hypot(p.x - still[k]!.x, p.y - still[k]!.y)));
+    expect(far / ew, "테두리 점이 가장 많이 움직인 거리 / 눈꼬리 거리").toBeLessThan(STEADY.tol);
   });
 });
 
