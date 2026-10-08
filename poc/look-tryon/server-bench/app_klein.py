@@ -7,13 +7,21 @@ klein 4B 는 Apache-2.0 (상업 사용 가능). 9B 는 비상업이라 쓰지 �
 그래서 영역 다시 그리기(Flux2KleinInpaintPipeline)로 — 얼굴 점으로 눈두덩(섀도 · 라이너 · 꼬리) · 볼 · 입술만 칠할 영역으로 주고
 나머지(얼굴형 · 코 · 피부 · 머리 · 배경)는 원본 그대로 둔다. 눈 안쪽(흰자 · 눈동자)도 빼야 눈 모양(쌍꺼풀 · 크기)이 안 바뀐다.
 
-실행 (모델을 받은 HF 캐시를 HF_HOME 으로, RTX 3060 12GB 에서 bf16 + 부분씩 올리기, 한 장 약 22초 · 처음 한 번 약 60초):
+실행 (모델을 받은 HF 캐시를 HF_HOME 으로 — 예시는 D 드라이브):
 
     set HF_HOME=D:\\hf-cache
+    set HF_HUB_OFFLINE=1
     conda run -n flux2 python app_klein.py
+
+지시문은 고정이라 글 해석 부품(7.5GB)은 처음 한 번만 돌려 결과를 ~/.cache/nudy/klein_prompt_embeds.pt 에 두고(지시문 · 모델이
+바뀌면 다시), 서버에는 그리는 부품(7.3GB) + 그림 변환 부품만 그래픽카드에 통째로 올린다 — RTX 3060 12GB 에 들어간다.
+전에는 다 안 들어가 부분씩 올렸는데(enable_model_cpu_offload) 쓸 때마다 PC 메모리 → 그래픽카드로 옮기는 순간 프로그램이
+죽었다(Windows access violation, 2026-10-07 하루 3번). ① look-transfer-gen 의 embed.py 와 같은 생각 (#331).
+만든 그림 · 받은 사진은 Gradio 임시 폴더에 남지 않게 2분 지나면 지운다 (정의서: 서버에는 저장 안 함).
 
 Stable-Makeup 서버와 같이 켜면 그래픽카드 메모리(12GB)가 모자라다 — 하나씩 켠다.
 """
+import gc
 import time
 import urllib.request
 import queue
@@ -33,6 +41,7 @@ from diffusers import Flux2KleinInpaintPipeline
 MODEL_ID = "black-forest-labs/FLUX.2-klein-4B"
 LANDMARKER_URL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
 LANDMARKER_PATH = Path.home() / ".cache" / "nudy" / "face_landmarker.task"
+EMBEDS_PATH = Path.home() / ".cache" / "nudy" / "klein_prompt_embeds.pt"
 SIZE = 768          # 얼굴 정사각형을 이 크기로 그린다
 REF_SIZE = 512      # 참고 사진 크기 (작아도 화장은 옮겨 오고 더 빠르다)
 FACE_MARGIN = 1.3   # 얼굴 점 상자 긴 변의 몇 배로 자를지 (이마 꼭대기 ~ 턱이 이미 들어 있다)
@@ -54,11 +63,35 @@ if not LANDMARKER_PATH.exists():
     urllib.request.urlretrieve(LANDMARKER_URL, LANDMARKER_PATH)
 landmarker = FaceLandmarker.create_from_options(FaceLandmarkerOptions(base_options=BaseOptions(model_asset_path=str(LANDMARKER_PATH)), num_faces=1))
 
-print(f"Loading {MODEL_ID} (bf16, model CPU offload) ...")
+
+
+def prompt_embeds():
+    """지시문 해석 결과 — 저장해 둔 것이 같은 지시문 · 모델이면 그대로, 아니면 글 해석 부품만 그래픽카드에 올려 한 번 돌리고 내린다"""
+    if EMBEDS_PATH.exists():
+        saved = torch.load(EMBEDS_PATH)
+        if saved.get("prompt") == PROMPT and saved.get("model") == MODEL_ID:
+            return saved["embeds"]
+    print("지시문 해석 (한 번만) ...")
+    from transformers import AutoModelForCausalLM
+    # device_map="cuda": 파일에서 그래픽카드로 바로 — PC 메모리에 7.5GB 를 통째로 올리지 않는다
+    te = AutoModelForCausalLM.from_pretrained(MODEL_ID, subfolder="text_encoder", dtype=torch.bfloat16, device_map="cuda")
+    enc = Flux2KleinInpaintPipeline.from_pretrained(MODEL_ID, text_encoder=te, transformer=None, vae=None, torch_dtype=torch.bfloat16)
+    with torch.no_grad():
+        embeds, _ = enc.encode_prompt(prompt=PROMPT, device="cuda")
+    embeds = embeds.to(torch.bfloat16).cpu()
+    del enc, te
+    gc.collect()
+    torch.cuda.empty_cache()
+    EMBEDS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    torch.save({"prompt": PROMPT, "model": MODEL_ID, "embeds": embeds}, EMBEDS_PATH)
+    return embeds
+
+
 _t0 = time.perf_counter()
-pipe = Flux2KleinInpaintPipeline.from_pretrained(MODEL_ID, torch_dtype=torch.bfloat16)
-pipe.enable_model_cpu_offload()
-print(f"Loaded in {time.perf_counter() - _t0:.1f}s. Launching Gradio UI...")
+EMBEDS = prompt_embeds().to("cuda", torch.bfloat16)
+print(f"Loading {MODEL_ID} (bf16, 그리는 부품만 그래픽카드에 통째로) ...")
+pipe = Flux2KleinInpaintPipeline.from_pretrained(MODEL_ID, text_encoder=None, tokenizer=None, torch_dtype=torch.bfloat16).to("cuda")
+print(f"Loaded in {time.perf_counter() - _t0:.1f}s · VRAM {torch.cuda.memory_allocated() / 2**30:.1f}GB. Launching Gradio UI...")
 
 
 def landmarks(pil):
@@ -167,7 +200,7 @@ def _run(id_image, makeup_image, steps, strength, keep_size, seed):
     torch.cuda.reset_peak_memory_stats()
     t0 = time.perf_counter()
     gen = torch.Generator("cpu").manual_seed(int(seed)) if seed is not None and seed >= 0 else None
-    out = pipe(prompt=PROMPT, image=face, mask_image=mask, image_reference=ref, height=SIZE, width=SIZE,
+    out = pipe(prompt_embeds=EMBEDS, image=face, mask_image=mask, image_reference=ref, height=SIZE, width=SIZE,
                strength=float(strength), guidance_scale=1.0, num_inference_steps=int(steps), generator=gen).images[0]
     dt = time.perf_counter() - t0
     vram = torch.cuda.max_memory_allocated() / 2**30
@@ -190,6 +223,7 @@ demo = gr.Interface(
     outputs=[gr.Image(type="pil", label="결과"), gr.Textbox(label="측정")],
     title="FLUX.2 [klein] 4B 화장 입히기 (영역 다시 그리기)",
     api_name="predict",   # 페이지가 부르는 이름 — Stable-Makeup 서버(Gradio 5)와 같게. Gradio 6 은 기본이 함수 이름(run)
+    delete_cache=(60, 120),   # 1분마다 2분 지난 임시 파일(받은 사진 · 만든 그림)을 지운다 — 페이지가 받아 갈 시간은 충분
 )
 
 if __name__ == "__main__":
