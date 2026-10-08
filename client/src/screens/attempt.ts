@@ -47,7 +47,9 @@ export const ATTEMPT_TEXT = {
   saving: "사진을 정리하고 있어요…",
   cameraFail: "카메라를 열 수 없어요. 카메라 권한을 확인해 주세요",
   retry: "다시 시도",
+  coach: "화장이 끝났으면 같은 자리에서 한 번 더 찍어 주세요",
   previewTitle: "이렇게 찍혔어요",
+  previewSub: "두 장 다 괜찮으면 피드백으로 넘어가요",
   openLabel: "눈 뜬 사진",
   closedLabel: "눈 감은 사진",
   retake: "다시 찍기",
@@ -70,6 +72,36 @@ function shutterCue(eyesShut: boolean): void {
     o.start();
     o.stop(audio.currentTime + (eyesShut ? 0.15 : 0.08));
   } catch { /* 소리 못 냄 */ }
+}
+
+/**
+ * 다른 화면(screens/flow-slots.ts)과 **같은 class** 를 쓴다 — 로고 · 코치 말풍선 · 제목.
+ * 여기서 새로 꾸미지 않는 이유: 앞 화면(부위 가이드)에서 넘어온 사람이 다른 앱으로 느끼지 않게
+ * 한곳(app.css 의 slot-*)만 고치면 둘이 같이 바뀌어야 한다 (#344 ①)
+ */
+function nudyLogo(): HTMLElement {
+  const e = document.createElement("div");
+  e.className = "nudy-logo slot-logo";
+  e.setAttribute("aria-label", "nudy");
+  e.innerHTML = `<span>nudy</span><i aria-hidden="true"></i>`;
+  return e;
+}
+
+function coach(text: string): HTMLElement {
+  const e = document.createElement("div");
+  e.className = "slot-coach";
+  e.innerHTML = `
+    <img src="/ui/nudy-coach-simple.svg" alt="" aria-hidden="true" />
+    <div><span>${text}</span><i aria-hidden="true"></i></div>
+  `;
+  return e;
+}
+
+function head(title: string, sub: string): HTMLElement {
+  const e = document.createElement("div");
+  e.className = "slot-head";
+  e.innerHTML = `<h1>${title.replace(/^(\S+)/, "<em>$1</em>")}</h1><p>${sub}</p>`;
+  return e;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text = ""): HTMLElementTagNameMap[K] {
@@ -129,7 +161,7 @@ export function attemptScreen<S>(deps: AttemptDeps): Screen<S> {
           ctx.log.log({ name: "button", button: "attempt_confirm" });
           void Promise.resolve(deps.setAttempt(shots)).then(() => { if (alive) ctx.go(deps.next); });
         });
-        wrap.append(el("h1", "", ATTEMPT_TEXT.previewTitle), row, retake, confirm);
+        wrap.append(nudyLogo(), head(ATTEMPT_TEXT.previewTitle, ATTEMPT_TEXT.previewSub), row, retake, confirm);
       }
 
       function intro(): void {
@@ -141,7 +173,7 @@ export function attemptScreen<S>(deps: AttemptDeps): Screen<S> {
           try { audio ??= new AudioContext(); void audio.resume(); } catch { /* */ }
           camera();
         });
-        wrap.append(el("h1", "", ATTEMPT_TEXT.title), el("p", "muted", ATTEMPT_TEXT.intro), btn);
+        wrap.append(nudyLogo(), coach(ATTEMPT_TEXT.coach), head(ATTEMPT_TEXT.title, ATTEMPT_TEXT.intro), btn);
       }
 
       function failed(e: unknown): void {
@@ -150,7 +182,7 @@ export function attemptScreen<S>(deps: AttemptDeps): Screen<S> {
         const btn = el("button", "primary", ATTEMPT_TEXT.retry);
         btn.type = "button";
         btn.addEventListener("click", () => camera());
-        wrap.append(el("p", "cam-gate", ATTEMPT_TEXT.cameraFail), btn);
+        wrap.append(nudyLogo(), el("p", "cam-gate", ATTEMPT_TEXT.cameraFail), btn);
       }
 
       function camera(): void {
@@ -164,7 +196,7 @@ export function attemptScreen<S>(deps: AttemptDeps): Screen<S> {
         cam.append(video, oval);
         const step = el("p", "cam-step", STEP_TEXT.front_open);
         const line = el("p", "cam-gate", ATTEMPT_TEXT.loading);
-        wrap.append(step, cam, line);
+        wrap.append(nudyLogo(), step, cam, line);
 
         let on = true;
         let stopLoop = (): void => {};

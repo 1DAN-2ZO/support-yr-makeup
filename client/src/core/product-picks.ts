@@ -51,7 +51,7 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
       families: ["그레이브라운", "다크브라운", "브라운", "애쉬브라운", "라이트브라운", "밀크브라운"],
       brand: "페리페라", name: "스피디 스키니 브로우",
       kind: "펜슬 — 가늘어서 한 올씩 그리기 좋아요",
-      photo: "/products/peripera-speedy-skinny-brow.jpg",
+      photo: "/products/peripera-speedy-skinny-brow.jpg",   // 사진 출처: 올리브영 A000000138671 (2026-10-08, public/products/SOURCES.md)
       checked: true,
     },
     {
@@ -61,7 +61,7 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
       // 포장에는 영문 AUTO EYEBROW PENCIL 로 적혀 있다. 같은 제품이라고 전지원이 확인했다
       brand: "이니스프리", name: "납작 아이브로우 펜슬",
       kind: "펜슬 — 납작해서 눕히면 넓게, 세우면 가늘게 그려져요",
-      photo: "/products/innisfree-auto-eyebrow-pencil.jpg",
+      photo: "/products/innisfree-auto-eyebrow-pencil.jpg",   // 사진 출처: 이니스프리 공식몰 35100 (2026-10-08, public/products/SOURCES.md)
       checked: true,
     },
     { families: ["다크브라운", "브라운"], brand: "에뛰드", name: "드로잉 아이 브라우", kind: "펜슬 — 무르고 부드러워 넓게 채우기 좋아요" },
@@ -72,7 +72,7 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
       families: ["블랙", "소프트블랙", "브라운", "다크브라운"],
       brand: "웨이크메이크", name: "철벽 펜 아이라이너",
       kind: "펜 — 선이 또렷하고 잘 안 번져요",
-      photo: "/products/wakemake-pen-eyeliner.jpg",
+      photo: "/products/wakemake-pen-eyeliner.jpg",   // 사진 출처: 올리브영 A000000136300 (2026-10-08, public/products/SOURCES.md)
       checked: true,
     },
     {
@@ -81,7 +81,7 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
       families: ["블랙", "소프트블랙", "그레이", "브라운", "다크브라운", "버건디"],
       brand: "클리오", name: "샤프 쏘 심플 워터프루프 펜슬 라이너",
       kind: "펜슬 — 부드럽게 그려지고 색이 13가지라 고르기 좋아요",
-      photo: "/products/clio-sharp-so-simple-pencil-liner.jpg",
+      photo: "/products/clio-sharp-so-simple-pencil-liner.jpg",   // 사진 출처: 올리브영 A000000198343 (2026-10-08, public/products/SOURCES.md)
       checked: true,
     },
   ],
@@ -94,7 +94,7 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
       families: ["코랄", "로즈", "핑크", "퍼플", "베이지", "플럼", "브라운", "딥브라운"],
       brand: "클리오", name: "프로 아이 팔레트 에어",
       kind: "팔레트 — 한 판에 12색이라 한 통으로 눈 화장이 끝나요",
-      photo: "/products/clio-pro-eye-palette-air.jpg",
+      photo: "/products/clio-pro-eye-palette-air.jpg",   // 사진 출처: 올리브영 A000000188988 (2026-10-08, public/products/SOURCES.md)
       checked: true,
     },
     {
@@ -105,7 +105,7 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
       families: ["로즈", "핑크", "코랄", "베이지"],
       brand: "홀리카홀리카", name: "마이페이브 피스 아이섀도우",
       kind: "낱개 — 필요한 색만 하나씩 골라 모을 수 있어요",
-      photo: "/products/holika-my-fave-piece-shadow.jpg",
+      photo: "/products/holika-my-fave-piece-shadow.jpg",   // 사진 출처: 올리브영 A000000174309 (2026-10-08, public/products/SOURCES.md)
       checked: true,
     },
     { families: ["로즈", "핑크", "플럼", "퍼플"], brand: "페리페라", name: "올 테이크 무드 팔레트", kind: "팔레트 — 분홍·자주 계열" },
@@ -121,7 +121,7 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
       families: ["플럼", "로즈", "브라운", "딥브라운", "베이지"],
       brand: "모렛", name: "뷰파인더 섀도우 팔레트",
       kind: "팔레트 — 뮤트한 중성 톤이라 과하지 않게 발려요",
-      photo: "/products/molette-viewfinder-palette.jpg",
+      photo: "/products/molette-viewfinder-palette.jpg",   // 사진 출처: 올리브영 A000000249560 (2026-10-08, public/products/SOURCES.md)
       checked: true,
     },
     { families: ["코랄", "오렌지"], brand: "릴리바이레드", name: "무드 잇 팔레트", kind: "팔레트 — 따뜻한 계열" },
@@ -138,7 +138,7 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
       families: ["그레이베이지", "베이지핑크", "코랄", "피치"],
       brand: "퓌", name: "치크칩",
       kind: "파우더·베이크드·크림 세 가지라 원하는 느낌으로 고를 수 있어요",
-      photo: "/products/fwee-cheek-chip.jpg",
+      photo: "/products/fwee-cheek-chip.jpg",   // 사진 출처: 올리브영 A000001001750 (2026-10-08, public/products/SOURCES.md)
       checked: true,
     },
     // ── 투에이엔 듀얼 치크 (19색) ──
@@ -153,14 +153,14 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
       families: ["라벤더"], brand: "투에이엔", name: "듀얼 치크",
       shade: "코튼캔디 바이올렛",
       kind: "한 통에 두 색 — 따로 써도, 섞어 써도 돼요",
-      photo: "/products/2an-dual-cheek-violet.jpg",
+      photo: "/products/2an-dual-cheek-violet.jpg",   // 사진 출처: 올리브영 A000000181230 (2026-10-08, public/products/SOURCES.md)
       checked: true,
     },
     {
       // 사진으로 확인: 오른쪽 칸 #fda6a2 (L76.5 C35.3 h25.1)
       families: ["코랄", "피치"], brand: "투에이엔", name: "듀얼 치크",
       kind: "한 통에 두 색 — 코코 코랄 · 핫 리빙 코랄 · 피치 피즈 · 쥬시 피치 호수",
-      photo: "/products/2an-dual-cheek.jpg",
+      photo: "/products/2an-dual-cheek.jpg",   // 사진 출처: 올리브영 A000000181230 (2026-10-08, public/products/SOURCES.md)
       checked: true,
     },
     {
@@ -184,7 +184,7 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
       families: ["피치", "코랄", "핑크", "로즈", "플럼", "브릭", "MLBB", "체리"],
       brand: "라카", name: "퍼펙트 트윈 립",
       kind: "틴트 + 글로스 — 매트로도, 광으로도 쓸 수 있어요",
-      photo: "/products/laka-perfect-twin-lip.jpg",
+      photo: "/products/laka-perfect-twin-lip.jpg",   // 사진 출처: 올리브영 A000000255256 (2026-10-08, public/products/SOURCES.md)
       checked: true,
     },
     {
@@ -192,7 +192,7 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
       families: ["MLBB", "브릭", "누드베이지", "로즈", "핑크", "코랄", "오렌지", "플럼"],
       brand: "롬앤", name: "쥬시 래스팅 틴트",
       kind: "틴트 — 촉촉하고 오래가요",
-      photo: "/products/romand-juicy-lasting-tint.jpg",
+      photo: "/products/romand-juicy-lasting-tint.jpg",   // 사진 출처: 올리브영 A000000241210 (2026-10-08, public/products/SOURCES.md)
       checked: true,
     },
     { families: ["코랄", "피치", "오렌지"], brand: "에스쁘아", name: "꾸뛰르 립 틴트 글레이즈", kind: "틴트 — 광이 돌아요" },
