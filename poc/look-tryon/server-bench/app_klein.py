@@ -47,13 +47,16 @@ REF_SIZE = 512      # 참고 사진 크기 (작아도 화장은 옮겨 오고 �
 FACE_MARGIN = 1.3   # 얼굴 점 상자 긴 변의 몇 배로 자를지 (이마 꼭대기 ~ 턱이 이미 들어 있다)
 FEATHER = 0.08      # 원본에 되붙일 때 가장자리를 섞는 폭
 OVAL_KEEP = 0.9     # 칠할 영역은 얼굴 윤곽을 가운데 쪽으로 이만큼 줄인 안에서만
-PROMPT = ("Apply the makeup from the reference image (eyeshadow colors and placement, eyeliner, blush, lip color) to this woman's face. "
+# 눈썹(eyebrow shape and color)도 옮긴다 — 빠져 있어 정답사진의 눈썹이 맨얼굴 그대로였고, 부위 가이드 · 피드백이 눈썹을 못 찾았다 (#371)
+PROMPT = ("Apply the makeup from the reference image (eyebrow shape and color, eyeshadow colors and placement, eyeliner, blush, lip color) to this woman's face. "
           "Keep her own skin tone, eye shape and identity.")
 
+# 눈마다: 윗눈꺼풀 · 아랫눈꺼풀 · 눈썹 아랫선 · 눈썹 윗선 · 바깥 눈꼬리 · 안쪽 눈꼬리
 EYES = (
-    ([33, 246, 161, 160, 159, 158, 157, 173, 133], [33, 7, 163, 144, 145, 153, 154, 155, 133], [46, 53, 52, 65, 55], 33, 133),
-    ([263, 466, 388, 387, 386, 385, 384, 398, 362], [263, 249, 390, 373, 374, 380, 381, 382, 362], [276, 283, 282, 295, 285], 263, 362),
+    ([33, 246, 161, 160, 159, 158, 157, 173, 133], [33, 7, 163, 144, 145, 153, 154, 155, 133], [46, 53, 52, 65, 55], [70, 63, 105, 66, 107], 33, 133),
+    ([263, 466, 388, 387, 386, 385, 384, 398, 362], [263, 249, 390, 373, 374, 380, 381, 382, 362], [276, 283, 282, 295, 285], [300, 293, 334, 296, 336], 263, 362),
 )
+BROW_MARGIN = 0.06   # 눈썹 윗선 위로 이만큼(눈 폭 비율) 더 칠할 영역에 넣는다 — 윗선 점 위로 삐져나온 눈썹 털까지
 LIPS = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146]
 FACE_OVAL = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136,
              172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109]
@@ -116,15 +119,16 @@ def face_square(pil, lm):
 
 
 def makeup_mask(lm, size):
-    """화장 칠할 영역 (흰색 = 다시 그림): 눈두덩 ~ 눈썹 아래 · 꼬리 자리 · 볼 · 입술. 눈 안쪽은 빼고, 얼굴 윤곽 밖(머리카락)도 뺀다"""
+    """화장 칠할 영역 (흰색 = 다시 그림): 눈두덩 ~ 눈썹(털 자리까지) · 꼬리 자리 · 볼 · 입술. 눈 안쪽은 빼고, 얼굴 윤곽 밖(머리카락)도 뺀다.
+    눈썹은 아랫선까지만 넣었더니 털 자리를 다시 그리지 못해 정답사진의 눈썹이 맨얼굴 그대로였다 (#371)"""
     m = Image.new("L", (size, size), 0)
     d = ImageDraw.Draw(m)
     from scipy.spatial import ConvexHull
-    for up, lo, brow, outer, inner in EYES:
+    for up, lo, brow, brow_up, outer, inner in EYES:
         o, i0 = lm[outer], lm[inner]
         ew = float(np.linalg.norm(o - i0))
         out_dir = (o - i0) / ew
-        pts = [lm[k] for k in up + lo + brow]
+        pts = [lm[k] for k in up + lo + brow] + [lm[k] + np.array([0, -BROW_MARGIN * ew]) for k in brow_up]
         pts.append(o + out_dir * 0.45 * ew + np.array([0, -0.15 * ew]))   # 꼬리 자리
         pts += [lm[k] + np.array([0, 0.12 * ew]) for k in lo]              # 아래 눈두덩 조금
         arr = np.array(pts)
