@@ -57,7 +57,7 @@ import { requestTransfer } from "./core/transfer-client";
 import { prepareSave, type SaveKit, type SaveSource } from "./screens/feedback-card";
 import { loadFeedback, type AnswerPhoto, type FeedbackLoad } from "./screens/feedback-source";
 import { createGuideKeeper } from "./screens/guide-source";
-import { partGuideSlot, saveSlot, slotScreen, type PartGuideSlotDeps, type SaveSlotDeps } from "./screens/flow-slots";
+import { feedbackSlot, partGuideSlot, saveSlot, slotScreen, type PartGuideSlotDeps, type SaveSlotDeps } from "./screens/flow-slots";
 import { inNewFlow } from "./core/screens";
 
 /** 후기 설문 (구글 폼). 끝내기를 누르면 모달로 묻고, 끝 화면에도 한 번 더 둔다 */
@@ -530,20 +530,9 @@ function registerFlowSlots(shell: ReturnType<typeof createShell<Session>>, deps:
     next: "partguide",
   }, { makeAnswer: deps.makeAnswer }));
   shell.register("partguide", partGuideSlot<Session>(deps));
-  shell.register("feedback", slotScreen<Session>({
-    title: "6 피드백",
-    owner: "③",
-    todo: [
-      "정답사진 대 시도사진 — 부위별로 어느 부분이 어떻게 됐나 (잘함 / 덜 그림 / 넘침). 점수 없음",
-      "화면이 받는 것: main.ts 의 getFeedback() — 문장(③ feedbackWhole) · 정답사진 · 시도사진 주소 (screens/feedback-source.ts FeedbackView). 화면은 그리기만 한다 (#332 · 모양 #318)",
-    ],
-    status: () => {
-      const a = deps.getAttempt();
-      const shots = a ? `시도사진 받음 — 눈 뜬 장 ${a.front_open.length}장 · 감은 장 ${a.front_closed.length}장` : "시도사진 없음 — 앱을 다시 켰으면 다시 찍어야 해요";
-      return `${shots} / ${deps.getAnswer() ? "정답사진 받음" : "정답사진 없음 (#331)"}`;
-    },
-    next: "save",
-  }));
+  // 화면 6 피드백 — 임시 자리를 치우고 진짜 화면으로 (#318 모양 · #332 연결).
+  // 재료는 getFeedback() 이 다 모아서 준다 — 화면은 그리기만 한다
+  shell.register("feedback", feedbackSlot<Session>({ getFeedback: deps.getFeedback }));
   shell.register("save", saveSlot<Session>(deps));
 }
 

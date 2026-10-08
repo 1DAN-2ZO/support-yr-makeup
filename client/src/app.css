@@ -2299,3 +2299,85 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   padding-top: 12px;
   border-top: 1px solid #efe9e5;
 }
+
+/* ── 화면 6 피드백 (#318) ──
+   점수·숫자 없이 사진 두 장 + 요약 + 부위별 문장만. 문장은 ③ 가 주는 대로 길이가 바뀌므로
+   높이를 박아 두지 않는다 (문장 30자 · 안내 두 줄까지 본다).
+   다른 PR 과 겹치지 않게 파일 끝에 모아 둔다 */
+.fb-photos {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 4px;
+}
+.fb-photos figure { margin: 0; }
+.fb-photos img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid #ebe6e8;
+  border-radius: 14px;
+}
+.fb-photos figcaption {
+  margin-top: 7px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.fb-summary { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+.fb-sum {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 11px 14px;
+  border-radius: 12px;
+  background: #f7f4f2;
+  font-size: 14px;
+}
+.fb-sum b { flex: 0 0 auto; font-weight: var(--weight-title); }
+.fb-sum span { color: #5f5e5a; }
+.fb-sum.is-ok b { color: #1d9e75; }
+.fb-sum.is-fix b { color: #ef6b85; }
+
+.fb-lines { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+.fb-line {
+  padding: 14px 16px;
+  border: 1px solid #ebe6e8;
+  border-radius: 14px;
+  background: #fff;
+}
+.fb-head { display: flex; gap: 8px; align-items: baseline; }
+.fb-head strong { font-size: 15px; font-weight: var(--weight-title); }
+/* 종류를 색만으로 가르지 않는다 — 글자로도 적는다 (ok · fix · info) */
+.fb-head em {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: var(--weight-title);
+}
+.fb-line.is-ok .fb-head em { background: #e1f5ee; color: #0f6e56; }
+.fb-line.is-fix .fb-head em { background: #fff2f4; color: #c2415c; }
+.fb-line.is-info .fb-head em { background: #f1efe8; color: #5f5e5a; }
+.fb-say { margin: 8px 0 0; font-size: 14px; line-height: 1.55; }
+.fb-more { margin: 4px 0 0; font-size: 13px; color: #5f5e5a; }
+.fb-fix {
+  margin: 8px 0 0;
+  padding-left: 13px;
+  border-left: 2px solid #ffc3cd;
+  border-radius: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #c2415c;
+}
+.fb-note {
+  margin: 16px 0 0;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: #fff6f7;
+  color: #b4475c;
+  font-size: 14px;
+  line-height: 1.6;
+}
