@@ -99,7 +99,7 @@
 | [`klein-stable`](klein-stable.md) | 10-08 | 1 | 병합 1 | klein 서버 안 꺼지게 · 2배 빠르게 · 임시 파일 2분 뒤 지우기 |
 | [`live-perf`](live-perf.md) | 10-08 | 1 | 병합 1 | 실시간 가이드 끊김 (#343) · 개발용 `?perf` |
 | [`pin-spike`](pin-spike.md) | 10-08 | 1 | 병합 1 | 실시간 가이드 볼 테두리 점 튐 (#343) |
-| [`klein-brow`](klein-brow.md) | 10-08 | 1 | 열림 1 | 정답사진에 눈썹도 옮기기 (#371) |
+| [`klein-brow`](klein-brow.md) | 10-08 | 1 | 병합 1 | 정답사진에 눈썹도 옮기기 (#371) |
 
 `guide-crop` 은 위 표에도 있다 (⑥ 이 #217 을 열어서). 파일은 #213 까지 넣은 이 판으로 바꿨다.
 
