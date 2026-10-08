@@ -1,14 +1,15 @@
-name: Print Workflow
+name: Deploy frontend+backend (Docker)
 
+# 화면·백엔드 도커 배포. main 에 올라오면 프론트백 서버에서 재배포한다.
 on:
   push:
     branches:
-      - dev
+      - main
   workflow_dispatch:
 
 jobs:
-  print-workflow:
-    runs-on: self-hosted
+  deploy:
+    runs-on: [self-hosted, frontback]   # 프론트백 서버 러너 (NUDY-SERVER1) — GPU 러너와 라벨로 구분
 
     steps:
       - name: Checkout repository
