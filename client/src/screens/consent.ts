@@ -6,6 +6,7 @@
  */
 
 import type { Screen, ScreenContext } from "./shell";
+import { unlockShutterCue } from "./capture";
 
 export interface ConsentDeps {
   /** 세션에 동의 여부를 적는다 */
@@ -112,6 +113,9 @@ export function consentScreen<S>(deps: ConsentDeps): Screen<S> {
       };
       const choose = (ok: boolean) => () => {
         ctx.log.log({ name: "button", button: ok ? "consent_agree" : "consent_deny" });
+        // iOS 는 사용자가 누르는 그 순간에 소리를 열어 둬야 촬영 때 "삑" 이 난다.
+        // 눈 감은 장은 화면을 못 보니 그 소리가 유일한 신호다 (#338 ③)
+        if (ok) unlockShutterCue();
         deps.setConsent(ok);
         deps.onConsent(ok);
         ctx.go(ok ? "capture" : "denied");

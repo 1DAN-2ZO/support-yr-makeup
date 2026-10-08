@@ -443,6 +443,92 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
   cursor: pointer;
 }
 
+/* 제품 사진의 권리는 각 브랜드에 있다 — 묶음 맨 아래 작게 (#338) */
+.slot-product-credit {
+  display: block;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: right;
+}
+
+/* ── 화면 5 시도사진 (#344) ──
+   앞 화면(부위 가이드)에서 넘어오는 자리라 같은 틀을 쓴다 — 흰 바탕 · 로고 · 코치 말풍선.
+   꾸밈은 slot-* 를 그대로 가져다 쓰고, 여기서는 이 화면에만 필요한 것만 적는다 */
+.attempt {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 100dvh;
+  padding: calc(24px + env(safe-area-inset-top)) 26px calc(28px + env(safe-area-inset-bottom));
+  background: #fff;
+  color: var(--beauty-text);
+}
+/* 찍는 중 안내 두 줄. 화면 1(촬영)에서는 누디 디자인이 따로 안내를 주어 꺼 두었는데(2026-10-06),
+   같은 class 를 쓰는 이 화면까지 같이 꺼져 아무 안내도 안 보였다 — 여기서만 되살린다.
+   눈 감은 장은 안내를 읽고 눈을 감아야 해서 이 줄이 꼭 보여야 한다 (#344 ②) */
+.attempt .cam-step {
+  display: block;
+  margin: 22px 0 12px;
+  text-align: center;
+  font-size: 16px;
+  font-weight: var(--weight-title);
+  color: var(--beauty-text);
+}
+.attempt .cam-gate {
+  display: block;
+  margin: 14px 0 0;
+  text-align: center;
+  font-size: 15px;
+  color: var(--muted);
+}
+.attempt .cam-gate.ready { color: #ef6b85; font-weight: var(--weight-title); }
+.attempt .cam { flex: 0 0 auto; border-radius: 18px; }
+
+/* 찍은 두 장. 칸 나눔 · 크기는 attempt.ts 가 인라인으로 잡는다 (#345) — 여기서는 모양만 */
+.attempt-preview { margin-top: 4px; }
+.attempt-preview img { border-radius: 14px; border: 1px solid #ebe6e8; }
+.attempt-preview figcaption {
+  margin-top: 8px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+/* 제목 묶음이 남는 공간을 먹어 버튼을 화면 아래로 민다 — slot 화면과 같은 방식.
+   말풍선 없이 로고 바로 밑에 오는 때(미리보기)는 위도 띄운다 */
+.attempt > .slot-head { margin-bottom: auto; }
+.attempt > .slot-logo + .slot-head { margin-top: 20px; }
+
+/* 아래 버튼 둘 — primary 는 알약, 다시 찍기는 테두리만 (다른 화면과 같은 모양) */
+.attempt > button.primary {
+  flex: 0 0 auto;
+  display: block;
+  width: min(100%, 320px);
+  height: 56px;
+  margin: auto auto 0;
+  margin-top: 12px;
+  border-radius: 999px;
+  background: #ff8095;
+  font-size: 16px;
+  font-weight: var(--weight-title);
+  line-height: 1;
+}
+.attempt > button.ghost {
+  flex: 0 0 auto;
+  width: min(100%, 320px);
+  height: 48px;
+  margin: auto auto 0;
+  border: 1.5px solid #ffc3cd;
+  border-radius: 999px;
+  background: #fff;
+  color: #ef6b85;
+  font: inherit;
+  font-size: 15px;
+  font-weight: var(--weight-title);
+  cursor: pointer;
+}
+.attempt > button.ghost + button.primary { margin-top: 10px; }
+
 /* "예시" 딱지 (#334) — 지금 보이는 가이드 모양은 올린 참고 사진의 화장이 아니라 견본이다.
    정답사진 연결(#331)이 붙으면 이 딱지와 함께 지운다 */
 .slot-guide-sample,
@@ -460,7 +546,6 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
   letter-spacing: 0.02em;
   pointer-events: none;
 }
-
 /* 화면 2 · 2-b (모듈 6) */
 .row { display: flex; gap: 8px; margin-top: 16px; }
 button.primary {
