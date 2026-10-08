@@ -15,6 +15,7 @@
  *    `?jitter&stab=0` 이면 데드존·One-Euro 를 끈 채로 잰다 → 적용 전후 비교
  *  - 개발용 `?gate`: 게이트가 본 값을 숫자로 — 선명 값/기준 · 최근 3초 최소·중앙 · 막힌 조건 · 안정 수 · 밝기·각도·표정 (core/gate-readout)
  *  - 개발용 `?pose` (#28): 입을 벌릴 때 기준 각도 차가 흔들리는 원인 가르기 — screens/pose-probe.ts
+ *  - 개발용 `?perf` (#343): 초당 몇 장 · 장면마다 단계별 시간(얼굴 찾기 · 촬영 조건 · 테두리 · 그리기) — 폰에서 끊김을 숫자로 (core/perf-meter)
  *
  * 이벤트(#24): gate_fail · landmark_lost 는 core/live-events (화면 1 과 같은 규칙). screen_enter/leave 는 껍데기가 찍는다.
  *
@@ -31,6 +32,7 @@ import { createLiveEvents } from "@core/live-events";
 import { LIVE_LIMITS } from "@core/gate";
 import { gateReadout, recentStats } from "@core/gate-readout";
 import { createJumpProbe } from "@core/landmark-jump";
+import { createPerfMeter } from "@core/perf-meter";
 import { FAR_FADE, createLiveRun, type LiveFrame } from "@core/live-run";
 import { LIVE_SMOOTH } from "@core/smooth-params";
 import type { Logger } from "@core/log";
@@ -213,7 +215,8 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
       const fadeQ = q.get("fade"), fadeR = fadeQ?.match(/^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/);
       // 개발용 ?jump: 브러시·손이 얼굴 앞에 있을 때 눈 점이 얼마나 튀나 (머리 움직임 뺀 눈 점 이동, 눈 폭 %) — 관찰 2026-10-02
       const jump = q.has("jump") ? createJumpProbe() : null;
-      if (meter || poseCal || gateDbg || jump) {
+      const perf = q.has("perf") ? createPerfMeter() : null;
+      if (meter || poseCal || gateDbg || jump || perf) {
         stage.append(readout);
         readout.addEventListener("click", () => {
           meter?.view.reset(); meter?.line.reset();
@@ -288,7 +291,10 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         if (!alive || !lmk || !stream) return;
         if (video.readyState < 2) return;
         const sw = video.videoWidth, sh = video.videoHeight;
+        let tp = perf ? performance.now() : 0;
+        const lap = (name: string): void => { if (!perf) return; const t = performance.now(); perf.stage(name, t - tp); tp = t; };
         const res = lmk.detectForVideo(video, now);
+        lap("얼굴 찾기");
         const raw = res.faceLandmarks[0];
         const lm = raw ? raw.map((p) => ({ x: p.x * sw, y: p.y * sh })) : null;
         // 확대 창: 칸 비율이 바뀌면(방향 전환) 새로 잡는다. 얼굴을 3초 넘게 잃으면 옛 자리에서 미끄러져 오지 않게 새로 (3-9 자리 비움)
@@ -311,15 +317,20 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         const shown = crop ?? { x: 0, y: 0, w: sw, h: sh };
         // 부위 가시성은 사용자에게 보이는 창 안에서 본다
         const f: LiveFrame<HTMLCanvasElement> = { t: now, lm, w: sw, h: sh, ...(screen ? { screen } : {}), image: () => grabFrame(video), view: shown };
-        if (lm) {
+        // 촬영 조건(표정 · 선명 · 이마 밝기와 색)은 확인받기 묶음용 — 보기만(back) 하는 새 흐름에서는 안 잰다. 원본 크기 장면의 픽셀을
+        // 장면마다 읽어서 폰에서 무거웠다 (#343: 실시간 가이드가 뚝뚝 끊김). 못 잰 조건은 게이트가 건너뛴다
+        if (lm && !backTo) {
           const bs = res.faceBlendshapes[0]?.categories;
           if (bs?.length) f.expr = Object.fromEntries(bs.map((c) => [c.categoryName, c.score]));
           f.sharpness = sharpnessOf(video, faceCropOf(lm, sw, sh));
           const fr = foreheadLabOf(video, lm, sw, sh);
           if (fr?.skin) f.lab = fr.skin;
           if (fr?.raw) f.rawLab = fr.raw;
+          lap("촬영 조건");
         }
+        tp = perf ? performance.now() : 0;
         const r = run.step(f);
+        lap("테두리");
         lastShape = r.outline ? [...r.outline.polys.flat(), ...r.outline.lines.flat()] : lastShape;
         if (gateDbg && r.measure) {
           if (typeof r.measure.sharpness === "number") gateDbg.push(r.measure.sharpness);
@@ -337,7 +348,15 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
           readout.textContent = gateDbg || poseCal ? `${readout.textContent}
 ${j}` : j;
         }
+        tp = perf ? performance.now() : 0;
         const vm = drawView(view, video, shown, r.outline, dots && lm ? EYE_DOTS.map((i) => lm[i]!) : null, r.alpha);
+        lap("그리기");
+        if (perf) {
+          perf.frame(now);
+          // 다른 개발용 표시가 있으면 그 아래 줄로
+          readout.style.whiteSpace = "pre";
+          readout.textContent = gateDbg || poseCal || jump ? `${readout.textContent}\n${perf.text()} · 카메라 ${sw}×${sh}` : `${perf.text()} · 카메라 ${sw}×${sh}`;
+        }
         if (meter && vm && r.outline) {
           // 화면 흔들림: 영상의 고정된 한 점(가운데)이 캔버스에서 어디 찍히나 — 창이 움직이면 사진 전체가 튄다
           meter.view.push([{ x: (sw / 2 - vm.crop.x) * vm.s + vm.ox, y: (sh / 2 - vm.crop.y) * vm.s + vm.oy }]);
@@ -375,7 +394,8 @@ ${j}` : j;
       }
 
       async function start(): Promise<void> {
-        const m = await createLandmarker("VIDEO");
+        // 표정 분석(블렌드셰이프)도 확인받기 조건용 — 보기만이면 얼굴 점만 (#343)
+        const m = await createLandmarker("VIDEO", backTo ? { blendshapes: false } : undefined);
         if (!alive) { m.close(); return; }
         lmk = m;
         // 1080p: 720p 에서는 iPhone 초광각 얼굴이 작다 (화면 1 과 같은 이유, 1-2 실측)
