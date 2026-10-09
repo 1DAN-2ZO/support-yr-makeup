@@ -37,9 +37,9 @@ export const MAKE_WAIT_TEXT = "길면 1분쯤 걸려요. 화면을 닫지 말고
  */
 export function makeFailText(why: MakeFail): string | null {
   switch (why) {
-    case "busy": return "지금 정답사진을 만드는 사람이 많아요. 잠시 뒤에 다시 눌러 주세요.";
-    case "down": return "정답사진을 만드는 서버가 답하지 않아요. 잠시 뒤에 다시 눌러 주세요.";
-    case "off": return "지금은 정답사진을 만들 수 없어요. 잠시 뒤에 다시 시도해 주세요.";
+    case "busy": return "지금 예상 메이크업을 만드는 사람이 많아요. 잠시 뒤에 다시 눌러 주세요.";
+    case "down": return "예상 메이크업을 만드는 서버가 답하지 않아요. 잠시 뒤에 다시 눌러 주세요.";
+    case "off": return "지금은 예상 메이크업을 만들 수 없어요. 잠시 뒤에 다시 시도해 주세요.";
     case "timeout": return "너무 오래 걸려서 멈췄어요. 다시 눌러 주세요.";
     case "network": return "인터넷 연결을 확인하고 다시 눌러 주세요.";
     case "too_large": return "사진이 너무 커요. 다른 사진으로 올려 주세요.";

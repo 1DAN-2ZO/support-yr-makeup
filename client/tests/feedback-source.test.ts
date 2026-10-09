@@ -54,7 +54,7 @@ describe("피드백 재료 모으기 (loadFeedback)", () => {
   it("FS1 다 있으면 문장 · 정답사진 주소 · 시도사진 주소 · 걸린 시간 · 본 장 수", async () => {
     const r = await loadFeedback(deps());
     if (!r.ok) throw new Error(r.missing);
-    expect(r.view.feedback.parts.find((p) => p.part === "lip")?.line).toBe("정답과 비슷해요");
+    expect(r.view.feedback.parts.find((p) => p.part === "lip")?.line).toBe("예상 메이크업과 비슷해요");
     expect([r.view.answerUrl, r.view.attemptUrl]).toEqual(urls);
     expect(urls).toHaveLength(2);
     expect(r.view.frames).toBe(1);
@@ -82,8 +82,8 @@ describe("피드백 재료 모으기 (loadFeedback)", () => {
     const r = await loadFeedback(deps({ getAttempt: () => tries(...open) }));
     if (!r.ok) throw new Error(r.missing);
     expect(r.view.frames).toBe(5);
-    expect(toRgba).toHaveBeenCalledTimes(1 + 1 + 5);   // 맨얼굴 · 정답사진 · 시도 5장
-    expect(r.view.feedback.parts.find((p) => p.part === "lip")?.line).toBe("정답과 비슷해요");
+    expect(toRgba).toHaveBeenCalledTimes(1 + 1 + 5);   // 맨얼굴 · 예상 메이크업 · 시도 5장
+    expect(r.view.feedback.parts.find((p) => p.part === "lip")?.line).toBe("예상 메이크업과 비슷해요");
   });
 
   it("FS5 얼굴 점은 촬영 크기 좌표다 — 사진이 그보다 작게 저장돼 있으면 사진 크기로 맞춰 잰다 (예전 세션의 줄인 맨얼굴, #240)", async () => {
@@ -94,7 +94,7 @@ describe("피드백 재료 모으기 (loadFeedback)", () => {
       getAttempt: () => ({ front_open: [{ blob: photo(lips(0.6)), lm: big, w: W * 2, h: H * 2 }], front_closed: [] }),
     }));
     if (!r.ok) throw new Error(r.missing);
-    expect(r.view.feedback.parts.find((p) => p.part === "lip")?.line).toBe("정답과 비슷해요");
+    expect(r.view.feedback.parts.find((p) => p.part === "lip")?.line).toBe("예상 메이크업과 비슷해요");
   });
 
   it("FS6 정답사진이 맨얼굴과 크기가 다르면 판정하지 않고, 만든 주소가 없다", async () => {
@@ -110,7 +110,7 @@ describe("피드백 재료 모으기 (loadFeedback)", () => {
     expect(toRgba).toHaveBeenCalledTimes(4);
     const failed = await loadFeedback(deps({ getMoved: async () => { throw new Error("server"); } }));
     if (!failed.ok) throw new Error(failed.missing);
-    expect(failed.view.feedback.parts.find((p) => p.part === "lip")?.line).toBe("정답과 비슷해요");
+    expect(failed.view.feedback.parts.find((p) => p.part === "lip")?.line).toBe("예상 메이크업과 비슷해요");
     expect(failed.view.movedFailed).toBe(true);
     expect(withMoved.view.movedFailed).toBe(false);
   });

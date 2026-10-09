@@ -17,7 +17,7 @@ export const FEEDBACK_CARD_W = 1080;
 /** 카드에 들어가는 글 (화면 문구는 화면이 정한다 — 이것은 저장되는 그림 안의 글) */
 export const CARD_TEXT = {
   brand: "nudy",
-  answer: "정답사진",
+  answer: "예상 메이크업",
   attempt: "내 화장",
   okHead: "비슷한 곳",
   fixHead: "다시 볼 곳",

@@ -24,7 +24,7 @@ const back = (root: HTMLElement) => root.querySelector<HTMLButtonElement>(".slot
 
 describe("뒤로 가기 (#369)", () => {
   const cases: [string, () => Screen<null>, string, string][] = [
-    ["부위 가이드", () => partGuideSlot<null>({ getPart: () => "brow" }), "answer", "정답사진으로 돌아가기"],
+    ["부위 가이드", () => partGuideSlot<null>({ getPart: () => "brow" }), "answer", "예상 메이크업으로 돌아가기"],
     ["피드백", () => feedbackSlot<null>({ getFeedback: () => new Promise(() => {}) }), "attempt", "시도사진으로 돌아가기"],
     ["저장", () => saveSlot<null>({ clearAll: async () => {} }), "feedback", "피드백으로 돌아가기"],
     ["시도사진", () => attemptScreen<null>({ setAttempt: () => {}, next: "feedback" }), "partguide", "부위 가이드로 돌아가기"],

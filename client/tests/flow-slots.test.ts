@@ -49,12 +49,12 @@ const button = (root: HTMLElement, text: string): HTMLButtonElement => {
 };
 
 describe("빈 자리 화면", () => {
-  const SPEC = { title: "참고 사진 · 정답사진", owner: "①·②·④", todo: ["참고 사진 업로드", "정답사진 생성"], next: "partguide" } as const;
+  const SPEC = { title: "참고 사진 · 예상 메이크업", owner: "①·②·④", todo: ["참고 사진 업로드", "예상 메이크업 생성"], next: "partguide" } as const;
 
   it("FS1 사진을 고르기 전에는 '적용하기' 가 안 눌린다 — 잴 사진이 없다", () => {
     const ctx = ctxOf();
     slotScreen<null>(SPEC, { analyze: async () => fakeAnalysis() }).mount(ctx);
-    expect(ctx.root.textContent).toContain("참고 사진 · 정답사진");
+    expect(ctx.root.textContent).toContain("참고 사진 · 예상 메이크업");
     expect(ctx.root.textContent).toContain("①·②·④");
     expect(button(ctx.root, "적용하기").disabled).toBe(true);
     pickPhoto(ctx.root);
@@ -68,7 +68,7 @@ describe("빈 자리 화면", () => {
     pickPhoto(ctx.root);
     button(ctx.root, "적용하기").click();
     expect(ctx.root.textContent).toContain("분석중");
-    await vi.waitFor(() => expect(ctx.root.textContent).toContain("정답사진 완성"));
+    await vi.waitFor(() => expect(ctx.root.textContent).toContain("예상 메이크업 완성"));
     expect(analyze).toHaveBeenCalledTimes(1);
     // 읽은 색이 그대로 화면에 — 48색에 없는 탁한 색이라 규칙으로 지은 이름이 나온다
     expect(ctx.root.textContent).toContain("뮤트 브릭");
@@ -108,14 +108,14 @@ describe("빈 자리 화면", () => {
       // 폰 사진첩의 큰 사진을 그대로 올리지 않는다 — 줄인 것을 보낸다
       expect(makeAnswer).toHaveBeenCalledWith(small);
       // 기다리는 동안: 만들고 있다는 것과 얼마나 걸리는지
-      expect(ctx.root.textContent).toContain("정답사진을 만들고 있어요");
+      expect(ctx.root.textContent).toContain("예상 메이크업을 만들고 있어요");
       expect(ctx.root.textContent).toContain("1분");
-      expect(ctx.root.textContent).not.toContain("정답사진 완성");
+      expect(ctx.root.textContent).not.toContain("예상 메이크업 완성");
       done({ ok: true, picture: made, ms: 8600 });
-      await vi.waitFor(() => expect(ctx.root.textContent).toContain("정답사진 완성"));
+      await vi.waitFor(() => expect(ctx.root.textContent).toContain("예상 메이크업 완성"));
       // 보여 주는 것은 참고 사진이 아니라 받은 정답사진
       expect(urls.get(img(ctx.root)!.src)).toBe(made);
-      expect(img(ctx.root)!.alt).toBe("정답사진");
+      expect(img(ctx.root)!.alt).toBe("예상 메이크업");
       expect(ctx.root.textContent).toContain("뮤트 브릭");
       button(ctx.root, "다음").click();
       expect(ctx.goPart).toHaveBeenCalledWith(PART_IDS[0]);
@@ -137,7 +137,7 @@ describe("빈 자리 화면", () => {
       pickPhoto(ctx.root);
       button(ctx.root, "적용하기").click();
       await vi.waitFor(() => expect(ctx.root.querySelector(".slot-upload-warn")?.textContent).toContain(text));
-      expect(ctx.root.textContent).not.toContain("정답사진 완성");
+      expect(ctx.root.textContent).not.toContain("예상 메이크업 완성");
       expect(button(ctx.root, "적용하기").disabled).toBe(false);
       button(ctx.root, "적용하기").click();
       await vi.waitFor(() => expect(makeAnswer).toHaveBeenCalledTimes(2));
@@ -159,7 +159,7 @@ describe("빈 자리 화면", () => {
       slotScreen<null>(SPEC, { analyze: async () => fakeAnalysis(), makeAnswer, shrink: async () => { throw new Error("못 줄임"); } }).mount(ctx);
       pickPhoto(ctx.root);
       button(ctx.root, "적용하기").click();
-      await vi.waitFor(() => expect(ctx.root.textContent).toContain("정답사진 완성"));
+      await vi.waitFor(() => expect(ctx.root.textContent).toContain("예상 메이크업 완성"));
       expect(makeAnswer.mock.calls[0]![0]).toBeInstanceOf(File);
     });
 
@@ -174,7 +174,7 @@ describe("빈 자리 화면", () => {
       if (typeof leave === "function") leave();
       done({ ok: true, picture: made, ms: null });
       await new Promise((r) => setTimeout(r, 0));
-      expect(ctx.root.textContent).not.toContain("정답사진 완성");
+      expect(ctx.root.textContent).not.toContain("예상 메이크업 완성");
     });
 
     it("FS4f 만든 뒤에는 참고 사진을 들고 있지 않는다 — 다른 사람 사진이라 바로 놓는다", async () => {
@@ -183,7 +183,7 @@ describe("빈 자리 화면", () => {
       slotScreen<null>(SPEC, { analyze: async () => fakeAnalysis(), makeAnswer: async () => ({ ok: true, picture: made, ms: null }), shrink: async (b) => b }).mount(ctx);
       pickPhoto(ctx.root);
       button(ctx.root, "적용하기").click();
-      await vi.waitFor(() => expect(ctx.root.textContent).toContain("정답사진 완성"));
+      await vi.waitFor(() => expect(ctx.root.textContent).toContain("예상 메이크업 완성"));
       // 고른 참고 사진의 미리보기 주소를 놓았다
       expect(revoke).toHaveBeenCalledWith("blob:test");
     });
@@ -306,7 +306,7 @@ describe("빈 자리 화면", () => {
       const ctx = ctxOf();
       partGuideSlot<null>({ getPart: () => "lip", getGuide: async () => ({ ok: true, view }), paintGuide }).mount(ctx);
       await vi.waitFor(() => expect(paintGuide).toHaveBeenCalled());
-      expect(coachText(ctx.root)).toBe("정답사진에서 이 부위만 크게 잘라서 보여드릴게요");
+      expect(coachText(ctx.root)).toBe("예상 메이크업에서 이 부위만 크게 잘라서 보여드릴게요");
       expect(ctx.root.textContent).not.toContain("예시");
     });
 

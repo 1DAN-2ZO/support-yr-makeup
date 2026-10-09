@@ -17,7 +17,7 @@ const lipLine = (s: FeedbackSources): string | undefined => {
 
 describe("피드백 잇기 (runFeedback)", () => {
   it("FR1 맨얼굴 · 정답사진 · 시도사진이 다 있으면 ③ 의 문장이 그대로 나온다", () => {
-    expect(lipLine(src())).toBe("정답과 비슷해요");
+    expect(lipLine(src())).toBe("예상 메이크업과 비슷해요");
     expect(lipLine(src({ attempt: [shot()] }))).toBe("내 화장에서 변화를 찾지 못했어요");
   });
 
@@ -34,7 +34,7 @@ describe("피드백 잇기 (runFeedback)", () => {
 
   it("FR4 시도사진 묶음(여러 장)을 그대로 넘긴다 — 한 장만 다른 것은 가운데 값에 묻힌다", () => {
     const five = [shot(lips(0.6)), shot(lips(0.6)), shot(), shot(lips(0.6)), shot(lips(0.6))];
-    expect(lipLine(src({ attempt: five }))).toBe("정답과 비슷해요");
+    expect(lipLine(src({ attempt: five }))).toBe("예상 메이크업과 비슷해요");
   });
 
   it("FR5 옮긴 그림이 없으면 라이너는 볼 수 없다고 나오고, 크기가 다른 옮긴 그림은 쓰지 않는다 (나머지 부위는 그대로 판정)", () => {
@@ -43,6 +43,6 @@ describe("피드백 잇기 (runFeedback)", () => {
     const im = image();
     const bad = src({ moved: { data: im.data, w: im.w - 4, h: im.h } });
     expect(liner(bad)).toEqual({ tone: "info", dropped: true });
-    expect(lipLine(bad)).toBe("정답과 비슷해요");
+    expect(lipLine(bad)).toBe("예상 메이크업과 비슷해요");
   });
 });

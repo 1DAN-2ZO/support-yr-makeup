@@ -32,7 +32,7 @@ function view(feedback: WholeFeedback) {
 const FULL: WholeFeedback = {
   ok: ["눈썹"], fix: ["라이너"],
   parts: [
-    { part: "brow", name: "눈썹", tone: "ok", line: "정답과 비슷해요" },
+    { part: "brow", name: "눈썹", tone: "ok", line: "예상 메이크업과 비슷해요" },
     { part: "liner", name: "라이너", tone: "fix", line: "꼬리가 짧아요", more: "오른쪽은 비슷해요", fix: "꼬리를 빼 보세요" },
     { part: "cheek", name: "볼", tone: "info", line: "이번에는 볼 수 없었어요" },
   ],
@@ -97,7 +97,7 @@ describe("화면 6 피드백", () => {
 
   it("FB7 재료가 없으면 까닭을 사람 말로 — 흐름은 막지 않는다", async () => {
     const { root, go } = await mount(async () => ({ ok: false, missing: "answer" }));
-    expect(root.querySelector(".fb-note")?.textContent).toContain("정답사진이 아직 없어요");
+    expect(root.querySelector(".fb-note")?.textContent).toContain("예상 메이크업이 아직 없어요");
     expect(root.querySelector(".fb-photos")).toBeNull();
     [...root.querySelectorAll("button")].find((b) => b.textContent === "다음 · 저장하러 가기")!.click();
     expect(go).toHaveBeenCalledWith("save");
