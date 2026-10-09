@@ -65,6 +65,15 @@ export function nextGuidePart(after: PartId | null): PartId | null {
   return PART_IDS[i + 1] ?? null;
 }
 
+/**
+ * 한 부위 앞. 첫 부위면 null (→ 예상 메이크업 화면으로).
+ * 뒤로 가기가 쓴다 — 아이라이너에서 뒤로 누르면 눈썹으로 가야지 참고 사진까지 가면 안 된다 (#369 피드백)
+ */
+export function prevGuidePart(before: PartId | null): PartId | null {
+  const i = before ? PART_IDS.indexOf(before) : -1;
+  return i > 0 ? (PART_IDS[i - 1] ?? null) : null;
+}
+
 export function isPartScreen(s: ScreenId): boolean {
   return (PART_SCREENS as readonly ScreenId[]).includes(s);
 }

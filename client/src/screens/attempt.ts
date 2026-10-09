@@ -90,7 +90,7 @@ function nudyLogo(): HTMLElement {
  * 로고 줄 — 왼쪽에 뒤로 가는 화살표 (#369). flow-slots 와 같은 class 를 쓴다.
  * 화살표는 글자가 없으므로 어디로 가는지는 aria-label 에 적는다
  */
-function logoRow(label: string, onBack: () => void): HTMLElement {
+function logoRow(label: string, onBack: () => void, onHome: () => void): HTMLElement {
   const row = document.createElement("div");
   row.className = "slot-logo-row";
   const b = document.createElement("button");
@@ -99,7 +99,14 @@ function logoRow(label: string, onBack: () => void): HTMLElement {
   b.setAttribute("aria-label", label);
   b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5 8 12l7 7" /></svg>`;
   b.addEventListener("click", onBack);
-  row.append(b, nudyLogo());
+  // 로고를 누르면 맨 처음(안내 화면)으로 (#369 피드백)
+  const h = document.createElement("button");
+  h.type = "button";
+  h.className = "slot-home";
+  h.setAttribute("aria-label", "처음 안내 화면으로");
+  h.append(nudyLogo());
+  h.addEventListener("click", onHome);
+  row.append(b, h);
   return row;
 }
 
@@ -180,6 +187,9 @@ export function attemptScreen<S>(deps: AttemptDeps): Screen<S> {
         wrap.append(logoRow("부위 가이드로 돌아가기", () => {
           ctx.log.log({ name: "button", button: "back:partguide" });
           ctx.go("partguide");
+        }, () => {
+          ctx.log.log({ name: "button", button: "home:consent" });
+          ctx.go("consent");
         }), head(ATTEMPT_TEXT.previewTitle, ATTEMPT_TEXT.previewSub), row, retake, confirm);
       }
 
@@ -195,6 +205,9 @@ export function attemptScreen<S>(deps: AttemptDeps): Screen<S> {
         wrap.append(logoRow("부위 가이드로 돌아가기", () => {
           ctx.log.log({ name: "button", button: "back:partguide" });
           ctx.go("partguide");
+        }, () => {
+          ctx.log.log({ name: "button", button: "home:consent" });
+          ctx.go("consent");
         }), coach(ATTEMPT_TEXT.coach), head(ATTEMPT_TEXT.title, ATTEMPT_TEXT.intro), btn);
       }
 
@@ -207,6 +220,9 @@ export function attemptScreen<S>(deps: AttemptDeps): Screen<S> {
         wrap.append(logoRow("부위 가이드로 돌아가기", () => {
           ctx.log.log({ name: "button", button: "back:partguide" });
           ctx.go("partguide");
+        }, () => {
+          ctx.log.log({ name: "button", button: "home:consent" });
+          ctx.go("consent");
         }), el("p", "cam-gate", ATTEMPT_TEXT.cameraFail), btn);
       }
 

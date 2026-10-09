@@ -575,7 +575,7 @@ function registerFlowSlots(shell: ReturnType<typeof createShell<Session>>, deps:
   shell.register("partguide", partGuideSlot<Session>(deps));
   // 화면 6 피드백 — 임시 자리를 치우고 진짜 화면으로 (#318 모양 · #332 연결).
   // 재료는 getFeedback() 이 다 모아서 준다 — 화면은 그리기만 한다
-  shell.register("feedback", feedbackSlot<Session>({ getFeedback: deps.getFeedback }));
+  shell.register("feedback", feedbackSlot<Session>({ getFeedback: deps.getFeedback, clearAll: deps.clearAll }));
   shell.register("save", saveSlot<Session>(deps));
 }
 
