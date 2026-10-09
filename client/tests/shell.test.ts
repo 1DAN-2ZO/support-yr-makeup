@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { GUIDE_PART_IDS } from "@core/screens";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createShell } from "../src/screens/shell";
 import { createLogger, memorySink } from "@core/log";
@@ -107,7 +108,8 @@ describe("껍데기", () => {
     const { shell, session, chipsRoot } = setup({ screen: "partguide", currentPart: "brow" });
     shell.render();
     expect(chipsRoot.hidden).toBe(false);
-    expect(chipsRoot.querySelectorAll("button")).toHaveLength(6);
+    // 쉐딩·하이라이트는 가이드에서 뺐다 (2026-10-09) — 칩도 그만큼 줄었다
+    expect(chipsRoot.querySelectorAll("button")).toHaveLength(GUIDE_PART_IDS.length);
 
     const buttons = [...chipsRoot.querySelectorAll("button")];
     const lip = buttons.find((b) => b.textContent?.startsWith("입술"));

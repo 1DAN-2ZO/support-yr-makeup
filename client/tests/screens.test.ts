@@ -13,7 +13,7 @@ import {
 } from "@core/screens";
 import { SCREENS } from "@core/flow";
 import { CONTOUR_PRODUCTS, LOOKS, lookById, LOOK_PART_ORDER, productList } from "@core/looks";
-import { PART_IDS } from "@core/types";
+import { GUIDE_PART_IDS } from "@core/screens";
 import type { ChipInput } from "@core/screens";
 
 describe("화면 목록", () => {
@@ -52,10 +52,16 @@ describe("화면 목록", () => {
     for (const s of [...SCREEN_ORDER, "denied"] as const) expect(inNewFlow(s)).toBe(s);
   });
 
+  // 2026-10-09: 쉐딩·하이라이트는 가이드에서 뺐다 (안 쓰기로 함) — GUIDE_PART_IDS 를 돈다
   it("부위 가이드 순서 — 부위마다 확인받지 않으니 상태와 상관없이 다음 부위, 마지막이면 null", () => {
-    expect(nextGuidePart(null)).toBe(PART_IDS[0]);
-    for (let i = 0; i < PART_IDS.length - 1; i++) expect(nextGuidePart(PART_IDS[i]!)).toBe(PART_IDS[i + 1]);
-    expect(nextGuidePart(PART_IDS[PART_IDS.length - 1]!)).toBeNull();
+    expect(nextGuidePart(null)).toBe(GUIDE_PART_IDS[0]);
+    for (let i = 0; i < GUIDE_PART_IDS.length - 1; i++) expect(nextGuidePart(GUIDE_PART_IDS[i]!)).toBe(GUIDE_PART_IDS[i + 1]);
+    expect(nextGuidePart(GUIDE_PART_IDS[GUIDE_PART_IDS.length - 1]!)).toBeNull();
+  });
+
+  it("쉐딩·하이라이트는 가이드를 돌지 않는다 — 마지막 부위 다음은 시도사진(null)", () => {
+    expect(GUIDE_PART_IDS).not.toContain("contour");
+    expect(nextGuidePart("cheek")).toBeNull();
   });
 });
 
@@ -87,8 +93,8 @@ describe("진행 칩", () => {
     { partId: "contour", status: "passed", score: 91 },
   ];
 
-  it("부위 6개가 고정 순서로 나온다", () => {
-    expect(chips(parts, "lip").map((c) => c.partId)).toEqual([...PART_IDS]);
+  it("부위가 고정 순서로 나온다 — 쉐딩·하이라이트는 빠진다", () => {
+    expect(chips(parts, "lip").map((c) => c.partId)).toEqual([...GUIDE_PART_IDS]);
   });
 
   it("없는 부위는 미시작, 현재 부위에 표시가 붙는다", () => {
@@ -97,10 +103,8 @@ describe("진행 칩", () => {
     expect(got.filter((c) => c.current)).toHaveLength(1);
   });
 
-  it("쉐딩·하이라이트는 점수가 와도 안 보여준다", () => {
-    const contour = chips(parts, null).find((c) => c.partId === "contour")!;
-    expect(contour.score).toBeNull();
-    expect(chipLabel(contour)).toBe("완료");
+  it("쉐딩·하이라이트 칩은 아예 안 나온다 (2026-10-09 가이드에서 뺌)", () => {
+    expect(chips(parts, null).find((c) => c.partId === "contour")).toBeUndefined();
   });
 
   it("칩 문구는 점수 있으면 숫자, 없으면 상태말", () => {
