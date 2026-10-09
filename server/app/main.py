@@ -4,6 +4,7 @@
   GET  /health   상태·버전
   POST /events   사용 기록 받기 (어느 화면에서 나갔는지) — 사진·얼굴 점은 받지 않는다. events.py
   POST /transfer 그림 만들기 (맨얼굴 + 화장 사진 → GPU 의 FLUX 서버 → 그림 한 장). 저장하지 않는다. flux.py
+  POST /keep     테스트 기간 사진 보관 (참고 사진 빼고) — 기본은 꺼짐, DHE_KEEP_DAYS 를 줘야 받는다. keep.py
 
 실행:  uv run uvicorn server.app.main:app --reload --port 8000
 
@@ -13,14 +14,18 @@ Stable-Makeup 잡 큐(/sessions/*/jobs · /jobs/*)는 VLM 개인화 전환(#179�
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import json
 import logging
 import os
+from collections.abc import AsyncIterator
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.datastructures import UploadFile
 
-from . import events
+from . import events, keep
 from .config import settings
 from .flux import FluxError, Gone, get_flux, unless_gone
 from .schemas import Health
@@ -28,7 +33,34 @@ from .schemas import Health
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("dhe.api")
 
-app = FastAPI(title="당화응 API", version=settings.versions.app)
+# 보관한 사진 치우기를 도는 간격 — 받은 날 기준 7일이 지난 것을 지운다 (keep.py)
+PURGE_EVERY_S = 3600
+
+
+async def _purge_loop() -> None:
+    """기한이 지난 보관 사진을 주기적으로 치운다 — 새로 올라오는 사진이 없어도, 보관을 끈 뒤에도"""
+    while True:
+        try:
+            gone = await asyncio.to_thread(keep.purge_stored)
+            if gone:
+                log.info("keep purge: %s", " ".join(gone))
+        except Exception:  # noqa: BLE001 — 치우기 실패가 서버를 내리면 안 된다
+            log.exception("keep purge failed")
+        await asyncio.sleep(PURGE_EVERY_S)
+
+
+@contextlib.asynccontextmanager
+async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    task = asyncio.create_task(_purge_loop())
+    try:
+        yield
+    finally:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+
+app = FastAPI(title="당화응 API", version=settings.versions.app, lifespan=_lifespan)
 
 # CORS 설정 — 개발 클라이언트(localhost:5173) 허용
 _DEFAULT_CORS_ORIGINS = (
@@ -151,3 +183,66 @@ async def transfer(request: Request) -> Response:
     if made.flux_ms is not None:
         headers["x-flux-ms"] = str(made.flux_ms)
     return Response(made.picture, media_type=made.media_type, headers=headers)
+
+
+# 보관용으로 올리는 몸통의 한도 — 사진 한 장 + multipart 머리말. 몸통을 받기 전에 Content-Length 로 본다
+MAX_KEEP_BODY = keep.MAX_FILE + 64 * 1024
+
+
+@app.get("/keep")
+def keep_state() -> dict:
+    """보관이 켜져 있나 — 앱이 사진을 올리기 전에 묻는다 (꺼져 있는데 큰 사진을 올려 보지 않게). 꺼짐은 503"""
+    if keep.keep_dir() is None:
+        raise _fail(503, "off", "keep off (DHE_KEEP_DAYS)")
+    return {"on": True, "days": keep.keep_days()}
+
+
+@app.post("/keep", status_code=204)
+async def post_keep(request: Request) -> Response:
+    """테스트 기간 사진 보관 — 사진 한 장(또는 피드백 결과 글)을 받은 날 폴더에 쌓는다. keep.py
+
+    기본은 꺼져 있다 (503 off). 참고 사진은 받는 이름이 없다. 요청의 주소(IP) · 브라우저 정보는 남기지 않는다
+    """
+    root = keep.keep_dir()
+    if root is None:
+        raise _fail(503, "off", "keep off (DHE_KEEP_DAYS)")
+    length = request.headers.get("content-length", "")
+    if not length.isdigit():
+        raise _fail(411, "length")
+    if int(length) > MAX_KEEP_BODY:
+        raise _fail(413, "too_large")
+    try:
+        form = await request.form()
+    except Exception as e:  # noqa: BLE001 — 깨진 multipart 는 종류가 여럿이다
+        raise _fail(422, "missing") from e
+    try:
+        sid, kind = keep.check(form.get("sid"), form.get("kind"))
+    except keep.BadKeep as e:
+        raise _fail(422, str(e)) from e
+    f = form.get("file")
+    if not isinstance(f, UploadFile):
+        raise _fail(422, "missing")
+    limit = keep.MAX_FEEDBACK if kind == "feedback" else keep.MAX_FILE
+    data = await f.read(limit + 1)
+    if len(data) > limit:
+        raise _fail(413, "too_large")
+    if not data:
+        raise _fail(422, "empty")
+    if kind == "feedback":
+        # 글만 받는다 — 사진을 글 자리에 끼워 넣지 못하게 JSON 인지 본다
+        try:
+            json.loads(data)
+        except ValueError as e:
+            raise _fail(422, "not_json") from e
+        ext = "json"
+    else:
+        # 종류는 올린 쪽 말이 아니라 내용의 첫머리로 정한다
+        media = _kind(data)
+        if media is None:
+            raise _fail(422, "not_image")
+        ext = keep.EXT[media]
+    keep.purge_sometimes(root)
+    keep.store(root, sid, kind, data, ext, keep.now())
+    # 사진 내용 · 세션 번호 전체는 로그에 남기지 않는다 — 무엇이 몇 바이트 왔는지만
+    log.info("keep %s (%d bytes)", kind, len(data))
+    return Response(status_code=204)

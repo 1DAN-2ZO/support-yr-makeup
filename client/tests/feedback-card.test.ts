@@ -7,7 +7,7 @@ import type { ShareEnv } from "@screens/result-card";
 
 const fb = (over: Partial<WholeFeedback> = {}): WholeFeedback => ({
   parts: [
-    { part: "brow", name: "눈썹", tone: "ok", line: "정답과 비슷해요" },
+    { part: "brow", name: "눈썹", tone: "ok", line: "예상 메이크업과 비슷해요" },
     { part: "shadow", name: "섀도우", tone: "fix", line: "오른쪽 눈이 비었어요", more: "눈꼬리 바깥으로 더 나갔어요", fix: "오른쪽 눈두덩에도 발라 보세요" },
     { part: "liner", name: "라이너", tone: "info", line: "이번에는 볼 수 없었어요" },
     { part: "lip", name: "입술", tone: "fix", line: "입술선 밖으로 나갔어요", fix: "입술선 안쪽으로 정리해 보세요" },
@@ -28,7 +28,7 @@ describe("결과 한 장 배치 (feedbackCardLayout)", () => {
     expect(a!.x + a!.w).toBeLessThan(b!.x);
     expect(b!.x + b!.w).toBeLessThanOrEqual(FEEDBACK_CARD_W);
     const t = texts(ops);
-    expect(t).toEqual(expect.arrayContaining([CARD_TEXT.answer, CARD_TEXT.attempt, "눈썹", "정답과 비슷해요", "오른쪽 눈이 비었어요", "눈꼬리 바깥으로 더 나갔어요"]));
+    expect(t).toEqual(expect.arrayContaining([CARD_TEXT.answer, CARD_TEXT.attempt, "눈썹", "예상 메이크업과 비슷해요", "오른쪽 눈이 비었어요", "눈꼬리 바깥으로 더 나갔어요"]));
     expect(yOf(ops, "눈썹")).toBeGreaterThan(a!.y + a!.h);
     expect(height).toBeGreaterThan(yOf(ops, "입술"));
   });
@@ -56,10 +56,10 @@ describe("결과 한 장 배치 (feedbackCardLayout)", () => {
   });
 
   it("FC5 긴 문장은 잘리지 않고 줄을 바꾼다 — 문장은 앞으로 바뀔 수 있다 (#318: 30자쯤까지)", () => {
-    const long = "왼쪽 눈썹 꼬리가 정답보다 짧고 오른쪽 눈썹 앞머리는 정답보다 조금 진해요";
+    const long = "왼쪽 눈썹 꼬리가 예상 메이크업보다 짧고 오른쪽 눈썹 앞머리는 예상 메이크업보다 조금 진해요";
     expect(wrapText(long, 20).join("").replace(/ /g, "")).toBe(long.replace(/ /g, ""));   // 글자를 잃지 않는다
     expect(wrapText(long, 20).every((l) => [...l].length <= 20)).toBe(true);
-    expect(wrapText("정답과 비슷해요", 20)).toEqual(["정답과 비슷해요"]);
+    expect(wrapText("예상 메이크업과 비슷해요", 20)).toEqual(["예상 메이크업과 비슷해요"]);
     const short = feedbackCardLayout(fb()), tall = feedbackCardLayout(fb({ parts: [{ part: "brow", name: "눈썹", tone: "fix", line: long, fix: long }, ...fb().parts.slice(1)] }));
     expect(tall.height).toBeGreaterThan(short.height);
     expect(texts(tall.ops).join("").replace(/ /g, "")).toContain(long.replace(/ /g, ""));

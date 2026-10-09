@@ -51,7 +51,7 @@ describe("사진에서 재서 문장까지 (feedbackWhole)", () => {
   const say = (cur: Paint, moved?: Paint) => Object.fromEntries(feedbackWhole({ bare, target, cur: frameOf(image(cur), LMS), ...(moved ? { moved: image(moved) } : {}) }).parts.map((p) => [p.part, p]));
 
   it("F1 입술: 정답대로 → 비슷해요 · 안 바름 → 내 화장에서 변화를 찾지 못했어요 · 아랫입술만 → 윗입술이 비었어요", () => {
-    expect(say(lips(0.6)).lip!.line).toBe("정답과 비슷해요");
+    expect(say(lips(0.6)).lip!.line).toBe("예상 메이크업과 비슷해요");
     expect(say(() => null).lip!.line).toBe("내 화장에서 변화를 찾지 못했어요");
     const mid = (P(61).y + P(291).y) / 2;
     expect(say((x, y) => (y > mid ? lips(0.6)(x, y) : null)).lip!.line).toBe("윗입술이 비었어요");
@@ -66,14 +66,14 @@ describe("사진에서 재서 문장까지 (feedbackWhole)", () => {
 
   it("F2 정답 그림이 안 건드린 부위는 '정답 화장에서 변화를 찾지 못했어요'", () => {
     const r = say(lips(0.6));
-    for (const part of ["brow", "shadow"]) expect(r[part]!.line).toBe("정답 화장에서 변화를 찾지 못했어요");
+    for (const part of ["brow", "shadow"]) expect(r[part]!.line).toBe("예상 메이크업에서 변화를 찾지 못했어요");
     expect(r.cheek).toBeUndefined();   // 볼은 아직 재지 않는다 — 줄을 내지 않는다
   });
 
   it("F3 라이너는 옮긴 그림이 있어야 본다 — 없으면 볼 수 없었어요, 있으면 길이를 정답과 견준다", () => {
     expect(say(lips(0.6)).liner!.line).toBe("이번에는 볼 수 없었어요");
-    expect(say(lips(0.6), over(tail("R", 0.3), tail("L", 0.3))).liner!.line).toBe("정답과 비슷해요");
-    expect(say(lips(0.6), over(tail("R", 0.15), tail("L", 0.15))).liner!.line).toBe("꼬리가 정답보다 짧아요");
+    expect(say(lips(0.6), over(tail("R", 0.3), tail("L", 0.3))).liner!.line).toBe("예상 메이크업과 비슷해요");
+    expect(say(lips(0.6), over(tail("R", 0.15), tail("L", 0.15))).liner!.line).toBe("꼬리가 예상 메이크업보다 짧아요");
     expect(say(lips(0.6), tail("R", 0.3)).liner!.line).toBe("왼쪽 눈에 꼬리가 없어요");
     expect(say(lips(0.6), () => null).liner!.line).toBe("내 화장에서 꼬리를 찾지 못했어요");
   });
@@ -126,11 +126,11 @@ describe("눈썹 꼬리 끝 (browTail) — 머리카락 분할이 있어야 잰�
   it("T4 문장: 정답이 꼬리를 늘렸는데 안 늘렸으면 '눈썹 꼬리가 짧아요' · 정답이 안 늘렸으면 말하지 않는다", () => {
     const base = { target: 13, amountR: 0.9, amountL: 0.9, below: 0.1, belowTarget: 0.1 };
     const line = (brow: NonNullable<WholeMeasures["brow"]>) => composeFeedback({ brow }).parts.find((p) => p.part === "brow")!;
-    expect(line({ ...base, tailTargetR: 0.2, tailTargetL: 0.2, tailR: 0.0, tailL: 0.02 }).line).toBe("눈썹 꼬리가 정답보다 짧아요");
-    expect(line({ ...base, tailTargetR: 0.2, tailTargetL: 0.2, tailR: 0.2, tailL: 0.02 }).line).toBe("왼쪽 눈썹 꼬리가 정답보다 짧아요");
-    expect(line({ ...base, tailTargetR: 0.2, tailTargetL: 0.2, tailR: 0.18, tailL: 0.22 }).line).toBe("정답과 비슷해요");
-    expect(line({ ...base, tailTargetR: 0.02, tailTargetL: 0.0, tailR: 0.25, tailL: 0.25 }).line).toBe("눈썹 꼬리가 정답보다 길어요");
-    expect(line({ ...base, tailTargetR: 0.02, tailTargetL: 0.0, tailR: 0.05, tailL: 0.04 }).line).toBe("정답과 비슷해요");
+    expect(line({ ...base, tailTargetR: 0.2, tailTargetL: 0.2, tailR: 0.0, tailL: 0.02 }).line).toBe("눈썹 꼬리가 예상 메이크업보다 짧아요");
+    expect(line({ ...base, tailTargetR: 0.2, tailTargetL: 0.2, tailR: 0.2, tailL: 0.02 }).line).toBe("왼쪽 눈썹 꼬리가 예상 메이크업보다 짧아요");
+    expect(line({ ...base, tailTargetR: 0.2, tailTargetL: 0.2, tailR: 0.18, tailL: 0.22 }).line).toBe("예상 메이크업과 비슷해요");
+    expect(line({ ...base, tailTargetR: 0.02, tailTargetL: 0.0, tailR: 0.25, tailL: 0.25 }).line).toBe("눈썹 꼬리가 예상 메이크업보다 길어요");
+    expect(line({ ...base, tailTargetR: 0.02, tailTargetL: 0.0, tailR: 0.05, tailL: 0.04 }).line).toBe("예상 메이크업과 비슷해요");
   });
 });
 
@@ -157,7 +157,7 @@ describe("정답사진의 맨얼굴이 따로 있을 때 (targetBare)", () => {
   });
 
   it("B3 안 주면 내 맨얼굴과 겹친다고 본다 (지금까지와 같다)", () => {
-    expect(feedbackWhole({ bare, target: image(lips(0.6)), cur: frameOf(image(lips(0.6)), LMS) }).parts.find((p) => p.part === "lip")!.line).toBe("정답과 비슷해요");
+    expect(feedbackWhole({ bare, target: image(lips(0.6)), cur: frameOf(image(lips(0.6)), LMS) }).parts.find((p) => p.part === "lip")!.line).toBe("예상 메이크업과 비슷해요");
   });
 });
 
@@ -166,12 +166,12 @@ describe("문턱은 부위마다 · 여러 장은 가운데 값으로 (실험 41
     const line = (m: WholeMeasures, part: string) => composeFeedback(m).parts.find((p) => p.part === part)!;
     const lip = { target: 7, amount: 1, out: 0, outTarget: 0, upper: 1, lower: 1 }, shadow = { target: 4.5, amountR: 0.9, amountL: 0.9, higher: false, outer: 1, outerTarget: 1 };
     const brow = { target: 4.2, amountR: 0.9, amountL: 0.9, below: 0, belowTarget: 0 };
-    expect(line({ lip }, "lip").line).toBe("정답과 비슷해요");
-    expect(line({ lip: { ...lip, target: 4 } }, "lip").line).toBe("정답 화장에서 변화를 찾지 못했어요");
-    expect(line({ shadow }, "shadow").line).toBe("정답과 비슷해요");
-    expect(line({ shadow: { ...shadow, target: 3 } }, "shadow").line).toBe("정답 화장에서 변화를 찾지 못했어요");
-    expect(line({ brow }, "brow").line).toBe("정답 화장에서 변화를 찾지 못했어요");
-    expect(line({ brow: { ...brow, target: 7 } }, "brow").line).toBe("정답과 비슷해요");
+    expect(line({ lip }, "lip").line).toBe("예상 메이크업과 비슷해요");
+    expect(line({ lip: { ...lip, target: 4 } }, "lip").line).toBe("예상 메이크업에서 변화를 찾지 못했어요");
+    expect(line({ shadow }, "shadow").line).toBe("예상 메이크업과 비슷해요");
+    expect(line({ shadow: { ...shadow, target: 3 } }, "shadow").line).toBe("예상 메이크업에서 변화를 찾지 못했어요");
+    expect(line({ brow }, "brow").line).toBe("예상 메이크업에서 변화를 찾지 못했어요");
+    expect(line({ brow: { ...brow, target: 7 } }, "brow").line).toBe("예상 메이크업과 비슷해요");
   });
 
   it("M2 여러 장을 주면 값마다 가운데 값으로 판정한다 — 한두 장이 튀어도 문장이 안 바뀐다", () => {
@@ -179,7 +179,7 @@ describe("문턱은 부위마다 · 여러 장은 가운데 값으로 (실험 41
     // 다섯 장 중 두 장은 입술이 반쯤 지워진 것처럼 찍혔다
     const curs = [lips(0.6), lips(0.6), lips(0.6), (x: number, y: number) => (y > mid ? lips(0.6)(x, y) : null), () => null].map((p) => frameOf(image(p as Paint), LMS));
     const r = feedbackWhole({ bare, target, cur: curs }, true).parts.find((p) => p.part === "lip")!;
-    expect(r.line).toBe("정답과 비슷해요");
+    expect(r.line).toBe("예상 메이크업과 비슷해요");
     expect(feedbackWhole({ bare, target, cur: curs[4]! }, true).parts.find((p) => p.part === "lip")!.line).toBe("내 화장에서 변화를 찾지 못했어요");
   });
 

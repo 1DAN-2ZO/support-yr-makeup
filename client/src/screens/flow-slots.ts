@@ -57,7 +57,7 @@ export interface PartGuideSlotDeps {
 }
 
 /** 진짜 정답사진 그림이 떴을 때의 말풍선 */
-const GUIDE_COACH = "정답사진에서 이 부위만 크게 잘라서 보여드릴게요";
+const GUIDE_COACH = "예상 메이크업에서 이 부위만 크게 잘라서 보여드릴게요";
 
 /** 정답사진 가이드가 있는 부위인가 — 쉐딩(contour)은 없다 */
 const hasPhotoGuide = (p: PartId): p is FeedbackPart => (FEEDBACK_ORDER as readonly PartId[]).includes(p);
@@ -217,7 +217,7 @@ function uploadWarn(text: string): HTMLElement {
 }
 
 /** 기다리는 동안. 문구를 안 주면 정답사진 만들 때 쓰는 문구 (화면 3) */
-function loadingCard(title = "정답사진을 만들고 있어요", sub = "참고 사진의 화장을 맨얼굴 사진에 맞춰 정리하는 중이에요."): HTMLElement {
+function loadingCard(title = "예상 메이크업을 만들고 있어요", sub = "참고 사진의 화장을 맨얼굴 사진에 맞춰 정리하는 중이에요."): HTMLElement {
   const card = document.createElement("div");
   card.className = "slot-answer-loading";
   card.innerHTML = `
@@ -239,7 +239,7 @@ function answerPhotoCard(previewUrl?: string, alt = "올린 참고 사진"): HTM
       <span class="slot-answer-line two" aria-hidden="true"></span>
     </div>
     <div class="slot-answer-preview">
-      <b>정답사진 완성</b>
+      <b>예상 메이크업 완성</b>
       <p>이 사진을 기준으로 부위별 화장 가이드를 보여드릴게요.</p>
     </div>
   `;
@@ -305,9 +305,9 @@ function guideMock(part: PartId): HTMLElement {
 /** 못 그리는 까닭 — 왜 아직 피드백을 못 주는지 사람 말로 (feedback-run FeedbackMissing) */
 const FEEDBACK_MISSING: Record<string, string> = {
   bare: "맨얼굴 사진이 없어요. 처음 촬영부터 다시 해 주세요",
-  answer: "정답사진이 아직 없어요. 참고 사진을 올리는 화면부터 다시 해 주세요",
+  answer: "예상 메이크업이 아직 없어요. 참고 사진을 올리는 화면부터 다시 해 주세요",
   attempt: "화장한 사진이 없어요. 시도사진을 먼저 찍어 주세요",
-  answer_size: "정답사진이 맨얼굴과 크기가 달라요. 참고 사진을 다시 올려 주세요",
+  answer_size: "예상 메이크업이 맨얼굴과 크기가 달라요. 참고 사진을 다시 올려 주세요",
 };
 
 /** 종류 — 화면에서 어떻게 보일지 (#318: ok · fix · info 를 구분해 보인다) */
@@ -317,7 +317,7 @@ const TONE_LABEL: Record<string, string> = { ok: "비슷해요", fix: "다시 �
 function feedbackPhotos(answerUrl: string, attemptUrl: string): HTMLElement {
   const row = document.createElement("div");
   row.className = "fb-photos";
-  for (const [url, label] of [[answerUrl, "정답사진"], [attemptUrl, "내 화장"]] as const) {
+  for (const [url, label] of [[answerUrl, "예상 메이크업"], [attemptUrl, "내 화장"]] as const) {
     const fig = document.createElement("figure");
     fig.innerHTML = `<img src="${url}" alt="${label}" /><figcaption>${label}</figcaption>`;
     row.append(fig);
@@ -377,7 +377,7 @@ function saveCard(): HTMLElement {
   card.innerHTML = `
     <div>
       <strong>오늘의 화장 기록</strong>
-      <p>정답사진, 시도사진, 피드백을 한 장으로 저장해요.</p>
+      <p>예상 메이크업, 시도사진, 피드백을 한 장으로 저장해요.</p>
     </div>
     <span aria-hidden="true"></span>
   `;
@@ -411,7 +411,7 @@ export function slotScreen<S>(spec: SlotSpec, deps: SlotDeps = {}): Screen<S> {
           root.append(
             testMeta(spec.title, spec.owner, spec.todo),
             coach("따라 하고 싶은 화장 사진을 먼저 올려 주세요"),
-            title("참고 사진 · 정답사진", "참고 사진을 올리면 정답사진을 만들어드릴게요"),
+            title("참고 사진 · 예상 메이크업", "참고 사진을 올리면 예상 메이크업을 만들어드릴게요"),
             uploadCard(previewUrl, (f) => {
               dropPreview();
               picked = f;
@@ -482,9 +482,9 @@ export function slotScreen<S>(spec: SlotSpec, deps: SlotDeps = {}): Screen<S> {
           const read = Object.keys(res.colors).length;
           root.append(
             testMeta(spec.title, spec.owner, spec.todo),
-            coach("정답사진이 완성됐어요. 이제 부위별로 따라 해볼게요"),
-            title("정답사진 완성", "이 사진을 기준으로 화장 가이드가 만들어져요"),
-            madeUrl ? answerPhotoCard(madeUrl, "정답사진") : answerPhotoCard(res.preview),
+            coach("예상 메이크업이 완성됐어요. 이제 부위별로 따라 해볼게요"),
+            title("예상 메이크업 완성", "이 사진을 기준으로 화장 가이드가 만들어져요"),
+            madeUrl ? answerPhotoCard(madeUrl, "예상 메이크업") : answerPhotoCard(res.preview),
             colorPalette(res.colors, {
               step: "2.",
               title: "참고 사진의 색조 팔레트",
@@ -498,14 +498,14 @@ export function slotScreen<S>(spec: SlotSpec, deps: SlotDeps = {}): Screen<S> {
         root.append(
           testMeta(spec.title, spec.owner, spec.todo),
           coach("화장을 다 했다면 같은 조건으로 한 번 더 찍어 주세요"),
-          title("시도사진 촬영", "눈 뜬 사진과 감은 사진 2장을 자동으로 찍어요"),
+          title("시도사진 촬영", "화장한 얼굴을 자동으로 찍어요"),
           uploadCard(null, () => {}),
           action(ctx as ScreenContext<unknown>, "다음 · 피드백 확인하기", spec.next),
         );
       } else {
         root.append(
           testMeta(spec.title, spec.owner, spec.todo),
-          coach("정답사진과 시도사진을 비교해서 말로 알려드릴게요"),
+          coach("예상 메이크업과 시도사진을 비교해서 말로 알려드릴게요"),
           title("피드백", "점수 없이, 어디가 잘 맞고 어디를 조정하면 되는지만 보여줘요"),
           action(ctx as ScreenContext<unknown>, "다음 · 저장하러 가기", spec.next),
         );
@@ -535,7 +535,7 @@ export function partGuideSlot<S>(deps: PartGuideSlotDeps): Screen<S> {
       if (!part) return;
       const next = nextGuidePart(part);
       // 정답사진을 다시 보거나 참고 사진을 바꾸고 싶을 때 (#369)
-      const root = page("slot-partguide", { label: "정답사진으로 돌아가기", onBack: () => {
+      const root = page("slot-partguide", { label: "예상 메이크업으로 돌아가기", onBack: () => {
         ctx.log.log({ name: "button", button: "back:answer" });
         ctx.go("answer");
       } });
@@ -587,7 +587,7 @@ export function partGuideSlot<S>(deps: PartGuideSlotDeps): Screen<S> {
         if (!r.view.found.includes(part)) {
           const none = document.createElement("p");
           none.className = "muted slot-status";
-          none.textContent = "정답사진에서 이 부위의 화장은 찾지 못했어요. 사진을 보고 따라 해 주세요.";
+          none.textContent = "예상 메이크업에서 이 부위의 화장은 찾지 못했어요. 사진을 보고 따라 해 주세요.";
           photo.after(none);
         }
       }).catch(() => { if (alive) photo.replaceChildren(...mock); });
@@ -634,10 +634,10 @@ export function feedbackSlot<S>(deps: FeedbackSlotDeps): Screen<S> {
         });
 
       show(
-        coach("정답사진과 견줘서 어디를 다시 보면 좋을지 알려드릴게요"),
+        coach("예상 메이크업과 견줘서 어디를 다시 보면 좋을지 알려드릴게요"),
         title("피드백", "점수 없이, 어디가 잘 맞고 어디를 다듬으면 되는지만 보여줘요"),
         // 부위별로 하나씩 채우지 않는다 — 다 준비되면 한 번에 바꾼다 (#318). 10초쯤 걸릴 수 있다
-        loadingCard("찍은 사진을 보고 있어요", "정답사진과 견주는 중이에요. 잠시만 기다려 주세요."),
+        loadingCard("찍은 사진을 보고 있어요", "예상 메이크업과 견주는 중이에요. 잠시만 기다려 주세요."),
       );
 
       // 못 보여 줄 때 — 까닭을 말하고 흐름은 막지 않는다
@@ -673,7 +673,7 @@ export function feedbackSlot<S>(deps: FeedbackSlotDeps): Screen<S> {
           return;
         }
         show(
-          coach("정답사진과 견줘서 어디를 다시 보면 좋을지 알려드릴게요"),
+          coach("예상 메이크업과 견줘서 어디를 다시 보면 좋을지 알려드릴게요"),
           title("피드백", "점수 없이, 어디가 잘 맞고 어디를 다듬으면 되는지만 보여줘요"),
           feedbackPhotos(v.answerUrl, v.attemptUrl),
           feedbackSummary(fb.ok, fb.fix),

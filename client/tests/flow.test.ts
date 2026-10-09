@@ -58,8 +58,8 @@ describe("F1 화면·부위 순서", () => {
 });
 
 describe("S 촬영 2장 게이트", () => {
-  it("S1 촬영은 정면 2장 — 눈 뜬 장 · 감은 장 (옆얼굴 45° 두 장은 2026-10-07 뺌)", () => {
-    expect(SHOTS.map((s) => s.id)).toEqual(["front_open", "front_closed"]);
+  it("S1 촬영은 정면 눈 뜬 장 하나 (옆얼굴 45° 두 장은 2026-10-07, 눈 감은 장은 2026-10-09 #386 에 뺌)", () => {
+    expect(SHOTS.map((s) => s.id)).toEqual(["front_open"]);
   });
 
   it("S2 정면 눈 뜸: 전부 맞으면 '찍을게요'", () => {
@@ -76,7 +76,6 @@ describe("S 촬영 2장 게이트", () => {
     expect(shotGate("front_open", { ...OK, faceInset: 0.05 }).ok).toBe(true);
     expect(shotGate("front_open", { ...OK, yaw: 20, closedA: true, closedB: true, faceRatio: 0.1 })).toMatchObject({ firstFail: "angle", text: "조금만 정면으로" });
     expect(shotGate("front_open", { ...OK, closedA: true, closedB: true, faceRatio: 0.1 })).toMatchObject({ firstFail: "eyes", text: "눈을 떠 주세요" });
-    expect(shotGate("front_closed", { ...OK, faceRatio: 0.1 })).toMatchObject({ firstFail: "eyes", text: "눈을 감아 주세요" });
     expect(shotGate("front_open", { ...OK, faceRatio: 0.1, sharpness: 1 })).toMatchObject({ firstFail: "size", text: "조금 더 가까이" });
     expect(shotGate("front_open", { ...OK, faceRatio: 0.9 })).toMatchObject({ firstFail: "size", text: "조금 멀리" });
     expect(shotGate("front_open", { ...OK, sharpness: 1, foreheadL: 20 })).toMatchObject({ firstFail: "sharp", text: "흔들려요. 잠시 멈춰 주세요" });
@@ -92,7 +91,6 @@ describe("S 촬영 2장 게이트", () => {
   it("S4 정면 장: 어느 쪽으로 돌렸든 '조금만 정면으로' 한 가지", () => {
     for (const yaw of [-40, -11, 11, 40]) {
       expect(shotGate("front_open", { ...OK, yaw })).toMatchObject({ firstFail: "angle", text: "조금만 정면으로" });
-      expect(shotGate("front_closed", { ...OK, closedA: true, closedB: true, yaw })).toMatchObject({ firstFail: "angle", text: "조금만 정면으로" });
     }
   });
 
@@ -101,8 +99,7 @@ describe("S 촬영 2장 게이트", () => {
       expect(/\d/.test(shotGate("front_open", m).text)).toBe(false);
     }
     const shots: Session["shots"] = { front_open: 1 };
-    expect(nextShot(shots)).toBe("front_closed");
-    shots.front_closed = 1;
+    // 눈 뜬 장 하나뿐이다 (눈 감은 장은 뺐다 #386)
     expect(nextShot(shots)).toBeNull();
     delete shots.front_open;
     expect(nextShot(shots)).toBe("front_open");
@@ -146,7 +143,7 @@ describe("S 촬영 2장 게이트", () => {
     // 얼굴 비율은 맞아도 눈 폭이 작으면 막는다 (저해상도 프레임)
     expect(shotGate("front_open", { ...OK, faceRatio: 0.39, eyeWidthPx: 55 }).firstFail).toBe("size");
     // 얼굴이 프레임에 비해 작으면 눈 폭이 넉넉해도 "가까이"
-    expect(shotGate("front_closed", { ...OK, closedA: true, closedB: true, faceRatio: 0.2, eyeWidthPx: 100 })).toMatchObject({ firstFail: "size", text: "조금 더 가까이" });
+    expect(shotGate("front_open", { ...OK, faceRatio: 0.2, eyeWidthPx: 100 })).toMatchObject({ firstFail: "size", text: "조금 더 가까이" });
     const { baselineL: _b, ...first } = OK;
     expect(shotGate("front_open", { ...first, foreheadL: 12.3 })).toMatchObject({ firstFail: "bright", text: "조금 더 밝은 곳으로" });
     expect(shotGate("front_open", { ...first, foreheadL: 39.9 }).firstFail).toBe("bright");
@@ -313,17 +310,16 @@ describe("P 세션", () => {
 });
 
 describe("밝기·색 허용 차 — 첫 장 대비 (2026-09-30 1차 실측: 정면 두 장 최대 7.5·4.1, × 1.5)", () => {
-  const closed: ShotMeasure = { ...OK, closedA: true, closedB: true };
   const ab = (a: number, b: number) => ({ foreheadAb: { a, b }, baselineAb: { a: 0, b: 0 } });
 
   it("T1 밝기 차 12 까지 통과, 13 은 막는다", () => {
-    expect(shotGate("front_closed", { ...closed, baselineL: 60, foreheadL: 72 }).ok).toBe(true);
-    expect(shotGate("front_closed", { ...closed, baselineL: 60, foreheadL: 73 }).firstFail).toBe("bright");
-    expect(shotGate("front_closed", { ...closed, baselineL: 60, foreheadL: 47 }).firstFail).toBe("bright");
+    expect(shotGate("front_open", { ...OK, baselineL: 60, foreheadL: 72 }).ok).toBe(true);
+    expect(shotGate("front_open", { ...OK, baselineL: 60, foreheadL: 73 }).firstFail).toBe("bright");
+    expect(shotGate("front_open", { ...OK, baselineL: 60, foreheadL: 47 }).firstFail).toBe("bright");
   });
   it("T3 색 차 6 까지 통과, 8 은 막는다", () => {
-    expect(shotGate("front_closed", { ...closed, ...ab(6, 0) }).ok).toBe(true);
-    expect(shotGate("front_closed", { ...closed, ...ab(8, 0) }).firstFail).toBe("color");
+    expect(shotGate("front_open", { ...OK, ...ab(6, 0) }).ok).toBe(true);
+    expect(shotGate("front_open", { ...OK, ...ab(8, 0) }).firstFail).toBe("color");
   });
   it("T4 값: 12·6. 옆얼굴 전용 값은 없다", () => {
     expect(CAPTURE_LIMITS).toMatchObject({ brightTol: 12, colorTol: 6 });

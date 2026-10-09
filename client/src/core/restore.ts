@@ -32,7 +32,7 @@ export function planRestore(draft: SessionDraft | null, now: () => number = Date
     return { kind: "capture", session: { ...fresh, consent: true, screen: "capture", startedAt: draft.startedAt }, lostShots };
   }
   const shots: Partial<Record<ShotId, unknown>> = {};
-  // 지금 찍는 장만 되살린다 — 옛 draft 에는 옆얼굴 45° 두 장이 남아 있을 수 있다 (2026-10-07 2장으로)
+  // 지금 찍는 장만 되살린다 — 옛 draft 에는 옆얼굴 45° 두 장(2026-10-07 뺌) · 눈 감은 장(2026-10-09 뺌 #386)이 남아 있을 수 있다
   for (const s of SHOTS) if (draft.shots[s.id]) shots[s.id] = true;
   const session: Session = {
     ...fresh,

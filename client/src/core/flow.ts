@@ -61,10 +61,12 @@ export const SCREEN_NAME: Record<ScreenId, string> = {
 /** 부위 순서 = 룩 5부위 + 쉐딩·하이라이트(고정 마지막) */
 export const PART_ORDER: readonly PartId[] = PART_IDS;
 
-// ---------- 화면 1: 촬영 2장 ----------
+// ---------- 화면 1: 촬영 1장 ----------
 // 옆얼굴 45° 두 장은 뺐다 (2026-10-07, 새 흐름) — 쓰던 곳(서버 법선 정밀화 · 2-b AR)이 없어졌다
+// 눈 감은 장도 뺐다 (2026-10-09, #386) — 찍기만 하고 쓰는 곳이 없었다: 예상 메이크업(정답사진) · 부위 가이드 · 피드백이
+// 전부 눈 뜬 장만 읽는다. 눈을 감고 소리에 기대어 찍는 단계라 실패하기도 쉬웠다
 
-export type ShotId = "front_open" | "front_closed";
+export type ShotId = "front_open";
 
 export interface ShotSpec {
   id: ShotId;
@@ -76,7 +78,6 @@ export interface ShotSpec {
 
 export const SHOTS: readonly ShotSpec[] = [
   { id: "front_open", name: "정면 · 눈 뜸", yaw: [-10, 10], eyes: "open" },
-  { id: "front_closed", name: "정면 · 눈 감음", yaw: [-10, 10], eyes: "closed" },
 ];
 
 /**

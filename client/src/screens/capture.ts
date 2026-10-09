@@ -1,7 +1,7 @@
 /**
- * 화면 1 — 맨얼굴 2장(정면 눈 뜬 장 · 감은 장) 자동 촬영 (F-01, 정의서 화면 1). 모듈 ①.
+ * 화면 1 — 맨얼굴(정면 눈 뜬 장 하나) 자동 촬영. 눈 감은 장은 2026-10-09 뺌 (#386) (F-01, 정의서 화면 1). 모듈 ①.
  *
- * 흐름: 촬영 안내(이마·귀·안경) → 카메라 → 장마다 조건 한 줄 → 조건이 안정되면 자동으로 찍음 → 2장 → 완료(썸네일·장별 다시 찍기) → 서버 처리.
+ * 흐름: 촬영 안내(이마·귀·안경) → 카메라 → 장마다 조건 한 줄 → 조건이 안정되면 자동으로 찍음 → 완료(썸네일·장별 다시 찍기) → 서버 처리.
  * 측정·조건은 프로브(capture-probe, 폰 실측 1-2)와 같은 코드다: core/capture-measure · screens/frame-measure · core/capture-run.
  *
  *  - 정면 눈 뜸을 찍으면 기준(Baseline)을 만들고 쌩얼 사진을 IndexedDB 에 저장한다 (1-7 "bare").
@@ -100,7 +100,7 @@ let audio: AudioContext | null = null;
  *
  * 새 흐름에서 촬영 안내 화면(showGuide)이 동의 화면으로 옮겨가면서 이 호출도 같이 없어졌다 (#338 ③).
  * 지금은 동의 화면의 "동의하고 시작" 이 부른다 (screens/consent.ts).
- * 눈 감은 장은 화면을 못 보니 이 소리가 찍혔다는 **유일한 신호**다.
+ * 자동으로 찍히니 이 소리가 찍혔다는 신호다.
  */
 export function unlockShutterCue(): void {
   try { audio ??= new AudioContext(); void audio.resume(); } catch { /* 소리 못 염 */ }
@@ -240,7 +240,9 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
         };
 
         const setStep = (): void => {
-          step.textContent = run.shot ? `${SHOTS.findIndex((s) => s.id === run.shot) + 1}/${SHOTS.length} · ${STEP_TEXT[run.shot]}` : "";
+          // 장이 여럿일 때만 "1/2 · " 처럼 번호를 붙인다 — 지금은 한 장이라(#386) 안내 문장만
+          const order = SHOTS.length > 1 && run.shot ? `${SHOTS.findIndex((s) => s.id === run.shot) + 1}/${SHOTS.length} · ` : "";
+          step.textContent = run.shot ? `${order}${STEP_TEXT[run.shot]}` : "";
         };
         const setCoach = (text: string): void => {
           if (coachText) coachText.textContent = text || "얼굴을 맞춰 주세요";
@@ -348,7 +350,7 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
           const cv = grabFrame(video);
           flash.hidden = false;
           setTimeout(() => (flash.hidden = true), 250);
-          shutterCue(id === "front_closed");
+          shutterCue(false);
           const data: ShotData = { cv, lm, w, h, forehead, expr };
           if (id === "front_open") setFront(data);
           deps.setShot(id, data);
