@@ -72,10 +72,10 @@ describe("사진 보관 보내기", () => {
   it("KC5 아직 못 보낸 같은 종류가 있으면 새것으로 바꾼다 — 다시 찍은 사진만 간다", async () => {
     const s = server(), k = make(s);
     k.keep("bare", photo(1));
-    k.keep("attempt_closed", photo(2));
-    k.keep("attempt_closed", photo(3));
+    k.keep("attempt_open_0", photo(2));
+    k.keep("attempt_open_0", photo(3));
     await k.idle();
-    expect(s.posts().map((c) => `${c.kind}:${c.size}`)).toEqual(["bare:1", "attempt_closed:3"]);
+    expect(s.posts().map((c) => `${c.kind}:${c.size}`)).toEqual(["bare:1", "attempt_open_0:3"]);
   });
 
   it("KC6 보내다 실패해도 던지지 않고 다음 것을 이어 보낸다 — 보관이 화면을 막지 않는다", async () => {
@@ -113,13 +113,12 @@ describe("사진 보관 보내기", () => {
     expect(JSON.parse(sent)).toEqual({ ok: ["입술"], fix: [], parts: [{ part: "lip", name: "입술", tone: "ok", line: "정답과 비슷해요" }] });
   });
 
-  it("KC10 시도사진 묶음 — 눈 뜬 장은 다섯 장까지 순서대로, 눈 감은 장은 한 장. 여섯째부터는 안 보낸다", () => {
+  it("KC10 시도사진 묶음 — 눈 뜬 장을 다섯 장까지 순서대로. 여섯째부터는 안 보낸다 (눈 감은 장은 이제 찍지 않는다 #386)", () => {
     const keep = vi.fn();
-    const open = [1, 2, 3, 4, 5, 6].map(photo), closed = photo(9);
-    keepAttempt({ keep }, open, closed);
-    expect(keep.mock.calls.map((c) => `${c[0]}:${(c[1] as Blob).size}`)).toEqual(["attempt_open_0:1", "attempt_open_1:2", "attempt_open_2:3", "attempt_open_3:4", "attempt_open_4:5", "attempt_closed:9"]);
+    keepAttempt({ keep }, [1, 2, 3, 4, 5, 6].map(photo));
+    expect(keep.mock.calls.map((c) => `${c[0]}:${(c[1] as Blob).size}`)).toEqual(["attempt_open_0:1", "attempt_open_1:2", "attempt_open_2:3", "attempt_open_3:4", "attempt_open_4:5"]);
     keep.mockClear();
-    keepAttempt({ keep }, [photo(1)], null);
+    keepAttempt({ keep }, [photo(1)]);
     expect(keep.mock.calls.map((c) => c[0])).toEqual(["attempt_open_0"]);
   });
 

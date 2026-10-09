@@ -12,7 +12,7 @@
 import type { WholeFeedback } from "./feedback-whole";
 
 /** 보관하는 사진의 종류 — server/app/keep.py PHOTO_KINDS 와 같은 이름. 참고 사진은 없다 */
-export type KeepKind = "bare" | "answer" | "moved" | "attempt_closed" | "attempt_open_0" | "attempt_open_1" | "attempt_open_2" | "attempt_open_3" | "attempt_open_4";
+export type KeepKind = "bare" | "answer" | "moved" | "attempt_open_0" | "attempt_open_1" | "attempt_open_2" | "attempt_open_3" | "attempt_open_4";
 
 /** 시도사진 눈 뜬 장은 다섯 장까지 */
 export const KEEP_ATTEMPT_OPEN = 5;
@@ -37,12 +37,11 @@ export interface Keeper {
 }
 
 /**
- * 시도사진 묶음을 보관하러 보낸다 — 눈 뜬 장은 다섯 장까지 찍힌 순서대로([0] 이 셔터 장), 눈 감은 장은 한 장.
+ * 시도사진 묶음을 보관하러 보낸다 — 눈 뜬 장 다섯 장까지 찍힌 순서대로([0] 이 셔터 장). 눈 감은 장은 이제 찍지 않는다 (#386).
  * 다시 찍으면 같은 이름으로 다시 보내 서버의 것이 바뀐다
  */
-export function keepAttempt(keeper: Pick<Keeper, "keep">, open: readonly Blob[], closed: Blob | null): void {
+export function keepAttempt(keeper: Pick<Keeper, "keep">, open: readonly Blob[]): void {
   open.slice(0, KEEP_ATTEMPT_OPEN).forEach((b, i) => keeper.keep(`attempt_open_${i}` as KeepKind, b));
-  if (closed) keeper.keep("attempt_closed", closed);
 }
 
 export function createKeeper(opt: KeeperOptions): Keeper {

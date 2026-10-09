@@ -32,7 +32,7 @@ const baseline = (bare: Blob | null, over: Partial<Baseline> = {}): Baseline => 
 });
 const tries = (...open: Blob[]): AttemptShots => {
   const s = (blob: Blob): AttemptShot => ({ blob, lm: LMS, w: W, h: H });
-  return { front_open: open.map(s), front_closed: [s(photo())] };
+  return { front_open: open.map(s) };
 };
 
 let urls: string[] = [], revoked: string[] = [];
@@ -91,7 +91,7 @@ describe("피드백 재료 모으기 (loadFeedback)", () => {
     const big = LMS.map((p) => ({ x: p.x * 2, y: p.y * 2 }));
     const r = await loadFeedback(deps({
       getBaseline: () => baseline(photo(), { lm: big, w: W * 2, h: H * 2 }),
-      getAttempt: () => ({ front_open: [{ blob: photo(lips(0.6)), lm: big, w: W * 2, h: H * 2 }], front_closed: [] }),
+      getAttempt: () => ({ front_open: [{ blob: photo(lips(0.6)), lm: big, w: W * 2, h: H * 2 }] }),
     }));
     if (!r.ok) throw new Error(r.missing);
     expect(r.view.feedback.parts.find((p) => p.part === "lip")?.line).toBe("예상 메이크업과 비슷해요");

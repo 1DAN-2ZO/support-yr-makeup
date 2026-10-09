@@ -263,7 +263,7 @@ async function boot(): Promise<void> {
     return r;
   };
 
-  // 5 시도사진 (⑥) — 화장을 다 한 뒤 정면 눈 뜬 장 · 감은 장. 6 피드백(③)이 getAttempt 로 받아 쓴다.
+  // 5 시도사진 (⑥) — 화장을 다 한 뒤 정면 눈 뜬 장. 6 피드백(③)이 getAttempt 로 받아 쓴다.
   // 메모리에만 둔다 — 앱을 다시 켜면 다시 찍는다 (저장소 사진 키는 ① 의 session-store 라 아직 안 늘렸다)
   let attempt: AttemptShots | null = null;
   const getAttempt = (): AttemptShots | null => attempt;
@@ -272,7 +272,7 @@ async function boot(): Promise<void> {
       attempt = shots;
       judged = null;
       // 테스트 기간 보관 (서버가 켜져 있을 때만 — core/keep-client)
-      keepAttempt(keeper, shots.front_open.map((s) => s.blob), shots.front_closed[0]?.blob ?? null);
+      keepAttempt(keeper, shots.front_open.map((s) => s.blob));
       // 옛 시도사진으로 만든 옮긴 그림은 못 쓴다 — 만드는 중이던 것도 버린다
       maker.cancel("moved");
       void putMade("moved", null);

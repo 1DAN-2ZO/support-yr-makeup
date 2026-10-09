@@ -1,5 +1,5 @@
 /**
- * [1-2·1-3 실측용 측정 도구] 폰에서 자동 촬영(정면 2장)을 돌려 시간·재촬영을 잰다.
+ * [1-2·1-3 실측용 측정 도구] 폰에서 자동 촬영(정면 눈 뜬 장)을 돌려 시간·재촬영을 잰다.
  * 1-1 의 shotGate(flow.ts) 를 실제 카메라 프레임에 연결한 최소 화면.
  *  - 동의 화면(F-01) → 프레임마다 ShotMeasure: yaw(랜드마크 · 행렬 두 식), 눈 감음(블렌드셰이프 · EAR), 얼굴 비율, 잘림 여백, 선명도, 이마 L*
  *  - 5프레임 연속 통과 → 자동 촬영 → 찍힌 사진을 크게 보여 주고 "다음 / 다시 찍기" (한 장씩 확인)
@@ -92,21 +92,21 @@ interface ProbeResult {
 interface ShakeStats { n: number; min: number; p10: number; median: number; max: number }
 interface ShakeResult { still: ShakeStats; shaky: ShakeStats; frontOpenSharpness: number | null; irisPx: ShakeStats }
 
-const NAME: Record<ShotId, string> = { front_open: "정면·눈뜸", front_closed: "정면·눈감음" };
+const NAME: Record<ShotId, string> = { front_open: "정면·눈뜸" };
 const state = {
   lm: null as FaceLandmarker | null,
   stream: null as MediaStream | null,
   shots: {} as Partial<Record<ShotId, { cv: HTMLCanvasElement; rec: ShotRecord }>>,
   order: [] as ShotId[],
   pending: null as { shot: ShotId; cv: HTMLCanvasElement; rec: ShotRecord; shownAt: number } | null,
-  rejected: { front_open: 0, front_closed: 0 } as Record<ShotId, number>,
+  rejected: { front_open: 0 } as Record<ShotId, number>,
   stable: 0,
   shotStart: 0,
   runStart: 0,
   lastShotAt: 0,
   lostSince: null as number | null,
   blocked: {} as Partial<Record<GateFail, number>>,
-  retakes: { front_open: 0, front_closed: 0 } as Record<ShotId, number>,
+  retakes: { front_open: 0 } as Record<ShotId, number>,
   baselineL: undefined as number | undefined,
   frameMs: [] as number[],
   modelMs: 0,
@@ -486,7 +486,7 @@ async function finish(): Promise<void> {
     shake: state.shake.phase === "done" ? { still: stats(state.shake.still), shaky: stats(state.shake.shaky), frontOpenSharpness: state.shots.front_open?.rec.at.sharpness ?? null, irisPx: stats(state.shake.iris) } : null,
     events: mem.lines,
   };
-  const row = `| ${shortUa()} | ${result.startedAt.slice(0, 10)} | ${result.captureSeconds} | ${state.retakes.front_open} | ${state.retakes.front_closed} | 프레임 ${result.frameW}×${result.frameH} · ${result.frameMsAvg}ms/프레임 |`;
+  const row = `| ${shortUa()} | ${result.startedAt.slice(0, 10)} | ${result.captureSeconds} | ${state.retakes.front_open} | - | 프레임 ${result.frameW}×${result.frameH} · ${result.frameMsAvg}ms/프레임 |`;
   const d = result.labDrift;
   const row14 = d ? `| (사람) | (조명) | ${r1(d.rangeL)} | ${r1(d.rangeA)} | ${r1(d.rangeB)} | ${r1(d.maxDeltaE)} | ${shortUa()} |` : "(장이 2장 미만이라 못 구함)";
   let sent = "";

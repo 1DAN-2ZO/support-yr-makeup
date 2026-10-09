@@ -498,7 +498,7 @@ export function slotScreen<S>(spec: SlotSpec, deps: SlotDeps = {}): Screen<S> {
         root.append(
           testMeta(spec.title, spec.owner, spec.todo),
           coach("화장을 다 했다면 같은 조건으로 한 번 더 찍어 주세요"),
-          title("시도사진 촬영", "눈 뜬 사진과 감은 사진 2장을 자동으로 찍어요"),
+          title("시도사진 촬영", "화장한 얼굴을 자동으로 찍어요"),
           uploadCard(null, () => {}),
           action(ctx as ScreenContext<unknown>, "다음 · 피드백 확인하기", spec.next),
         );

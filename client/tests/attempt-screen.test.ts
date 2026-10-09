@@ -92,33 +92,28 @@ describe("화면 5 시도사진", () => {
     expect(detect).not.toHaveBeenCalled();
   });
 
-/** 시작해서 두 장을 찍는다 — 찍은 뒤 미리보기까지 */
-async function shootBoth(ctx: ScreenContext<null>, t0 = 1000): Promise<number> {
+/** 시작해서 눈 뜬 묶음을 찍는다 — 찍은 뒤 미리보기까지 (눈 감은 장은 뺐다 #386) */
+async function shoot(_ctx: ScreenContext<null>, t0 = 1000): Promise<number> {
   eyes = "open";
-  let t = await run(t0, 3000);                    // 자리 잡기(1.5초) + 안정 + 다섯 장 묶음
-  eyes = "closed";
-  t = await run(t, 600);
+  const t = await run(t0, 3000);                  // 자리 잡기(1.5초) + 안정 + 다섯 장 묶음
   await vi.advanceTimersByTimeAsync(0);
   return t;
 }
 const buttonOf = (ctx: ScreenContext<null>, text: string) => [...ctx.root.querySelectorAll("button")].find((b) => b.textContent === text);
 
-  it("AS2 눈 뜬 장 → 감은 장을 차례로 자동으로 찍고, 두 장을 보여 준 뒤 '이대로 피드백 받기' 로 넘긴다", async () => {
+  it("AS2 눈 뜬 장을 자동으로 찍고, 찍은 사진을 보여 준 뒤 '이대로 피드백 받기' 로 넘긴다 — 눈을 감으라고 하지 않는다 (#386)", async () => {
     const { ctx, setAttempt } = mount();
     await start(ctx);
     const line = () => ctx.root.querySelector(".cam-step")?.textContent;
     expect(line()).toBe(STEP_TEXT.front_open);
-    let t = await run(1000, 3000);                 // 자리 잡기(1.5초) + 안정 + 다섯 장 묶음
-    expect(line()).toBe(STEP_TEXT.front_closed);   // 눈 뜬 묶음이 찍혀 감은 장 차례
-    expect(setAttempt).not.toHaveBeenCalled();
-    eyes = "closed";
-    t = await run(t, 600);
+    await run(1000, 3000);                         // 자리 잡기(1.5초) + 안정 + 다섯 장 묶음
     await vi.advanceTimersByTimeAsync(0);
-    // 미리보기 — 두 장 사진과 버튼 둘. 아직 넘기지 않는다
+    // 미리보기 — 사진 한 장과 버튼 둘. 아직 넘기지 않는다
     const imgs = [...ctx.root.querySelectorAll<HTMLImageElement>(".attempt-preview img")];
-    expect(imgs).toHaveLength(2);
+    expect(imgs).toHaveLength(1);
     expect(ctx.root.textContent).toContain(ATTEMPT_TEXT.openLabel);
-    expect(ctx.root.textContent).toContain(ATTEMPT_TEXT.closedLabel);
+    expect(ctx.root.textContent).not.toContain("감은");
+    expect(ctx.root.textContent).not.toContain("감아");
     expect(stopped).toBeGreaterThan(0);            // 다 찍으면 카메라를 끈다
     expect(setAttempt).not.toHaveBeenCalled();
     expect(ctx.go).not.toHaveBeenCalled();
@@ -126,7 +121,7 @@ const buttonOf = (ctx: ScreenContext<null>, text: string) => [...ctx.root.queryS
     await vi.advanceTimersByTimeAsync(0);
     expect(setAttempt).toHaveBeenCalledTimes(1);
     const shots = setAttempt.mock.calls[0]![0] as AttemptShots;
-    expect(Object.keys(shots).sort()).toEqual(["front_closed", "front_open"]);
+    expect(Object.keys(shots)).toEqual(["front_open"]);
     for (const s of Object.values(shots).flat()) {
       expect(s.blob).toBeInstanceOf(Blob);
       expect(s.lm).toHaveLength(LMS.length);
@@ -135,31 +130,30 @@ const buttonOf = (ctx: ScreenContext<null>, text: string) => [...ctx.root.queryS
     expect(ctx.go).toHaveBeenCalledWith("feedback");
   });
 
-  it("AS6 '다시 찍기' 를 누르면 눈 뜬 장부터 다시 찍고, 다시 미리보기 — 넘기는 건 마지막에 찍은 두 장", async () => {
+  it("AS6 '다시 찍기' 를 누르면 처음부터 다시 찍고, 다시 미리보기 — 넘기는 건 마지막에 찍은 묶음", async () => {
     const { ctx, setAttempt } = mount();
     await start(ctx);
-    const t = await shootBoth(ctx);
+    const t = await shoot(ctx);
     buttonOf(ctx, ATTEMPT_TEXT.retake)!.click();
     await vi.advanceTimersByTimeAsync(100);
     expect(ctx.root.querySelector(".attempt-preview")).toBeNull();
     expect(ctx.root.querySelector(".cam-step")?.textContent).toBe(STEP_TEXT.front_open);
     expect(revoked).toEqual(urls);                  // 앞 미리보기 사진은 돌려준다
-    await shootBoth(ctx, t + 1000);
-    expect(ctx.root.querySelectorAll(".attempt-preview img")).toHaveLength(2);
+    await shoot(ctx, t + 1000);
+    expect(ctx.root.querySelectorAll(".attempt-preview img")).toHaveLength(1);
     expect(setAttempt).not.toHaveBeenCalled();
     buttonOf(ctx, ATTEMPT_TEXT.confirm)!.click();
     await vi.advanceTimersByTimeAsync(0);
     expect(setAttempt).toHaveBeenCalledTimes(1);
     const shots = setAttempt.mock.calls[0]![0] as AttemptShots;
-    // 다시 찍은 것 — 앞 묶음(눈 뜬 5장 + 감은 1장)은 jpeg1~6
-    expect(await Promise.all(shots.front_open.map((s) => s.blob.text()))).toEqual(["jpeg7", "jpeg8", "jpeg9", "jpeg10", "jpeg11"]);
-    expect(await Promise.all(shots.front_closed.map((s) => s.blob.text()))).toEqual(["jpeg12"]);
+    // 다시 찍은 것 — 앞 묶음(눈 뜬 5장)은 jpeg1~5
+    expect(await Promise.all(shots.front_open.map((s) => s.blob.text()))).toEqual(["jpeg6", "jpeg7", "jpeg8", "jpeg9", "jpeg10"]);
   });
 
   it("AS7 '이대로 피드백 받기' 를 두 번 눌러도 한 번만 넘긴다", async () => {
     const { ctx, setAttempt } = mount();
     await start(ctx);
-    await shootBoth(ctx);
+    await shoot(ctx);
     const b = buttonOf(ctx, ATTEMPT_TEXT.confirm)!;
     b.click(); b.click();
     await vi.advanceTimersByTimeAsync(0);
@@ -167,23 +161,22 @@ const buttonOf = (ctx: ScreenContext<null>, text: string) => [...ctx.root.queryS
     expect(ctx.go).toHaveBeenCalledTimes(1);
   });
 
-  it("AS8 눈 뜬 장은 다섯 장 묶음 · 감은 장은 한 장 — 피드백(③)이 값마다 가운데 값을 쓴다 (#328)", async () => {
+  it("AS8 눈 뜬 장은 다섯 장 묶음 — 피드백(③)이 값마다 가운데 값을 쓴다 (#328)", async () => {
     const { ctx, setAttempt } = mount();
     await start(ctx);
-    await shootBoth(ctx);
+    await shoot(ctx);
     buttonOf(ctx, ATTEMPT_TEXT.confirm)!.click();
     await vi.advanceTimersByTimeAsync(0);
     const shots = setAttempt.mock.calls[0]![0] as AttemptShots;
     expect(shots.front_open).toHaveLength(5);
-    expect(shots.front_closed).toHaveLength(1);
-    expect(ctx.root.querySelectorAll(".attempt-preview img")).toHaveLength(2);   // 미리보기는 종류마다 첫 장만
+    expect(ctx.root.querySelectorAll(".attempt-preview img")).toHaveLength(1);   // 미리보기는 셔터 장만
   });
 
   it("AS9 사진을 줄이지 않는다 — 맨얼굴과 같은 원본 크기 (줄이면 얼굴 점과 크기가 어긋나고 라이너 꼬리가 사라진다, #328 · #240)", async () => {
     const { ctx } = mount();
     await start(ctx);
-    await shootBoth(ctx);
-    expect(encodeSides).toHaveLength(6);
+    await shoot(ctx);
+    expect(encodeSides).toHaveLength(5);
     expect(encodeSides.every((s) => s === Number.POSITIVE_INFINITY)).toBe(true);
   });
 
@@ -195,22 +188,21 @@ const buttonOf = (ctx: ScreenContext<null>, text: string) => [...ctx.root.queryS
     for (; grabs === 0 && t < 6000; t += 33) fire(t);
     expect(grabs).toBe(1);
     eyes = "closed";
-    await run(t, 2500);                            // 묶음 제한 시간(1.5초)이 지나 감은 장으로 넘어가고, 감은 장도 찍힌다
+    await run(t, 2500);                            // 묶음 제한 시간(1.5초)이 지나면 모은 만큼으로 끝낸다
     await vi.advanceTimersByTimeAsync(0);
     buttonOf(ctx, ATTEMPT_TEXT.confirm)!.click();
     await vi.advanceTimersByTimeAsync(0);
     const shots = setAttempt.mock.calls[0]![0] as AttemptShots;
     expect(shots.front_open).toHaveLength(1);      // 눈 감은 장면은 눈 뜬 묶음에 안 들어간다
-    expect(shots.front_closed).toHaveLength(1);
   });
 
-  it("AS11 미리보기 사진은 화면 폭 안에 두 장이 나란히 들어온다 — 원본 크기 사진이라 그대로 두면 구석만 보이고 버튼이 화면 밖으로 밀린다 (폰 확인 2026-10-08, #344)", async () => {
+  it("AS11 미리보기 사진은 화면 폭 안에 들어온다 — 원본 크기 사진이라 그대로 두면 구석만 보이고 버튼이 화면 밖으로 밀린다 (폰 확인 2026-10-08, #344)", async () => {
     const { ctx } = mount();
     await start(ctx);
-    await shootBoth(ctx);
+    await shoot(ctx);
     const row = ctx.root.querySelector<HTMLElement>(".attempt-preview")!;
     expect(row.style.display).toBe("grid");
-    expect(row.style.gridTemplateColumns).toBe("1fr 1fr");
+    expect(row.style.gridTemplateColumns).toBe("minmax(0, 260px)");   // 한 장이라 가운데에, 너무 커지지 않게
     for (const img of row.querySelectorAll<HTMLImageElement>("img")) {
       expect(img.style.width).toBe("100%");     // 칸 폭에 맞춘다
       expect(img.style.height).toBe("auto");    // 비율은 그대로
@@ -218,10 +210,12 @@ const buttonOf = (ctx: ScreenContext<null>, text: string) => [...ctx.root.queryS
     for (const fig of row.querySelectorAll<HTMLElement>("figure")) expect(fig.style.margin).toBe("0px");   // 브라우저 기본 여백(양옆 40px)이 칸을 좁힌다
   });
 
-  it("AS3 눈을 감지 않으면 감은 장을 찍지 않는다 — 넘어가지 않는다", async () => {
+  it("AS3 눈을 감고 있으면 찍지 않는다 — 넘어가지 않는다", async () => {
     const { ctx, setAttempt } = mount();
     await start(ctx);
+    eyes = "closed";
     await run(1000, 6000);
+    expect(ctx.root.querySelector(".attempt-preview")).toBeNull();
     expect(setAttempt).not.toHaveBeenCalled();
     expect(ctx.go).not.toHaveBeenCalled();
   });
