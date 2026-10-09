@@ -10,6 +10,8 @@
   tint  : 다른 사람 얼굴에 섀도 파랑 · 입술 초록 · 볼에 큰 분홍 블러셔를 칠한 것
           → 그 색 쪽으로 가야 하고 (흔한 화장이면 빨간 입술로 간다), 큰 블러셔는 볼을 넓게 덮어야 한다
             (칠할 자리가 작으면 참고 사진의 큰 블러셔가 작게 옮겨졌다 — 2026-10-09, 팀원 방식(사진 전체를 새로 그림)과 견줘 봄)
+          → 블러셔 가장자리는 옅어지고 딱 끊긴 테두리가 없어야 한다 — 칠할 타원 그대로 되붙여 볼에 분홍 판을 붙인 것 같았다
+            (2026-10-09 사용자: 블러셔 주변부에 그라데이션). 볼만 옅게 하면 눈 밑 칠할 자리 아랫변에 띠가 남았다
   셋 다    : 눈 안쪽(흰자 · 눈동자)은 그대로여야 한다 — 다시 그려서 참고 사진의 눈꺼풀 선이 눈동자에 비쳤다 (2026-10-09 카리나 사진)
              돌려받은 그림은 무손실(webp VP8L · PNG) — 손실 webp 가 가는 선(라이너 꼬리)을 뭉갰다 (#393)
 
@@ -56,6 +58,11 @@ EYE_MAX = 2.0
 TINT_MIN = 4.0
 CHEEK_RED = 5.0
 CHEEK_COVER = 0.6
+# 블러셔 가장자리 — 칠하는 타원(CHEEK_PAINT) 테두리 띠(0.85 ~ 1)의 붉어진 정도가 가운데(0.4 안)의 BLUSH_EDGE 배 밑,
+# 볼 둘레(1.15 안, 입술 · 눈 둘레 빼고)에서 붉어진 정도가 바뀌는 가파름(눈 폭당, 가운데 값 대비 · 상위 0.5%)이 BLUSH_STEEP 밑.
+# 이 스크립트 · 같은 그림으로 — 타원 그대로: 0.61 · 14.1 / 볼만 옅게: 0.14 · 12.7 (눈 밑 띠) / 눈 밑도 옅게: 0.07 · 6.4 (2026-10-09)
+BLUSH_EDGE = 0.3
+BLUSH_STEEP = 9.0
 
 _lmk = FaceLandmarker.create_from_options(FaceLandmarkerOptions(
     base_options=BaseOptions(model_asset_path=str(Path.home() / ".cache" / "nudy" / "face_landmarker.task")), num_faces=1))
@@ -91,6 +98,29 @@ def cheeks(im, size):
         rx, ry = size[0] * ew, size[1] * ew
         ImageDraw.Draw(m).ellipse([c[0] - rx, c[1] - ry, c[0] + rx, c[1] + ry], fill=255)
     return np.asarray(m) > 0
+
+
+def cheek_q(im):
+    """볼 타원(CHEEK_PAINT) 가운데에서 잰 거리 — 1 이 타원 테두리 (두 볼 중 가까운 쪽) · 눈 폭"""
+    lm = landmarks(im)
+    yy, xx = np.mgrid[0:im.size[1], 0:im.size[0]].astype(np.float32)
+    q = np.full(yy.shape, 9.0, np.float32)
+    for lid, _ in LIDS:
+        o, i0 = lm[lid[0]], lm[lid[-1]]
+        ew = float(np.linalg.norm(o - i0))
+        c = (o + i0) / 2 + (o - i0) / ew * CHEEK_AT[0] * ew + np.array([0, CHEEK_AT[1] * ew])
+        q = np.minimum(q, np.hypot((xx - c[0]) / (CHEEK_PAINT[0] * ew), (yy - c[1]) / (CHEEK_PAINT[1] * ew)))
+    return q, ew
+
+
+def blush_edge(da, q, ew, lips, eye):
+    """(테두리 띠 / 가운데 붉어진 정도, 가파름) — da: 맨얼굴 대비 a* 변화"""
+    near_eye = cv2.dilate(eye.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (int(0.2 * ew) | 1,) * 2)) > 0
+    center = da[(q < 0.4) & ~lips].mean()
+    edge = da[(q > 0.85) & (q < 1.0) & ~lips & ~near_eye].mean()
+    gy, gx = np.gradient(cv2.GaussianBlur(da.astype(np.float32), (0, 0), 0.03 * ew))
+    steep = np.hypot(gx, gy) * ew / max(float(center), 1e-6)
+    return float(edge / center), float(np.percentile(steep[(q < 1.15) & ~lips & ~near_eye], 99.5))
 
 
 def zones(im):
@@ -176,6 +206,7 @@ def main():
     lm = landmarks(bare)
     sigma = EYE_BLUR * float(np.linalg.norm(lm[33] - lm[133]))
     B0 = blurred(L0, sigma)
+    q, ew = cheek_q(bare)
     refs = {"self": bare, "other": other, "tint": tinted(other)}
     ok = True
     for name, ref in refs.items():
@@ -191,9 +222,12 @@ def main():
                 # 입술은 초록 쪽(a* 내려감), 섀도는 파랑 쪽(b* 내려감)
                 greener, bluer = -d[lips][:, 1].mean(), -d[lids][:, 2].mean()
                 cover = float((d[cheek][:, 1] > CHEEK_RED).mean())
-                good = greener > TINT_MIN and bluer > TINT_MIN and cover > CHEEK_COVER and eye_ok and lossless(LAST["bytes"])
+                edge, steep = blush_edge(d[..., 1], q, ew, lips, eye)
+                soft = edge < BLUSH_EDGE and steep < BLUSH_STEEP
+                good = greener > TINT_MIN and bluer > TINT_MIN and cover > CHEEK_COVER and soft and eye_ok and lossless(LAST["bytes"])
                 print(f"{name:5s} seed {seed:4d}  입술 초록 쪽 {greener:+5.1f} · 섀도 파랑 쪽 {bluer:+5.1f}  (> {TINT_MIN})"
-                      f" · 볼 덮음 {cover:4.0%} (> {CHEEK_COVER:.0%}){eye_txt}  {'통과' if good else '실패'}")
+                      f" · 볼 덮음 {cover:4.0%} (> {CHEEK_COVER:.0%})"
+                      f" · 볼 테두리 {edge:4.2f} (< {BLUSH_EDGE}) · 가파름 {steep:4.1f} (< {BLUSH_STEEP}){eye_txt}  {'통과' if good else '실패'}")
             else:
                 good = de_lip < BARE_MAX and de_lid < BARE_MAX and eye_ok and lossless(LAST["bytes"])
                 print(f"{name:5s} seed {seed:4d}  입술 색 차 {de_lip:4.1f} · 섀도 자리 색 차 {de_lid:4.1f}  (< {BARE_MAX})"

@@ -71,6 +71,11 @@ BROW_MARGIN = 0.06   # 눈썹 윗선 위로 이만큼(눈 폭 비율) 더 칠할
 UNDER_EYE = 0.3                 # 아랫눈꺼풀에서 아래로
 CHEEK_AT = (0.25, 1.15)         # 볼 가운데 — 눈 가운데에서 바깥으로 · 아래로
 CHEEK_SIZE = (1.0, 0.8)         # 볼 타원 반지름 (가로 · 세로)
+# 원본에 되붙일 때 볼 · 눈 밑은 가장자리로 갈수록 옅게 — 칠할 타원 그대로 붙이니 볼에 분홍 판을 붙인 것 같았다
+# (2026-10-09 사용자: 블러셔 주변부에 그라데이션). 볼만 옅게 하면 눈 밑 칠할 자리 아랫변이 띠로 남아 눈 밑도 같이 (ref_follow_check.py)
+BLUSH_FADE = 0.5                # 볼 타원 가운데에서 반지름의 이만큼까지는 그린 그대로, 타원 테두리까지 옅어진다
+UNDER_HOLD = 0.15               # 눈 밑은 아랫눈꺼풀에서 이만큼까지 그린 그대로, UNDER_EYE 까지 옅어진다 (눈 밑 가림 · 색은 눈꺼풀 가까이에 남게)
+EDGE_FADE = 0.25                # 볼 · 눈 밑은 얼굴 윤곽(OVAL_KEEP 안쪽) 쪽으로도 이만큼에 걸쳐 옅어진다
 LIPS = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146]
 FACE_OVAL = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136,
              172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109]
@@ -132,40 +137,87 @@ def face_square(pil, lm):
     return left, top, side
 
 
+def eye_hull(lm, eye, under=True):
+    """눈 하나의 칠할 자리 점들: 눈두덩 ~ 눈썹(털 자리까지) · 꼬리 자리, under 면 눈 밑까지 (볼록 껍질로 칠한다)"""
+    up, lo, brow, brow_up, outer, inner = eye
+    o, i0 = lm[outer], lm[inner]
+    ew = float(np.linalg.norm(o - i0))
+    pts = [lm[k] for k in up + lo + brow] + [lm[k] + np.array([0, -BROW_MARGIN * ew]) for k in brow_up]
+    pts.append(o + (o - i0) / ew * 0.45 * ew + np.array([0, -0.15 * ew]))   # 꼬리 자리
+    if under:
+        pts += [lm[k] + np.array([0, UNDER_EYE * ew]) for k in lo]         # 눈 밑
+    arr = np.array(pts)
+    from scipy.spatial import ConvexHull
+    return [tuple(p) for p in arr[ConvexHull(arr).vertices]]
+
+
+def cheek_center(lm, eye):
+    """볼 타원 가운데 · 반지름 (가로, 세로) · 그 눈 폭"""
+    *_, outer, inner = eye
+    o, i0 = lm[outer], lm[inner]
+    ew = float(np.linalg.norm(o - i0))
+    return (o + i0) / 2 + (o - i0) / ew * CHEEK_AT[0] * ew + np.array([0, CHEEK_AT[1] * ew]), (CHEEK_SIZE[0] * ew, CHEEK_SIZE[1] * ew), ew
+
+
+def face_keep(lm, size):
+    """(칠해도 되는 곳 0 ~ 1, 줄인 얼굴 윤곽 안) — 얼굴 윤곽보다 조금 안쪽까지만, 눈 안쪽은 뺀다.
+    윤곽 끝까지 칠하게 했더니 얼굴 · 머리카락 경계를 다시 그려 볼 가이드에 옆선 띠가 잡혔다"""
+    keep = Image.new("L", (size, size), 0)
+    kd = ImageDraw.Draw(keep)
+    oval = np.array([lm[k] for k in FACE_OVAL])
+    c = oval.mean(axis=0)
+    kd.polygon([tuple(c + (p - c) * OVAL_KEEP) for p in oval], fill=255)
+    inside = np.asarray(keep) > 0
+    for up, lo, *_ in EYES:
+        kd.polygon([tuple(lm[k]) for k in up + lo[::-1]], fill=0)
+    return np.asarray(keep.filter(ImageFilter.GaussianBlur(1.5)), np.float32) / 255, inside
+
+
 def makeup_mask(lm, size):
     """화장 칠할 영역 (흰색 = 다시 그림): 눈두덩 ~ 눈썹(털 자리까지) · 꼬리 자리 · 볼 · 입술. 눈 안쪽은 빼고, 얼굴 윤곽 밖(머리카락)도 뺀다.
     눈썹은 아랫선까지만 넣었더니 털 자리를 다시 그리지 못해 정답사진의 눈썹이 맨얼굴 그대로였다 (#371)"""
     m = Image.new("L", (size, size), 0)
     d = ImageDraw.Draw(m)
-    from scipy.spatial import ConvexHull
-    for up, lo, brow, brow_up, outer, inner in EYES:
-        o, i0 = lm[outer], lm[inner]
-        ew = float(np.linalg.norm(o - i0))
-        out_dir = (o - i0) / ew
-        pts = [lm[k] for k in up + lo + brow] + [lm[k] + np.array([0, -BROW_MARGIN * ew]) for k in brow_up]
-        pts.append(o + out_dir * 0.45 * ew + np.array([0, -0.15 * ew]))   # 꼬리 자리
-        pts += [lm[k] + np.array([0, UNDER_EYE * ew]) for k in lo]         # 눈 밑
-        arr = np.array(pts)
-        d.polygon([tuple(p) for p in arr[ConvexHull(arr).vertices]], fill=255)
-        c = (o + i0) / 2 + out_dir * CHEEK_AT[0] * ew + np.array([0, CHEEK_AT[1] * ew])  # 볼
-        rx, ry = CHEEK_SIZE[0] * ew, CHEEK_SIZE[1] * ew
+    for eye in EYES:
+        d.polygon(eye_hull(lm, eye), fill=255)
+        c, (rx, ry), _ = cheek_center(lm, eye)
         d.ellipse([c[0] - rx, c[1] - ry, c[0] + rx, c[1] + ry], fill=255)
     d.polygon([tuple(lm[k]) for k in LIPS], fill=255)
     m = m.filter(ImageFilter.MaxFilter(9)).filter(ImageFilter.GaussianBlur(4))
-    keep = Image.new("L", (size, size), 0)
-    kd = ImageDraw.Draw(keep)
-    # 얼굴 윤곽보다 조금 안쪽까지만 — 윤곽 끝까지 칠하게 했더니 얼굴 · 머리카락 경계를 다시 그려 볼 가이드에 옆선 띠가 잡혔다
-    oval = np.array([lm[k] for k in FACE_OVAL])
-    c = oval.mean(axis=0)
-    kd.polygon([tuple(c + (p - c) * OVAL_KEEP) for p in oval], fill=255)
-    for up, lo, *_ in EYES:
-        kd.polygon([tuple(lm[k]) for k in up + lo[::-1]], fill=0)
-    keep = keep.filter(ImageFilter.GaussianBlur(1.5))
-    return Image.fromarray((np.asarray(m, np.float32) * np.asarray(keep, np.float32) / 255).astype(np.uint8))
+    keep, _ = face_keep(lm, size)
+    return Image.fromarray((np.asarray(m, np.float32) * keep).astype(np.uint8))
+
+
+def smooth(u):
+    u = np.clip(u, 0, 1)
+    return u * u * (3 - 2 * u)
+
+
+def blend_mask(lm, size):
+    """원본에 되붙일 때 그린 그림을 얼마나 쓸지 (흰색 = 그린 그대로). 눈두덩 · 눈썹 · 입술은 칠할 영역 그대로,
+    볼 · 눈 밑은 가장자리로 갈수록 옅게 (BLUSH_FADE · UNDER_HOLD · EDGE_FADE). 모델에게 주는 칠할 영역(makeup_mask)은 그대로다"""
+    m = Image.new("L", (size, size), 0)
+    d = ImageDraw.Draw(m)
+    yy, xx = np.mgrid[0:size, 0:size].astype(np.float32)
+    soft, ews = np.zeros((size, size), np.float32), []
+    for eye in EYES:
+        d.polygon(eye_hull(lm, eye, under=False), fill=255)
+        c, (rx, ry), ew = cheek_center(lm, eye)
+        ews.append(ew)
+        soft = np.maximum(soft, 1 - smooth((np.hypot((xx - c[0]) / rx, (yy - c[1]) / ry) - BLUSH_FADE) / (1 - BLUSH_FADE)))
+        lid = Image.new("L", (size, size), 255)
+        ImageDraw.Draw(lid).line([tuple(lm[k]) for k in eye[1]], fill=0, width=1)
+        below = cv2.distanceTransform(np.asarray(lid), cv2.DIST_L2, 5)   # 아랫눈꺼풀 선에서 떨어진 거리
+        soft = np.maximum(soft, 1 - smooth((below - UNDER_HOLD * ew) / ((UNDER_EYE - UNDER_HOLD) * ew)))
+    d.polygon([tuple(lm[k]) for k in LIPS], fill=255)
+    hard = np.asarray(m.filter(ImageFilter.MaxFilter(9)).filter(ImageFilter.GaussianBlur(4)), np.float32) / 255
+    keep, inside = face_keep(lm, size)
+    edge = smooth(cv2.distanceTransform(inside.astype(np.uint8), cv2.DIST_L2, 5) / (EDGE_FADE * float(np.mean(ews))))
+    return Image.fromarray((np.maximum(hard, soft * edge) * keep * 255).astype(np.uint8))
 
 
 def paste_back(original, result, box, mask=None):
-    """그린 얼굴 정사각형을 원본에 되붙인다. mask(칠할 영역)를 주면 그 밖은 원본 픽셀 그대로 —
+    """그린 얼굴 정사각형을 원본에 되붙인다. mask(되붙일 정도 — blend_mask)를 주면 그 밖은 원본 픽셀 그대로 —
     모델은 16px 칸 단위로 그려서 칠할 영역에서 뺀 눈 안쪽까지 다시 그렸고, 참고 사진의 눈꺼풀 선이 눈동자에 비쳤다 (2026-10-09)"""
     left, top, side = box
     patch = np.asarray(result.convert("RGB").resize((side, side), Image.LANCZOS)).astype(np.float32)
@@ -234,6 +286,7 @@ def _run(id_image, makeup_image, steps, strength, keep_size, seed):
     face = original.crop((left, top, left + side, top + side)).resize((SIZE, SIZE), Image.LANCZOS)
     lm_sq = (lm - [left, top]) * (SIZE / side)
     mask = makeup_mask(lm_sq, SIZE)
+    blend = blend_mask(lm_sq, SIZE)
 
     ref = makeup_image.convert("RGB")
     rlm = landmarks(ref)
@@ -248,7 +301,7 @@ def _run(id_image, makeup_image, steps, strength, keep_size, seed):
                strength=float(strength), guidance_scale=1.0, num_inference_steps=int(steps), generator=gen).images[0]
     dt = time.perf_counter() - t0
     vram = torch.cuda.max_memory_allocated() / 2**30
-    result = paste_back(original, out, box, mask)
+    result = paste_back(original, out, box, blend)
     # Gradio 임시 폴더 안에 직접 무손실로 — 거기 있는 파일은 Gradio 가 다시 압축하지 않고 그대로 보내고, 2분 뒤 지우기(delete_cache)에도 든다
     folder = Path(get_upload_folder()) / uuid.uuid4().hex
     folder.mkdir(parents=True, exist_ok=True)
