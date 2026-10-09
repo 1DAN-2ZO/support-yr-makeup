@@ -212,6 +212,14 @@ function cheekMeasure(fs: Frames): WholeMeasures["cheek"] | undefined {
 export const TAIL_RIDGE = { side: 0.04, min: 6, dark: 8, reach: 0.22, far: 0.5 } as const;
 
 /**
+ * "꼬리가 뚜렷하다"의 기준 — 선 값 · 어두워진 정도를 이만큼 높여도 읽히는 꼬리. 예상 메이크업 쪽에만 쓴다.
+ * 평소 기준(6 · 8)으로는 모델이 그린 속눈썹의 바깥 가닥이 날개 라이너와 같은 길이로 읽힌다 (참고 13종 중 9종, 실험 54).
+ * 16 · 27 ~ 18 · 30 에서 두 눈에 다 읽히는 것은 가늘고 또렷한 검정 날개가 있는 참고뿐이었다 (얼굴 셋 · 31장, 실험 56) — 그 가운데 값.
+ * 굵은 스모키 날개 · 옅은 꼬리는 여기서 빠진다 (견주지 않는다)
+ */
+export const TAIL_CLEAR = { min: 17, dark: 28 } as const;
+
+/**
  * 라이너 꼬리 끝 — 맨얼굴과 같은 크기 · 같은 자리인 그림(정답사진 · 모델이 옮긴 시도 화장)에서, 눈꼬리 둘레에 새로 생긴 가는 선의 가장 바깥까지.
  * 길이는 눈꼬리 얼굴 점에서 바깥으로 잰 값(눈 폭 비율)이라 눈마다 치우침이 있다 — 정답 그림과 같은 틀에서 견줄 때만 뜻이 있다. 못 찾으면 null.
  * 칸마다 선 값 = 양옆(네 방향, side 떨어진 두 칸) 중 더 어두운 쪽보다 얼마나 더 어두운가. 넓은 그늘(섀도우 띠)은 양옆도 어두워 0 이다.
@@ -219,9 +227,9 @@ export const TAIL_RIDGE = { side: 0.04, min: 6, dark: 8, reach: 0.22, far: 0.5 }
  * 시작점은 보지 않는다 — 얼굴 점의 눈꼬리가 실제 눈꼬리보다 안쪽일 수 있고, 모델은 실제 눈꼬리에서 그린다.
  * 기준값은 눈 폭 134 · 146px 사진 두 묶음에서 맞춘 것 (실험 30 · 45 · 52). 눈 폭의 10% 아래 꼬리는 못 찾는다
  */
-export function ridgeTail(bare: SampleFrame, im: RgbaImage, k: Side2): number | null {
+export function ridgeTail(bare: SampleFrame, im: RgbaImage, k: Side2, strict = false): number | null {
   if (im.w !== bare.im.w || im.h !== bare.im.h) return null;
-  const C = TAIL_RIDGE, { o, a, n, ue } = eyeFrame(bare, k);
+  const C = strict ? { ...TAIL_RIDGE, ...TAIL_CLEAR } : TAIL_RIDGE, { o, a, n, ue } = eyeFrame(bare, k);
   const s = Math.max(2, Math.round(C.side * ue)), pad = s + 2, R = Math.ceil(0.7 * ue);
   const x0 = Math.max(0, Math.floor(o.x - R) - pad), y0 = Math.max(0, Math.floor(o.y - R) - pad), x1 = Math.min(im.w - 1, Math.ceil(o.x + R) + pad), y1 = Math.min(im.h - 1, Math.ceil(o.y + R) + pad), w = x1 - x0 + 1, h = y1 - y0 + 1;
   if (w < 3 * pad || h < 3 * pad) return null;
@@ -322,7 +330,9 @@ function measureOne(i: WholeInput, cur: SampleFrame): WholeMeasures {
   const tBare = i.targetBare ?? i.bare, fs: Frames = { bare: i.bare, cur, tBare, target: frameOf(i.target, tBare.lm, tBare.hair) };
   // 볼은 아직 넘기지 않는다: 볼 다각형 전체의 평균으로는 블러셔가 묽어져 정답 변화가 1.1 로 읽힌다 (파이썬 실험은 정답에서 바뀐 칸에만 무게를 줬다 — 그 자리를 받아야 한다)
   const lip = lipMeasure(fs), shadow = shadowMeasure(fs), brow = browMeasure(fs), cheek = CHEEK_READY ? cheekMeasure(fs) : undefined;
-  const liner = i.moved ? { targetR: ridgeTail(tBare, i.target, "R"), targetL: ridgeTail(tBare, i.target, "L"), R: ridgeTail(i.bare, i.moved, "R"), L: ridgeTail(i.bare, i.moved, "L") } : undefined;
+  // 예상 메이크업의 꼬리는 엄한 기준으로 두 눈에 다 읽혀야 견준다 (targetClear). 내 화장 쪽은 평소 기준 — 엄하게 읽으면 실제로 그린 가는 꼬리를 놓친다
+  const clear = (): boolean => SIDES2.every((k) => (ridgeTail(tBare, i.target, k, true) ?? 0) >= FEEDBACK.linerMin);
+  const liner = i.moved ? { targetR: ridgeTail(tBare, i.target, "R"), targetL: ridgeTail(tBare, i.target, "L"), R: ridgeTail(i.bare, i.moved, "R"), L: ridgeTail(i.bare, i.moved, "L"), targetClear: clear() } : undefined;
   return { ...(lip ? { lip } : {}), ...(shadow ? { shadow } : {}), ...(brow ? { brow } : {}), ...(cheek ? { cheek } : {}), ...(liner ? { liner } : {}) };
 }
 

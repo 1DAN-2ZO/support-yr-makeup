@@ -96,7 +96,11 @@ export interface WholeMeasures {
   };
   cheek?: { target: number; amount: number };
   /** 꼬리 길이 (눈 폭 비율, 옮긴 그림에서 잰 것). null = 꼬리 없음 */
-  liner?: { targetR: number | null; targetL: number | null; R: number | null; L: number | null };
+  /**
+   * targetClear = 예상 메이크업의 꼬리가 뚜렷한가 (엄한 기준으로 두 눈에 다 읽힘 — feedback-measure TAIL_CLEAR). false 면 견주지 않는다:
+   * 모델이 그린 속눈썹의 바깥 가닥이 꼬리로 읽혀서, 날개를 안 그린 사람에게 "꼬리가 없어요"라고 하게 된다 (실험 54 · 56). 안 주면 뚜렷하다고 본다
+   */
+  liner?: { targetR: number | null; targetL: number | null; R: number | null; L: number | null; targetClear?: boolean };
 }
 
 export interface FeedbackLine {
@@ -184,6 +188,7 @@ export function composeFeedback(m: WholeMeasures): WholeFeedback {
     } else if (part === "liner" && m.liner) {
       const p = m.liner, want = { R: p.targetR ?? 0, L: p.targetL ?? 0 }, got = { R: p.R ?? 0, L: p.L ?? 0 }, ks = (["R", "L"] as const).filter((k) => want[k] >= F.linerMin);
       if (!ks.length) { parts.push({ part, name: NAME[part], tone: "info", line: NO_TARGET }); continue; }
+      if (p.targetClear === false) { parts.push({ part, name: NAME[part], tone: "info", line: UNSEEN }); continue; }
       const gone = ks.filter((k) => got[k] < F.linerMin);
       if (gone.length === ks.length) { parts.push(pick(part, null, [], ["내 화장에서 꼬리를 찾지 못했어요", "눈꼬리에서 바깥으로 꼬리를 빼 보세요"])); continue; }
       for (const k of gone) says.push([`${side(k)} 눈에 꼬리가 없어요`, `${side(k)} 눈에도 꼬리를 빼 보세요`]);

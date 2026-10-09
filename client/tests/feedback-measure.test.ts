@@ -87,6 +87,17 @@ describe("사진에서 재서 문장까지 (feedbackWhole)", () => {
     expect(say(lips(0.6), () => null).liner!.line).toBe("내 화장에서 꼬리를 찾지 못했어요");
   });
 
+  it("F3b 예상 메이크업의 꼬리가 옅거나 한 눈에만 뚜렷하면 라이너를 견주지 않는다 — 그려진 속눈썹을 꼬리로 읽던 것 (실험 54 · 56)", () => {
+    const faint: Rgb = tint([30, 25, 28], 0.3), black = over(tail("R", 0.3), tail("L", 0.3));
+    const lineOf = (t: Paint) => feedbackWhole({ bare, target: image(over(lips(0.6), t)), cur: frameOf(image(lips(0.6)), LMS), moved: image(black) }).parts.find((p) => p.part === "liner")!;
+    expect(measureWhole({ bare, target: image(over(lips(0.6), black)), cur: bare, moved: image(black) }).liner!.targetClear).toBe(true);
+    const both = measureWhole({ bare, target: image(over(lips(0.6), tail("R", 0.3, 15, faint), tail("L", 0.3, 15, faint))), cur: bare, moved: image(black) }).liner!;
+    expect(both.targetR).not.toBeNull();   // 평소 기준으로는 읽힌다
+    expect(both.targetClear).toBe(false);
+    expect(lineOf(over(tail("R", 0.3, 15, faint), tail("L", 0.3, 15, faint))).line).toBe("이번에는 볼 수 없었어요");
+    expect(lineOf(over(tail("R", 0.3), tail("L", 0.3, 15, faint))).line).toBe("이번에는 볼 수 없었어요");   // 한 눈만 뚜렷
+  });
+
   it("F4 사진 조건이 다르면 재지 않고 다시 찍어 달라고 한다", () => {
     const r = feedbackWhole({ bare, target, cur: frameOf(image(lips(0.6), 0.75), LMS) });
     expect(r.blocked).toMatch(/밝기/);

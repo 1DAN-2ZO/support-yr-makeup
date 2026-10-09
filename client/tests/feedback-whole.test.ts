@@ -79,6 +79,17 @@ describe("화면 6 피드백 문장 (composeFeedback)", () => {
     expect(r.parts).toEqual([]);
   });
 
+  it("C12 라이너는 예상 메이크업의 꼬리가 뚜렷할 때만 견준다 — 애매하면 '이번에는 볼 수 없었어요' (실험 54 · 56)", () => {
+    // 모델이 그린 속눈썹의 바깥 가닥이 꼬리로 읽힌다. 엄한 기준으로 두 눈에 다 읽힌 것(targetClear)만 견준다
+    const vague = line({ ...good, liner: { ...good.liner!, R: null, L: null, targetClear: false } }, "liner");
+    expect(vague.line).toBe("이번에는 볼 수 없었어요");
+    expect(vague.tone).toBe("info");
+    expect(vague.fix).toBeUndefined();
+    expect(line({ ...good, liner: { ...good.liner!, R: null, L: null, targetClear: true } }, "liner").line).toBe("내 화장에서 꼬리를 찾지 못했어요");
+    // 꼬리가 아예 안 읽힌 예상 메이크업은 '볼 수 없었다'가 아니라 '없다'
+    expect(line({ ...good, liner: { targetR: null, targetL: null, R: 0.2, L: 0.2, targetClear: false } }, "liner").line).toBe("예상 메이크업에서 변화를 찾지 못했어요");
+  });
+
   it("C9 볼은 했나 안 했나만", () => {
     expect(line({ ...good, cheek: { target: 9, amount: 0.3 } }, "cheek").line).toBe("내 화장에서 변화를 찾지 못했어요");
     expect(line({ ...good, cheek: { target: 9, amount: 0.75 } }, "cheek").line).toBe("예상 메이크업과 비슷해요");
