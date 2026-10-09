@@ -258,6 +258,26 @@ async function boot(): Promise<void> {
     return r;
   };
 
+  // 세션을 통째로 새로 만든다 — 앞 세션 값이 하나도 안 남게. clearAll(저장소 지우기) 뒤에 부른다:
+  // 끝내기는 "끝" 화면의 "다시 시작" 이, 로고의 "지우고 다시 시작" 은 startOver 가
+  const restartSession = (): void => {
+    logStore.reopen();
+    attempt = null;
+    movedJob = null;
+    judged = null;
+    maker.cancel();
+    // 저장소는 이미 지웠다 — 메모리에 들고 있던 것도 버린다
+    saving = saving.then(() => made.clear()).catch(() => {});
+    set(createSession());
+    clearRemaining = 0;
+    shell.render();
+  };
+  // 로고의 "지우고 다시 시작" (#404) — 끝내기와 달리 "끝" 화면을 안 거치므로 지우기와 새 세션을 한 번에 한다.
+  // 지우다 실패해도 새 세션으로는 바꾼다 (앞 세션의 얼굴 사진을 메모리에 든 채로 처음 화면에 서지 않게)
+  const startOver = async (): Promise<void> => {
+    try { await clearAll(); } finally { restartSession(); }
+  };
+
   // 5 시도사진 (⑥) — 화장을 다 한 뒤 정면 눈 뜬 장. 6 피드백(③)이 getAttempt 로 받아 쓴다.
   // 메모리에만 둔다 — 앱을 다시 켜면 다시 찍는다 (저장소 사진 키는 ① 의 session-store 라 아직 안 늘렸다)
   let attempt: AttemptShots | null = null;
@@ -359,7 +379,7 @@ async function boot(): Promise<void> {
   // 참고 사진 읽기 · 줄이기 시간 (task ref_analyze · ref_shrink) — 화면 코드는 그대로 두고 넘기는 함수만 감싼다
   const analyzeRef = (file: File) => timeTask(log, "ref_analyze", () => analyzeRefPhoto(file), noteOfRef);
   const shrinkRef = (photo: Blob) => timeTask(log, "ref_shrink", () => shrinkForUpload(photo), noteOfShrink);
-  registerFlowSlots(shell, { getPart: () => session.currentPart, getGuide, analyzeRef, shrinkRef, clearAll, surveyUrl, getAttempt, getAnswer, getFeedback, getSave, makeAnswer, makeMoved, making: maker.busy });
+  registerFlowSlots(shell, { getPart: () => session.currentPart, getGuide, analyzeRef, shrinkRef, clearAll, startOver, surveyUrl, getAttempt, getAnswer, getFeedback, getSave, makeAnswer, makeMoved, making: maker.busy });
 
   registerAll(
     shell,
@@ -488,18 +508,7 @@ async function boot(): Promise<void> {
       remaining: () => clearRemaining,
       surveyUrl,
       // 세션을 통째로 새로 만든다 — 앞 세션 값이 하나도 안 남게
-      restart: () => {
-        logStore.reopen();
-        attempt = null;
-        movedJob = null;
-        judged = null;
-        maker.cancel();
-        // 끝내기가 저장소는 이미 지웠다 — 메모리에 들고 있던 것도 버린다
-        saving = saving.then(() => made.clear()).catch(() => {});
-        set(createSession());
-        clearRemaining = 0;
-        shell.render();
-      },
+      restart: restartSession,
     },
   );
 
@@ -575,7 +584,7 @@ function registerFlowSlots(shell: ReturnType<typeof createShell<Session>>, deps:
   shell.register("partguide", partGuideSlot<Session>(deps));
   // 화면 6 피드백 — 임시 자리를 치우고 진짜 화면으로 (#318 모양 · #332 연결).
   // 재료는 getFeedback() 이 다 모아서 준다 — 화면은 그리기만 한다
-  shell.register("feedback", feedbackSlot<Session>({ getFeedback: deps.getFeedback, clearAll: deps.clearAll }));
+  shell.register("feedback", feedbackSlot<Session>({ getFeedback: deps.getFeedback, clearAll: deps.clearAll, ...(deps.startOver ? { startOver: deps.startOver } : {}) }));
   shell.register("save", saveSlot<Session>(deps));
 }
 

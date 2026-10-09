@@ -47,6 +47,12 @@ export interface SlotDeps {
 }
 
 export interface PartGuideSlotDeps {
+  /**
+   * 로고의 "지우고 다시 시작" 이 부르는 것 (⑥ 연결 — main.ts) — 저장소를 지우고 **앱이 메모리에 든 것까지** 새 세션으로 바꾼다.
+   * clearAll 은 저장소만 지운다: 끝내기는 "끝" 화면이 뒷정리를 하지만 로고 길은 그 화면을 안 거쳐서,
+   * clearAll 만 부르면 앞 세션의 맨얼굴 · 예상 메이크업 · 시도사진과 닫힌 사용 기록이 남는다. 안 주면 clearAll 을 쓴다
+   */
+  startOver?: () => Promise<unknown>;
   getPart: () => PartId | null;
   /**
    * 로고를 눌러 처음부터 다시 할 때 지운다 (#369) — 끝내기가 쓰는 것과 같다.
@@ -71,6 +77,12 @@ const hasPhotoGuide = (p: PartId): p is FeedbackPart => (FEEDBACK_ORDER as reado
 
 export interface SaveSlotDeps {
   clearAll: () => Promise<unknown>;
+  /**
+   * 로고의 "지우고 다시 시작" 이 부르는 것 (⑥ 연결 — main.ts) — 저장소를 지우고 **앱이 메모리에 든 것까지** 새 세션으로 바꾼다.
+   * clearAll 은 저장소만 지운다: 끝내기는 "끝" 화면이 뒷정리를 하지만 로고 길은 그 화면을 안 거쳐서,
+   * clearAll 만 부르면 앞 세션의 맨얼굴 · 예상 메이크업 · 시도사진과 닫힌 사용 기록이 남는다. 안 주면 clearAll 을 쓴다
+   */
+  startOver?: () => Promise<unknown>;
   /** 후기 설문 주소. 있으면 "끝내기" 를 누른 그 화면 위에 모달로 묻는다 */
   surveyUrl?: string | null;
   /**
@@ -600,7 +612,7 @@ export function partGuideSlot<S>(deps: PartGuideSlotDeps): Screen<S> {
         : { label: "예상 메이크업으로 돌아가기", onBack: () => {
             ctx.log.log({ name: "button", button: "back:answer" });
             ctx.go("answer");
-          } }, home(ctx as ScreenContext<unknown>, deps.clearAll));
+          } }, home(ctx as ScreenContext<unknown>, deps.startOver ?? deps.clearAll));
       const guide = guideMock(part);
       // 실시간 가이드(예전 화면 4 — core/live-run 테두리 엔진)로 보내는 길. #334
       // 처음에는 사진 가이드가 보인다 — 카메라 권한을 묻지 않고 바로 볼 수 있게.
@@ -659,6 +671,12 @@ export function partGuideSlot<S>(deps: PartGuideSlotDeps): Screen<S> {
 }
 
 export interface FeedbackSlotDeps {
+  /**
+   * 로고의 "지우고 다시 시작" 이 부르는 것 (⑥ 연결 — main.ts) — 저장소를 지우고 **앱이 메모리에 든 것까지** 새 세션으로 바꾼다.
+   * clearAll 은 저장소만 지운다: 끝내기는 "끝" 화면이 뒷정리를 하지만 로고 길은 그 화면을 안 거쳐서,
+   * clearAll 만 부르면 앞 세션의 맨얼굴 · 예상 메이크업 · 시도사진과 닫힌 사용 기록이 남는다. 안 주면 clearAll 을 쓴다
+   */
+  startOver?: () => Promise<unknown>;
   /** 재료 모으기 (⑥ main.ts) — 사진 두 장 · 부위별 문장. 화면은 그리기만 한다 */
   getFeedback: () => Promise<FeedbackLoad>;
   /**
@@ -684,7 +702,7 @@ export function feedbackSlot<S>(deps: FeedbackSlotDeps): Screen<S> {
       const root = page("slot-feedback", { label: "시도사진으로 돌아가기", onBack: () => {
         ctx.log.log({ name: "button", button: "back:attempt" });
         ctx.go("attempt");
-      } }, home(ctx as ScreenContext<unknown>, deps.clearAll));
+      } }, home(ctx as ScreenContext<unknown>, deps.startOver ?? deps.clearAll));
       ctx.root.append(root);
       let alive = true;
       let drop: (() => void) | null = null;
@@ -766,7 +784,7 @@ export function saveSlot<S>(deps: SaveSlotDeps): Screen<S> {
       const root = page("slot-save", { label: "피드백으로 돌아가기", onBack: () => {
         ctx.log.log({ name: "button", button: "back:feedback" });
         ctx.go("feedback");
-      } }, home(ctx as ScreenContext<unknown>, deps.clearAll));
+      } }, home(ctx as ScreenContext<unknown>, deps.startOver ?? deps.clearAll));
       root.append(
         coach("결과를 저장한 뒤 세션 사진은 기기에서 지울게요"),
         title("저장 · 공유", "원하면 오늘의 결과를 폰에 남길 수 있어요"),

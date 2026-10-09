@@ -104,6 +104,25 @@ describe("뒤로 가기 (#369)", () => {
     expect(document.querySelector(".done-modal"), "창이 닫혀야 한다").toBeNull();
   });
 
+  // 저장소만 지우면(clearAll) 앱이 메모리에 든 앞 세션의 맨얼굴 · 예상 메이크업 · 시도사진과 닫힌 사용 기록이 그대로 남는다 —
+  // 끝내기는 "끝" 화면이 그 뒷정리(restart)를 하지만 로고 길은 그 화면을 안 거친다 (#404 ⑥ 리뷰)
+  it.each([
+    ["부위 가이드", (d: { clearAll: () => Promise<void>; startOver: () => Promise<void> }) => partGuideSlot<null>({ getPart: () => "liner", ...d })],
+    ["피드백", (d: { clearAll: () => Promise<void>; startOver: () => Promise<void> }) => feedbackSlot<null>({ getFeedback: () => new Promise(() => {}), ...d })],
+    ["저장", (d: { clearAll: () => Promise<void>; startOver: () => Promise<void> }) => saveSlot<null>(d)],
+  ] as const)("BK %s — 처음부터 다시(startOver)를 주면 로고는 저장소만 지우는 clearAll 대신 그것을 부른다", async (_name, make) => {
+    const { root, ctx, go } = setup();
+    const clearAll = vi.fn(async () => {}), startOver = vi.fn(async () => {});
+    make({ clearAll, startOver }).mount(ctx);
+    root.querySelector<HTMLButtonElement>(".slot-home")!.click();
+    const yes = [...document.querySelector(".done-modal")!.querySelectorAll("button")].find((b) => b.textContent === "지우고 다시 시작");
+    yes!.click();
+    await Promise.resolve(); await Promise.resolve();
+    expect(startOver).toHaveBeenCalledTimes(1);
+    expect(clearAll).not.toHaveBeenCalled();
+    expect(go).toHaveBeenCalledWith("consent");
+  });
+
   it("BK 지울 길이 없으면 묻지 않고 안내 화면으로만 간다 — 안 지우면서 '지워져요' 라고 하지 않게", () => {
     const { root, ctx, go } = setup();
     partGuideSlot<null>({ getPart: () => "liner" }).mount(ctx);
