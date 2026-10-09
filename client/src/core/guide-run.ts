@@ -29,6 +29,8 @@ export interface GuidePage {
   crop: Rect;
   /** 가이드 테두리들 (닫힌 선, 넣은 그림의 px). 그 부위의 화장을 못 찾았으면 비어 있다 */
   polys: { part: ExtractPart; poly: Pt[] }[];
+  /** 퍼지는 방향 표시 (블러셔: 가운데 점 + 사방 화살표 — ② part-guide). 없으면 빈 배열 (2026-10-09) */
+  marks: { dots: Pt[]; arrows: Pt[][] };
 }
 
 export interface GuideSources {
@@ -69,7 +71,9 @@ export function runGuide(s: GuideSources): GuideRun {
   const pages = {} as Record<FeedbackPart, GuidePage>;
   for (const part of FEEDBACK_ORDER) {
     const polys = guides.filter((g) => pageOf(g.part) === part).flatMap((g) => g.polys.filter((q) => q.length >= 3).map((poly) => ({ part: g.part, poly })));
-    pages[part] = { part, crop: cropSpec(part, lm, GUIDE_ASPECT[part], polys.flatMap((q) => q.poly)), polys };
+    const on = guides.filter((g) => pageOf(g.part) === part && g.marks);
+    const marks = { dots: on.flatMap((g) => g.marks!.dots), arrows: on.flatMap((g) => g.marks!.arrows) };
+    pages[part] = { part, crop: cropSpec(part, lm, GUIDE_ASPECT[part], polys.flatMap((q) => q.poly)), polys, marks };
   }
   return { ok: true, pages, found: FEEDBACK_ORDER.filter((p) => pages[p].polys.length > 0) };
 }

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { RgbaImage } from "@core/color";
 import { FACE_OVAL } from "@core/makeup-extract";
 import type { Baseline, Pt } from "@core/types";
-import { GUIDE_DECODE_SIDE, createGuideKeeper, loadPartGuide, type GuideLoad, type GuidePicture, type GuideView } from "@screens/guide-source";
+import { GUIDE_DECODE_SIDE, createGuideKeeper, drawGuidePage, loadPartGuide, type GuideLoad, type GuidePicture, type GuideView } from "@screens/guide-source";
 import { BARE, LMS as SYNTH, image, lipPaint } from "./helpers/synth-face";
 
 const LMS: Pt[] = SYNTH.map((q) => ({ ...q }));
@@ -129,5 +129,22 @@ describe("부위 가이드 재료 모으기", () => {
       expect(a.dispose).toHaveBeenCalledTimes(1);
       expect(await keeper.get()).toBe(b.r);
     });
+  });
+
+  it("GS11 블러셔 페이지에는 테두리 위에 퍼지는 방향(점 + 화살표)을 그린다 — 자른 자리 기준으로 옮겨서 (사용자 2026-10-09)", () => {
+    const calls: string[] = [];
+    const g = new Proxy({} as Record<string, unknown>, {
+      get(t, k: string) { return k in t ? t[k] : (...a: unknown[]) => { calls.push(`${k}(${a.map(String).join(",")})`); }; },
+      set(t, k: string, v) { t[k] = v; calls.push(`${k}=${String(v)}`); return true; },
+    }) as unknown as CanvasRenderingContext2D;
+    const out = { width: 0, height: 0, getContext: () => g } as unknown as HTMLCanvasElement;
+    const crop = { x: 100, y: 200, w: 200, h: 100 };
+    const page = { part: "cheek" as const, crop, polys: [{ part: "cheek" as const, poly: [{ x: 150, y: 220 }, { x: 250, y: 220 }, { x: 200, y: 280 }] }],
+      marks: { dots: [{ x: 200, y: 250 }], arrows: [[{ x: 210, y: 250 }, { x: 240, y: 250 }]] } };
+    const view = { pages: { cheek: page } as unknown as GuideView["pages"], size: { w: 600, h: 600 }, picture: picture() };
+    expect(drawGuidePage(out, view, "cheek", 400)).toBe(true);
+    // 400 / 200 = 2 배 — 점 (200, 250) → (200, 100), 화살표 끝 (240, 250) → (280, 100)
+    expect(calls.some((c) => c.startsWith("arc(200,100,")), "가운데 점").toBe(true);
+    expect(calls, "화살표 끝").toContain("lineTo(280,100)");
   });
 });

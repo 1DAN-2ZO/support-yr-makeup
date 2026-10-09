@@ -28,7 +28,7 @@ import { spreadMarks } from "@core/spread-marks";
 import type { Pt } from "@core/types";
 import { startFrameLoop } from "./camera-loop";
 import { createLandmarker } from "./landmarker";
-import { strokeOutline } from "./outline-draw";
+import { strokeMarks, strokeOutline } from "./outline-draw";
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -449,7 +449,8 @@ function drawOutlines(cv: HTMLCanvasElement, src: HTMLCanvasElement, crop: Rect,
   g.lineJoin = "round";
   for (const o of outlines) {
     if (!on.has(o.part)) continue;
-    g.strokeStyle = `rgb(${PARTS.find((p) => p.id === o.part)!.color.join(",")})`;
+    const color = `rgb(${PARTS.find((p) => p.id === o.part)!.color.join(",")})`;
+    g.strokeStyle = color;
     for (const poly of o.polys) {
       if (poly.length < 3) continue;
       g.beginPath();
@@ -458,6 +459,9 @@ function drawOutlines(cv: HTMLCanvasElement, src: HTMLCanvasElement, crop: Rect,
       g.closePath();
       g.stroke();
     }
+    // 퍼지는 방향 (블러셔: 가운데 점 + 사방 화살표)
+    const at = (q: Pt): Pt => ({ x: (q.x - crop.x) * k, y: (q.y - crop.y) * k });
+    if (o.marks) strokeMarks(g, { dots: o.marks.dots.map(at), arrows: o.marks.arrows.map((a) => a.map(at)) }, 2.5, color);
   }
 }
 
