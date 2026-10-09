@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 // 새 흐름 뼈대 (2026-10-06) — 담당이 화면을 올리기 전 자리. 흐름을 끝까지 눌러 볼 수 있게 "다음" 이 있다
+import { GUIDE_PART_IDS } from "@core/screens";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createLogger, memorySink } from "@core/log";
 import type { MakeResult } from "@core/picture-maker";
@@ -209,7 +210,8 @@ describe("빈 자리 화면", () => {
   });
 
   it("FS2 부위 가이드 자리 — 지금 부위를 보여 주고 '다음' 은 다음 부위, 마지막 부위면 시도사진으로", () => {
-    const first = PART_IDS[0]!, second = PART_IDS[1]!, last = PART_IDS[PART_IDS.length - 1]!;
+    // 가이드가 도는 부위만 본다 — 쉐딩·하이라이트는 뺐다 (2026-10-09)
+    const first = GUIDE_PART_IDS[0]!, second = GUIDE_PART_IDS[1]!, last = GUIDE_PART_IDS[GUIDE_PART_IDS.length - 1]!;
     let part: PartId | null = first;
     const ctx = ctxOf();
     const screen = partGuideSlot<null>({ getPart: () => part });

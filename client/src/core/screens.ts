@@ -8,7 +8,10 @@
  */
 
 import type { PartId, PartStatus } from "./types";
-import { PART_IDS } from "./types";
+import { LOOK_PART_IDS } from "./types";
+
+/** 부위 가이드가 도는 부위 — 쉐딩·하이라이트는 안 쓴다 (2026-10-09) */
+export const GUIDE_PART_IDS = LOOK_PART_IDS;
 // 화면 목록·이름은 ① 의 flow.ts 가 정본이다 (세션이 먼저 쓴다). 여기서 다시 정의하지 않는다.
 import { SCREEN_NAME, type ScreenId } from "./flow";
 
@@ -59,10 +62,16 @@ export const SCREEN_OWNER: Record<ScreenId, "capture" | "guide" | "score" | "app
 /** 부위를 도는 화면 (진행 칩이 보인다) — 새 흐름은 부위 가이드 하나 */
 export const PART_SCREENS = ["partguide"] as const satisfies readonly ScreenId[];
 
-/** 부위 가이드 순서 — 부위마다 확인받지 않으니 상태와 상관없이 정해진 순서대로. 마지막이면 null (→ 시도사진) */
+/**
+ * 부위 가이드 순서 — 부위마다 확인받지 않으니 상태와 상관없이 정해진 순서대로. 마지막이면 null (→ 시도사진).
+ *
+ * **쉐딩·하이라이트는 뺀다** (2026-10-09 — 안 쓰기로 함). PART_IDS 가 아니라 LOOK_PART_IDS 를 쓴다:
+ * 정답사진 가이드도 채점도 쉐딩은 보지 않아서, 화면만 하나 더 거치고 아무것도 안 알려 주는 자리였다.
+ * PartId 타입과 채점 쪽 코드는 그대로 둔다 — 다시 쓰게 되면 이 목록만 PART_IDS 로 되돌리면 된다.
+ */
 export function nextGuidePart(after: PartId | null): PartId | null {
-  const i = after ? PART_IDS.indexOf(after) : -1;
-  return PART_IDS[i + 1] ?? null;
+  const i = after ? GUIDE_PART_IDS.indexOf(after as never) : -1;
+  return GUIDE_PART_IDS[i + 1] ?? null;
 }
 
 /**
@@ -70,8 +79,8 @@ export function nextGuidePart(after: PartId | null): PartId | null {
  * 뒤로 가기가 쓴다 — 아이라이너에서 뒤로 누르면 눈썹으로 가야지 참고 사진까지 가면 안 된다 (#369 피드백)
  */
 export function prevGuidePart(before: PartId | null): PartId | null {
-  const i = before ? PART_IDS.indexOf(before) : -1;
-  return i > 0 ? (PART_IDS[i - 1] ?? null) : null;
+  const i = before ? GUIDE_PART_IDS.indexOf(before as never) : -1;
+  return i > 0 ? (GUIDE_PART_IDS[i - 1] ?? null) : null;
 }
 
 export function isPartScreen(s: ScreenId): boolean {
@@ -130,16 +139,15 @@ export interface ChipInput {
   score: number | null;
 }
 
-/** 진행 칩 6개. 부위 순서는 PART_IDS 고정, 세션 상태를 그대로 비춘다 */
+/** 진행 칩. 부위 순서는 GUIDE_PART_IDS 고정(쉐딩 뺌), 세션 상태를 그대로 비춘다 */
 export function chips(parts: readonly ChipInput[], currentPart: PartId | null): Chip[] {
-  return PART_IDS.map((partId) => {
+  return GUIDE_PART_IDS.map((partId) => {
     const p = parts.find((x) => x.partId === partId);
     return {
       partId,
       name: PART_NAME[partId],
       status: p?.status ?? "not_started",
-      // 쉐딩·하이라이트는 항상 "확인만" — 점수를 보여주지 않는다
-      score: partId === "contour" ? null : (p?.score ?? null),
+      score: p?.score ?? null,
       current: partId === currentPart,
     };
   });
