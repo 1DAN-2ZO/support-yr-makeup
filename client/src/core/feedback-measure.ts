@@ -211,6 +211,23 @@ function cheekMeasure(fs: Frames): WholeMeasures["cheek"] | undefined {
  */
 export const TAIL_RIDGE = { side: 0.04, min: 6, dark: 8, reach: 0.22, far: 0.5 } as const;
 
+/** 창(x0, y0 에서 w x h) 안의 밝기(L) — 3×3 으로 한 번 흐린다 */
+function lightWindow(g: RgbaImage, x0: number, y0: number, w: number, h: number): Float32Array {
+  const raw = new Float32Array(w * h), out = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = ((y + y0) * g.w + (x + x0)) * 4; raw[y * w + x] = rgbToLab(g.data[i] ?? 0, g.data[i + 1] ?? 0, g.data[i + 2] ?? 0).L; }
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    let v = 0, q = 0;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const yy = y + dy, xx = x + dx;
+      if (yy < 0 || xx < 0 || yy >= h || xx >= w) continue;
+      const wt = (dx ? 1 : 2) * (dy ? 1 : 2);
+      v += raw[yy * w + xx]! * wt; q += wt;
+    }
+    out[y * w + x] = v / q;
+  }
+  return out;
+}
+
 /**
  * "꼬리가 뚜렷하다"의 기준 — 선 값 · 어두워진 정도를 이만큼 높여도 읽히는 꼬리. 예상 메이크업 쪽에만 쓴다.
  * 평소 기준(6 · 8)으로는 모델이 그린 속눈썹의 바깥 가닥이 날개 라이너와 같은 길이로 읽힌다 (참고 13종 중 9종, 실험 54).
@@ -233,28 +250,12 @@ export function ridgeTail(bare: SampleFrame, im: RgbaImage, k: Side2, strict = f
   const s = Math.max(2, Math.round(C.side * ue)), pad = s + 2, R = Math.ceil(0.7 * ue);
   const x0 = Math.max(0, Math.floor(o.x - R) - pad), y0 = Math.max(0, Math.floor(o.y - R) - pad), x1 = Math.min(im.w - 1, Math.ceil(o.x + R) + pad), y1 = Math.min(im.h - 1, Math.ceil(o.y + R) + pad), w = x1 - x0 + 1, h = y1 - y0 + 1;
   if (w < 3 * pad || h < 3 * pad) return null;
-  /** 창 안의 밝기(L) — 3×3 으로 한 번 흐린다 */
-  const light = (g: RgbaImage): Float32Array => {
-    const raw = new Float32Array(w * h), out = new Float32Array(w * h);
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = ((y + y0) * g.w + (x + x0)) * 4; raw[y * w + x] = rgbToLab(g.data[i] ?? 0, g.data[i + 1] ?? 0, g.data[i + 2] ?? 0).L; }
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      let v = 0, q = 0;
-      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-        const yy = y + dy, xx = x + dx;
-        if (yy < 0 || xx < 0 || yy >= h || xx >= w) continue;
-        const wt = (dx ? 1 : 2) * (dy ? 1 : 2);
-        v += raw[yy * w + xx]! * wt; q += wt;
-      }
-      out[y * w + x] = v / q;
-    }
-    return out;
-  };
   const ridge = (L: Float32Array, x: number, y: number): number => {
     let best = -1e9;
     for (const [dy, dx] of [[0, s], [s, 0], [s, s], [s, -s]] as const) best = Math.max(best, Math.min(L[(y + dy) * w + (x + dx)]!, L[(y - dy) * w + (x - dx)]!) - L[y * w + x]!);
     return best;
   };
-  const LB = light(bare.im), LI = light(im), isNew = new Uint8Array(w * h), U = new Float32Array(w * h), V = new Float32Array(w * h);
+  const LB = lightWindow(bare.im, x0, y0, w, h), LI = lightWindow(im, x0, y0, w, h), isNew = new Uint8Array(w * h), U = new Float32Array(w * h), V = new Float32Array(w * h);
   for (let y = s; y < h - s; y++) for (let x = s; x < w - s; x++) {
     const px = x + x0 - o.x, py = y + y0 - o.y, u = (px * a.x + py * a.y) / ue, v = (px * n.x + py * n.y) / ue, i = y * w + x;
     U[i] = u; V[i] = v;
@@ -282,6 +283,53 @@ export function ridgeTail(bare: SampleFrame, im: RgbaImage, k: Side2, strict = f
     if (near && size >= minSize) tip = Math.max(tip, far);
   }
   return tip >= 0.04 ? tip : null;
+}
+
+/**
+ * dark = 맨얼굴보다 이만큼 넘게 어두워진 칸만(L) — 검정에 가까운 것. 갈색 · 분홍 섀도우가 번진 것은 여기 못 미친다 ·
+ * near = 눈꼬리에서 이 안에 닿는 덩어리만 · thick = 눈꼬리 바깥에서 눈 축에 수직으로 이만큼 넘게 두꺼운 곳이 있어야 · far = 보는 범위 (모두 눈 폭 비율)
+ */
+export const TAIL_SOLID = { dark: 30, near: 0.12, thick: 0.05, far: 0.7 } as const;
+
+/**
+ * 굵은 날개 끝 — 스모키 · 굵은 검정 날개. ridgeTail 은 "가는 선"만 봐서 이런 날개를 짧게 읽거나 놓친다 (실험 50 · 54).
+ * 눈꼬리 둘레에서 이어진 "많이 어두워진" 덩어리의 가장 바깥까지 (눈 폭 비율). 가는 선은 두께 조건에 걸려 null — 그건 ridgeTail 의 일이다.
+ * 기준값은 가상 얼굴 2 · 팀원 얼굴의 그림 36장에서 맞춘 것: 굵은 검정 날개는 세 얼굴 모두 0.36~0.44, 화장 없는 그림 · 연한 화장은 null (실험 58).
+ * 회색 스모키는 얼굴에 따라 못 미친다 (dark 25 여야 읽히는데 그러면 속눈썹 뭉치가 같이 읽힌다)
+ */
+export function solidTail(bare: SampleFrame, im: RgbaImage, k: Side2): number | null {
+  if (im.w !== bare.im.w || im.h !== bare.im.h) return null;
+  const C = TAIL_SOLID, { o, a, n, ue } = eyeFrame(bare, k), R = Math.ceil(0.8 * ue);
+  const x0 = Math.max(0, Math.floor(o.x - R)), y0 = Math.max(0, Math.floor(o.y - R)), x1 = Math.min(im.w - 1, Math.ceil(o.x + R)), y1 = Math.min(im.h - 1, Math.ceil(o.y + R)), w = x1 - x0 + 1, h = y1 - y0 + 1;
+  if (w < 8 || h < 8) return null;
+  const LB = lightWindow(bare.im, x0, y0, w, h), LI = lightWindow(im, x0, y0, w, h), ok = new Uint8Array(w * h), U = new Float32Array(w * h), V = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const px = x + x0 - o.x, py = y + y0 - o.y, u = (px * a.x + py * a.y) / ue, v = (px * n.x + py * n.y) / ue, i = y * w + x;
+    U[i] = u; V[i] = v;
+    if (u > -0.1 && u < C.far && v > -0.15 && v < 0.4 && LB[i]! - LI[i]! > C.dark) ok[i] = 1;
+  }
+  const seen = new Uint8Array(w * h);
+  let tip: number | null = null;
+  for (let i0 = 0; i0 < w * h; i0++) {
+    if (!ok[i0] || seen[i0] || Math.hypot(U[i0]!, V[i0]!) >= C.near) continue;
+    const stack = [i0], lo = new Map<number, number>(), hi = new Map<number, number>();   // 눈꼬리 바깥 칸(u, px)마다 v 의 범위
+    seen[i0] = 1;
+    let far = -9;
+    while (stack.length) {
+      const i = stack.pop()!, x = i % w, y = (i - x) / w, u = U[i]!, v = V[i]!;
+      far = Math.max(far, u);
+      if (u > 0.04) { const b = Math.round(u * ue); lo.set(b, Math.min(lo.get(b) ?? v, v)); hi.set(b, Math.max(hi.get(b) ?? v, v)); }
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const xx = x + dx, yy = y + dy, j = yy * w + xx;
+        if (xx < 0 || yy < 0 || xx >= w || yy >= h || !ok[j] || seen[j]) continue;
+        seen[j] = 1; stack.push(j);
+      }
+    }
+    let thick = 0;
+    for (const [b, v] of hi) thick = Math.max(thick, v - lo.get(b)!);
+    if (thick >= C.thick && (tip === null || far > tip)) tip = far;
+  }
+  return tip;
 }
 
 export interface WholeInput {
@@ -331,8 +379,11 @@ function measureOne(i: WholeInput, cur: SampleFrame): WholeMeasures {
   // 볼은 아직 넘기지 않는다: 볼 다각형 전체의 평균으로는 블러셔가 묽어져 정답 변화가 1.1 로 읽힌다 (파이썬 실험은 정답에서 바뀐 칸에만 무게를 줬다 — 그 자리를 받아야 한다)
   const lip = lipMeasure(fs), shadow = shadowMeasure(fs), brow = browMeasure(fs), cheek = CHEEK_READY ? cheekMeasure(fs) : undefined;
   // 예상 메이크업의 꼬리는 엄한 기준으로 두 눈에 다 읽혀야 견준다 (targetClear). 내 화장 쪽은 평소 기준 — 엄하게 읽으면 실제로 그린 가는 꼬리를 놓친다
-  const clear = (): boolean => SIDES2.every((k) => (ridgeTail(tBare, i.target, k, true) ?? 0) >= FEEDBACK.linerMin);
-  const liner = i.moved ? { targetR: ridgeTail(tBare, i.target, "R"), targetL: ridgeTail(tBare, i.target, "L"), R: ridgeTail(i.bare, i.moved, "R"), L: ridgeTail(i.bare, i.moved, "L"), targetClear: clear() } : undefined;
+  // 굵은 날개(스모키)는 가는 선이 아니라 ridgeTail 이 놓친다 — 굵은 덩어리의 끝(solidTail)도 같이 보고 더 먼 쪽을 꼬리 끝으로 (실험 58)
+  const both = (pick: (k: Side2) => number | null): boolean => SIDES2.every((k) => (pick(k) ?? 0) >= FEEDBACK.linerMin);
+  const tailOf = (b: SampleFrame, im: RgbaImage, k: Side2): number | null => { const r = ridgeTail(b, im, k), s = solidTail(b, im, k); return r === null ? s : s === null ? r : Math.max(r, s); };
+  const clear = (): boolean => both((k) => ridgeTail(tBare, i.target, k, true)) || both((k) => solidTail(tBare, i.target, k));
+  const liner = i.moved ? { targetR: tailOf(tBare, i.target, "R"), targetL: tailOf(tBare, i.target, "L"), R: tailOf(i.bare, i.moved, "R"), L: tailOf(i.bare, i.moved, "L"), targetClear: clear() } : undefined;
   return { ...(lip ? { lip } : {}), ...(shadow ? { shadow } : {}), ...(brow ? { brow } : {}), ...(cheek ? { cheek } : {}), ...(liner ? { liner } : {}) };
 }
 
