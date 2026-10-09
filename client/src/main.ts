@@ -54,6 +54,7 @@ import { createShell } from "./screens/shell";
 import { attemptScreen, type AttemptShots } from "./screens/attempt";
 import { createPictureMaker, type MakeResult } from "./core/picture-maker";
 import { requestTransfer } from "./core/transfer-client";
+import { within } from "./core/wait-limit";
 import { prepareSave, type SaveKit, type SaveSource } from "./screens/feedback-card";
 import { loadFeedback, type AnswerPhoto, type FeedbackLoad } from "./screens/feedback-source";
 import { createGuideKeeper, loadPartGuide } from "./screens/guide-source";
@@ -266,6 +267,8 @@ async function boot(): Promise<void> {
   // 5 시도사진 (⑥) — 화장을 다 한 뒤 정면 눈 뜬 장. 6 피드백(③)이 getAttempt 로 받아 쓴다.
   // 메모리에만 둔다 — 앱을 다시 켜면 다시 찍는다 (저장소 사진 키는 ① 의 session-store 라 아직 안 늘렸다)
   let attempt: AttemptShots | null = null;
+  /** 지금 시도사진으로 만드는 중이거나 만든 옮긴 그림 — 시도사진을 다시 찍으면 새로 시작한다 */
+  let movedJob: Promise<MakeResult> | null = null;
   const getAttempt = (): AttemptShots | null => attempt;
   shell.register("attempt", attemptScreen<Session>({
     setAttempt: (shots) => {
@@ -276,6 +279,9 @@ async function boot(): Promise<void> {
       // 옛 시도사진으로 만든 옮긴 그림은 못 쓴다 — 만드는 중이던 것도 버린다
       maker.cancel("moved");
       void putMade("moved", null);
+      // 옮긴 그림을 뒤에서 만들기 시작한다 — 피드백 화면(getFeedback)이 이것을 기다린다. 화면에 보여 주지 않고 라이너 계산에만 쓴다
+      movedJob = makeMoved();
+      movedJob.catch(() => {});   // 실패는 getMoved 가 받는다 — 피드백 화면에 가기 전에 끝난 실패가 경고로 새지 않게
     },
     next: "feedback",
   }));
@@ -288,12 +294,23 @@ async function boot(): Promise<void> {
   const setAnswer = (a: AnswerPhoto | null): Promise<void> => { judged = null; return putMade("answer", a?.image ?? null); };
 
   // 6 피드백 재료 (⑥ 연결, #332) — 화면(⑤)은 getFeedback 이 준 것(문장 · 사진 두 장)을 그리기만 한다.
-  // 옮긴 그림(getMoved)은 아직 넣지 않는다 — 라이너 줄만 "볼 수 없었어요". 넣기 전에 ③ 의 라이너 재기 수정이 먼저다:
-  // 지금 코드는 꼬리를 틀리게 읽어서 getMoved 가 붙으면 틀린 라이너 문장이 화면에 나간다 (#336 ③ 리뷰, 실험 44).
-  // 붙일 때는 옮긴 그림을 기다리는 동안 입술 · 섀도우 · 눈썹을 먼저 재 둔다 (서버가 한 장에 15초쯤)
+  /**
+   * 옮긴 그림을 기다리는 한도 — 시도사진을 찍을 때부터 만들고 있으니 보통은 이미 와 있다 (서버가 한 장에 12~20초).
+   * 서버가 밀릴 때(한 장에 100초 넘게 걸린 일이 있다)는 이만큼만 기다리고 라이너 없이 보여 준다
+   */
+  const MOVED_WAIT_MS = 40_000;
+  // 옮긴 그림(getMoved)도 넣는다 — 라이너 줄이 이것으로 나온다 (③ 의 라이너 재기 수정 #392 · #394 뒤, #376).
+  // 시도사진을 찍을 때 시작해 둔 것(movedJob)을 기다린다. MOVED_WAIT_MS 를 넘기거나 실패하면 던진다 →
+  // loadFeedback 이 라이너만 "이번에는 볼 수 없었어요" 로 두고 나머지 부위는 그대로 보여 준다 (docs/feedback-input-contract.md)
+  const getMoved = async (): Promise<Blob | null> => {
+    if (!movedJob) throw new Error("moved: not started");
+    const r = await within(movedJob, MOVED_WAIT_MS, null);
+    if (!r?.ok) throw new Error(`moved: ${r ? r.why : "late"}`);
+    return r.picture;
+  };
   const getFeedback = async (): Promise<FeedbackLoad> => {
     // 걸린 시간을 사용 기록에 남긴다 (task feedback_run — core/task-timer)
-    const r = await timeTask(log, "feedback_run", () => loadFeedback({ getBaseline: () => session.baseline, getAttempt, getAnswer }), noteOfFeedback);
+    const r = await timeTask(log, "feedback_run", () => loadFeedback({ getBaseline: () => session.baseline, getAttempt, getAnswer, getMoved }), noteOfFeedback);
     judged = r.ok ? { feedback: r.view.feedback, answer: r.view.answer, attempt: r.view.attempt } : null;
     // 테스트 기간 보관 — 판정 결과(글)도 같이 둔다. 사진과 견줘 기준값을 맞추려면 그때 무엇이라고 말했는지가 필요하다
     if (r.ok) keeper.keepFeedback(r.view.feedback);
@@ -480,6 +497,7 @@ async function boot(): Promise<void> {
       restart: () => {
         logStore.reopen();
         attempt = null;
+        movedJob = null;
         judged = null;
         maker.cancel();
         // 끝내기가 저장소는 이미 지웠다 — 메모리에 들고 있던 것도 버린다
