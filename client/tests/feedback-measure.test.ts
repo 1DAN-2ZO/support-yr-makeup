@@ -1,7 +1,7 @@
 // 새 흐름 화면 6 — 사진에서 재서 문장까지 (feedbackWhole) · 겹치는 그림에서 라이너 꼬리 끝 찾기 (ridgeTail)
 import { describe, expect, it } from "vitest";
 import { pointInPoly } from "@core/color";
-import { browTail, feedbackWhole, measureWhole, ridgeTail } from "@core/feedback-measure";
+import { browTail, feedbackWhole, measureWhole, ridgeTail, solidTail } from "@core/feedback-measure";
 import { composeFeedback, type WholeMeasures } from "@core/feedback-whole";
 import { LM } from "@core/landmarks";
 import { frameOf } from "@core/sampling";
@@ -55,6 +55,35 @@ describe("겹치는 그림에서 라이너 꼬리 끝 (ridgeTail)", () => {
   });
 });
 
+/** 눈꼬리에서 눈 축 방향으로 len(눈 폭 비율), 위아래 half px 두께의 굵은 띠 — 스모키 · 굵은 날개 */
+const thickTail = (side: "R" | "L", len: number, half: number, ink: Rgb = [30, 25, 28]): Paint => {
+  const e = side === "R" ? LM.eyeA : LM.eyeB, o = P(e.outer), i = P(e.inner), ax = { x: (o.x - i.x) / eyeW, y: (o.y - i.y) / eyeW };
+  return (x, y) => { const px = x - o.x, py = y - o.y, u = px * ax.x + py * ax.y, v = Math.abs(-px * ax.y + py * ax.x); return u >= 0 && u <= len * eyeW && v <= half ? ink : null; };
+};
+
+describe("굵은 날개 끝 (solidTail) — 가는 선이 아니라서 ridgeTail 이 놓치는 것 (실험 58)", () => {
+  const half = Math.round(0.05 * eyeW);
+  it("S1 굵고 검은 날개의 끝을 읽는다 — ridgeTail 은 못 읽는다", () => {
+    for (const side of ["R", "L"] as const) {
+      const im = image(thickTail(side, 0.35, half));
+      expect(Math.abs(solidTail(bare, im, side)! - 0.35)).toBeLessThan(0.04);
+      expect(ridgeTail(bare, im, side) ?? 0).toBeLessThan(0.2);
+    }
+    expect(solidTail(bare, image(thickTail("R", 0.35, half)), "L")).toBeNull();
+    expect(solidTail(bare, image(), "R")).toBeNull();
+  });
+
+  it("S2 굵어도 옅으면(섀도우가 번진 것) 날개가 아니다 · 가늘면 ridgeTail 의 일이다", () => {
+    expect(solidTail(bare, image(thickTail("R", 0.35, half, tint([30, 25, 28], 0.35))), "R")).toBeNull();
+    expect(solidTail(bare, image(tail("R", 0.3)), "R")).toBeNull();
+  });
+
+  it("S3 맨얼굴과 크기가 다른 그림은 재지 않는다", () => {
+    const im = image();
+    expect(solidTail(bare, { data: im.data, w: im.w, h: im.h - 10 }, "R")).toBeNull();
+  });
+});
+
 describe("사진에서 재서 문장까지 (feedbackWhole)", () => {
   const target = image(over(lips(0.6), tail("R", 0.3), tail("L", 0.3)));
   const say = (cur: Paint, moved?: Paint) => Object.fromEntries(feedbackWhole({ bare, target, cur: frameOf(image(cur), LMS), ...(moved ? { moved: image(moved) } : {}) }).parts.map((p) => [p.part, p]));
@@ -85,6 +114,15 @@ describe("사진에서 재서 문장까지 (feedbackWhole)", () => {
     expect(say(lips(0.6), over(tail("R", 0.15), tail("L", 0.15))).liner!.line).toBe("꼬리가 예상 메이크업보다 짧아요");
     expect(say(lips(0.6), tail("R", 0.3)).liner!.line).toBe("왼쪽 눈에 꼬리가 없어요");
     expect(say(lips(0.6), () => null).liner!.line).toBe("내 화장에서 꼬리를 찾지 못했어요");
+  });
+
+  it("F3c 굵은 날개도 두 눈에 다 있으면 견준다 — 스모키가 '볼 수 없었어요'로 빠지던 것 (실험 58)", () => {
+    const half = Math.round(0.05 * eyeW), wings = (len: number): Paint => over(thickTail("R", len, half), thickTail("L", len, half));
+    const lineOf = (moved: Paint) => feedbackWhole({ bare, target: image(over(lips(0.6), wings(0.35))), cur: frameOf(image(lips(0.6)), LMS), moved: image(moved) }).parts.find((p) => p.part === "liner")!;
+    expect(lineOf(wings(0.35)).line).toBe("예상 메이크업과 비슷해요");
+    expect(lineOf(() => null).line).toBe("내 화장에서 꼬리를 찾지 못했어요");
+    expect(lineOf(wings(0.15)).line).toBe("꼬리가 예상 메이크업보다 짧아요");
+    expect(lineOf(thickTail("R", 0.35, half)).line).toBe("왼쪽 눈에 꼬리가 없어요");
   });
 
   it("F3b 예상 메이크업의 꼬리가 옅거나 한 눈에만 뚜렷하면 라이너를 견주지 않는다 — 그려진 속눈썹을 꼬리로 읽던 것 (실험 54 · 56)", () => {
