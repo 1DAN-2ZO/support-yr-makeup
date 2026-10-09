@@ -73,7 +73,8 @@ export interface ShotSpec {
   name: string;
   /** 허용 yaw 범위 (도). 화면 기준 왼쪽 회전이 음수 */
   yaw: readonly [number, number];
-  eyes: "open" | "closed";
+  /** 눈 감은 장은 2026-10-09 뺐다 (#386) — 지금은 뜬 장만 찍는다 */
+  eyes: "open";
 }
 
 export const SHOTS: readonly ShotSpec[] = [
@@ -130,7 +131,6 @@ export const SHOT_TEXT = {
   bangs: "앞머리를 넘겨서 이마가 보이게 해 주세요",
   front: "조금만 정면으로",
   open: "눈을 떠 주세요",
-  close: "눈을 감아 주세요",
   near: "조금 더 가까이",
   far: "조금 멀리",
   sharp: "흔들려요. 잠시 멈춰 주세요",
@@ -200,10 +200,8 @@ export function shotGate(shotId: ShotId, m: ShotMeasure, limits: CaptureLimits =
   if (m.foreheadHidden) return fail("visible", "bangs");
   if (m.yaw < shot.yaw[0] || m.yaw > shot.yaw[1]) return fail("angle", "front");
   if (Math.abs(m.pitch) > limits.pitch + 5) return fail("angle", "front");
-  const closed = m.closedA && m.closedB;
   const open = !m.closedA && !m.closedB;
-  if (shot.eyes === "open" && !open) return fail("eyes", "open");
-  if (shot.eyes === "closed" && !closed) return fail("eyes", "close");
+  if (!open) return fail("eyes", "open");
   if (typeof m.faceRatio === "number") {
     if (m.faceRatio < FACE_RATIO.min) return fail("size", "near");
     if (m.faceRatio > FACE_RATIO.max) return fail("size", "far");
