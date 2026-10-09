@@ -14,10 +14,16 @@
           → 블러셔 크기는 그대로(타원 안 테두리까지 진하게), 타원 밖으로 이어지며 옅어지고, 딱 끊긴 테두리가 없어야 한다
             (2026-10-09 사용자: 칠할 타원 그대로 붙여 분홍 판 같았다 · 안쪽부터 옅게 했더니 블러셔가 작아져 더 눈에 띄었다 —
             크기는 그대로 두고 블러셔가 없는 쪽으로 그라데이션을 주며 퍼뜨리기)
-  모두    : 눈 안쪽(흰자 · 눈동자)은 그대로여야 한다 — 다시 그려서 참고 사진의 눈꺼풀 선이 눈동자에 비쳤다 (2026-10-09 카리나 사진)
+  모두    : 눈 안쪽(흰자 · 눈동자)은 그대로여야 한다
+  입 벌린 맨얼굴(사진 경로를 주면 — 저장소 샘플에는 입 벌린 얼굴이 없고 개인 사진은 안 올린다)
+          tint  → 벌린 입 안(이)은 그대로여야 한다 — 입술 바깥 선 안을 다 칠해 이까지 빨갛게 덮였다 (2026-10-09 사용자).
+                  입술(바깥 선 ~ 안쪽 선 사이 띠)은 초록 쪽으로 가야 한다 — 입 안을 모델이 칠할 영역에서까지 뺐더니 얇은 입술 띠를 다시 그리지 않아
+                  입술 색이 거의 안 옮겨졌다
+          blush → 볼 가운데에서 바깥으로 가며 붉어진 정도가 줄었다 다시 오르는 줄무늬가 없어야 한다 — 모델이 칠할 영역 끝(얼굴 옆선 쪽)을
+                  스스로 옅게 그려, 그 바깥에 이어 펴 바른 색과 사이에 옅은 줄이 생겼다 (2026-10-09 사용자, 갸름한 얼굴) — 다시 그려서 참고 사진의 눈꺼풀 선이 눈동자에 비쳤다 (2026-10-09 카리나 사진)
              돌려받은 그림은 무손실(webp VP8L · PNG) — 손실 webp 가 가는 선(라이너 꼬리)을 뭉갰다 (#393)
 
-    conda run -n flux2 python ref_follow_check.py [http://127.0.0.1:7861]
+    conda run -n flux2 python ref_follow_check.py [http://127.0.0.1:7861] [입 벌린 맨얼굴 사진]
 """
 import base64
 import io
@@ -36,6 +42,7 @@ from mediapipe.tasks.python.vision import FaceLandmarker, FaceLandmarkerOptions
 from PIL import Image, ImageDraw
 
 API = (sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:7861").rstrip("/")
+OPEN_MOUTH = Path(sys.argv[2]) if len(sys.argv) > 2 else None
 SAMPLES = Path(__file__).resolve().parents[2] / "samples" / "phone-portraits-20"
 BARE = SAMPLES / "person_1_front_open.jpg"
 OTHER = SAMPLES / "person_2_front_open.jpg"
@@ -70,6 +77,13 @@ BLUSH_IN = 0.3
 BLUSH_OUT = 0.15
 BLUSH_FAR = 0.1
 BLUSH_STEEP = 8.0
+# 줄무늬: 볼 가운데에서 바깥(타원 0.7 ~ 1.4, 다른 볼 쪽 · 입술 · 눈 둘레 전까지)으로 가며 줄었다 다시 오른 크기(가운데 대비, 줄기 95%)가 BLUSH_RIM 밑.
+# 입 벌린 맨얼굴(2026-10-09 사용자 사진) · blush 로 — 바깥으로 펴기만: 0.12 / 테두리 쪽은 원본 피부 + 고른 색: 0.02
+BLUSH_RIM = 0.06
+# 벌린 입 안 — 눈 안쪽처럼 흐려서 견준 색 차. 같은 사진 · tint 로 — 입 안까지 칠함: 49.7 / 뺌: 3.0
+MOUTH_MAX = 6.0
+# 입 안쪽 선 (윗입술 아랫선 · 아랫입술 윗선) — 입을 다물면 넓이가 거의 0
+MOUTH = [78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95]
 
 _lmk = FaceLandmarker.create_from_options(FaceLandmarkerOptions(
     base_options=BaseOptions(model_asset_path=str(Path.home() / ".cache" / "nudy" / "face_landmarker.task")), num_faces=1))
@@ -129,6 +143,39 @@ def blush_profile(da, q, ew, lips, eye):
     gy, gx = np.gradient(cv2.GaussianBlur(da.astype(np.float32), (0, 0), 0.03 * ew))
     steep = np.hypot(gx, gy) * ew / max(center, 1e-6)
     return ring(0.85, 1.0), ring(1.05, 1.3), ring(1.8, 2.2), float(np.percentile(steep[(q < 1.4) & ok], 99.5))
+
+
+def blush_rim(da, lm, ew, bad, center):
+    """볼 가운데에서 바깥으로 가며 붉어진 정도가 줄었다 다시 오른 크기 (가운데 대비 · 72 줄기 × 두 볼 중 95%) — 줄무늬"""
+    s = cv2.GaussianBlur(da.astype(np.float32), (0, 0), 0.03 * ew)
+    h, w = s.shape
+    cs = []
+    for lid, _ in LIDS:
+        o, i0 = lm[lid[0]], lm[lid[-1]]
+        e = float(np.linalg.norm(o - i0))
+        cs.append(((o + i0) / 2 + (o - i0) / e * CHEEK_AT[0] * e + np.array([0, CHEEK_AT[1] * e]), CHEEK_PAINT[0] * e, CHEEK_PAINT[1] * e))
+    out = []
+    for j, (c, rx, ry) in enumerate(cs):
+        oc, orx, ory = cs[1 - j]
+        for t in np.linspace(0, 2 * np.pi, 72, endpoint=False):
+            lo, rise = np.inf, 0.0
+            for qq in np.arange(0.7, 1.4, 0.02):
+                x, y = c[0] + rx * qq * np.cos(t), c[1] + ry * qq * np.sin(t)
+                xi, yi = int(round(x)), int(round(y))
+                if np.hypot((x - oc[0]) / orx, (y - oc[1]) / ory) < qq or not (0 <= xi < w and 0 <= yi < h) or bad[yi, xi]:
+                    break   # 다른 볼 쪽 · 사진 밖 · 입술 · 눈 둘레
+                lo = min(lo, s[yi, xi])
+                rise = max(rise, s[yi, xi] - lo)
+            out.append(rise)
+    return float(np.percentile(out, 95)) / center
+
+
+def mouth_in(im):
+    """벌린 입 안 (테두리 1px 안쪽)"""
+    lm = landmarks(im)
+    m = Image.new("L", im.size, 0)
+    ImageDraw.Draw(m).polygon([tuple(lm[k]) for k in MOUTH], fill=255)
+    return cv2.erode(np.asarray(m), np.ones((3, 3), np.uint8)) > 0
 
 
 def zones(im):
@@ -215,6 +262,30 @@ def make(bare, ref, seed):
     return Image.open(io.BytesIO(LAST["bytes"])).convert("RGB")
 
 
+def open_mouth_check(other):
+    """입 벌린 맨얼굴: tint 로 벌린 입 안이 그대로인지, blush 로 볼 줄무늬가 없는지 (seed 1234 하나)"""
+    bare = Image.open(OPEN_MOUTH).convert("RGB")
+    lm = landmarks(bare)
+    lips, _, _ = zones(bare)
+    eye = eyes_in(bare)
+    q, ew = cheek_q(bare)
+    L0 = lab(bare)
+    sigma = EYE_BLUR * float(np.linalg.norm(lm[33] - lm[133]))
+    mouth = mouth_in(bare)
+    ring = lips & ~cv2.dilate(mouth.astype(np.uint8), np.ones((5, 5), np.uint8)).astype(bool)   # 입술 띠 (입 안 둘레 빼고)
+    L = lab(make(bare, tinted(other), SEEDS[0]))
+    de_mouth = float(np.linalg.norm(blurred(L, sigma) - blurred(L0, sigma), axis=-1)[mouth].mean())
+    greener = float(-(L - L0)[ring][:, 1].mean())
+    good_mouth = mouth.sum() > 0 and de_mouth < MOUTH_MAX and greener > TINT_MIN
+    print(f"입 벌림 tint  seed {SEEDS[0]:4d}  입 안 색 차 {de_mouth:4.1f} (< {MOUTH_MAX}, {int(mouth.sum())}px) · 입술 초록 쪽 {greener:+5.1f} (> {TINT_MIN})"
+          f"  {'통과' if good_mouth else '실패'}")
+    bad = lips | (cv2.dilate(eye.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (int(0.2 * ew) | 1,) * 2)) > 0)
+    da = lab(make(bare, soft_blush(other), SEEDS[0]))[..., 1] - L0[..., 1]
+    rim = blush_rim(da, lm, ew, bad, float(da[(q < 0.4) & ~bad].mean()))
+    print(f"입 벌림 blush seed {SEEDS[0]:4d}  볼 줄무늬 {rim:4.2f} (< {BLUSH_RIM})  {'통과' if rim < BLUSH_RIM else '실패'}")
+    return bool(good_mouth and rim < BLUSH_RIM)
+
+
 def main():
     bare = Image.open(BARE).convert("RGB")
     other = Image.open(OTHER).convert("RGB")
@@ -225,6 +296,7 @@ def main():
     sigma = EYE_BLUR * float(np.linalg.norm(lm[33] - lm[133]))
     B0 = blurred(L0, sigma)
     q, ew = cheek_q(bare)
+    bad = lips | (cv2.dilate(eye.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (int(0.2 * ew) | 1,) * 2)) > 0)
     refs = {"self": bare, "other": other, "tint": tinted(other), "blush": soft_blush(other)}
     ok = True
     for name, ref in refs.items():
@@ -245,16 +317,20 @@ def main():
                       f" · 볼 덮음 {cover:4.0%} (> {CHEEK_COVER:.0%}){eye_txt}  {'통과' if good else '실패'}")
             elif name == "blush":
                 inner, outer, far, steep = blush_profile(d[..., 1], q, ew, lips, eye)
+                rim = blush_rim(d[..., 1], lm, ew, bad, float(d[..., 1][(q < 0.4) & ~bad].mean()))
                 good = (de_lip < BARE_MAX and inner > BLUSH_IN and outer > BLUSH_OUT and far < BLUSH_FAR and steep < BLUSH_STEEP
-                        and eye_ok and lossless(LAST["bytes"]))
+                        and rim < BLUSH_RIM and eye_ok and lossless(LAST["bytes"]))
                 print(f"{name:5s} seed {seed:4d}  입술 색 차 {de_lip:4.1f} (< {BARE_MAX}) · 볼 안 테두리 {inner:4.2f} (> {BLUSH_IN})"
                       f" · 바깥 {outer:4.2f} (> {BLUSH_OUT}) · 먼 곳 {far:5.2f} (< {BLUSH_FAR}) · 가파름 {steep:4.1f} (< {BLUSH_STEEP})"
+                      f" · 줄무늬 {rim:4.2f} (< {BLUSH_RIM})"
                       f"{eye_txt}  {'통과' if good else '실패'}")
             else:
                 good = de_lip < BARE_MAX and de_lid < BARE_MAX and eye_ok and lossless(LAST["bytes"])
                 print(f"{name:5s} seed {seed:4d}  입술 색 차 {de_lip:4.1f} · 섀도 자리 색 차 {de_lid:4.1f}  (< {BARE_MAX})"
                       f"{eye_txt}  {'통과' if good else '실패'}")
             ok &= bool(good)
+    if OPEN_MOUTH is not None:
+        ok &= open_mouth_check(other)
     print("통과" if ok else "실패")
     sys.exit(0 if ok else 1)
 
