@@ -40,6 +40,15 @@ describe("겹치는 그림에서 라이너 꼬리 끝 (ridgeTail)", () => {
     expect(t).toBeLessThan(0.36);
   });
 
+  it("R5 굵게 옮겨진 꼬리도 읽는다 — 모델 그림을 키워 붙이면 선이 눈 폭의 2.5% 보다 굵어진다 (실험 44 · 45 · 52)", () => {
+    const half = Math.max(2, Math.round(0.025 * eyeW)) + 1;   // 예전 양옆 폭(0.025)으로는 양옆 칸도 선 안이라 "가는 선"이 아니었다
+    const thick = (side: "R" | "L", len: number): Paint => {
+      const e = side === "R" ? LM.eyeA : LM.eyeB, o = P(e.outer), i = P(e.inner), ax = { x: (o.x - i.x) / eyeW, y: (o.y - i.y) / eyeW };
+      return (x, y) => { const px = x - o.x, py = y - o.y, u = px * ax.x + py * ax.y, v = Math.abs(-px * ax.y + py * ax.x); return u >= 0 && u <= len * eyeW && v <= half ? [30, 25, 28] : null; };
+    };
+    for (const side of ["R", "L"] as const) expect(Math.abs(ridgeTail(bare, image(thick(side, 0.3)), side)! - 0.3)).toBeLessThan(0.04);
+  });
+
   it("R4 맨얼굴과 크기가 다른 그림은 재지 않는다 (겹친다는 전제가 깨졌다)", () => {
     const im = image();
     expect(ridgeTail(bare, { data: im.data, w: im.w, h: im.h - 10 }, "R")).toBeNull();
@@ -76,6 +85,17 @@ describe("사진에서 재서 문장까지 (feedbackWhole)", () => {
     expect(say(lips(0.6), over(tail("R", 0.15), tail("L", 0.15))).liner!.line).toBe("꼬리가 예상 메이크업보다 짧아요");
     expect(say(lips(0.6), tail("R", 0.3)).liner!.line).toBe("왼쪽 눈에 꼬리가 없어요");
     expect(say(lips(0.6), () => null).liner!.line).toBe("내 화장에서 꼬리를 찾지 못했어요");
+  });
+
+  it("F3b 예상 메이크업의 꼬리가 옅거나 한 눈에만 뚜렷하면 라이너를 견주지 않는다 — 그려진 속눈썹을 꼬리로 읽던 것 (실험 54 · 56)", () => {
+    const faint: Rgb = tint([30, 25, 28], 0.3), black = over(tail("R", 0.3), tail("L", 0.3));
+    const lineOf = (t: Paint) => feedbackWhole({ bare, target: image(over(lips(0.6), t)), cur: frameOf(image(lips(0.6)), LMS), moved: image(black) }).parts.find((p) => p.part === "liner")!;
+    expect(measureWhole({ bare, target: image(over(lips(0.6), black)), cur: bare, moved: image(black) }).liner!.targetClear).toBe(true);
+    const both = measureWhole({ bare, target: image(over(lips(0.6), tail("R", 0.3, 15, faint), tail("L", 0.3, 15, faint))), cur: bare, moved: image(black) }).liner!;
+    expect(both.targetR).not.toBeNull();   // 평소 기준으로는 읽힌다
+    expect(both.targetClear).toBe(false);
+    expect(lineOf(over(tail("R", 0.3, 15, faint), tail("L", 0.3, 15, faint))).line).toBe("이번에는 볼 수 없었어요");
+    expect(lineOf(over(tail("R", 0.3), tail("L", 0.3, 15, faint))).line).toBe("이번에는 볼 수 없었어요");   // 한 눈만 뚜렷
   });
 
   it("F4 사진 조건이 다르면 재지 않고 다시 찍어 달라고 한다", () => {
