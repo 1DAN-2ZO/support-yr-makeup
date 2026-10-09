@@ -40,7 +40,7 @@ const FULL: WholeFeedback = {
 
 const mount = async (load: () => Promise<FeedbackLoad>) => {
   const s = setup();
-  const off = feedbackSlot<null>({ getFeedback: load }).mount(s.ctx) as () => void;
+  const off = feedbackSlot<null>({ getFeedback: load, clearAll: async () => {} }).mount(s.ctx) as () => void;
   await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
   return { ...s, off };
 };
@@ -124,7 +124,7 @@ describe("화면 6 피드백", () => {
   it("FB10 화면을 떠난 뒤에 난 오류로는 아무것도 그리지 않는다", async () => {
     let fail: (e: Error) => void = () => {};
     const s = setup();
-    const off = feedbackSlot<null>({ getFeedback: () => new Promise<FeedbackLoad>((_r, j) => { fail = j; }) }).mount(s.ctx) as () => void;
+    const off = feedbackSlot<null>({ getFeedback: () => new Promise<FeedbackLoad>((_r, j) => { fail = j; }), clearAll: async () => {} }).mount(s.ctx) as () => void;
     off();
     const before = s.root.innerHTML;
     fail(new Error("늦은 오류"));

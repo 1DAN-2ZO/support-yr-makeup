@@ -17,6 +17,7 @@ import { drawGuidePage, type GuideLoad, type GuideView } from "./guide-source";
 import { analyzeRefPhoto, REF_FAIL_TEXT } from "./ref-analyze";
 import type { RefAnalysis } from "./ref-analyze";
 import { DEMO_REF_COLORS } from "./ref-demo";
+import { restartModal } from "./restart-modal";
 import { surveyModal } from "./survey-modal";
 import { getRefColors, setRefColors } from "./ref-store";
 import type { RefFailure } from "./ref-analyze";
@@ -47,6 +48,12 @@ export interface SlotDeps {
 
 export interface PartGuideSlotDeps {
   getPart: () => PartId | null;
+  /**
+   * 로고를 눌러 처음부터 다시 할 때 지운다 (#369) — 끝내기가 쓰는 것과 같다.
+   * 안 주면 로고는 **지우지 않고 안내 화면으로 가기만** 한다 (묻지도 않는다) —
+   * "지워져요" 라고 묻고 안 지우면 거짓말이 된다
+   */
+  clearAll?: () => Promise<unknown>;
   /**
    * 정답사진에서 만든 부위 가이드 재료 (⑥ 잇기 — main.ts 의 getGuide, screens/guide-source). 주면 견본 그림 대신
    * 정답사진을 그 부위로 자른 그림 + 가이드 테두리를 보여 준다. 안 주거나 재료가 없으면 견본 그림 그대로
@@ -200,11 +207,26 @@ function ro(word: string): string {
   return jong === 0 || jong === 8 ? "로" : "으로";
 }
 
-/** 로고를 눌렀을 때 — 맨 처음 안내 화면으로 (#369 피드백). 사진은 세션에 그대로 남는다 */
-function home(ctx: ScreenContext<unknown>): () => void {
+/**
+ * 로고를 눌렀을 때 — 처음부터 다시 (#369 피드백).
+ *
+ * **찍은 사진과 올린 사진을 다 지우고** 안내 화면으로 간다. 되돌릴 수 없어서 한 번 묻는다.
+ * clearAll 은 끝내기가 쓰는 것과 같다 — 폰에 남은 사진 · 기록을 전부 지운다.
+ * 지우다 실패해도 화면은 넘긴다 (사용자를 하던 자리에 가둬 두지 않는다).
+ */
+function home(ctx: ScreenContext<unknown>, clearAll?: () => Promise<unknown>): () => void {
   return () => {
-    ctx.log.log({ name: "button", button: "home:consent" });
-    ctx.go("consent");
+    if (!clearAll) {
+      ctx.log.log({ name: "button", button: "home:consent" });
+      ctx.go("consent");
+      return;
+    }
+    ctx.log.log({ name: "button", button: "home:ask" });
+    const app = ctx.root.closest("#app") ?? ctx.root;
+    app.append(restartModal({
+      log: ctx.log,
+      onRestart: () => { void clearAll().finally(() => ctx.go("consent")); },
+    }));
   };
 }
 
@@ -578,7 +600,7 @@ export function partGuideSlot<S>(deps: PartGuideSlotDeps): Screen<S> {
         : { label: "예상 메이크업으로 돌아가기", onBack: () => {
             ctx.log.log({ name: "button", button: "back:answer" });
             ctx.go("answer");
-          } }, home(ctx as ScreenContext<unknown>));
+          } }, home(ctx as ScreenContext<unknown>, deps.clearAll));
       const guide = guideMock(part);
       // 실시간 가이드(예전 화면 4 — core/live-run 테두리 엔진)로 보내는 길. #334
       // 처음에는 사진 가이드가 보인다 — 카메라 권한을 묻지 않고 바로 볼 수 있게.
@@ -639,6 +661,12 @@ export function partGuideSlot<S>(deps: PartGuideSlotDeps): Screen<S> {
 export interface FeedbackSlotDeps {
   /** 재료 모으기 (⑥ main.ts) — 사진 두 장 · 부위별 문장. 화면은 그리기만 한다 */
   getFeedback: () => Promise<FeedbackLoad>;
+  /**
+   * 로고를 눌러 처음부터 다시 할 때 지운다 (#369) — 끝내기가 쓰는 것과 같다.
+   * 안 주면 로고는 **지우지 않고 안내 화면으로 가기만** 한다 (묻지도 않는다) —
+   * "지워져요" 라고 묻고 안 지우면 거짓말이 된다
+   */
+  clearAll?: () => Promise<unknown>;
 }
 
 /**
@@ -656,7 +684,7 @@ export function feedbackSlot<S>(deps: FeedbackSlotDeps): Screen<S> {
       const root = page("slot-feedback", { label: "시도사진으로 돌아가기", onBack: () => {
         ctx.log.log({ name: "button", button: "back:attempt" });
         ctx.go("attempt");
-      } }, home(ctx as ScreenContext<unknown>));
+      } }, home(ctx as ScreenContext<unknown>, deps.clearAll));
       ctx.root.append(root);
       let alive = true;
       let drop: (() => void) | null = null;
@@ -738,7 +766,7 @@ export function saveSlot<S>(deps: SaveSlotDeps): Screen<S> {
       const root = page("slot-save", { label: "피드백으로 돌아가기", onBack: () => {
         ctx.log.log({ name: "button", button: "back:feedback" });
         ctx.go("feedback");
-      } }, home(ctx as ScreenContext<unknown>));
+      } }, home(ctx as ScreenContext<unknown>, deps.clearAll));
       root.append(
         coach("결과를 저장한 뒤 세션 사진은 기기에서 지울게요"),
         title("저장 · 공유", "원하면 오늘의 결과를 폰에 남길 수 있어요"),
