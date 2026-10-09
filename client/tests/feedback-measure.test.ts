@@ -40,6 +40,15 @@ describe("겹치는 그림에서 라이너 꼬리 끝 (ridgeTail)", () => {
     expect(t).toBeLessThan(0.36);
   });
 
+  it("R5 굵게 옮겨진 꼬리도 읽는다 — 모델 그림을 키워 붙이면 선이 눈 폭의 2.5% 보다 굵어진다 (실험 44 · 45 · 52)", () => {
+    const half = Math.max(2, Math.round(0.025 * eyeW)) + 1;   // 예전 양옆 폭(0.025)으로는 양옆 칸도 선 안이라 "가는 선"이 아니었다
+    const thick = (side: "R" | "L", len: number): Paint => {
+      const e = side === "R" ? LM.eyeA : LM.eyeB, o = P(e.outer), i = P(e.inner), ax = { x: (o.x - i.x) / eyeW, y: (o.y - i.y) / eyeW };
+      return (x, y) => { const px = x - o.x, py = y - o.y, u = px * ax.x + py * ax.y, v = Math.abs(-px * ax.y + py * ax.x); return u >= 0 && u <= len * eyeW && v <= half ? [30, 25, 28] : null; };
+    };
+    for (const side of ["R", "L"] as const) expect(Math.abs(ridgeTail(bare, image(thick(side, 0.3)), side)! - 0.3)).toBeLessThan(0.04);
+  });
+
   it("R4 맨얼굴과 크기가 다른 그림은 재지 않는다 (겹친다는 전제가 깨졌다)", () => {
     const im = image();
     expect(ridgeTail(bare, { data: im.data, w: im.w, h: im.h - 10 }, "R")).toBeNull();
