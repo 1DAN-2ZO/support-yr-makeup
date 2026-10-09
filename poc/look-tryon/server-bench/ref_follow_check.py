@@ -10,9 +10,11 @@
   tint  : 다른 사람 얼굴에 섀도 파랑 · 입술 초록 · 볼에 큰 분홍 블러셔를 칠한 것
           → 그 색 쪽으로 가야 하고 (흔한 화장이면 빨간 입술로 간다), 큰 블러셔는 볼을 넓게 덮어야 한다
             (칠할 자리가 작으면 참고 사진의 큰 블러셔가 작게 옮겨졌다 — 2026-10-09, 팀원 방식(사진 전체를 새로 그림)과 견줘 봄)
-          → 블러셔 가장자리는 옅어지고 딱 끊긴 테두리가 없어야 한다 — 칠할 타원 그대로 되붙여 볼에 분홍 판을 붙인 것 같았다
-            (2026-10-09 사용자: 블러셔 주변부에 그라데이션). 볼만 옅게 하면 눈 밑 칠할 자리 아랫변에 띠가 남았다
-  셋 다    : 눈 안쪽(흰자 · 눈동자)은 그대로여야 한다 — 다시 그려서 참고 사진의 눈꺼풀 선이 눈동자에 비쳤다 (2026-10-09 카리나 사진)
+  blush : 다른 사람 얼굴에 칠할 타원보다 크고 가장자리가 부드러운 분홍 블러셔만
+          → 블러셔 크기는 그대로(타원 안 테두리까지 진하게), 타원 밖으로 이어지며 옅어지고, 딱 끊긴 테두리가 없어야 한다
+            (2026-10-09 사용자: 칠할 타원 그대로 붙여 분홍 판 같았다 · 안쪽부터 옅게 했더니 블러셔가 작아져 더 눈에 띄었다 —
+            크기는 그대로 두고 블러셔가 없는 쪽으로 그라데이션을 주며 퍼뜨리기)
+  모두    : 눈 안쪽(흰자 · 눈동자)은 그대로여야 한다 — 다시 그려서 참고 사진의 눈꺼풀 선이 눈동자에 비쳤다 (2026-10-09 카리나 사진)
              돌려받은 그림은 무손실(webp VP8L · PNG) — 손실 webp 가 가는 선(라이너 꼬리)을 뭉갰다 (#393)
 
     conda run -n flux2 python ref_follow_check.py [http://127.0.0.1:7861]
@@ -58,11 +60,16 @@ EYE_MAX = 2.0
 TINT_MIN = 4.0
 CHEEK_RED = 5.0
 CHEEK_COVER = 0.6
-# 블러셔 가장자리 — 칠하는 타원(CHEEK_PAINT) 테두리 띠(0.85 ~ 1)의 붉어진 정도가 가운데(0.4 안)의 BLUSH_EDGE 배 밑,
-# 볼 둘레(1.15 안, 입술 · 눈 둘레 빼고)에서 붉어진 정도가 바뀌는 가파름(눈 폭당, 가운데 값 대비 · 상위 0.5%)이 BLUSH_STEEP 밑.
-# 이 스크립트 · 같은 그림으로 — 타원 그대로: 0.61 · 14.1 / 볼만 옅게: 0.14 · 12.7 (눈 밑 띠) / 눈 밑도 옅게: 0.07 · 6.4 (2026-10-09)
-BLUSH_EDGE = 0.3
-BLUSH_STEEP = 9.0
+# blush 참고 사진: 칠할 타원(CHEEK_PAINT) 가운데에서 BLUSH_SOFT[0] 까지 진하게, BLUSH_SOFT[1] 까지 옅어지는 분홍 (타원 밖까지 이어진다)
+BLUSH_SOFT = (0.6, 1.35)
+# 붉어진 정도를 가운데(타원 0.4 안)에 견줘: 안 테두리 띠(0.85 ~ 1)는 BLUSH_IN 넘게(크기 그대로), 바깥 띠(1.05 ~ 1.3)는 BLUSH_OUT 넘게(퍼짐),
+# 먼 곳(1.8 ~ 2.2)은 BLUSH_FAR 밑(얼굴 전체로 번지지 않음), 볼 둘레(1.4 안)에서 바뀌는 가파름(눈 폭당 · 상위 0.5%)은 BLUSH_STEEP 밑
+# 이 스크립트 · 같은 그림(seed 1234)으로 — 타원 그대로: 0.40 · 0.03 · 0.02 · 8.8 / 안쪽부터 옅게: 0.04 · 0.01 · 0.02 · 6.1 /
+# 크기 그대로 + 바깥으로 펴기: 0.46 · 0.29 · 0.02 · 7.3 (2026-10-09)
+BLUSH_IN = 0.3
+BLUSH_OUT = 0.15
+BLUSH_FAR = 0.1
+BLUSH_STEEP = 8.0
 
 _lmk = FaceLandmarker.create_from_options(FaceLandmarkerOptions(
     base_options=BaseOptions(model_asset_path=str(Path.home() / ".cache" / "nudy" / "face_landmarker.task")), num_faces=1))
@@ -113,14 +120,15 @@ def cheek_q(im):
     return q, ew
 
 
-def blush_edge(da, q, ew, lips, eye):
-    """(테두리 띠 / 가운데 붉어진 정도, 가파름) — da: 맨얼굴 대비 a* 변화"""
+def blush_profile(da, q, ew, lips, eye):
+    """(안 테두리 띠, 바깥 띠, 먼 곳 — 가운데 대비, 가파름) — da: 맨얼굴 대비 a* 변화"""
     near_eye = cv2.dilate(eye.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (int(0.2 * ew) | 1,) * 2)) > 0
-    center = da[(q < 0.4) & ~lips].mean()
-    edge = da[(q > 0.85) & (q < 1.0) & ~lips & ~near_eye].mean()
+    ok = ~lips & ~near_eye
+    center = float(da[(q < 0.4) & ok].mean())
+    ring = lambda a, b: float(da[(q > a) & (q < b) & ok].mean()) / center
     gy, gx = np.gradient(cv2.GaussianBlur(da.astype(np.float32), (0, 0), 0.03 * ew))
-    steep = np.hypot(gx, gy) * ew / max(float(center), 1e-6)
-    return float(edge / center), float(np.percentile(steep[(q < 1.15) & ~lips & ~near_eye], 99.5))
+    steep = np.hypot(gx, gy) * ew / max(center, 1e-6)
+    return ring(0.85, 1.0), ring(1.05, 1.3), ring(1.8, 2.2), float(np.percentile(steep[(q < 1.4) & ok], 99.5))
 
 
 def zones(im):
@@ -156,6 +164,16 @@ def tinted(im):
     for m, color in ((blush, (235, 105, 135)), (lids, (40, 90, 220)), (lips, (30, 160, 70))):
         a[m] = a[m] * 0.35 + np.array(color) * 0.65
     return Image.fromarray(a.astype(np.uint8))
+
+
+def soft_blush(im):
+    """칠할 타원보다 크고 가장자리가 부드러운 분홍 블러셔만 (입술 · 눈은 그대로)"""
+    q, _ = cheek_q(im)
+    lips, _, _ = zones(im)
+    t = np.clip((q - BLUSH_SOFT[0]) / (BLUSH_SOFT[1] - BLUSH_SOFT[0]), 0, 1)
+    alpha = (0.65 * (1 - t * t * (3 - 2 * t)) * ~lips)[..., None]
+    a = np.asarray(im.convert("RGB"), np.float64)
+    return Image.fromarray((a * (1 - alpha) + np.array((235, 105, 135)) * alpha).astype(np.uint8))
 
 
 def png(im):
@@ -207,7 +225,7 @@ def main():
     sigma = EYE_BLUR * float(np.linalg.norm(lm[33] - lm[133]))
     B0 = blurred(L0, sigma)
     q, ew = cheek_q(bare)
-    refs = {"self": bare, "other": other, "tint": tinted(other)}
+    refs = {"self": bare, "other": other, "tint": tinted(other), "blush": soft_blush(other)}
     ok = True
     for name, ref in refs.items():
         for seed in SEEDS:
@@ -222,12 +240,16 @@ def main():
                 # 입술은 초록 쪽(a* 내려감), 섀도는 파랑 쪽(b* 내려감)
                 greener, bluer = -d[lips][:, 1].mean(), -d[lids][:, 2].mean()
                 cover = float((d[cheek][:, 1] > CHEEK_RED).mean())
-                edge, steep = blush_edge(d[..., 1], q, ew, lips, eye)
-                soft = edge < BLUSH_EDGE and steep < BLUSH_STEEP
-                good = greener > TINT_MIN and bluer > TINT_MIN and cover > CHEEK_COVER and soft and eye_ok and lossless(LAST["bytes"])
+                good = greener > TINT_MIN and bluer > TINT_MIN and cover > CHEEK_COVER and eye_ok and lossless(LAST["bytes"])
                 print(f"{name:5s} seed {seed:4d}  입술 초록 쪽 {greener:+5.1f} · 섀도 파랑 쪽 {bluer:+5.1f}  (> {TINT_MIN})"
-                      f" · 볼 덮음 {cover:4.0%} (> {CHEEK_COVER:.0%})"
-                      f" · 볼 테두리 {edge:4.2f} (< {BLUSH_EDGE}) · 가파름 {steep:4.1f} (< {BLUSH_STEEP}){eye_txt}  {'통과' if good else '실패'}")
+                      f" · 볼 덮음 {cover:4.0%} (> {CHEEK_COVER:.0%}){eye_txt}  {'통과' if good else '실패'}")
+            elif name == "blush":
+                inner, outer, far, steep = blush_profile(d[..., 1], q, ew, lips, eye)
+                good = (de_lip < BARE_MAX and inner > BLUSH_IN and outer > BLUSH_OUT and far < BLUSH_FAR and steep < BLUSH_STEEP
+                        and eye_ok and lossless(LAST["bytes"]))
+                print(f"{name:5s} seed {seed:4d}  입술 색 차 {de_lip:4.1f} (< {BARE_MAX}) · 볼 안 테두리 {inner:4.2f} (> {BLUSH_IN})"
+                      f" · 바깥 {outer:4.2f} (> {BLUSH_OUT}) · 먼 곳 {far:5.2f} (< {BLUSH_FAR}) · 가파름 {steep:4.1f} (< {BLUSH_STEEP})"
+                      f"{eye_txt}  {'통과' if good else '실패'}")
             else:
                 good = de_lip < BARE_MAX and de_lid < BARE_MAX and eye_ok and lossless(LAST["bytes"])
                 print(f"{name:5s} seed {seed:4d}  입술 색 차 {de_lip:4.1f} · 섀도 자리 색 차 {de_lid:4.1f}  (< {BARE_MAX})"
