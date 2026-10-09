@@ -1730,15 +1730,21 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   transform: rotate(45deg);
   transform-origin: 50% 100%;
 }
+/* 찍은 장 썸네일. 2칸으로 박아 두면 장 수가 줄었을 때(#386 눈 감은 장 뺌) 빈칸이 남는다 —
+   장 수에 맞춰 늘고 줄게 둔다. 한 장이면 가운데, 여러 장이면 나란히 */
 .shot-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 14px;
   list-style: none;
   padding: 0;
   margin: 0;
 }
 .shot-cell {
+  flex: 1 1 150px;
+  /* 한 장일 때 화면 폭만큼 늘어나면 썸네일이 지나치게 커진다 */
+  max-width: 220px;
   display: flex;
   flex-direction: column;
   gap: 8px;
