@@ -61,6 +61,7 @@ import { analyzeRefPhoto } from "./screens/ref-analyze";
 import { shrinkForUpload } from "./screens/answer-make";
 import { noteOfFeedback, noteOfGuide, noteOfMake, noteOfRef, noteOfSave, noteOfShrink } from "./screens/task-notes";
 import { timeTask } from "./core/task-timer";
+import { createKeeper, keepAttempt } from "./core/keep-client";
 import { feedbackSlot, partGuideSlot, saveSlot, slotScreen, type PartGuideSlotDeps, type SaveSlotDeps, type SlotDeps } from "./screens/flow-slots";
 import { inNewFlow } from "./core/screens";
 
@@ -154,6 +155,14 @@ async function boot(): Promise<void> {
     base: (import.meta.env.VITE_EVENTS_BASE as string | undefined) ?? "",
     // 동의하기 전에는 보내지 않는다. 그동안은 기기 안에만 쌓인다
     enabled: () => session.consent === true,
+  });
+  // 테스트 기간 사진 보관 (2026-10-09 결정) — 참고 사진을 뺀 사진과 피드백 결과를 서버에 7일 둔다 (server/app/keep.py).
+  // 서버가 켜져 있을 때만(GET /keep 200), 동의한 뒤에만 보낸다. 평소(서버 설정이 없을 때)에는 아무것도 안 올라간다.
+  // 세션 번호(sid)가 지워 달라는 요청의 열쇠다
+  const keeper = createKeeper({
+    sid,
+    enabled: () => session.consent === true,
+    base: (import.meta.env.VITE_KEEP_BASE as string | undefined) ?? "",
   });
   const log = createLogger(
     { sid, screen: session.screen, part: session.currentPart, ver: getVersions() },
@@ -262,6 +271,8 @@ async function boot(): Promise<void> {
     setAttempt: (shots) => {
       attempt = shots;
       judged = null;
+      // 테스트 기간 보관 (서버가 켜져 있을 때만 — core/keep-client)
+      keepAttempt(keeper, shots.front_open.map((s) => s.blob), shots.front_closed[0]?.blob ?? null);
       // 옛 시도사진으로 만든 옮긴 그림은 못 쓴다 — 만드는 중이던 것도 버린다
       maker.cancel("moved");
       void putMade("moved", null);
@@ -284,6 +295,8 @@ async function boot(): Promise<void> {
     // 걸린 시간을 사용 기록에 남긴다 (task feedback_run — core/task-timer)
     const r = await timeTask(log, "feedback_run", () => loadFeedback({ getBaseline: () => session.baseline, getAttempt, getAnswer }), noteOfFeedback);
     judged = r.ok ? { feedback: r.view.feedback, answer: r.view.answer, attempt: r.view.attempt } : null;
+    // 테스트 기간 보관 — 판정 결과(글)도 같이 둔다. 사진과 견줘 기준값을 맞추려면 그때 무엇이라고 말했는지가 필요하다
+    if (r.ok) keeper.keepFeedback(r.view.feedback);
     return r;
   };
 
@@ -307,6 +320,8 @@ async function boot(): Promise<void> {
     getAttempt: () => attempt?.front_open[0]?.blob ?? null,
     put: (key, picture) => {
       if (key === "answer") judged = null;
+      // 테스트 기간 보관 — 정답사진 · 옮긴 그림. 참고 사진은 보내지 않는다 (보낼 이름이 없다)
+      keeper.keep(key, picture);
       return putMade(key, picture);
     },
     request: (bare, ref) => requestTransfer(bare, ref, { base: (import.meta.env.VITE_TRANSFER_BASE as string | undefined) ?? "" }),
@@ -360,7 +375,11 @@ async function boot(): Promise<void> {
       },
       // 쌩얼 저장도 draft 와 같은 줄에 세운다 — 끝내기(clearAll)가 인코딩·저장이 끝날 때까지 기다린다 (#162 리뷰)
       saveBare: (blob) => {
-        const done = saving.then(() => blob).then((b) => sessionStore.saveImage("bare", b));
+        const done = saving.then(() => blob).then((b) => {
+          // 테스트 기간 보관 — 맨얼굴 눈 뜬 장 (서버가 켜져 있고 동의했을 때만)
+          keeper.keep("bare", b);
+          return sessionStore.saveImage("bare", b);
+        });
         saving = done.catch(() => {});
         return done;
       },
