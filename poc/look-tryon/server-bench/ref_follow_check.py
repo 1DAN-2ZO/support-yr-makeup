@@ -11,6 +11,7 @@
           → 그 색 쪽으로 가야 하고 (흔한 화장이면 빨간 입술로 간다), 큰 블러셔는 볼을 넓게 덮어야 한다
             (칠할 자리가 작으면 참고 사진의 큰 블러셔가 작게 옮겨졌다 — 2026-10-09, 팀원 방식(사진 전체를 새로 그림)과 견줘 봄)
   셋 다    : 눈 안쪽(흰자 · 눈동자)은 그대로여야 한다 — 다시 그려서 참고 사진의 눈꺼풀 선이 눈동자에 비쳤다 (2026-10-09 카리나 사진)
+             돌려받은 그림은 무손실(webp VP8L · PNG) — 손실 webp 가 가는 선(라이너 꼬리)을 뭉갰다 (#393)
 
     conda run -n flux2 python ref_follow_check.py [http://127.0.0.1:7861]
 """
@@ -133,6 +134,26 @@ def png(im):
     return {"url": "data:image/png;base64," + base64.b64encode(b.getvalue()).decode(), "meta": {"_type": "gradio.FileData"}}
 
 
+def lossless(data):
+    """무손실인가 — PNG, 또는 webp 의 그림 조각이 VP8L(무손실). VP8 는 손실"""
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return True
+    if data[:4] != b"RIFF" or data[8:12] != b"WEBP":
+        return False
+    i = 12
+    while i + 8 <= len(data):
+        tag = data[i:i + 4]
+        if tag == b"VP8L":
+            return True
+        if tag == b"VP8 ":
+            return False
+        i += 8 + int.from_bytes(data[i + 4:i + 8], "little") + (int.from_bytes(data[i + 4:i + 8], "little") & 1)
+    return False
+
+
+LAST = {"bytes": b""}
+
+
 def make(bare, ref, seed):
     body = json.dumps({"data": [png(bare), png(ref), STEPS, STRENGTH, True, seed]}).encode()
     req = urllib.request.Request(f"{API}/gradio_api/call/predict", body, {"Content-Type": "application/json"})
@@ -142,7 +163,8 @@ def make(bare, ref, seed):
     if kind != "complete":
         raise RuntimeError(data[:200])
     path = json.loads(data)[0]["path"]
-    return Image.open(io.BytesIO(urllib.request.urlopen(f"{API}/gradio_api/file={quote(path, safe='')}").read())).convert("RGB")
+    LAST["bytes"] = urllib.request.urlopen(f"{API}/gradio_api/file={quote(path, safe='')}").read()
+    return Image.open(io.BytesIO(LAST["bytes"])).convert("RGB")
 
 
 def main():
@@ -164,16 +186,16 @@ def main():
             de_lid = np.linalg.norm(d[lids], axis=-1).mean()
             de_eye = np.linalg.norm(blurred(L, sigma) - B0, axis=-1)[eye].mean()
             eye_ok = de_eye < EYE_MAX
-            eye_txt = f" · 눈 안쪽 {de_eye:3.1f} (< {EYE_MAX})"
+            eye_txt = f" · 눈 안쪽 {de_eye:3.1f} (< {EYE_MAX}) · {'무손실' if lossless(LAST['bytes']) else '손실 압축'}"
             if name == "tint":
                 # 입술은 초록 쪽(a* 내려감), 섀도는 파랑 쪽(b* 내려감)
                 greener, bluer = -d[lips][:, 1].mean(), -d[lids][:, 2].mean()
                 cover = float((d[cheek][:, 1] > CHEEK_RED).mean())
-                good = greener > TINT_MIN and bluer > TINT_MIN and cover > CHEEK_COVER and eye_ok
+                good = greener > TINT_MIN and bluer > TINT_MIN and cover > CHEEK_COVER and eye_ok and lossless(LAST["bytes"])
                 print(f"{name:5s} seed {seed:4d}  입술 초록 쪽 {greener:+5.1f} · 섀도 파랑 쪽 {bluer:+5.1f}  (> {TINT_MIN})"
                       f" · 볼 덮음 {cover:4.0%} (> {CHEEK_COVER:.0%}){eye_txt}  {'통과' if good else '실패'}")
             else:
-                good = de_lip < BARE_MAX and de_lid < BARE_MAX and eye_ok
+                good = de_lip < BARE_MAX and de_lid < BARE_MAX and eye_ok and lossless(LAST["bytes"])
                 print(f"{name:5s} seed {seed:4d}  입술 색 차 {de_lip:4.1f} · 섀도 자리 색 차 {de_lid:4.1f}  (< {BARE_MAX})"
                       f"{eye_txt}  {'통과' if good else '실패'}")
             ok &= bool(good)
