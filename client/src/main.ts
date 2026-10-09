@@ -112,31 +112,35 @@ function showBootError(e: unknown): void {
   root.append(box);
 }
 
-/** 앱 첫 진입 스플래시. 세션 화면이 아니라 부팅 중에만 보인다. */
-function showSplash(ms = 3000): Promise<void> {
-  const root = el("screen");
-  root.textContent = "";
+/** 앱 첫 진입 스플래시를 닫는 함수. 세션 화면이 아니라 부팅 중에만 보인다 (최소 3초) */
+let closeBootSplash: (() => Promise<void>) | null = null;
+
+function showSplash(): () => Promise<void> {
+  const started = performance.now();
+  let closed = false;
   const splash = document.createElement("div");
   splash.className = "splash";
+  splash.setAttribute("aria-label", "nudy");
   splash.innerHTML = `
     <div class="splash-frame">
-      <div class="nudy-logo splash-logo" aria-label="nudy">
-        <span>nudy</span>
-        <i aria-hidden="true"></i>
-      </div>
+      <img src="/ui/nudy-splash.png" alt="" aria-hidden="true" />
     </div>
   `;
-  root.append(splash);
-  return new Promise((resolve) => {
-    window.setTimeout(() => {
-      splash.classList.add("leaving");
-      window.setTimeout(resolve, 280);
-    }, ms);
-  });
+  document.body.append(splash);
+
+  return async () => {
+    if (closed) return;
+    closed = true;
+    const rest = Math.max(0, 3000 - (performance.now() - started));
+    await new Promise((resolve) => window.setTimeout(resolve, rest));
+    splash.classList.add("leaving");
+    await new Promise((resolve) => window.setTimeout(resolve, 280));
+    splash.remove();
+  };
 }
 
 async function boot(): Promise<void> {
-  const splashDone = showSplash();
+  closeBootSplash = showSplash();
   let session: Session = createSession();
 
   // 로그는 세션과 같은 IndexedDB 를 쓴다 — DB 를 두 벌 만들지 않는다.
@@ -190,16 +194,7 @@ async function boot(): Promise<void> {
     saving = saving.then(() => sessionStore.saveDraft(draft)).catch(() => {});
   };
 
-  // 복원 중에는 모델을 받느라 몇 초 걸린다. 스플래시가 떠 있는 동안은 그것이
-  // 기다림을 가려 주므로 건드리지 않는다 — 덮어쓰면 스플래시가 지워진다.
-  // 스플래시가 먼저 끝났을 때만 한 줄을 띄운다 (shell.render 가 지운다).
-  let waiting = false;
-  void splashDone.then(() => {
-    if (!waiting) return;
-    const root = el("screen");
-    if (!root.querySelector(".splash")) root.textContent = "준비하고 있어요…";
-  });
-  waiting = true;
+  // 복원 중에는 모델을 받느라 몇 초 걸린다 — 스플래시가 부팅이 끝날 때까지 떠서 그 기다림을 가린다 (closeBootSplash)
   session = await restore(sessionStore, events, session);
   // 만든 그림(정답사진 · 옮긴 그림)도 폰 저장소에서 되살린다 — 다시 켤 때마다 15초씩 다시 만들지 않게 (#331).
   // 세션이 만료됐으면 저장소가 사진을 같이 지웠으니 빈 채로 돌아온다
@@ -211,7 +206,6 @@ async function boot(): Promise<void> {
     saving = done.catch(() => {});
     return done;
   };
-  waiting = false;
   // 새 흐름(2026-10-06)에서 빠진 화면에 멈춘 세션은 가까운 새 화면으로 (화장 선택 · 2-b · 부위 화면 · 리뷰 → screens.inNewFlow)
   if (inNewFlow(session.screen) !== session.screen) session = setScreen(session, inNewFlow(session.screen));
 
@@ -520,8 +514,9 @@ async function boot(): Promise<void> {
     if (document.visibilityState === "hidden") sender.flushBeacon();
   });
 
-  await splashDone;
   shell.render();
+  await closeBootSplash();
+  closeBootSplash = null;
 }
 
 /**
@@ -612,5 +607,11 @@ async function restore(store: SessionStore, events: CaptureEvents, fresh: Sessio
   return { ...plan.session, baseline: rebuildBaseline(plan.baseline, found, blob) };
 }
 
-// 시작하다 실패하면 빈 화면 대신 안내를 띄운다 (IndexedDB 가 막힌 브라우저·저장공간 부족 등)
-void boot().catch(showBootError);
+// 시작하다 실패하면 빈 화면 대신 안내를 띄운다 (IndexedDB 가 막힌 브라우저·저장공간 부족 등) — 스플래시는 먼저 닫는다
+void boot().catch((e: unknown) => {
+  void (async () => {
+    if (closeBootSplash) await closeBootSplash().catch(() => {});
+    closeBootSplash = null;
+    showBootError(e);
+  })();
+});
