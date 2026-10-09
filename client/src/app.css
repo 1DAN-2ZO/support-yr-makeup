@@ -2421,3 +2421,26 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   stroke-linejoin: round;
 }
 .slot-back:active { background: #efe9e6; }
+
+/* ── 로고를 누르면 처음으로 (#369 피드백) ──
+   로고 자체가 버튼이 되지만 보이는 모양은 그대로여야 한다 */
+.slot-home {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.slot-home:active { opacity: 0.7; }
+
+/* ── 아래 여백 (#369 피드백) ──
+   "스크롤하다가 다시 찍기를 누른다" — 내용이 화면보다 길면 마지막 버튼이 손가락이
+   머무는 자리에 걸린다. 스크롤을 멈추는 자리에 버튼이 없도록 아래를 한 뼘 더 비운다 */
+.slot-feedback,
+.attempt {
+  padding-bottom: calc(64px + env(safe-area-inset-bottom));
+}
+/* 피드백은 부위 줄이 길어 특히 그렇다 — 마지막 줄과 버튼 사이도 띄운다 */
+.slot-feedback .fb-lines { margin-bottom: 8px; }
+/* 되돌릴 수 없는 버튼(다시 찍기)은 위쪽 여백을 더 줘서 잘못 눌리지 않게 */
+.attempt > button.ghost { margin-top: 18px; }
