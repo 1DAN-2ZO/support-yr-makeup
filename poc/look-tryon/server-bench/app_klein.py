@@ -28,10 +28,12 @@ import queue
 from concurrent.futures import Future
 from pathlib import Path
 
+import cv2
 import gradio as gr
 import numpy as np
 import torch
 from PIL import Image, ImageDraw, ImageFilter
+from scipy.spatial import Delaunay
 
 import mediapipe as mp
 from mediapipe.tasks.python import BaseOptions
@@ -59,6 +61,11 @@ EYES = (
     ([263, 466, 388, 387, 386, 385, 384, 398, 362], [263, 249, 390, 373, 374, 380, 381, 382, 362], [276, 283, 282, 295, 285], [300, 293, 334, 296, 336], 263, 362),
 )
 BROW_MARGIN = 0.06   # 눈썹 윗선 위로 이만큼(눈 폭 비율) 더 칠할 영역에 넣는다 — 윗선 점 위로 삐져나온 눈썹 털까지
+# 볼 · 눈 밑 칠할 자리 (눈 폭 비율). 작게 잡았더니(볼 반지름 0.75 × 0.5 · 눈 밑 0.12) 참고 사진의 큰 블러셔 · 눈 밑 색이 작게 옮겨졌다 —
+# 팀원 방식(사진 전체를 새로 그림)과 같은 사진으로 견줘 넓혔다 (2026-10-09). 더 넓히면(1.2 × 0.95) 코 옆까지 덮고 블러셔는 거의 안 늘었다
+UNDER_EYE = 0.3                 # 아랫눈꺼풀에서 아래로
+CHEEK_AT = (0.25, 1.15)         # 볼 가운데 — 눈 가운데에서 바깥으로 · 아래로
+CHEEK_SIZE = (1.0, 0.8)         # 볼 타원 반지름 (가로 · 세로)
 LIPS = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146]
 FACE_OVAL = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136,
              172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109]
@@ -132,11 +139,12 @@ def makeup_mask(lm, size):
         out_dir = (o - i0) / ew
         pts = [lm[k] for k in up + lo + brow] + [lm[k] + np.array([0, -BROW_MARGIN * ew]) for k in brow_up]
         pts.append(o + out_dir * 0.45 * ew + np.array([0, -0.15 * ew]))   # 꼬리 자리
-        pts += [lm[k] + np.array([0, 0.12 * ew]) for k in lo]              # 아래 눈두덩 조금
+        pts += [lm[k] + np.array([0, UNDER_EYE * ew]) for k in lo]         # 눈 밑
         arr = np.array(pts)
         d.polygon([tuple(p) for p in arr[ConvexHull(arr).vertices]], fill=255)
-        c = (o + i0) / 2 + out_dir * 0.35 * ew + np.array([0, 1.25 * ew])  # 볼
-        d.ellipse([c[0] - 0.75 * ew, c[1] - 0.5 * ew, c[0] + 0.75 * ew, c[1] + 0.5 * ew], fill=255)
+        c = (o + i0) / 2 + out_dir * CHEEK_AT[0] * ew + np.array([0, CHEEK_AT[1] * ew])  # 볼
+        rx, ry = CHEEK_SIZE[0] * ew, CHEEK_SIZE[1] * ew
+        d.ellipse([c[0] - rx, c[1] - ry, c[0] + rx, c[1] + ry], fill=255)
     d.polygon([tuple(lm[k]) for k in LIPS], fill=255)
     m = m.filter(ImageFilter.MaxFilter(9)).filter(ImageFilter.GaussianBlur(4))
     keep = Image.new("L", (size, size), 0)
@@ -151,16 +159,41 @@ def makeup_mask(lm, size):
     return Image.fromarray((np.asarray(m, np.float32) * np.asarray(keep, np.float32) / 255).astype(np.uint8))
 
 
-def paste_back(original, result, box):
+def paste_back(original, result, box, mask=None):
+    """그린 얼굴 정사각형을 원본에 되붙인다. mask(칠할 영역)를 주면 그 밖은 원본 픽셀 그대로 —
+    모델은 16px 칸 단위로 그려서 칠할 영역에서 뺀 눈 안쪽까지 다시 그렸고, 참고 사진의 눈꺼풀 선이 눈동자에 비쳤다 (2026-10-09)"""
     left, top, side = box
     patch = np.asarray(result.convert("RGB").resize((side, side), Image.LANCZOS)).astype(np.float32)
     base = np.asarray(original.convert("RGB")).astype(np.float32).copy()
     f = max(1, int(side * FEATHER))
     ramp = np.clip(np.minimum(np.arange(side), np.arange(side)[::-1]) / f, 0, 1)
     alpha = np.minimum.outer(ramp, ramp)[..., None]
+    if mask is not None:
+        alpha = alpha * (np.asarray(mask.resize((side, side), Image.BILINEAR), np.float32)[..., None] / 255)
     region = base[top:top + side, left:left + side]
     base[top:top + side, left:left + side] = region * (1 - alpha) + patch * alpha
     return Image.fromarray(np.clip(base, 0, 255).astype(np.uint8))
+
+
+def warp_to(ref, rlm, lm, size):
+    """참고 사진을 얼굴 점으로 내 얼굴 모양(lm, size × size 정사각형 좌표)에 맞춰 편다 — 얼굴 점 삼각형마다 따로, 얼굴 밖은 회색.
+    참고 사진의 눈 모양 · 윗라인 각도가 내 눈과 달라서, 모델이 참고 사진 눈에 맞춰 라인 · 속눈썹을 그리면 내 눈꺼풀이 그 안쪽에
+    흐리게 겹쳐 보였다 (2026-10-09 카리나 사진, 사용자 제안: 참고 사진 눈 윗라인을 내 눈에 맞추기)"""
+    src = np.asarray(ref.convert("RGB"))
+    dst = np.full((size, size, 3), 128, np.uint8)
+    P, Q = rlm[:468].astype(np.float32), lm[:468].astype(np.float32)
+    for t in Delaunay(Q).simplices:
+        q = Q[t]
+        x, y, w, h = cv2.boundingRect(q)
+        x0, y0, x1, y1 = max(x, 0), max(y, 0), min(x + w, size), min(y + h, size)
+        if x1 <= x0 or y1 <= y0:
+            continue
+        a = cv2.getAffineTransform(P[t], (q - np.array([x0, y0], np.float32)).astype(np.float32))
+        patch = cv2.warpAffine(src, a, (x1 - x0, y1 - y0), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+        inside = np.zeros((y1 - y0, x1 - x0), np.uint8)
+        cv2.fillConvexPoly(inside, np.round(q - [x0, y0]).astype(np.int32), 1)
+        dst[y0:y1, x0:x1][inside > 0] = patch[inside > 0]
+    return Image.fromarray(dst)
 
 
 # 그리기는 메인 스레드에서만 — 다른 스레드에서 그리면 두 번째 그림부터 서버가 오류 없이 죽었다 (윈도우 · 모델 부분씩 올리기,
@@ -194,13 +227,13 @@ def _run(id_image, makeup_image, steps, strength, keep_size, seed):
     box = face_square(original, lm)
     left, top, side = box
     face = original.crop((left, top, left + side, top + side)).resize((SIZE, SIZE), Image.LANCZOS)
-    mask = makeup_mask((lm - [left, top]) * (SIZE / side), SIZE)
+    lm_sq = (lm - [left, top]) * (SIZE / side)
+    mask = makeup_mask(lm_sq, SIZE)
 
     ref = makeup_image.convert("RGB")
     rlm = landmarks(ref)
     if rlm is not None:
-        rl, rt, rs = face_square(ref, rlm)
-        ref = ref.crop((rl, rt, rl + rs, rt + rs))
+        ref = warp_to(ref, rlm, lm_sq, SIZE)    # 내 얼굴 모양으로 편 참고 사진 (얼굴을 못 찾으면 그대로)
     ref = ref.resize((REF_SIZE, REF_SIZE), Image.LANCZOS)
 
     torch.cuda.reset_peak_memory_stats()
@@ -210,7 +243,7 @@ def _run(id_image, makeup_image, steps, strength, keep_size, seed):
                strength=float(strength), guidance_scale=1.0, num_inference_steps=int(steps), generator=gen).images[0]
     dt = time.perf_counter() - t0
     vram = torch.cuda.max_memory_allocated() / 2**30
-    result = paste_back(original, out, box)
+    result = paste_back(original, out, box, mask)
     status = (f"{dt:.1f}초 (FLUX.2 klein 4B 영역 다시 그리기, steps={int(steps)}, 강도={float(strength):.2f}, 얼굴 {side}px → {SIZE}) · "
               f"VRAM peak {vram:.1f}GB · 원본 {original.size[0]}×{original.size[1]} 유지")
     return result, status

@@ -7,7 +7,10 @@
 참고 사진 (저장소 샘플 얼굴만 — 개인 사진 없음)
   self  : 맨얼굴 그 자체          → 거의 안 바뀌어야 한다
   other : 다른 사람 맨얼굴        → 거의 안 바뀌어야 한다
-  tint  : 다른 사람 얼굴에 섀도 파랑 · 입술 초록을 칠한 것 → 그 색 쪽으로 가야 한다 (흔한 화장이면 빨간 입술로 간다)
+  tint  : 다른 사람 얼굴에 섀도 파랑 · 입술 초록 · 볼에 큰 분홍 블러셔를 칠한 것
+          → 그 색 쪽으로 가야 하고 (흔한 화장이면 빨간 입술로 간다), 큰 블러셔는 볼을 넓게 덮어야 한다
+            (칠할 자리가 작으면 참고 사진의 큰 블러셔가 작게 옮겨졌다 — 2026-10-09, 팀원 방식(사진 전체를 새로 그림)과 견줘 봄)
+  셋 다    : 눈 안쪽(흰자 · 눈동자)은 그대로여야 한다 — 다시 그려서 참고 사진의 눈꺼풀 선이 눈동자에 비쳤다 (2026-10-09 카리나 사진)
 
     conda run -n flux2 python ref_follow_check.py [http://127.0.0.1:7861]
 """
@@ -20,6 +23,7 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import quote
 
+import cv2
 import mediapipe as mp
 import numpy as np
 from mediapipe.tasks.python import BaseOptions
@@ -37,9 +41,20 @@ LIPS = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17,
 # 눈마다 윗눈꺼풀(눈꼬리 → 눈머리) · 눈썹 아랫선(눈꼬리 쪽 → 눈머리 쪽) — 그 사이가 섀도 자리
 LIDS = (([33, 246, 161, 160, 159, 158, 157, 173, 133], [46, 53, 52, 65, 55]),
         ([263, 466, 388, 387, 386, 385, 384, 398, 362], [276, 283, 282, 295, 285]))
-# 통과 기준 (Lab) — 화장 없는 참고면 입술 · 섀도 자리 평균 색 차가 이 밑, 칠한 참고면 그 색 쪽으로 이만큼 넘게
+# 볼 — 눈 가운데에서 바깥으로 눈 폭 0.25, 아래로 1.15 인 곳을 가운데로 (가로 · 세로 반지름, 눈 폭 대비)
+CHEEK_AT = (0.25, 1.15)
+CHEEK_ZONE = (0.9, 0.7)     # 잴 자리
+CHEEK_PAINT = (1.0, 0.8)    # 참고 사진에 칠하는 크기 — 잴 자리보다 조금 크게
+# 통과 기준 (Lab) — 화장 없는 참고면 입술 · 섀도 자리 평균 색 차가 이 밑, 칠한 참고면 그 색 쪽으로 이만큼 넘게,
+# 볼 잴 자리 중 붉어진(a* 가 CHEEK_RED 넘게 오른) 곳이 CHEEK_COVER 넘게
 BARE_MAX = 6.0
+# 눈 안쪽은 눈 폭의 3% 로 흐려서 견준다 — 서버가 webp(손실 압축)로 돌려줘서, 그대로 견주면 압축만으로 눈 안쪽 색 차가 2.7 이었다
+# (흐리면 압축만 1.0. 이 스크립트로 — 눈 안쪽까지 다시 그리던 서버: 칠한 참고 2.8 ~ 3.1 · 고친 서버: 0.9 ~ 1.5, 2026-10-09)
+EYE_BLUR = 0.03
+EYE_MAX = 2.0
 TINT_MIN = 4.0
+CHEEK_RED = 5.0
+CHEEK_COVER = 0.6
 
 _lmk = FaceLandmarker.create_from_options(FaceLandmarkerOptions(
     base_options=BaseOptions(model_asset_path=str(Path.home() / ".cache" / "nudy" / "face_landmarker.task")), num_faces=1))
@@ -51,8 +66,34 @@ def landmarks(im):
     return np.array([[p.x * w, p.y * h] for p in r.face_landmarks[0]])
 
 
+# 눈 안쪽 (윗 · 아랫눈꺼풀 테두리)
+EYE_IN = ([33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246],
+          [263, 249, 390, 373, 374, 380, 381, 382, 362, 398, 384, 385, 386, 387, 388, 466])
+
+
+def eyes_in(im):
+    lm = landmarks(im)
+    m = Image.new("L", im.size, 0)
+    for e in EYE_IN:
+        ImageDraw.Draw(m).polygon([tuple(lm[k]) for k in e], fill=255)
+    return np.asarray(m) > 0
+
+
+def cheeks(im, size):
+    """볼 타원 마스크 — size = (가로, 세로) 반지름 (눈 폭 대비)"""
+    lm = landmarks(im)
+    m = Image.new("L", im.size, 0)
+    for lid, _ in LIDS:
+        o, i0 = lm[lid[0]], lm[lid[-1]]
+        ew = float(np.linalg.norm(o - i0))
+        c = (o + i0) / 2 + (o - i0) / ew * CHEEK_AT[0] * ew + np.array([0, CHEEK_AT[1] * ew])
+        rx, ry = size[0] * ew, size[1] * ew
+        ImageDraw.Draw(m).ellipse([c[0] - rx, c[1] - ry, c[0] + rx, c[1] + ry], fill=255)
+    return np.asarray(m) > 0
+
+
 def zones(im):
-    """(입술, 섀도 자리) 마스크 — 섀도 자리는 윗눈꺼풀 ~ 눈썹 아랫선 사이의 아래쪽 절반 (눈썹 털은 안 넣음)"""
+    """(입술, 섀도 자리, 볼) 마스크 — 섀도 자리는 윗눈꺼풀 ~ 눈썹 아랫선 사이의 아래쪽 절반 (눈썹 털은 안 넣음)"""
     lm = landmarks(im)
     lips = Image.new("L", im.size, 0)
     ImageDraw.Draw(lips).polygon([tuple(lm[k]) for k in LIPS], fill=255)
@@ -60,7 +101,8 @@ def zones(im):
     for lid, brow in LIDS:
         top = [lm[lid[0]] + (lm[b] - lm[lid[0]]) * 0.5 for b in brow]
         ImageDraw.Draw(lids).polygon([tuple(p) for p in [lm[k] for k in lid] + top[::-1]], fill=255)
-    return np.asarray(lips) > 0, np.asarray(lids) > 0
+    lips = np.asarray(lips) > 0
+    return lips, np.asarray(lids) > 0, cheeks(im, CHEEK_ZONE) & ~lips
 
 
 def lab(im):
@@ -71,11 +113,16 @@ def lab(im):
     return np.stack([116 * f[..., 1] - 16, 500 * (f[..., 0] - f[..., 1]), 200 * (f[..., 1] - f[..., 2])], -1)
 
 
+def blurred(L, sigma):
+    return np.stack([cv2.GaussianBlur(L[..., i].astype(np.float32), (0, 0), sigma) for i in range(3)], -1)
+
+
 def tinted(im):
-    """섀도 자리 파랑 · 입술 초록 — 흔한 화장(분홍 · 주황 섀도, 빨간 입술)과 반대 색"""
-    lips, lids = zones(im)
+    """섀도 자리 파랑 · 입술 초록 — 흔한 화장(분홍 · 주황 섀도, 빨간 입술)과 반대 색 · 볼에 큰 분홍 블러셔"""
+    lips, lids, _ = zones(im)
+    blush = cheeks(im, CHEEK_PAINT) & ~lips
     a = np.asarray(im.convert("RGB"), np.float64)
-    for m, color in ((lids, (40, 90, 220)), (lips, (30, 160, 70))):
+    for m, color in ((blush, (235, 105, 135)), (lids, (40, 90, 220)), (lips, (30, 160, 70))):
         a[m] = a[m] * 0.35 + np.array(color) * 0.65
     return Image.fromarray(a.astype(np.uint8))
 
@@ -101,23 +148,34 @@ def make(bare, ref, seed):
 def main():
     bare = Image.open(BARE).convert("RGB")
     other = Image.open(OTHER).convert("RGB")
-    lips, lids = zones(bare)
+    lips, lids, cheek = zones(bare)
+    eye = eyes_in(bare)
     L0 = lab(bare)
+    lm = landmarks(bare)
+    sigma = EYE_BLUR * float(np.linalg.norm(lm[33] - lm[133]))
+    B0 = blurred(L0, sigma)
     refs = {"self": bare, "other": other, "tint": tinted(other)}
     ok = True
     for name, ref in refs.items():
         for seed in SEEDS:
-            d = lab(make(bare, ref, seed)) - L0
+            L = lab(make(bare, ref, seed))
+            d = L - L0
             de_lip = np.linalg.norm(d[lips], axis=-1).mean()
             de_lid = np.linalg.norm(d[lids], axis=-1).mean()
+            de_eye = np.linalg.norm(blurred(L, sigma) - B0, axis=-1)[eye].mean()
+            eye_ok = de_eye < EYE_MAX
+            eye_txt = f" · 눈 안쪽 {de_eye:3.1f} (< {EYE_MAX})"
             if name == "tint":
                 # 입술은 초록 쪽(a* 내려감), 섀도는 파랑 쪽(b* 내려감)
                 greener, bluer = -d[lips][:, 1].mean(), -d[lids][:, 2].mean()
-                good = greener > TINT_MIN and bluer > TINT_MIN
-                print(f"{name:5s} seed {seed:4d}  입술 초록 쪽 {greener:+5.1f} · 섀도 파랑 쪽 {bluer:+5.1f}  (> {TINT_MIN})  {'통과' if good else '실패'}")
+                cover = float((d[cheek][:, 1] > CHEEK_RED).mean())
+                good = greener > TINT_MIN and bluer > TINT_MIN and cover > CHEEK_COVER and eye_ok
+                print(f"{name:5s} seed {seed:4d}  입술 초록 쪽 {greener:+5.1f} · 섀도 파랑 쪽 {bluer:+5.1f}  (> {TINT_MIN})"
+                      f" · 볼 덮음 {cover:4.0%} (> {CHEEK_COVER:.0%}){eye_txt}  {'통과' if good else '실패'}")
             else:
-                good = de_lip < BARE_MAX and de_lid < BARE_MAX
-                print(f"{name:5s} seed {seed:4d}  입술 색 차 {de_lip:4.1f} · 섀도 자리 색 차 {de_lid:4.1f}  (< {BARE_MAX})  {'통과' if good else '실패'}")
+                good = de_lip < BARE_MAX and de_lid < BARE_MAX and eye_ok
+                print(f"{name:5s} seed {seed:4d}  입술 색 차 {de_lip:4.1f} · 섀도 자리 색 차 {de_lid:4.1f}  (< {BARE_MAX})"
+                      f"{eye_txt}  {'통과' if good else '실패'}")
             ok &= bool(good)
     print("통과" if ok else "실패")
     sys.exit(0 if ok else 1)
