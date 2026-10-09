@@ -121,7 +121,7 @@ export interface WholeFeedback {
 
 const NAME: Record<FeedbackPartId, string> = { brow: "눈썹", shadow: "섀도우", liner: "라이너", cheek: "볼", lip: "입술" };
 const ORDER: readonly FeedbackPartId[] = ["brow", "shadow", "liner", "cheek", "lip"];
-const SAME = "정답과 비슷해요", NO_TARGET = "정답 화장에서 변화를 찾지 못했어요", NO_MINE = "내 화장에서 변화를 찾지 못했어요", UNSEEN = "이번에는 볼 수 없었어요";
+const SAME = "예상 메이크업과 비슷해요", NO_TARGET = "예상 메이크업에서 변화를 찾지 못했어요", NO_MINE = "내 화장에서 변화를 찾지 못했어요", UNSEEN = "이번에는 볼 수 없었어요";
 const BLOCK = {
   light: "처음 찍은 사진과 밝기가 많이 달라요. 같은 자리에서 다시 찍어 주세요",
   size: "처음 찍은 사진과 얼굴 크기가 많이 달라요. 같은 거리에서 다시 찍어 주세요",
@@ -154,30 +154,30 @@ export function composeFeedback(m: WholeMeasures): WholeFeedback {
       const smear = (["R", "L"] as const).filter((k) => (p[`side${k}`] ?? 0) - (p[`sideTarget${k}`] ?? 0) > F.lipSide);
       if (smear.length) says.push([`${smear.length === 1 ? `${side(smear[0]!)} ` : ""}입꼬리 옆으로 번졌어요`, "입꼬리 바깥을 닦아 정리해 보세요"]);
       if (p.out - p.outTarget > F.lipOut) says.push(["입술선 밖으로 나갔어요", "입술선 안쪽으로 정리해 보세요"]);
-      if (!says.length && p.amount < F.weak) says.push(["정답보다 옅어요", "한 번 더 덧발라 보세요"]);
+      if (!says.length && p.amount < F.weak) says.push(["예상 메이크업보다 옅어요", "한 번 더 덧발라 보세요"]);
       parts.push(pick(part, p.target, says, none ? [NO_MINE, "입술을 발라 보세요"] : undefined));
     } else if (part === "shadow" && m.shadow) {
       const p = m.shadow, mean = (p.amountR + p.amountL) / 2, one = lost(p.amountR, p.amountL), none = Math.max(p.amountR, p.amountL) < F.none;
       if (one) says.push([`${side(one)} 눈이 비었어요`, `${side(one)} 눈에도 칠해 보세요`]);
-      if (p.higher) says.push(["정답보다 높이 칠했어요", "눈두덩 위쪽을 덜어 내 보세요"]);
+      if (p.higher) says.push(["예상 메이크업보다 높이 칠했어요", "눈두덩 위쪽을 덜어 내 보세요"]);
       if (p.outer - p.outerTarget > F.shadowOuter) says.push(["눈꼬리 바깥으로 더 뺐어요", "눈꼬리 바깥쪽을 덜어 내 보세요"]);
       // 눈 하나의 값은 ±0.25 흔들린다 — 옅다는 두 눈 평균으로만
-      if (!says.length && mean < F.weak) says.push(["정답보다 옅어요", "한 번 더 덧발라 보세요"]);
+      if (!says.length && mean < F.weak) says.push(["예상 메이크업보다 옅어요", "한 번 더 덧발라 보세요"]);
       parts.push(pick(part, p.target, says, none ? [NO_MINE, "눈두덩에 섀도우를 칠해 보세요"] : undefined));
     } else if (part === "brow" && m.brow) {
       const p = m.brow, mean = (p.amountR + p.amountL) / 2, one = lost(p.amountR, p.amountL), none = Math.max(p.amountR, p.amountL) < F.none;
       if (one) says.push([`${side(one)} 눈썹이 비었어요`, `${side(one)} 눈썹도 그려 보세요`]);
-      if (p.below - p.belowTarget > F.browBelow) says.push(["정답보다 아래로 두꺼워요", "눈썹 아래쪽을 정리해 보세요"]);
-      if (p.belowTarget - p.below > F.browBelow) says.push(["정답보다 얇아요", "눈썹 아래쪽을 조금 더 채워 보세요"]);
+      if (p.below - p.belowTarget > F.browBelow) says.push(["예상 메이크업보다 아래로 두꺼워요", "눈썹 아래쪽을 정리해 보세요"]);
+      if (p.belowTarget - p.below > F.browBelow) says.push(["예상 메이크업보다 얇아요", "눈썹 아래쪽을 조금 더 채워 보세요"]);
       if (p.tailR !== undefined && p.tailL !== undefined && p.tailTargetR !== undefined && p.tailTargetL !== undefined) {
         // 꼬리 길이: 정답이 늘린 양과 견준다 (정답이 안 늘렸으면 0 과 견주는 셈 — 늘려 그렸으면 길다)
         const got = { R: p.tailR, L: p.tailL }, want = { R: p.tailTargetR, L: p.tailTargetL }, ks = ["R", "L"] as const;
         const short = ks.filter((k) => got[k] < want[k] - F.browTail), long = ks.filter((k) => got[k] > want[k] + F.browTail);
         const who = (list: readonly ("R" | "L")[]): string => (list.length === 2 ? "눈썹 꼬리가" : `${side(list[0]!)} 눈썹 꼬리가`);
-        if (short.length) says.push([`${who(short)} 정답보다 짧아요`, "눈썹 꼬리를 조금 더 길게 빼 보세요"]);
-        if (long.length) says.push([`${who(long)} 정답보다 길어요`, "눈썹 꼬리 끝을 조금 지워 보세요"]);
+        if (short.length) says.push([`${who(short)} 예상 메이크업보다 짧아요`, "눈썹 꼬리를 조금 더 길게 빼 보세요"]);
+        if (long.length) says.push([`${who(long)} 예상 메이크업보다 길어요`, "눈썹 꼬리 끝을 조금 지워 보세요"]);
       }
-      if (!says.length && mean < F.weak) says.push(["정답보다 옅어요", "조금 더 진하게 채워 보세요"]);
+      if (!says.length && mean < F.weak) says.push(["예상 메이크업보다 옅어요", "조금 더 진하게 채워 보세요"]);
       parts.push(pick(part, p.target, says, none ? [NO_MINE, "눈썹을 그려 보세요"] : undefined));
     } else if (part === "cheek" && m.cheek) {
       parts.push(pick(part, m.cheek.target, [], m.cheek.amount < F.cheekNone ? [NO_MINE, "볼에 블러셔를 올려 보세요"] : undefined));
@@ -189,8 +189,8 @@ export function composeFeedback(m: WholeMeasures): WholeFeedback {
       for (const k of gone) says.push([`${side(k)} 눈에 꼬리가 없어요`, `${side(k)} 눈에도 꼬리를 빼 보세요`]);
       const rest = ks.filter((k) => !gone.includes(k)), short = rest.filter((k) => got[k] < want[k] - F.linerTol), long = rest.filter((k) => got[k] > want[k] + F.linerTol);
       const who = (list: readonly ("R" | "L")[]): string => (list.length === ks.length ? "꼬리가" : `${side(list[0]!)} 꼬리가`);
-      if (short.length) says.push([`${who(short)} 정답보다 짧아요`, "꼬리를 조금 더 길게 빼 보세요"]);
-      if (long.length) says.push([`${who(long)} 정답보다 길어요`, "꼬리 끝을 조금 지워 보세요"]);
+      if (short.length) says.push([`${who(short)} 예상 메이크업보다 짧아요`, "꼬리를 조금 더 길게 빼 보세요"]);
+      if (long.length) says.push([`${who(long)} 예상 메이크업보다 길어요`, "꼬리 끝을 조금 지워 보세요"]);
       parts.push(pick(part, null, says));
     } else if (part !== "cheek") parts.push({ part, name: NAME[part], tone: "info", line: UNSEEN });   // 볼은 잰 값이 있을 때만 줄을 낸다 (했나 안 했나만 보는 부위)
   }
