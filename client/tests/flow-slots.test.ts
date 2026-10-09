@@ -22,16 +22,22 @@ const button = (root: HTMLElement, text: string): HTMLButtonElement => {
 };
 
 describe("빈 자리 화면", () => {
-  it("FS1 무엇이 들어올 자리인지 · 누가 만드는지 보여 주고, '다음' 으로 흐름을 이어 간다", () => {
+  it("FS1 참고 사진 업로드 → 로딩 → 정답사진 완성 뒤 '다음' 으로 흐름을 이어 간다", () => {
+    vi.useFakeTimers();
     const ctx = ctxOf();
     slotScreen<null>({ title: "참고 사진 · 정답사진", owner: "①·②·④", todo: ["참고 사진 업로드", "정답사진 생성"], next: "partguide" }).mount(ctx);
     expect(ctx.root.textContent).toContain("참고 사진 · 정답사진");
     expect(ctx.root.textContent).toContain("①·②·④");
     expect(ctx.root.textContent).toContain("정답사진 생성");
+    button(ctx.root, "적용하기").click();
+    expect(ctx.root.textContent).toContain("분석중");
+    vi.runAllTimers();
+    expect(ctx.root.textContent).toContain("정답사진 완성");
     button(ctx.root, "다음").click();
     // 부위 가이드로 갈 때는 첫 부위부터 — 진행 칩과 같은 goPart (지금 부위가 정해져 칩에 표시된다)
     expect(ctx.goPart).toHaveBeenCalledWith(PART_IDS[0]);
     expect(ctx.go).not.toHaveBeenCalled();
+    vi.useRealTimers();
   });
 
   it("FS1b 부위 가이드가 아닌 다음 화면은 그대로 go", () => {

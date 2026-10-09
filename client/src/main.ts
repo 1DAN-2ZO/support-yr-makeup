@@ -91,7 +91,34 @@ function showBootError(e: unknown): void {
   root.append(box);
 }
 
+let closeBootSplash: (() => Promise<void>) | null = null;
+
+function showSplash(): () => Promise<void> {
+  const started = performance.now();
+  let closed = false;
+  const splash = document.createElement("div");
+  splash.className = "splash";
+  splash.setAttribute("aria-label", "nudy");
+  splash.innerHTML = `
+    <div class="splash-frame">
+      <img src="/ui/nudy-splash.png" alt="" aria-hidden="true" />
+    </div>
+  `;
+  document.body.append(splash);
+
+  return async () => {
+    if (closed) return;
+    closed = true;
+    const rest = Math.max(0, 3000 - (performance.now() - started));
+    await new Promise((resolve) => window.setTimeout(resolve, rest));
+    splash.classList.add("leaving");
+    await new Promise((resolve) => window.setTimeout(resolve, 280));
+    splash.remove();
+  };
+}
+
 async function boot(): Promise<void> {
+  closeBootSplash = showSplash();
   let session: Session = createSession();
 
   // 로그는 세션과 같은 IndexedDB 를 쓴다 — DB 를 두 벌 만들지 않는다.
@@ -308,6 +335,8 @@ async function boot(): Promise<void> {
   window.addEventListener("pagehide", () => void logStore.flush());
 
   shell.render();
+  await closeBootSplash();
+  closeBootSplash = null;
 }
 
 /**
@@ -407,4 +436,10 @@ async function restore(store: SessionStore, events: CaptureEvents, fresh: Sessio
   return { ...plan.session, baseline: rebuildBaseline(plan.baseline, found, blob) };
 }
 
-void boot().catch(showBootError);
+void boot().catch((e: unknown) => {
+  void (async () => {
+    if (closeBootSplash) await closeBootSplash().catch(() => {});
+    closeBootSplash = null;
+    showBootError(e);
+  })();
+});
