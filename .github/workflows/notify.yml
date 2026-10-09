@@ -4,7 +4,11 @@ name: notify
 # 규칙상 작성자가 PR 을 올리면 ⑥ 이 받아서 병합하는데(§0-1-1), 말로 알리는 걸 잊으면
 # PR 이 그냥 떠 있게 된다. 이 알림이 그 자리를 메운다.
 #
+# 댓글 · 답글도 알린다 (2026-10-09) — 리뷰 결과나 질문을 댓글로 남기는데 알림이 없어 못 보고 지나갔다.
+# PR · 이슈 채널과 섞이지 않게 댓글 채널을 따로 둔다.
+#
 # 준비: 저장소 시크릿 DISCORD_WEBHOOK_URL (PR 채널 웹후크) · DISCORD_ISSUE_WEBHOOK_URL (이슈 채널 웹후크)
+#       · DISCORD_COMMENT_WEBHOOK_URL (댓글 채널 웹후크)
 # 시크릿이 없으면 조용히 건너뛴다 — 알림 때문에 CI 가 빨개지면 안 된다.
 
 on:
@@ -13,8 +17,17 @@ on:
     types: [opened, reopened, ready_for_review, closed]
   issues:
     # 다른 모듈에 일을 넘길 때 이슈로 남기는데, 말로 알리지 않으면 못 보고 지나간다.
-    # 댓글·라벨·담당 변경은 뺐다 — 너무 자주 울린다
+    # 라벨·담당 변경은 뺐다 — 너무 자주 울린다
     types: [opened, reopened, closed]
+  # 이슈 댓글 · PR 대화 댓글 (PR 도 이슈 댓글 이벤트로 온다). 고침 · 지움은 뺐다
+  issue_comment:
+    types: [created]
+  # PR 코드 줄에 단 댓글과 그 답글
+  pull_request_review_comment:
+    types: [created]
+  # PR 리뷰 (승인 · 수정 요청 · 의견)
+  pull_request_review:
+    types: [submitted]
 
 jobs:
   discord:
@@ -165,6 +178,88 @@ jobs:
             }' > payload.json
 
           code=$(curl -sS -o resp.txt -w '%{http_code}'             -H 'Content-Type: application/json'             -d @payload.json "${WEBHOOK}") || code="000"
+
+          echo "디스코드 응답: ${code}"
+          if [ "${code}" != "204" ] && [ "${code}" != "200" ]; then
+            echo "::warning::디스코드 알림 실패 (${code})"
+            cat resp.txt || true
+          fi
+
+  discord-comment:
+    if: >-
+      github.event_name == 'issue_comment' ||
+      ((github.event_name == 'pull_request_review_comment' || github.event_name == 'pull_request_review') &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    steps:
+      - name: 디스코드로 보내기
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_COMMENT_WEBHOOK_URL }}
+          EVENT: ${{ github.event_name }}
+          # 이슈 댓글이면 issue, PR 줄 댓글 · 리뷰면 pull_request 에 번호 · 제목이 있다
+          NUM: ${{ github.event.issue.number || github.event.pull_request.number }}
+          TITLE: ${{ github.event.issue.title || github.event.pull_request.title }}
+          IS_PR: ${{ github.event.issue.pull_request != null || github.event.pull_request != null }}
+          BODY: ${{ github.event.comment.body || github.event.review.body }}
+          URL: ${{ github.event.comment.html_url || github.event.review.html_url }}
+          AUTHOR: ${{ github.event.comment.user.login || github.event.review.user.login }}
+          REPLY_TO: ${{ github.event.comment.in_reply_to_id }}
+          FILE: ${{ github.event.comment.path }}
+          STATE: ${{ github.event.review.state }}
+        run: |
+          if [ -z "${WEBHOOK}" ]; then
+            echo "DISCORD_COMMENT_WEBHOOK_URL 이 없습니다 — 알림을 건너뜁니다"
+            exit 0
+          fi
+
+          if [ "${IS_PR}" = "true" ]; then WHERE="PR"; else WHERE="이슈"; fi
+
+          if [ "${EVENT}" = "pull_request_review" ]; then
+            # 줄 댓글만 달아도 내용 없는 리뷰가 같이 온다 — 줄 댓글 알림과 겹치니 건너뛴다
+            if [ "${STATE}" = "commented" ] && [ -z "${BODY}" ]; then
+              echo "내용 없는 리뷰 — 건너뜁니다"
+              exit 0
+            fi
+            case "${STATE}" in
+              approved)          HEAD="승인"; COLOR=5763719 ;;
+              changes_requested) HEAD="수정 요청"; COLOR=15548997 ;;
+              *)                 HEAD="리뷰"; COLOR=3447003 ;;
+            esac
+          elif [ -n "${REPLY_TO}" ]; then
+            HEAD="답글"; COLOR=10181046
+          elif [ "${EVENT}" = "pull_request_review_comment" ]; then
+            HEAD="줄 댓글"; COLOR=3447003
+          else
+            HEAD="댓글"; COLOR=3447003
+          fi
+
+          # 디스코드 embed 제한: 제목 256자 · 내용 4096자. 내용은 앞부분만 보여 준다
+          jq -n \
+            --arg head "${HEAD}" \
+            --arg where "${WHERE}" \
+            --arg num "${NUM}" \
+            --arg title "${TITLE}" \
+            --arg url "${URL}" \
+            --arg author "${AUTHOR}" \
+            --arg body "${BODY}" \
+            --arg file "${FILE}" \
+            --argjson color "${COLOR}" \
+            '{
+              username: "nudy 댓글",
+              embeds: [{
+                title: (("[" + $head + "] " + $where + " #" + $num + " " + $title)[0:250]),
+                url: $url,
+                color: $color,
+                description: (if ($body | length) > 600 then $body[0:600] + " …" else $body end),
+                fields: ([{ name: "쓴 이", value: $author, inline: true }]
+                         + (if $file != "" then [{ name: "파일", value: $file[0:1000], inline: true }] else [] end))
+              }]
+            }' > payload.json
+
+          # 실패해도 워크플로를 빨갛게 만들지 않는다 — 알림은 부가 기능이다
+          code=$(curl -sS -o resp.txt -w '%{http_code}' \
+            -H 'Content-Type: application/json' \
+            -d @payload.json "${WEBHOOK}") || code="000"
 
           echo "디스코드 응답: ${code}"
           if [ "${code}" != "204" ] && [ "${code}" != "200" ]; then
