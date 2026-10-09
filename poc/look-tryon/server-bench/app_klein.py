@@ -25,11 +25,13 @@ import gc
 import time
 import urllib.request
 import queue
+import uuid
 from concurrent.futures import Future
 from pathlib import Path
 
 import cv2
 import gradio as gr
+from gradio.utils import get_upload_folder
 import numpy as np
 import torch
 from PIL import Image, ImageDraw, ImageFilter
@@ -46,6 +48,9 @@ LANDMARKER_PATH = Path.home() / ".cache" / "nudy" / "face_landmarker.task"
 EMBEDS_PATH = Path.home() / ".cache" / "nudy" / "klein_prompt_embeds.pt"
 SIZE = 768          # 얼굴 정사각형을 이 크기로 그린다
 REF_SIZE = 512      # 참고 사진 크기 (작아도 화장은 옮겨 오고 더 빠르다)
+# 돌려주는 그림은 무손실 webp — Gradio 기본(손실 webp)이 가는 선(라이너 꼬리)을 뭉개서 피드백이 꼬리를 못 읽었다 (#393).
+# 압축 강도(0 빠름 · 100 작음) 50: 1600 × 1600 한 장 2MB · 1.1초 (PNG 는 2.9MB · 0.3초, 손실 webp 는 160KB)
+LOSSLESS_EFFORT = 50
 FACE_MARGIN = 1.3   # 얼굴 점 상자 긴 변의 몇 배로 자를지 (이마 꼭대기 ~ 턱이 이미 들어 있다)
 FEATHER = 0.08      # 원본에 되붙일 때 가장자리를 섞는 폭
 OVAL_KEEP = 0.9     # 칠할 영역은 얼굴 윤곽을 가운데 쪽으로 이만큼 줄인 안에서만
@@ -244,9 +249,14 @@ def _run(id_image, makeup_image, steps, strength, keep_size, seed):
     dt = time.perf_counter() - t0
     vram = torch.cuda.max_memory_allocated() / 2**30
     result = paste_back(original, out, box, mask)
+    # Gradio 임시 폴더 안에 직접 무손실로 — 거기 있는 파일은 Gradio 가 다시 압축하지 않고 그대로 보내고, 2분 뒤 지우기(delete_cache)에도 든다
+    folder = Path(get_upload_folder()) / uuid.uuid4().hex
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / "result.webp"
+    result.save(path, format="WEBP", lossless=True, quality=LOSSLESS_EFFORT, method=2)
     status = (f"{dt:.1f}초 (FLUX.2 klein 4B 영역 다시 그리기, steps={int(steps)}, 강도={float(strength):.2f}, 얼굴 {side}px → {SIZE}) · "
               f"VRAM peak {vram:.1f}GB · 원본 {original.size[0]}×{original.size[1]} 유지")
-    return result, status
+    return str(path), status
 
 
 demo = gr.Interface(
