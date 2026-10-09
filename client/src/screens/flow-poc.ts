@@ -22,6 +22,7 @@ import { partGuides, type PartGuide } from "@core/part-guide";
 import type { Pt } from "@core/types";
 import { startFrameLoop } from "./camera-loop";
 import { createLandmarker } from "./landmarker";
+import { strokeMarks } from "./outline-draw";
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -201,6 +202,9 @@ function drawCrop(out: HTMLCanvasElement, src: HTMLCanvasElement, crop: Rect, gu
     g.lineWidth = 2.5;
     g.stroke();
   }
+  // 퍼지는 방향 (블러셔: 가운데 점 + 사방 화살표)
+  const at = (q: Pt): Pt => ({ x: (q.x - crop.x) * k, y: (q.y - crop.y) * k });
+  for (const o of guides) if (o.marks) strokeMarks(g, { dots: o.marks.dots.map(at), arrows: o.marks.arrows.map((a) => a.map(at)) }, 2.5, COLOR[o.part] ?? "#fff");
 }
 
 const guidesOf = (page: FeedbackPart): PartGuide[] => (answer?.guides ?? []).filter((g) => pageOf(g.part) === page);

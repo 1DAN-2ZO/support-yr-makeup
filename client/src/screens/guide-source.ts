@@ -11,8 +11,9 @@ import { scaleLm } from "@core/crop";
 import type { FeedbackPart } from "@core/guide-feedback";
 import { runGuide, type GuideMissing, type GuidePage } from "@core/guide-run";
 import type { ExtractPart } from "@core/makeup-extract";
-import type { Baseline } from "@core/types";
+import type { Baseline, Pt } from "@core/types";
 import { blobToRgba, type AnswerPhoto } from "./feedback-source";
+import { strokeMarks } from "./outline-draw";
 
 /**
  * 가이드를 만들 때는 긴 변을 이만큼으로 줄여서 푼다. 원본(2160×3840)은 한 장이 33MB 쯤이라 폰에서 느리다.
@@ -144,5 +145,8 @@ export function drawGuidePage(out: HTMLCanvasElement, view: Pick<GuideView, "pag
     g.lineWidth = 2.5;
     g.stroke();
   }
+  // 퍼지는 방향 (블러셔: 가운데 점 + 사방 화살표) — 테두리와 같은 색 (② part-guide, 2026-10-09)
+  const at = (q: Pt): Pt => ({ x: (q.x - crop.x) * k, y: (q.y - crop.y) * k });
+  if (page.marks) strokeMarks(g, { dots: page.marks.dots.map(at), arrows: page.marks.arrows.map((a) => a.map(at)) }, 2.5, LINE[part] ?? "#fff");
   return true;
 }

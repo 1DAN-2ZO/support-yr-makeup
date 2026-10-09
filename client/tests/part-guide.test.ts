@@ -142,7 +142,8 @@ describe("부위 가이드 — 양쪽 같은 모양 · 단순한 모양 (사용�
     expect(bump, "반지름이 매끈하게 변한다 (톱니 없음)").toBeLessThan(1);
   });
 
-  it("S3 섀도: 양쪽 높이가 달라도(20 · 30px) 거울처럼 같고 중간 높이, 윗선은 톱니 없이 매끈", () => {
+  // 높이는 더 안 본다 — 섀도는 라이너 윗선부터 눈썹 아래까지 틀 모양 (사용자 2026-10-09, 시험 ST1)
+  it("S3 섀도: 양쪽 높이가 달라도(20 · 30px) 거울처럼 같고, 윗선은 톱니 없이 매끈", () => {
     const lidR = eyeOf("R").upper.map(P), lidL = eyeOf("L").upper.map(P);
     const lidY = (lid: readonly Pt[]) => (x: number) => { for (let i = 1; i < lid.length; i++) { const a = lid[i - 1]!, b = lid[i]!; if ((x - a.x) * (x - b.x) <= 0 && a.x !== b.x) return a.y + ((b.y - a.y) * (x - a.x)) / (b.x - a.x); } return NaN; };
     const yR = lidY(lidR), yL = lidY(lidL);
@@ -152,8 +153,6 @@ describe("부위 가이드 — 양쪽 같은 모양 · 단순한 모양 (사용�
     expect(sym(r, "shadow"), "거울처럼 같다").toBeLessThan(1);
     const poly = get(r, "shadow", "R")!.polys[0]!;
     const top = poly.filter((p) => yR(p.x) - p.y > 3).sort((a, b) => a.x - b.x);
-    const hMid = yR(215) - Math.min(...poly.filter((p) => Math.abs(p.x - 215) < 6).map((p) => p.y));
-    expect(Math.abs(hMid - 25.75), `가운데 높이 ${hMid.toFixed(1)}px (R 톱니 평균 21.5 · L 30 의 중간)`).toBeLessThan(2.5);
     // 가운데 구간에서 톱니 없음 (양 끝은 눈꺼풀로 내려오는 곡선 — S8)
     const mid = top.filter((p) => Math.abs(p.x - 215) < 25);
     const d2 = mid.slice(1, -1).map((p, i) => Math.abs(mid[i]!.y - 2 * p.y + mid[i + 2]!.y));
@@ -207,22 +206,6 @@ describe("부위 가이드 — 실사진에서 나온 문제", () => {
     expect(Math.max(...xs) - Math.min(...xs), "너비 ≈ 덩어리 너비 60").toBeLessThan(68);
   });
 
-  it("S8 섀도: 양 끝은 라이너 윗선으로 내려와 닫힌다 (네모가 아니라 초승달) — 실사진: 양 끝이 세로로 끊겼다", () => {
-    const lid = eyeOf("R").upper.map(P);
-    const lidY = (x: number) => { for (let i = 1; i < lid.length; i++) { const a = lid[i - 1]!, b = lid[i]!; if ((x - a.x) * (x - b.x) <= 0 && a.x !== b.x) return a.y + ((b.y - a.y) * (x - a.x)) / (b.x - a.x); } return NaN; };
-    const m = mask((x, y) => x >= 172 && x <= 258 && y <= lidY(x) && y >= lidY(x) - 20);
-    const poly = get(partGuides([part("shadow", "R", m)], LMS, W, H), "shadow", "R")!.polys[0]!;
-    const h = (p: Pt) => lidY(p.x) - p.y;
-    const xs = poly.map((p) => p.x), left = Math.min(...xs), right = Math.max(...xs);
-    // 끝점은 눈꺼풀 위, 끝에서 3px 안쪽도 높이 20 의 60% 밑 — 세로로 끊긴 네모 끝이면 거기서 이미 20 이다.
-    // (끝 1px 안만 보던 때는 3px 안쪽에서 16px 솟는 벽도 통과했다. 섀도 윗선이 가장 높은 점들을 잇는 부채꼴이 되며 고침, 2026-10-07)
-    for (const end of [left, right]) {
-      const tip = poly.find((p) => p.x === end)!, inward = end === left ? 3 : -3;
-      expect(h(tip), `끝점 (x ${end.toFixed(0)}) 높이 — 눈꺼풀로 내려와 닫힘 (라이너 없음)`).toBeLessThan(2);
-      const h3 = Math.max(...poly.filter((p) => Math.abs(p.x - (end + inward)) < 0.5).map(h));
-      expect(h3, `끝에서 3px 안쪽 (x ${(end + inward).toFixed(0)}) 높이 — 비스듬히 올라간다`).toBeLessThan(12);
-    }
-  });
 });
 
 describe("부위 가이드 — 섀도는 라이너 위 (사용자 2026-10-07)", () => {
@@ -262,7 +245,8 @@ describe("부위 가이드 — 라이너는 실제 두께 · 꼬리 모양대로
     }
   });
 
-  it("L2 꼬리 윗선은 실제 꼬리 모양 그대로 (위로 볼록하게 휜 꼬리), 아랫선은 눈꼬리 → 꼬리 끝", () => {
+  // 꼬리 윗선 모양은 더 안 따라간다 — 물결 틀, 사진에서는 꼬리 끝 자리만 읽는다 (사용자 2026-10-09, 시험 LT2)
+  it("L2 휜 꼬리라도 꼬리 끝은 실제 꼬리 끝 자리", () => {
     const sT = 0.3, vT = 0.12;
     const hi = (s: number) => vT * (s / sT) + 0.08 * (1 - s / sT) + 0.05 * Math.sin((Math.PI * s) / sT);
     const m = mask((x, y) => {
@@ -271,8 +255,6 @@ describe("부위 가이드 — 라이너는 실제 두께 · 꼬리 모양대로
       return q.s >= 0 && q.s <= sT && q.v >= vT * (q.s / sT) && q.v <= hi(q.s);
     });
     const poly = get(partGuides([part("liner", "R", m)], LMS, W, H), "liner", "R")!.polys[0]!;
-    const midTop = { x: 170 - 90 * sT / 2, y: 250 - 90 * hi(sT / 2) };
-    expect(edgeDist(midTop, poly), `꼬리 가운데 윗선 (${midTop.x}, ${midTop.y.toFixed(1)})`).toBeLessThan(1.5);
     const tip = poly.reduce((a, b) => (b.x < a.x ? b : a));
     expect(Math.hypot(tip.x - (170 - 90 * sT), tip.y - (250 - 90 * vT)), `꼬리 끝 (${tip.x.toFixed(1)}, ${tip.y.toFixed(1)})`).toBeLessThan(3);
   });
@@ -501,14 +483,6 @@ describe("부위 가이드 — 섀도는 눈머리부터 라이너 꼬리 끝까
     expect(near.x, "눈머리 쪽까지").toBeGreaterThan(250);
   });
 
-  it("SH2 섀도 높이는 보이는 그대로 — 안쪽 10px, 바깥쪽 25px 이면 가이드도", () => {
-    const Hs = (x: number) => (x > 215 ? 10 : 25);
-    const sh = mask((x, y) => x >= 172 && x <= 258 && y <= lidY(x) - 4 && y >= lidY(x) - 4 - Hs(x));
-    const poly = get(partGuides([part("liner", "R", liner), part("shadow", "R", sh)], LMS, W, H), "shadow", "R")!.polys[0]!;
-    const topAt = (x: number) => Math.min(...poly.filter((p) => Math.abs(p.x - x) < 3).map((p) => p.y));
-    expect(Math.abs(lidY(240) - 4 - topAt(240) - 10), `안쪽 x 240 높이 ${(lidY(240) - 4 - topAt(240)).toFixed(1)} (10)`).toBeLessThan(2.5);
-    expect(Math.abs(lidY(190) - 4 - topAt(190) - 25), `바깥 x 190 높이 ${(lidY(190) - 4 - topAt(190)).toFixed(1)} (25)`).toBeLessThan(2.5);
-  });
 });
 
 describe("부위 가이드 — 섀도가 라이너 꼬리 끝 바깥까지 번졌으면 거기까지 (사용자: 뗀 섀도보다 범위가 모자라다)", () => {
@@ -544,22 +518,212 @@ describe("부위 가이드 — 섀도 테두리도 이웃 점끼리 매끄럽게
     expect(Math.max(...turn.slice(1, -1)), "바깥 테두리에서 가장 크게 꺾인 각도").toBeLessThan(35);
   });
 
-  it("SH5 섀도 윗선이 군데군데 꺼져도 가이드 윗선은 가장 높은 점들을 잇는 부채꼴 — 한 번 올라갔다 내려온다 (사용자 2026-10-07 실사진: 울퉁불퉁)", () => {
-    // 바깥 10px · 가운데 24px · 그 안쪽이 넓게 꺼져 9px · 눈머리 쪽 20px — 칸마다 보이는 높이로 그리면 24 → 10 → 19 로 출렁였다
-    const Hs = (x: number) => (x < 200 ? 10 : x < 225 ? 24 : x < 240 ? 9 : 20);
-    const sh = mask((x, y) => x >= 176 && x <= 256 && y <= lidY(x) - 1 && y >= lidY(x) - 1 - Hs(x));
-    const poly = get(partGuides([part("shadow", "R", sh)], LMS, W, H), "shadow", "R")!.polys[0]!;
-    // 윗선(꼬리 끝 → 눈머리)이 한쪽으로만 휜다 = 부채꼴. 꺼진 곳이 있으면 거기서 반대로 휜다
-    // (점이 0.2px 간격으로 촘촘해서 3px 쯤씩 건너 각도로 본다)
-    const outer = poly.slice(PART_GUIDE.profileN + 1).filter((_, i) => i % 12 === 0);
-    const turn = outer.slice(1, -1).map((a, i) => {
-      const p = outer[i]!, n = outer[i + 2]!, c = (a.x - p.x) * (n.y - a.y) - (a.y - p.y) * (n.x - a.x);
-      return c / (Math.hypot(a.x - p.x, a.y - p.y) * Math.hypot(n.x - a.x, n.y - a.y) || 1);
+});
+
+describe("부위 가이드 — 눈썹 · 섀도가 정답사진의 다시 그린 자리 전체로 부풀지 않게 (실사진 2026-10-09: 섀도가 눈썹 밑까지 · 눈썹이 이마까지)", () => {
+  const lid = eyeOf("R").upper.map(P);
+  const lidY = (x: number) => { for (let i = 1; i < lid.length; i++) { const a = lid[i - 1]!, b = lid[i]!; if ((x - a.x) * (x - b.x) <= 0 && a.x !== b.x) return a.y + ((b.y - a.y) * (x - a.x)) / (b.x - a.x); } return NaN; };
+  const b = LM.browA, own = [...b.upper, ...[...b.lower].reverse()].map(P);
+  const loY = (x: number) => 214 - 4 * Math.sin(((x - 160) / 110) * Math.PI), upY = (x: number) => 200 - 8 * Math.sin(((x - 160) / 110) * Math.PI);
+
+  it("B4 눈썹 위에 붙어 이어진 넓은 그늘(옅은 눈썹 · 앞머리 그림자)이 있어도 가이드 윗선은 원래 눈썹 두께의 절반 넘게 올라가지 않는다", () => {
+    // 눈썹(검정) 바로 위로 살 틈 없이 14px 갈색 그늘 — 실사진 공효진: 눈썹 가이드가 이마까지 부풀었다
+    const made = image((x, y) => {
+      if (x >= 162 && x <= 268 && y >= upY(x) && y <= loY(x)) return INK;
+      if (x >= 165 && x <= 265 && y >= upY(x) - 14 && y < upY(x)) return [50, 40, 38];   // 눈썹만큼 어두운 그늘
+      return null;
     });
-    const sign = Math.sign(turn.reduce((t, c) => t + c, 0));
-    const bad = outer.slice(1, -1).filter((_, i) => turn[i]! * sign < -0.03);
-    expect(bad.map((p) => `(${p.x.toFixed(0)}, ${p.y.toFixed(1)})`), "윗선이 반대로 휘는 점 (꺼지거나 솟은 곳)").toEqual([]);
-    const topAt = (x: number) => Math.min(...poly.filter((p) => Math.abs(p.x - x) < 3).map((p) => p.y));
-    expect(lidY(232) - 1 - topAt(232), "꺼진 곳 위도 양옆 높은 점(24 · 20)을 이은 높이").toBeGreaterThan(17);
+    const poly = get(partGuides([part("brow", "R", mask((x, y) => inPoly(x, y, own)))], LMS, W, H, { made }), "brow", "R")!.polys[0]!;
+    const top = Math.min(...poly.filter((p) => Math.abs(p.x - 215) < 3).map((p) => p.y)), T = loY(215) - upY(215);
+    expect(upY(215) - top, `가운데 윗선이 눈썹 윗선보다 ${(upY(215) - top).toFixed(1)}px 위 (원래 두께 ${T.toFixed(1)}, 그늘 14)`).toBeLessThanOrEqual(0.5 * T + 1);
+  });
+
+  it("SH7 섀도가 눈썹 바로 밑까지 이어져도 섀도 가이드는 눈썹 가이드와 겹치지 않는다", () => {
+    const sh = mask((x, y) => x >= 172 && x <= 258 && y <= lidY(x) - 2 && y >= loY(x) - 1);
+    const r = partGuides([part("brow", "R", mask((x, y) => inPoly(x, y, own))), part("shadow", "R", sh)], LMS, W, H);
+    const brow = get(r, "brow", "R")!.polys[0]!, shadow = get(r, "shadow", "R")!.polys[0]!;
+    const inside = shadow.filter((p) => inPoly(p.x, p.y, brow));
+    expect(inside.length, `눈썹 가이드 안에 든 섀도 테두리 점 ${inside.length}개`).toBe(0);
+    const gap = Math.min(...shadow.map((p) => edgeDist(p, brow)));
+    expect(gap, `섀도 테두리와 눈썹 가이드 사이 가장 가까운 거리 ${gap.toFixed(1)}px`).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("부위 가이드 — 틀 모양 (사용자 2026-10-09: 라이너는 물결 틀에 길이 · 두께만, 섀도는 눈 위 ~ 눈썹 아래 부채꼴, 블러셔는 넓게 + 사방 화살표)", () => {
+  const lid = eyeOf("R").upper.map(P);
+  const lidY = (x: number) => { for (let i = 1; i < lid.length; i++) { const a = lid[i - 1]!, b = lid[i]!; if ((x - a.x) * (x - b.x) <= 0 && a.x !== b.x) return a.y + ((b.y - a.y) * (x - a.x)) / (b.x - a.x); } return NaN; };
+  const b = LM.browA, own = [...b.upper, ...[...b.lower].reverse()].map(P);
+  const browMask = mask((x, y) => inPoly(x, y, own));
+  const turns = (line: readonly Pt[]) => line.slice(1, -1).map((a, i) => {
+    const p = line[i]!, n = line[i + 2]!, u = Math.atan2(a.y - p.y, a.x - p.x), v = Math.atan2(n.y - a.y, n.x - a.x);
+    return Math.abs(((v - u + 3 * Math.PI) % (2 * Math.PI)) - Math.PI) * (180 / Math.PI);
+  });
+
+  it("LT1 라이너 띠는 매끈한 틀 — 칸마다 들쭉날쭉한 두께(2 · 7px 이 6px 마다 번갈아)라도 가이드 두께는 출렁이지 않는다", () => {
+    const T = (x: number) => (Math.floor(x / 6) % 2 ? 7 : 2);
+    const m = mask((x, y) => x >= 172 && x <= 258 && y <= lidY(x) && y >= lidY(x) - T(x));
+    const poly = get(partGuides([part("liner", "R", m)], LMS, W, H), "liner", "R")!.polys[0]!;
+    const xs = Array.from({ length: 17 }, (_, k) => 184 + 4 * k);
+    const th = xs.map((x) => lidY(x) - Math.min(...poly.filter((p) => Math.abs(p.x - x) < 2.5 && p.y < lidY(x) + 0.5).map((p) => p.y)));
+    // 0.5px 넘게 바뀐 것만 센다 — 시험의 눈꺼풀(lidY)은 꺾은선, 가이드 눈꺼풀은 매끈한 곡선이라 0.3px 남짓은 그 차이
+    const d = th.slice(1).map((v, i) => v - th[i]!).filter((v) => Math.abs(v) > 0.5), flips = d.slice(1).filter((v, i) => Math.sign(v) !== Math.sign(d[i]!)).length;
+    expect(flips, `두께 ${th.map((v) => v.toFixed(1)).join(" ")} — 늘었다 줄었다 바뀐 횟수`).toBeLessThanOrEqual(1);
+    const mean = th.reduce((a, v) => a + v, 0) / th.length;
+    expect(Math.abs(mean - 4.5), `평균 두께 ${mean.toFixed(1)}px (실제 평균 4.5)`).toBeLessThan(1.5);
+  });
+
+  it("LT2 꼬리 윗선은 물결 틀 — 사진의 꼬리 윗선에 혹(6px)이 솟아도 가이드는 따라가지 않고 매끄럽게, 꼬리 끝은 실제 꼬리 끝 자리", () => {
+    const o = P(LM.eyeA.outer), tip = { x: o.x - 27, y: o.y - 11 };
+    const hump = (x: number) => 6 * Math.max(0, Math.sin((Math.PI * (o.x - x)) / (o.x - tip.x)));
+    const wing = (x: number, y: number) => {
+      if (x > o.x || x < tip.x) return false;
+      const t = (o.x - x) / (o.x - tip.x), lo = o.y + (tip.y - o.y) * t, hi = o.y - 7 + (tip.y - (o.y - 7)) * t - hump(x);
+      return y <= lo && y >= hi;
+    };
+    const m = mask((x, y) => (x >= 172 && x <= 258 && y <= lidY(x) && y >= lidY(x) - 4) || wing(x, y));
+    const poly = get(partGuides([part("liner", "R", m)], LMS, W, H), "liner", "R")!.polys[0]!;
+    const ti = poly.reduce((bi, p, i) => (p.x < poly[bi]!.x ? i : bi), 0), g = poly[ti]!;
+    expect(Math.hypot(g.x - tip.x, g.y - tip.y), `꼬리 끝 (${g.x.toFixed(1)}, ${g.y.toFixed(1)}) · 실제 (${tip.x}, ${tip.y})`).toBeLessThan(3.5);
+    const midX = (o.x + tip.x) / 2, humpTop = o.y - 7 + (tip.y - (o.y - 7)) * 0.5 - 6;
+    const top = Math.min(...poly.slice(ti).filter((p) => Math.abs(p.x - midX) < 2).map((p) => p.y));
+    expect(top - humpTop, `꼬리 가운데 윗선 ${top.toFixed(1)} · 혹 꼭대기 ${humpTop.toFixed(1)} — 혹을 따라가지 않는다`).toBeGreaterThan(3);
+    const upper = poly.slice(ti).filter((p) => p.x < o.x + 4);   // 꼬리 끝 → 눈꼬리 근처까지 윗선
+    expect(Math.max(...turns(upper).slice(1)), "꼬리 윗선에서 가장 크게 꺾인 각도").toBeLessThan(25);
+  });
+
+  it("ST1 섀도는 라이너 윗선부터 눈썹 아래까지 — 섀도 화장이 아래쪽 10px 띠뿐이어도 가이드 윗선은 눈썹 가이드 바로 밑", () => {
+    const sh = mask((x, y) => x >= 172 && x <= 258 && y <= lidY(x) - 1 && y >= lidY(x) - 11);
+    const r = partGuides([part("brow", "R", browMask), part("shadow", "R", sh)], LMS, W, H);
+    const brow = get(r, "brow", "R")!.polys[0]!, poly = get(r, "shadow", "R")!.polys[0]!;
+    const top = poly.filter((p) => Math.abs(p.x - 215) < 3).reduce((a, c) => (c.y < a.y ? c : a));
+    const browLow = Math.max(...brow.filter((p) => Math.abs(p.x - 215) < 3).map((p) => p.y));
+    expect(top.y - browLow, `가운데 섀도 윗선 ${top.y.toFixed(1)} · 눈썹 가이드 아랫선 ${browLow.toFixed(1)}`).toBeLessThan(6);
+    expect(top.y - browLow, "눈썹 가이드와는 떨어져 있다").toBeGreaterThan(1);
+  });
+
+  it("ST2 섀도는 부채꼴 — 옆선은 위로 갈수록 바깥으로 벌어지고(세로로 끊긴 네모가 아님), 아랫선 양 끝은 눈머리 · 눈꼬리", () => {
+    const o = P(LM.eyeA.outer), inner = P(LM.eyeA.inner);
+    const sh = mask((x, y) => x >= 172 && x <= 258 && y <= lidY(x) - 1 && y >= lidY(x) - 11);
+    const poly = get(partGuides([part("brow", "R", browMask), part("shadow", "R", sh)], LMS, W, H), "shadow", "R")!.polys[0]!;
+    const near = (q: Pt) => Math.min(...poly.map((p) => Math.hypot(p.x - q.x, p.y - q.y)));
+    expect(near(inner), "눈머리를 지난다").toBeLessThan(3);
+    expect(near(o), "눈꼬리를 지난다 (라이너 없음)").toBeLessThan(3);
+    // 사진 왼쪽 눈 — 바깥은 왼쪽(작은 x). 위쪽 절반에서 가장 바깥 점이 눈꼬리보다 바깥, 가장 안쪽 점은 눈머리보다 바깥(안으로 벌어지지 않음)
+    const midY = (Math.min(...poly.map((p) => p.y)) + o.y) / 2, upper = poly.filter((p) => p.y < midY);
+    expect(Math.min(...upper.map((p) => p.x)), "위쪽이 바깥으로 벌어진다").toBeLessThan(o.x - 2);
+    expect(Math.max(...upper.map((p) => p.x)), "위쪽 안쪽 끝은 눈머리보다 바깥").toBeLessThan(inner.x);
+  });
+
+  it("BL1 블러셔 타원은 화장 덩어리를 다 덮을 만큼 넓게 — 한쪽으로 늘어난 덩어리의 98% 넘게 안에", () => {
+    const blob = (x: number, y: number) => Math.hypot(x - 190, y - 340) <= 22 || ((x - 216) / 18) ** 2 + ((y - 354) / 12) ** 2 <= 1;
+    const poly = get(partGuides([part("cheek", "R", mask(blob))], LMS, W, H), "cheek", "R")!.polys[0]!;
+    let n = 0, inside = 0;
+    for (let y = 300; y < 380; y++) for (let x = 150; x < 250; x++) if (blob(x, y)) { n++; if (inPoly(x, y, poly)) inside++; }
+    expect(inside / n, `덩어리 중 타원 안 ${((100 * inside) / n).toFixed(1)}%`).toBeGreaterThan(0.98);
+  });
+
+  it("BL2 블러셔 타원 안에 가운데 점 + 사방(네 방향) 화살표 — 가운데에서 바깥으로", () => {
+    const g = get(partGuides([part("cheek", "R", mask((x, y) => ((x - 190) / 40) ** 2 + ((y - 340) / 28) ** 2 <= 1))], LMS, W, H), "cheek", "R")!;
+    const poly = g.polys[0]!, marks = g.marks!;
+    expect(marks.dots, "가운데 점 하나").toHaveLength(1);
+    expect(marks.arrows, "화살표 넷").toHaveLength(4);
+    const c = marks.dots[0]!;
+    expect(inPoly(c.x, c.y, poly), "점은 타원 안").toBe(true);
+    for (const [a, e] of marks.arrows) {
+      expect(inPoly(a!.x, a!.y, poly) && inPoly(e!.x, e!.y, poly), "화살표는 타원 안").toBe(true);
+      expect(Math.hypot(e!.x - c.x, e!.y - c.y), "바깥쪽을 향한다").toBeGreaterThan(Math.hypot(a!.x - c.x, a!.y - c.y));
+    }
+  });
+});
+
+describe("부위 가이드 — 눈썹은 실제 털에 딱 맞게 · 아래 섀도는 안 그림 (사용자 2026-10-09)", () => {
+  const b = LM.browA, own = [...b.upper, ...[...b.lower].reverse()].map(P);
+  const browMask = mask((x, y) => inPoly(x, y, own));
+  const upY = (x: number) => 200 - 8 * Math.sin(((x - 160) / 110) * Math.PI), loY = (x: number) => 214 - 4 * Math.sin(((x - 160) / 110) * Math.PI);
+  const cY = (x: number) => (upY(x) + loY(x)) / 2;
+  /** 가이드의 x 에서 위 · 아래 끝 */
+  const span = (poly: readonly Pt[], x: number) => { const ys = poly.filter((p) => Math.abs(p.x - x) < 2).map((p) => p.y); return { top: Math.min(...ys), bot: Math.max(...ys) }; };
+  const browOf = (paint: (x: number, y: number) => boolean) => get(partGuides([part("brow", "R", browMask)], LMS, W, H, { made: image((x, y) => (paint(x, y) ? INK : null)) }), "brow", "R")!.polys[0]!;
+
+  it("U1 아래 섀도는 화장이 잡혀도 가이드를 그리지 않는다 — 가이드에서 뺐다", () => {
+    const low = eyeOf("R").lower.map(P);
+    const m = mask((x, y) => low.some((p) => Math.abs(p.x - x) < 3 && y > p.y + 1 && y < p.y + 12));
+    expect(get(partGuides([part("underShadow", "R", m)], LMS, W, H), "underShadow", "R")).toBeUndefined();
+  });
+
+  it("BF1 꼬리로 갈수록 가늘어지는 눈썹 — 가이드도 머리 쪽은 두껍고 꼬리 쪽은 가늘다 (한 두께로 넓혀 꼬리가 뚱뚱했다)", () => {
+    const half = (x: number) => 2.5 + (4.5 * (x - 162)) / 106;   // 꼬리(x 162) 5px → 머리(x 268) 14px
+    const poly = browOf((x, y) => x >= 162 && x <= 268 && Math.abs(y - cY(x)) <= half(x));
+    const head = span(poly, 255), tail = span(poly, 178);
+    expect(Math.abs(head.bot - head.top - 2 * half(255)), `머리 쪽 두께 ${(head.bot - head.top).toFixed(1)} (실제 ${(2 * half(255)).toFixed(1)})`).toBeLessThan(3);
+    expect(Math.abs(tail.bot - tail.top - 2 * half(178)), `꼬리 쪽 두께 ${(tail.bot - tail.top).toFixed(1)} (실제 ${(2 * half(178)).toFixed(1)})`).toBeLessThan(3);
+  });
+
+  // 꼬리 끝은 털 끝이 아니라 얼굴 점 꼬리 끝에 둔다 (사용자 2026-10-09: 끝부분 점은 지켜줘) — 털 끝을 따라가니 U 자로 막혀 끝이 안 맞았다
+  it("BF2 꼬리 끝은 얼굴 점 꼬리 끝(윗선 · 아랫선 끝의 가운데) — 털을 길게 · 짧게 그렸어도", () => {
+    const tail = { x: (P(b.upper[0]!).x + P(b.lower[0]!).x) / 2, y: (P(b.upper[0]!).y + P(b.lower[0]!).y) / 2 };
+    for (const end of [150, 185]) {
+      const poly = browOf((x, y) => x >= end && x <= 268 && Math.abs(y - cY(x)) <= 5);
+      const tip = poly.reduce((a2, c) => (c.x < a2.x ? c : a2));
+      expect(Math.hypot(tip.x - tail.x, tip.y - tail.y), `털 끝 x ${end} · 가이드 꼬리 끝 (${tip.x.toFixed(1)}, ${tip.y.toFixed(1)}) · 얼굴 점 꼬리 끝 (${tail.x}, ${tail.y})`).toBeLessThan(1.5);
+    }
+  });
+
+  it("BF3 꼬리는 뾰족하게 — 꼬리 끝에서 눈썹 길이의 6% 안쪽 두께가 가운데 두께의 절반 밑 (U 자로 둥글게 막히지 않는다), 아래로 처지지 않는다", () => {
+    const poly = browOf((x, y) => x >= 162 && x <= 268 && Math.abs(y - cY(x)) <= 5);
+    const tip = poly.reduce((a2, c) => (c.x < a2.x ? c : a2)), len = Math.max(...poly.map((p) => p.x)) - tip.x;
+    const thick = (x: number) => { const ys = poly.filter((p) => Math.abs(p.x - x) < 1.5).map((p) => p.y); return Math.max(...ys) - Math.min(...ys); };
+    expect(thick(tip.x + 0.06 * len), `꼬리 끝 안쪽 두께 ${thick(tip.x + 0.06 * len).toFixed(1)} · 가운데 ${thick(tip.x + 0.5 * len).toFixed(1)}`).toBeLessThan(0.5 * thick(tip.x + 0.5 * len));
+    const below = poly.filter((p) => p.x < 175 && p.y > cY(p.x) + 6);
+    expect(below.length, "꼬리 근처에서 털 아래로 처진 점").toBe(0);
+  });
+});
+
+describe("부위 가이드 — 옅은 눈썹 머리 (실사진 2026-10-09 공효진: 머리 쪽이 옅으니 가이드 머리가 바늘처럼 가늘게 뻗었다)", () => {
+  const b = LM.browA, own = [...b.upper, ...[...b.lower].reverse()].map(P);
+  const upY = (x: number) => 200 - 8 * Math.sin(((x - 160) / 110) * Math.PI), loY = (x: number) => 214 - 4 * Math.sin(((x - 160) / 110) * Math.PI);
+  const cY = (x: number) => (upY(x) + loY(x)) / 2;
+  it("BF4 머리 쪽 털이 옅은(살보다 조금만 어두운) 눈썹 — 가이드 머리도 털 두께만큼 (가늘게 뻗지 않는다)", () => {
+    // 꼬리 ~ 가운데는 진한 털(INK), 머리 쪽 1/3 은 옅은 털(살 SKIN 224,172,140 보다 17 쯤 어두운 갈색),
+    // 꼬리 쪽 위에는 옆머리가 털에 붙어 내려와 있다 — 실사진에서 꼬리 쪽은 두껍게, 머리 쪽은 비어 머리가 가늘게 꺾였다
+    const made = image((x, y) => {
+      if (x >= 162 && x <= 268 && Math.abs(y - cY(x)) <= 6) return x > 232 ? [205, 156, 126] : INK;
+      if (x >= 158 && x <= 195 && y < cY(x) - 6 && y >= cY(x) - 18) return [50, 40, 38];
+      return null;
+    });
+    const poly = get(partGuides([part("brow", "R", mask((x, y) => inPoly(x, y, own)))], LMS, W, H, { made }), "brow", "R")!.polys[0]!;
+    const ys = poly.filter((p) => Math.abs(p.x - 255) < 2).map((p) => p.y);
+    expect(Math.max(...ys) - Math.min(...ys), `머리 쪽(x 255) 두께 ${(Math.max(...ys) - Math.min(...ys)).toFixed(1)} (털 12)`).toBeGreaterThan(8);
+    const headX = Math.max(...poly.map((p) => p.x));
+    expect(headX, `머리 끝 x ${headX.toFixed(1)} (털 끝 268)`).toBeLessThan(276);
+  });
+
+  it("BF5 눈썹 꼬리 옆에 붙은 옆머리(두꺼운 어두운 덩어리)는 꼬리가 아니다 — 꼬리가 관자놀이로 뻗지 않는다 (실사진 2026-10-09)", () => {
+    const made = image((x, y) => {
+      if (x >= 162 && x <= 268 && Math.abs(y - cY(x)) <= 5) return INK;
+      if (x >= 140 && x < 162 && Math.abs(y - cY(162)) <= 14) return [50, 40, 38];   // 꼬리에 붙은 옆머리
+      return null;
+    });
+    const poly = get(partGuides([part("brow", "R", mask((x, y) => inPoly(x, y, own)))], LMS, W, H, { made }), "brow", "R")!.polys[0]!;
+    const tipX = Math.min(...poly.map((p) => p.x));
+    expect(tipX, `가이드 꼬리 끝 x ${tipX.toFixed(1)} (털 끝 162, 옆머리 끝 140)`).toBeGreaterThan(157);
+  });
+
+  it("BS1 눈썹 테두리는 매끈한 아치 — 얼굴 점이 조금 들쭉날쭉해도(±2.5px) 윗선 · 아랫선이 한쪽으로만 휜다 (사용자: 선이 구불구불하다)", () => {
+    const lm = LMS.map((p) => ({ ...p }));
+    [...LM.browA.upper, ...LM.browA.lower].forEach((id, k) => { lm[id] = { ...lm[id]!, y: lm[id]!.y + (k % 2 ? 2.5 : -2.5) }; });
+    const made = image((x, y) => (x >= 162 && x <= 268 && Math.abs(y - cY(x)) <= 6 ? INK : null));
+    const poly = get(partGuides([part("brow", "R", mask((x, y) => inPoly(x, y, own)))], lm, W, H, { made }), "brow", "R")!.polys[0]!;
+    // 꼬리(가장 왼쪽) → 머리(가장 오른쪽)로 윗선 · 아랫선을 나눠, 양 끝 15% 를 뺀 가운데에서 휘는 방향이 바뀐 횟수
+    const ti = poly.reduce((bi, p, i) => (p.x < poly[bi]!.x ? i : bi), 0), hi = poly.reduce((bi, p, i) => (p.x > poly[bi]!.x ? i : bi), 0);
+    const ring = (a: number, b: number) => { const out: Pt[] = []; for (let i = a; ; i = (i + 1) % poly.length) { out.push(poly[i]!); if (i === b) break; } return out; };
+    const x0 = poly[ti]!.x, x1 = poly[hi]!.x, inMid = (p: Pt) => p.x > x0 + 0.15 * (x1 - x0) && p.x < x1 - 0.15 * (x1 - x0);
+    for (const [name, line] of [["윗선 또는 아랫선", ring(ti, hi)], ["다른 쪽 선", ring(hi, ti)]] as const) {
+      const pts = line.filter(inMid).filter((_, i) => i % 3 === 0);
+      const cross = pts.slice(1, -1).map((a, i) => { const p = pts[i]!, n = pts[i + 2]!; return (a.x - p.x) * (n.y - a.y) - (a.y - p.y) * (n.x - a.x); });
+      const sig = cross.filter((c) => Math.abs(c) > 0.05);
+      const flips = sig.slice(1).filter((c, i) => Math.sign(c) !== Math.sign(sig[i]!)).length;
+      expect(flips, `${name} 가운데에서 휘는 방향이 바뀐 횟수`).toBeLessThanOrEqual(1);
+    }
   });
 });

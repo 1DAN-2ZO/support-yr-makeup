@@ -6,7 +6,7 @@ import { FEEDBACK_ORDER } from "@core/guide-feedback";
 import { GUIDE_ASPECT, runGuide } from "@core/guide-run";
 import { FACE_OVAL } from "@core/makeup-extract";
 import type { Pt } from "@core/types";
-import { BARE, LMS as SYNTH, browPaint, image, linerPaint, lipPaint, over } from "./helpers/synth-face";
+import { BARE, DEEP_BLUSH, LMS as SYNTH, browPaint, image, linerPaint, lipPaint, over, regionPaint } from "./helpers/synth-face";
 
 // 합성 얼굴은 턱 쪽 윤곽 점이 없다 (얼굴 가운데에 모여 있다) — 윤곽 36점을 타원에 놓아 준다. 맨 위(10)부터 시계 방향
 const LMS: Pt[] = SYNTH.map((q) => ({ ...q }));
@@ -70,5 +70,14 @@ describe("부위 가이드 재료", () => {
     const r = runGuide({ bare: { image: BARE.im, lm: SYNTH }, answer: image(lipPaint) });
     if (!r.ok) throw new Error(r.missing);
     expect(r.found).not.toContain("lip");
+  });
+
+  it("GR7 블러셔 페이지에는 퍼지는 방향(양쪽 가운데 점 + 사방 화살표)도 넘긴다 — 다른 부위는 없음 (사용자 2026-10-09)", () => {
+    const r = runGuide({ bare, answer: image(over(lipPaint, regionPaint("cheek", DEEP_BLUSH))) });
+    if (!r.ok) throw new Error(r.missing);
+    expect(r.found).toContain("cheek");
+    expect(r.pages.cheek.marks.dots, "양쪽 볼 가운데 점").toHaveLength(2);
+    expect(r.pages.cheek.marks.arrows, "양쪽 사방 화살표").toHaveLength(8);
+    expect(r.pages.lip.marks).toEqual({ dots: [], arrows: [] });
   });
 });

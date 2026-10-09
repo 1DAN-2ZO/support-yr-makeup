@@ -1,6 +1,6 @@
 // 화면 3·4 테두리 그리기 — 테두리는 점선, 퍼지는 방향 표시는 실선 화살표(머리 포함) + 채운 작은 점 (2026-10-05)
 import { describe, expect, it } from "vitest";
-import { strokeOutline } from "@screens/outline-draw";
+import { strokeMarks, strokeOutline } from "@screens/outline-draw";
 
 /** 그리기 호출을 차례대로 적는 가짜 캔버스 */
 function recorder(): { g: CanvasRenderingContext2D; calls: string[] } {
@@ -38,5 +38,16 @@ describe("strokeOutline", () => {
     for (const x of heads) expect(x).toBeLessThan(20);
     expect(calls.some((c) => c.startsWith("arc(5,5,"))).toBe(true);
     expect(calls).toContain("fill()");
+  });
+
+  it("D3 strokeMarks — 퍼지는 방향(실선 화살표 + 머리 · 채운 점)을 받은 색으로 그린다 (부위 가이드 블러셔, 2026-10-09)", () => {
+    const { g, calls } = recorder();
+    strokeMarks(g, { dots: [{ x: 5, y: 5 }], arrows: [[{ x: 0, y: 0 }, { x: 20, y: 0 }]] }, 2, "#ff69b4");
+    expect(calls).toContain("strokeStyle=#ff69b4");
+    expect(calls).toContain("fillStyle=#ff69b4");
+    expect(calls).toContain("setLineDash([])");
+    expect(calls).toContain("lineTo(20,0)");
+    expect(calls.filter((c) => /^lineTo\(/.test(c) && c !== "lineTo(20,0)").length).toBeGreaterThanOrEqual(2);
+    expect(calls.some((c) => c.startsWith("arc(5,5,"))).toBe(true);
   });
 });
