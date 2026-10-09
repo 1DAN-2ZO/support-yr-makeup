@@ -1092,13 +1092,16 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   z-index: 100;
   display: grid;
   place-items: center;
+  /* 다른 화면과 같은 폰 폭 안에 가두고, 그 안에서 스플래쉬 이미지를 꽉 채운다 */
+  width: min(100vw, calc(100dvh * 0.554), 430px);
+  margin: 0 auto;
   background: #fff;
   color: #eba0aa;
   animation: splash-in 520ms ease-out both;
 }
 .splash-frame {
-  width: min(100vw, calc(100dvh * 0.554));
-  height: min(100dvh, calc(100vw / 0.554));
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   background: #fff;
 }
@@ -1148,7 +1151,7 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   left: 0;
   transform: rotate(45deg);
 }
-.splash-logo { font-size: clamp(60px, 17vw, 96px); }
+.splash-logo { font-size: 72px; }
 
 /* 화면 안의 작은 로고 — .nudy-logo 기본값(큰 로고) 뒤에 와야 먹는다 */
 .looks-logo,
