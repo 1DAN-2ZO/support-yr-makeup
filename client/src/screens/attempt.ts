@@ -1,11 +1,11 @@
 /**
- * 화면 5 시도사진 (2026-10-06 새 흐름, 모듈 ⑥) — 화장을 다 한 뒤 정면 눈 뜬 장 · 감은 장을 자동으로 찍는다.
+ * 화면 5 시도사진 (2026-10-06 새 흐름, 모듈 ⑥) — 화장을 다 한 뒤 정면 눈 뜬 장을 자동으로 찍는다 (눈 감은 장은 2026-10-09 뺌, #386).
  *
  * 화면 1 촬영(①, screens/capture.ts)과 따로 만들었다. 판정은 ① 의 core 를 그대로 쓴다 (core/attempt.ts — capture-run · shotGate).
  * 카메라는 화면 6 정면 1장(review-shot.ts)과 같은 방식: 공용 카메라 루프(새 장면에만 얼굴 찾기, #245) · 켤 때·끌 때 잠금 풀기(#267).
  * 맨얼굴 대비 밝기 · 색은 막지 않는다 — 조명이 달라졌으면 피드백(③)이 판단할 일이다.
- * 눈 뜬 장은 다섯 장 묶음(#328 — 피드백이 값마다 가운데 값을 쓴다), 감은 장은 한 장. 사진은 줄이지 않는다 — 맨얼굴과 같은 원본 크기.
- * 두 종류를 다 찍으면 카메라를 끄고 미리보기 — "다시 찍기"(눈 뜬 장부터) 또는 "이대로 피드백 받기"(사진 · 얼굴 점을 넘기고 6 피드백으로).
+ * 눈 뜬 장은 다섯 장 묶음(#328 — 피드백이 값마다 가운데 값을 쓴다). 사진은 줄이지 않는다 — 맨얼굴과 같은 원본 크기.
+ * 다 찍으면 카메라를 끄고 미리보기 — "다시 찍기" 또는 "이대로 피드백 받기"(사진 · 얼굴 점을 넘기고 6 피드백으로).
  */
 
 import type { FaceLandmarker, FaceLandmarkerResult } from "@mediapipe/tasks-vision";
@@ -29,11 +29,11 @@ export interface AttemptShot {
   w: number;
   h: number;
 }
-/** 종류마다 장 묶음 — [0] 이 셔터 장. 눈 뜬 장은 다섯 장까지, 감은 장은 한 장 (core/attempt ATTEMPT_BURST) */
+/** 종류마다 장 묶음 — [0] 이 셔터 장. 눈 뜬 장 다섯 장까지 (core/attempt ATTEMPT_BURST). 눈 감은 장은 뺐다 (#386) */
 export type AttemptShots = Record<AttemptShotId, AttemptShot[]>;
 
 export interface AttemptDeps {
-  /** 두 장을 다 찍으면 부른다 (세션 · 폰 저장은 부르는 쪽) */
+  /** 다 찍으면 부른다 (세션 · 폰 저장은 부르는 쪽) */
   setAttempt: (shots: AttemptShots) => void | Promise<void>;
   /** 다 찍은 뒤 갈 화면 */
   next: ScreenId;
@@ -41,7 +41,7 @@ export interface AttemptDeps {
 
 export const ATTEMPT_TEXT = {
   title: "화장을 다 했으면 사진을 찍어요",
-  intro: "처음에 맨얼굴을 찍을 때처럼 정면에서 눈을 떴다가 감아 주세요. 두 장이 자동으로 찍혀요",
+  intro: "처음에 맨얼굴을 찍을 때처럼 정면을 보고 눈을 떠 주세요. 자동으로 찍혀요",
   start: "찍기 시작",
   loading: "카메라를 켜고 있어요…",
   saving: "사진을 정리하고 있어요…",
@@ -49,9 +49,8 @@ export const ATTEMPT_TEXT = {
   retry: "다시 시도",
   coach: "화장이 끝났으면 같은 자리에서 한 번 더 찍어 주세요",
   previewTitle: "이렇게 찍혔어요",
-  previewSub: "두 장 다 괜찮으면 피드백으로 넘어가요",
-  openLabel: "눈 뜬 사진",
-  closedLabel: "눈 감은 사진",
+  previewSub: "괜찮으면 피드백으로 넘어가요",
+  openLabel: "화장한 사진",
   retake: "다시 찍기",
   confirm: "이대로 피드백 받기",
 } as const;
@@ -142,15 +141,15 @@ export function attemptScreen<S>(deps: AttemptDeps): Screen<S> {
         previewUrls = [];
       };
 
-      /** 두 장을 보여 주고 고르게 한다 */
+      /** 찍은 사진을 보여 주고 고르게 한다 */
       function preview(shots: AttemptShots): void {
         dropPreview();
         wrap.textContent = "";
         const row = el("div", "attempt-preview");
         // 사진은 원본 크기라(#330) 크기를 잡아 주지 않으면 구석만 보이고 버튼이 화면 밖으로 밀린다 (폰 확인 2026-10-08, #344).
         // 꾸밈은 ⑤ 몫 — 여기서는 화면 안에 들어오게만 한다 (class 스타일이 있으면 그쪽이 다듬는다)
-        Object.assign(row.style, { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" });
-        for (const [id, label] of [["front_open", ATTEMPT_TEXT.openLabel], ["front_closed", ATTEMPT_TEXT.closedLabel]] as const) {
+        Object.assign(row.style, { display: "grid", gridTemplateColumns: "minmax(0, 260px)", justifyContent: "center", gap: "12px" });
+        for (const [id, label] of [["front_open", ATTEMPT_TEXT.openLabel]] as const) {
           const fig = el("figure");
           const img = el("img");
           const url = URL.createObjectURL(shots[id][0]!.blob);   // 종류마다 셔터 장만 보여 준다
@@ -264,11 +263,11 @@ export function attemptScreen<S>(deps: AttemptDeps): Screen<S> {
               const shot = burst!.shot;
               taken[shot] = frames;
               burst = null; frames = [];
-              shutterCue(shot === "front_closed");
+              shutterCue(false);
               ctx.log.log({ name: "button", button: `attempt_shot:${shot}` });
               run = startAttemptRun(taken, now);
               if (run.shot) { step.textContent = STEP_TEXT[run.shot]; return; }
-              // 두 종류 다 — 카메라를 끄고 미리보기
+              // 다 찍었다 — 카메라를 끄고 미리보기
               stop();
               step.textContent = "";
               line.textContent = ATTEMPT_TEXT.saving;

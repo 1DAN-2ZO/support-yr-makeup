@@ -29,8 +29,8 @@ describe("runStep", () => {
   });
 
   it("K3 찍은 장은 건너뛰고 다음 장부터, 다 찍었으면 할 일 없음", () => {
-    expect(startRun({ front_open: {} }, 0).shot).toBe("front_closed");
-    const done = startRun({ front_open: 1, front_closed: 1 }, 0);
+    expect(startRun({}, 0).shot).toBe("front_open");
+    const done = startRun({ front_open: 1 }, 0);
     expect(done.shot).toBeNull();
     expect(runStep(done, OK, 1)).toMatchObject({ take: false, gate: null });
   });
@@ -66,19 +66,6 @@ describe("기준 장 자리 잡기 (2026-09-28 실내등: 켜자마자 찍힌 �
       st = r.state;
     }
     expect(took).toBe(false);
-  });
-
-  it("S3 둘째 장부터는 기다리지 않는다", () => {
-    let st = startRun({ front_open: {} }, 0);
-    expect(st.settle).toBeNull();
-    let tookAt = -1;
-    for (let t = 0; tookAt < 0 && t < 1000; t += 10) {
-      const r = runStep(st, { ...OK, closedA: true, closedB: true }, t);
-      if (r.take) tookAt = t;
-      st = r.state;
-    }
-    expect(tookAt).toBeGreaterThanOrEqual(0);
-    expect(tookAt).toBeLessThan(BASE_SETTLE.minMs);
   });
 
   it("S5 이마를 계속 못 재도 5초가 지나면 자리 잡기를 건너뛰고 찍는다 (#168 리뷰)", () => {

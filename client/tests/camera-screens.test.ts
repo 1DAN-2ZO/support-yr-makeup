@@ -183,9 +183,11 @@ describe.each([
 });
 
 describe("촬영(화면 1) 장 수 표시", () => {
-  it("CS6 정면 2장이라 '1/2' 로 시작한다 — 장 수를 글자로 박아 두지 않는다 (2026-10-07 옆얼굴 두 장 뺌)", async () => {
+  it("CS6 한 장만 찍으니 '1/1' 같은 번호를 붙이지 않는다 — 안내 문장만 (2026-10-09 눈 감은 장 뺌 #386)", async () => {
     const off = await mountCapture();
-    expect(document.querySelector(".cam-step")?.textContent).toMatch(/^1\/2 · /);
+    const text = document.querySelector(".cam-step")?.textContent ?? "";
+    expect(text).not.toMatch(/\d+\/\d+/);
+    expect(text).toContain("눈을 떠 주세요");
     off();
   });
 });

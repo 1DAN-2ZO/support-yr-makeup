@@ -5,23 +5,20 @@ import { ATTEMPT_BURST, ATTEMPT_SHOTS, attemptBurstStep, startAttemptBurst, star
 import type { ShotMeasure } from "@core/flow";
 
 describe("시도사진 장 순서", () => {
-  it("AR1 정면 눈 뜬 장 → 감은 장 두 장뿐", () => {
-    expect(ATTEMPT_SHOTS).toEqual(["front_open", "front_closed"]);
+  it("AR1 정면 눈 뜬 장 하나뿐 — 눈 감은 장은 뺐다 (#386: 찍기만 하고 쓰는 곳이 없었다)", () => {
+    expect(ATTEMPT_SHOTS).toEqual(["front_open"]);
     expect(startAttemptRun({}, 0).shot).toBe("front_open");
-    expect(startAttemptRun({ front_open: {} }, 0).shot).toBe("front_closed");
-    expect(startAttemptRun({ front_open: {}, front_closed: {} }, 0).shot).toBeNull();
+    expect(startAttemptRun({ front_open: {} }, 0).shot).toBeNull();
   });
 
-  it("AR2 첫 장(눈 뜬)은 화면 1 기준 장처럼 카메라가 자리 잡기를 기다린다 — 감은 장은 안 기다린다", () => {
+  it("AR2 눈 뜬 장은 화면 1 기준 장처럼 카메라가 자리 잡기를 기다린다", () => {
     expect(startAttemptRun({}, 0).settle).not.toBeNull();
-    expect(startAttemptRun({ front_open: {} }, 0).settle).toBeNull();
   });
 
   const OK: ShotMeasure = { faceDetected: true, yaw: 0, pitch: 0, closedA: false, closedB: false, faceRatio: 0.5, faceInset: 0.1, eyeWidthPx: 120, sharpness: 400, foreheadL: 62 };
 
-  it("AR3 눈 뜬 장은 다섯 장 묶음, 감은 장은 한 장 — 첫 장(셔터)이 이미 한 장", () => {
-    expect(ATTEMPT_BURST.count).toEqual({ front_open: 5, front_closed: 1 });
-    expect(startAttemptBurst("front_closed", 0).done).toBe(true);
+  it("AR3 눈 뜬 장은 다섯 장 묶음 — 첫 장(셔터)이 이미 한 장", () => {
+    expect(ATTEMPT_BURST.count).toEqual({ front_open: 5 });
     let b = startAttemptBurst("front_open", 0);
     expect(b.done).toBe(false);
     let takes = 0;

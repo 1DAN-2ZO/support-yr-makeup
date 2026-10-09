@@ -43,7 +43,7 @@ export interface CaptureEventsOptions {
   slowMs?: number;
 }
 
-const ZERO: Record<ShotId, number> = { front_open: 0, front_closed: 0 };
+const ZERO: Record<ShotId, number> = { front_open: 0 };
 
 export function createCaptureEvents(logger: Logger, opts: CaptureEventsOptions = {}): CaptureEvents {
   const stuckMs = opts.stuckMs ?? 3000;
