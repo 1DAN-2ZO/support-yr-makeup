@@ -15,6 +15,8 @@
 | [`feedback-input-contract.md`](feedback-input-contract.md) | **피드백(화면 6)이 받는 그림의 조건** — 정답사진 · 옮긴 그림을 만드는 쪽이 지킬 것. 모델이 바뀌어도 유지 | 2026-10-09 |
 | [`TODO-color-name-fixes.md`](TODO-color-name-fixes.md) | 참고 사진 색조 팔레트의 색 이름 규칙 — 데이터를 모은 뒤 고칠 것 | 2026-10-07 |
 
+코드에 남아 있는 옛 흐름 화면(지우지 않고 "지금 안 씀" 표시만 함)의 목록은 [`../client/OLD-FLOW.md`](../client/OLD-FLOW.md).
+
 기능 정의서 · 화면 목업 브리프는 새 흐름 판이 없다. 화면이 무엇을 하는지는 서비스 정의서 §6 · §7 과 코드(`client/src/screens/`)가 기준이다.
 
 ## 개발 규칙 · 환경

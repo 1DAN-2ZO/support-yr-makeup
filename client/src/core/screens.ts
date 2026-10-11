@@ -24,7 +24,10 @@ export type { ScreenId };
  */
 export const SCREEN_ORDER: readonly ScreenId[] = ["consent", "capture", "answer", "partguide", "attempt", "feedback", "save", "done"];
 
-/** 옛 흐름에서 빠진 화면 → 가까운 새 화면. 앱을 다시 켰을 때 옛 화면에 멈춘 세션을 옮긴다 */
+/**
+ * 옛 흐름에서 빠진 화면 → 가까운 새 화면. 앱을 다시 켰을 때 옛 화면에 멈춘 세션을 옮긴다.
+ * live(실시간 가이드)만은 지금도 쓴다 — 부위 가이드에서 보기만 하러 들어간다. 나머지 여섯은 가는 길이 없다 (client/OLD-FLOW.md)
+ */
 const RETIRED: Partial<Record<ScreenId, ScreenId>> = {
   processing: "answer", looks: "answer", fullrender: "answer",
   guide: "partguide", live: "partguide", result: "partguide",
