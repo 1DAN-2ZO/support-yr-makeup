@@ -1,6 +1,6 @@
 # poc/datasets-eval — 실사용 데이터셋 검증
 
-`docs/datasets-ranked-v6.md` 의 실측 수치를 만든 스크립트. 문서에 적힌 데이터셋이 **우리 파이프라인에서 실제로 되는지**를 숫자로 확인한다.
+`docs/archive/datasets-ranked-v6.md` 의 실측 수치를 만든 스크립트. 문서에 적힌 데이터셋이 **우리 파이프라인에서 실제로 되는지**를 숫자로 확인한다.
 
 ## 무엇을 재나
 
@@ -18,7 +18,7 @@
 
 ```bash
 cd poc/datasets-eval
-# 데이터셋은 D:/danghaeung-datasets/ 아래에 받아 둔 상태 (docs/datasets-ranked-v6.md 7장 참고)
+# 데이터셋은 D:/danghaeung-datasets/ 아래에 받아 둔 상태 (docs/archive/datasets-ranked-v6.md 7장 참고)
 python eval_real.py --dataset easyportrait --root D:/danghaeung-datasets/EasyPortrait --n 200
 python eval_real.py --dataset lapa         --root D:/danghaeung-datasets/LaPa --n 200
 python eval_real.py --dataset celebamask   --root D:/danghaeung-datasets/CelebAMask-HQ/CelebAMask-HQ --n 200

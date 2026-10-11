@@ -1,6 +1,6 @@
 # 당화응 모듈별 전체 할 일 (6명 · 담당자 미정)
 
-2026-09-18 · 분업안(`work-split-modules-v6.md`) + AI 파이프라인(`ai-pipeline-v6.md`) + 개발 규칙(`dev-stack-v6.md`)을 **사람 하나가 자기 몫만 보면 되게** 한 장으로 편 것. 순서대로 하면 된다. ★ = 다른 모듈이 기다리는 것(먼저).
+2026-09-18 · 분업안(`../work-split-modules-v6.md`) + AI 파이프라인(`../ai-pipeline-v6.md`) + 개발 규칙(`../dev-stack-v6.md`)을 **사람 하나가 자기 몫만 보면 되게** 한 장으로 편 것. 순서대로 하면 된다. ★ = 다른 모듈이 기다리는 것(먼저).
 
 > **공통 (전원, 첫날)**
 > `git clone` → `bash scripts/setup.sh` → `client/src/core/types.ts`·`server/app/schemas.py` 읽고 자기 모듈 계약에 이의 있으면 첫 회의에서 → 자기 모듈 브랜치(`capture` `guide` `score` `server` `model` `app`)로 checkout → 작은 단위로 자주 `main`에 PR, CI 초록.
@@ -98,7 +98,7 @@
 
 ## ⑤ 모델·데이터·평가 (Python) — 브랜치 `model`
 
-**받는 것** 팀 전체가 찍은 사진, `Baseline` 랜드마크 · **주는 것** `FaceShape` 함수, 평가 데이터, `eval-results-v6.md` · **지금 있는 것** `estimateFaceShape`(규칙), `datasets-ranked-v6.md`, `poc/datasets-eval`, `poc/synth`(보류), `eval/` 틀
+**받는 것** 팀 전체가 찍은 사진, `Baseline` 랜드마크 · **주는 것** `FaceShape` 함수, 평가 데이터, `../eval-results-v6.md` · **지금 있는 것** `estimateFaceShape`(규칙), `datasets-ranked-v6.md`, `poc/datasets-eval`, `poc/synth`(보류), `eval/` 틀
 
 | 주 | # | 할 일 | 산출물 | 기다리는 쪽 |
 | --- | --- | --- | --- | --- |
@@ -111,10 +111,10 @@
 | 2 | 5-7 ★ | 부위별 사람 판정 3단계(맞음·조금·많이) 200장 × 2인, 장당 1분 | `labels-v1` 확장 | ③ E-1 |
 | 2 | 5-8 | **S-2 후보 비교**: B 비율 특징 + 분류기 / C MobileNetV3 파인튜닝(Kaggle 1차 → 자체 라벨) / D 임베딩 + 선형 — 정확도·크기·폰 시간 | 선정 표 | — |
 | 2 | 5-9 | `eval/faceshape/run.py`, `eval/transfer/run.py`(④ API 호출), `eval/gate/`·`live/`·`funnel/` 집계 스크립트 틀 | 스크립트 | ①②④⑥ |
-| 2 | 5-10 | 실험 기록 규칙 적용: `train/configs/*.json` + 시드, 결과 CSV, `eval-results-v6.md` 실험 노트 | 문서 | — |
+| 2 | 5-10 | 실험 기록 규칙 적용: `train/configs/*.json` + 시드, 결과 CSV, `../eval-results-v6.md` 실험 노트 | 문서 | — |
 | 3 | 5-11 ★ | **E-2**: 선정 모델 파인튜닝·평가(사람 단위 분리), 규칙 vs 모델 vs 라벨러 일치율. ONNX 내보내기 → `client` `FaceShape.method='model'` | 모델 + CSV | ② 발표 숫자 ② |
 | 3 | 5-12 | E-1 미달 시 S-3 데이터 지원(EasyPortrait 학습, FFHQ-Makeup 라벨 0), AI Hub 승인 데이터 반영(조명 30종, 한국인 분포) | 데이터 | ③ |
-| 4 | 5-13 | 결과표 취합(`run_all` → `eval-results-v6.md`), 버전별 그래프, 탈락 후보 포함 선정 표 | 표·그래프 | 발표 |
+| 4 | 5-13 | 결과표 취합(`run_all` → `../eval-results-v6.md`), 버전별 그래프, 탈락 후보 포함 선정 표 | 표·그래프 | 발표 |
 | 4 | 5-14 | 사용자 실험 10명 데이터(퍼널 로그) 수집 지원, 전문가 평정(선택) | 데이터 | ⑥ |
 
 ---

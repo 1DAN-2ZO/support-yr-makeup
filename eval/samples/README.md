@@ -24,7 +24,7 @@ uv run python eval/samples/ffhq_east_asian.py --golden                   # 골�
 
 ### 알고 쓸 것
 
-- **라이선스 CC BY-NC-SA 4.0** (cyberagent/FFHQ-Makeup). 비상업 · **평가·참고만, 학습 데이터(합성 학습의 바탕 얼굴 포함)로 쓰지 않는다** (`docs/data-plan-v6.md`). 다른 곳에 올리거나 퍼뜨리지 않는다
+- **라이선스 CC BY-NC-SA 4.0** (cyberagent/FFHQ-Makeup). 비상업 · **평가·참고만, 학습 데이터(합성 학습의 바탕 얼굴 포함)로 쓰지 않는다** (`docs/archive/data-plan-v6.md`). 다른 곳에 올리거나 퍼뜨리지 않는다
 - **합성 이미지다** — FFHQ(Flickr 인물 사진) 얼굴에서 화장을 합성으로 지운 "맨얼굴". 실제 폰 촬영과 조명·해상도(512px)가 다르다. 실제 촬영 기준은 팀원 사진(`poc/samples/phone-portraits-20`, 골든 세트)으로 확인한다
 - 정면 위주라 45° 장 시험에는 맞지 않는다
 - 이 30장에서 앱 측정은 처진 눈(α−β > 2°)을 26장으로 판정했다 — 측정 기준 점검 거리 (VLM 선정 실험 기록)
