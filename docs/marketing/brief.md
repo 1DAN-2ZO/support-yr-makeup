@@ -151,10 +151,10 @@
 | 무엇 | 어디 |
 |---|---|
 | 서비스 정의·화면 흐름 | `docs/service-definition-v6.md` |
-| 기능 상세 | `docs/feature-spec-v6.md` |
-| 선행 연구 | `docs/related-work-v6.md` |
+| 기능 상세 | `docs/archive/feature-spec-v6.md` |
+| 선행 연구 | `docs/archive/related-work-v6.md` |
 | 평가 결과 | `docs/eval-results-v6.md`, `eval/results/` |
-| 일정·결정 기록 | `docs/sprints-v6.md` |
+| 일정·결정 기록 | `docs/archive/sprints-v6.md` |
 | 분업 | `docs/work-split-modules-v6.md` |
 
 출처: [전자신문 — 아모레 워너-뷰티](https://www.etnews.com/20250106000260) · [Perfect Corp — YouCam Tutorial](https://www.perfectcorp.com/business/products/youcam-tutorial) · [ModiFace](https://modiface.com/products-makeup.html)

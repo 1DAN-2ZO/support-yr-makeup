@@ -31,7 +31,7 @@ flowchart LR
 
 - 템플릿(10종)의 **색은 그대로**, 모양·범위·진하기 **배율**만 바꾼다. 항목과 범위는 [§7](#7-화장-수치는-어떻게-되어-있나)
 - VLM 제안은 믿지 않는 JSON — 관문이 항목별로 측정·범위와 대조해 받거나 거절하고, 거절된 항목은 규칙값
-- 서버: llama.cpp `llama-server`, 제약 디코딩(JSON 스키마), 온도 0 · seed 42 (`docs/vlm-server-handoff.md`)
+- 서버: llama.cpp `llama-server`, 제약 디코딩(JSON 스키마), 온도 0 · seed 42 (`docs/archive/vlm-server-handoff.md`)
 
 ## 2. 실험 환경
 
@@ -63,7 +63,7 @@ flowchart LR
 | 새 템플릿 재확인 (look-v0.2) | Gemma: 관문 100%, 따라감 98.9%, p95 5.5초 → 선정 그대로 |
 | **사진 근거** (모든 모델) | 같은 글에 **다른 사람 사진**을 넣었을 때 결정이 바뀐 정도 − 밝기만 바꿨을 때 바뀐 정도 = **+5~16%p** — 모두 사진을 거의 안 봄 |
 
-→ E 형식 · Gemma 4 E4B 를 앱으로 옮김 (PR #258, `vlm-prompt-v2`). 서버 인수인계 `docs/vlm-server-handoff.md` (VRAM 약 8.3GB).
+→ E 형식 · Gemma 4 E4B 를 앱으로 옮김 (PR #258, `vlm-prompt-v2`). 서버 인수인계 `docs/archive/vlm-server-handoff.md` (VRAM 약 8.3GB).
 
 ### 3.3 처진 눈 판정 — 논문 규칙이 틀렸다 (ILoveEye → 눈꼬리 기울기 5°)
 
@@ -136,7 +136,7 @@ v6 · v7 코드는 **`vlm-freedom` 브랜치에만** 있다 (병합 안 함, 커
 | 블라인드 A/B 평가지 (앱 렌더러) | `eval/vlm/report.py --sheet`, `render_sheet.ts` | 규칙 변경 · 템플릿 비교에도 쓸 수 있다 |
 | 사람 표시지 → 측정 방법별 AUC · 경계 | `eval/vlm/droop_label.py` | 다른 판정(쌍꺼풀 등)에도 같은 틀 |
 | 동양인 사진 목록 · 추출 스크립트 | `eval/samples/` | 사진은 저장소 밖 |
-| llama.cpp 서버 설정 · 계약 | `docs/vlm-server-handoff.md` | 텍스트 LLM 으로 바꿔도 대부분 같다 |
+| llama.cpp 서버 설정 · 계약 | `docs/archive/vlm-server-handoff.md` | 텍스트 LLM 으로 바꿔도 대부분 같다 |
 
 **VLM 을 빼게 되면 정리할 곳** (보류 중이라 손대지 않음): `client/src/core/vlm-flow.ts` · `vlm-client.ts` · `vlm-prompt.ts`, `main.ts` 의 `vlm.plan` 호출, 화면의 VLM 실패 처리(`looks.ts`), 서버. `resolvePlan` 은 VLM 제안 없이도 규칙 계획을 내므로 남겨도 된다.
 
