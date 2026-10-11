@@ -42,7 +42,7 @@ consent → capture → answer → partguide ⇄ live → attempt → feedback �
 | `core/look-jobs.ts` | `processing` | `main.ts` 는 빈 것만 넘긴다 |
 | `core/review.ts` | `review` | |
 | `screens/review-shot.ts` | `review` | |
-| `screens/lash-assets.ts` | `fullrender` · `completed` | **앱을 켤 때 `main.ts` 가 속눈썹 그림을 미리 받는 동작은 남아 있다** — 그리는 화면은 없다 |
+| `screens/lash-assets.ts` | `fullrender` · `completed` | 앱을 켤 때 미리 받던 것(`loadLashes()` — 168KB · 요청 5번)은 뺐다 (2026-10-11). 옛 화면을 되살리면 다시 불러야 마스카라가 그려진다 |
 | `screens/hair-segmenter.ts` | `fullrender` · `guide` · `result` 설정 | 시험 페이지 `hairline-probe.html` · `look-transfer-probe.html` 은 지금도 쓴다 |
 
 시험 페이지 `ui-preview.html` 은 옛 화면도 미리보기로 띄운다.

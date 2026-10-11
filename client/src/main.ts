@@ -47,7 +47,6 @@ import { fullRenderScreen, type FullRenderDeps } from "./screens/fullrender";
 import { looksScreen, type LooksDeps } from "./screens/looks";
 import { processingScreen, type ProcessingDeps } from "./screens/processing";
 import { resultScreen, type ResultDeps } from "./screens/result";
-import { loadLashes } from "./screens/lash-assets";
 import { reviewScreen, type ReviewDeps } from "./screens/review";
 import { startReviewShot } from "./screens/review-shot";
 import { createShell } from "./screens/shell";
@@ -178,12 +177,11 @@ async function boot(): Promise<void> {
       if (ev.name === "screen_enter" || ev.name === "session_end") void sender.send();
     },
   );
-  // [옛 흐름 · 지금 안 씀] 아래 둘(머리카락 분할 · 속눈썹 그림)은 옛 화면(2-b · 3 · 5) 설정에만 넘긴다 — client/OLD-FLOW.md.
-  // 속눈썹 그림을 앱을 켤 때 받는 동작은 그대로 남아 있다 (받는 것을 빼려면 이 줄과 옛 화면 등록을 같이 봐야 한다)
+  // [옛 흐름 · 지금 안 씀] 머리카락 분할은 옛 화면(2-b · 3 · 5) 설정에만 넘긴다 — client/OLD-FLOW.md. 모델은 그 화면에 들어갈 때 받으니 지금은 받지 않는다.
+  // 속눈썹 그림(screens/lash-assets loadLashes)을 앱을 켤 때 미리 받던 것은 뺐다 (2026-10-11) — 그리는 화면이 옛 흐름뿐이라 쓰이지 않는 내려받기(168KB · 요청 5번)였다.
+  // 옛 화면을 되살리면 그 화면에 들어가기 전에 loadLashes() 를 다시 불러야 마스카라가 그려진다 (안 부르면 마스카라만 빠진다)
   // 머리카락 분할 (screens/hair-segmenter) — 화면 5 채점용. 실패는 로그에 한 번 남기고 마스크 없이 간다
   const hairMask = createHairMasker(undefined, (e) => log.log({ name: "error", where: "hair", msg: (e instanceof Error ? e.message : String(e)).slice(0, 120) }));
-  // 마스카라 텍스처 (#250) — 화면 3·2-b 전에 미리 받아 둔다. 실패하면 마스카라만 빼고 그린다 (다음 화장에서 다시 받는다)
-  void loadLashes().catch((e: unknown) => log.log({ name: "error", where: "lashes", msg: (e instanceof Error ? e.message : String(e)).slice(0, 120) }));
   const events = createCaptureEvents(log);
 
   // 세션을 바꾸는 곳은 전부 여기로 — 바뀔 때마다 draft 저장 (앱이 꺼져도 돌아오게, F-07)
