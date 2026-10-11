@@ -56,7 +56,7 @@ import { requestTransfer } from "./core/transfer-client";
 import { within } from "./core/wait-limit";
 import { prepareSave, type SaveKit, type SaveSource } from "./screens/feedback-card";
 import { loadFeedback, type AnswerPhoto, type FeedbackLoad } from "./screens/feedback-source";
-import { createGuideKeeper, loadPartGuide } from "./screens/guide-source";
+import { createGuideKeeper, liveOutlineOf, loadPartGuide } from "./screens/guide-source";
 import { analyzeRefPhoto } from "./screens/ref-analyze";
 import { shrinkForUpload } from "./screens/answer-make";
 import { noteOfFeedback, noteOfGuide, noteOfMake, noteOfRef, noteOfSave, noteOfShrink } from "./screens/task-notes";
@@ -489,7 +489,8 @@ async function boot(): Promise<void> {
       getHairMask: (d) => maskOfImage(hairMask, d.img, d.w, d.h),
       getGuide: guideFor,
     },
-    // 화면 4 실시간 가이드 (live) — **지금도 쓴다**: 부위 가이드의 "실시간 가이드로 보기" 가 연다. 보기만 하고 "이전" 으로 돌아간다 (#334)
+    // 화면 4 실시간 가이드 (live) — 지금 흐름의 화면이다: 부위 가이드의 "실시간 가이드로 보기" 가 연다. 보기만 하고 "이전" 으로 돌아간다 (#334).
+    // 그리는 테두리는 부위 가이드(사진)와 같은 것 — 예상 메이크업에서 뽑은 그 부위 모양을 카메라 속 얼굴에 붙인다 (getOutline)
     {
       getPart: () => session.currentPart,
       getBaseline: () => session.baseline,
@@ -501,13 +502,19 @@ async function boot(): Promise<void> {
       getLookParts: () => lookById(session.lookId).parts,
       // 맨얼굴 정면 때 표정 — ① 이 촬영·복원 때 Baseline 에 채운다 (#177). 없으면 화면 4 가 표정 조건을 건너뛴다
       getBaseExpr: () => session.baseline?.expression ?? null,
+      // 예상 메이크업에서 뽑은 그 부위 테두리 — 부위 가이드가 만들어 둔 것을 꺼내 쓴다 (기다리지 않는다).
+      // 아직 못 만들었거나 그 부위의 화장이 없으면 null → 화면이 아래의 옛 표준 틀(getGuide)을 "예시" 로 그린다
+      getOutline: (part) => {
+        const view = guides.peek(), b = session.baseline;
+        return view && b ? liveOutlineOf(view, part, b) : null;
+      },
       getGuide: guideFor,
       setCapture: (part, bundle) => {
         set({ ...session, parts: session.parts.map((p) => (p.partId === part ? { ...p, captured: bundle } : p)) });
       },
+      // [옛 흐름 · 지금 안 씀] 묶음을 모아 채점(result)으로 넘어가던 길 — 아래 back 이 있는 동안 쓰이지 않는다
       next: "result",
-      // 새 흐름(#334): 실시간 가이드는 보기만 한다 — 버튼이 "이전" 이 되어 부위 가이드로 돌아간다.
-      // 묶음을 모아 채점으로 넘어가던 옛 길(next: "result")은 이 설정이 있는 동안 쓰이지 않는다
+      // 새 흐름(#334): 실시간 가이드는 보기만 한다 — 버튼이 "이전" 이 되어 부위 가이드로 돌아간다
       back: "partguide",
     },
     {
@@ -562,7 +569,7 @@ function registerAll(
   shell.register("denied", deniedScreen<Session>());
   shell.register("capture", captureScreen<Session>(capture));
   shell.register("done", doneScreen<Session>(done));
-  // 실시간 가이드 — 지금도 쓴다 (부위 가이드의 "실시간 가이드로 보기")
+  // 실시간 가이드 — 지금 흐름의 화면 (부위 가이드의 "실시간 가이드로 보기")
   shell.register("live", liveScreen<Session>(live));
   // [옛 흐름 · 지금 안 씀] 아래 여섯은 2026-10-06 에 흐름이 바뀌면서 가는 길이 없어졌다 — 등록만 남아 있다 (client/OLD-FLOW.md).
   // 이 화면에 멈춘 채 저장된 옛 세션은 앱을 켤 때 가까운 새 화면으로 옮긴다 (core/screens.ts inNewFlow)

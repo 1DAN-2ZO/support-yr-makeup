@@ -1,5 +1,11 @@
 /**
- * 화면 4 — 실시간 테두리 (F-05·F-07, 정의서 3-6b·3-7·3-8). 모듈 ②.
+ * 화면 4 — 실시간 가이드 (모듈 ②). **지금 흐름(2026-10-06 ~)의 화면이다.**
+ *
+ * 지금 하는 일: 부위 가이드(사진)의 "실시간 가이드로 보기" 로 들어와, 카메라 속 내 얼굴 위에 그 부위 테두리를 보여 준다 — **보기만** 한다.
+ * 테두리는 사진 가이드와 같은 것(예상 메이크업에서 뽑은 그 부위 모양, LiveDeps.getOutline)이고, "이전" 버튼으로 부위 가이드에 돌아간다 (LiveDeps.back, #334).
+ *
+ * 아래는 이 화면이 처음 만들어진 옛 흐름(화면 4 실시간 테두리, F-05·F-07, 정의서 3-6b·3-7·3-8)의 설명이다. 테두리를 얼굴에 붙이고
+ * 확대 창을 따라가게 하는 부분은 지금도 그대로 쓴다. **"확인받기" → 묶음 → 화면 5(채점)** 는 back 을 안 줄 때만 도는 옛 길이다 (client/OLD-FLOW.md).
  *
  * 라이브 프리뷰 위에 부위 테두리(선만)를 겹치고, 게이트 한 줄 + "확인받기" 버튼 하나.
  * 게이트를 통과하면(또는 각도·안정에 3초 넘게 막히면, #235) 버튼이 켜지고, 누르면 다음 프레임부터 3~5장을 모아 세션에 두고 화면 5 로 간다.
@@ -63,6 +69,12 @@ export interface LiveDeps {
   getBaseExpr?: () => Readonly<Record<string, number>> | null;
   /** 테두리 모양 — 채점(화면 5)과 같은 것을 넘긴다. 없으면 lookGuide(getLookParts()). ⑥ 개인화 계획이 여기 꽂힌다 (#167 리뷰) */
   getGuide?: () => GuideSource;
+  /**
+   * 새 흐름: 예상 메이크업(정답사진)에서 뽑은 그 부위 테두리 — 부위 가이드(사진)와 같은 모양 (⑥ main.ts, screens/guide-source liveOutlineOf).
+   * 좌표는 맨얼굴 얼굴 점(getBaseline().lm)과 같은 기준. 주면 getGuide · lookGuide 대신 이것을 얼굴에 붙여 그린다.
+   * null 이면(가이드를 아직 못 만들었거나 그 부위의 화장이 없음) 옛 표준 틀을 "예시" 딱지와 함께 그린다
+   */
+  getOutline?: (part: PartId) => Outline | null;
   /** 확인받기 묶음을 그 부위에 둔다 (화면 5 가 getCapture 로 읽는다) */
   setCapture: (part: PartId, bundle: CaptureBundle) => void;
   next: ScreenId;
@@ -200,10 +212,10 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
       video.playsInline = true; video.muted = true; video.autoplay = true;
       const view = el("canvas", "live-view");
       stage.append(video, view);
-      // 지금 그리는 테두리는 올린 참고 사진의 화장이 아니라 **옛 표준 틀(lookGuide)** 이다 (#334 ⑥ 알림).
-      // 정답사진이 들어오면(#331) ⑥ 이 createLiveRun 에 그 모양을 넣는다 — 그때 이 딱지를 뺀다
-      const sample = el("span", "live-sample", "예시");
-      stage.append(sample);
+      // 예상 메이크업에서 뽑은 그 부위 테두리(getOutline)가 있으면 그것을 그린다 — 부위 가이드(사진)와 같은 모양 (#334).
+      // 없으면 올린 참고 사진의 화장이 아니라 **옛 표준 틀(lookGuide)** 이라 "예시" 딱지를 붙인다
+      const own = deps.getOutline?.(part) ?? null;
+      if (!own) stage.append(el("span", "live-sample", "예시"));
       // 개발용 떨림 재기 (#23 "적용 전후 30초 비교")
       const q = new URLSearchParams(window.location.search);
       const stab = q.get("stab") !== "0";
@@ -244,7 +256,7 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         baseline: { lm: baseline.lm, foreheadL: baseline.foreheadL },
         ...(baseAb ? { baseAb } : {}),
         baseExpr: deps.getBaseExpr?.() ?? null,
-        guide: deps.getGuide?.() ?? lookGuide(deps.getLookParts()),
+        ...(own ? { outline: own } : { guide: deps.getGuide?.() ?? lookGuide(deps.getLookParts()) }),
         smooth: stab,
         // 개발용 ?g=: 먼 쪽 눈 틀 맞추기 다듬기를 하나씩 켜서 비교 (1 눈머리 고정 · 2 눈썹 앞쪽 절반 · 3 높이 제한 · h 눈꼬리를 눈썹으로). 없으면 23h
         ...(fadeQ === "0" ? { fade: null } : fadeR ? { fade: { ...FAR_FADE, from: Number(fadeR[1]), to: Number(fadeR[2]) } } : {}),
