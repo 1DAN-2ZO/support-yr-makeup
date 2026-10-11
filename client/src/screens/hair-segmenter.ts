@@ -1,4 +1,9 @@
 /**
+ * [옛 흐름 · 지금 안 씀] 앱에서는 옛 화면(2-b · 3 · 5)의 설정에만 넘긴다. 시험 페이지 hairline-probe.html · look-transfer-probe.html 은 지금도 쓴다.
+ * 2026-10-06 에 흐름이 바뀌어 그 화면들로 가는 길이 없다.
+ * 지우지 않고 둔다 — 등록(main.ts) · 테스트도 그대로다. 목록과 근거: client/OLD-FLOW.md
+ */
+/**
  * 머리카락 분할 (MediaPipe Image Segmenter) — 사진 한 장 → 머리카락 확률 마스크(0~1).
  * 화면 5 채점이 앞머리·옆머리 칸을 빼는 데 쓴다 (core/sampling HairMask). AR 피부 보정(④ #173)도 같은 걸 쓰면 된다.
  * 근거: docs/research/hair-skin-2026-09-29/보고서.md
