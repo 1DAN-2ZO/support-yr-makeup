@@ -20,23 +20,30 @@ export type { ScreenId };
 
 /**
  * 진행 순서 — 새 흐름 (2026-10-06). 맨얼굴 촬영 → 참고 사진·정답사진 → [부위 가이드] × 부위 → 시도사진 → 피드백 → 저장·공유 → 끝.
- * 부위마다 중간 확인(실시간 테두리 · 결과)은 없다. 옛 흐름 화면은 SCREENS 에 남아 있지만 이 순서에는 없다
+ * 부위마다 중간 확인(확인받기 · 결과)은 없다. 옛 흐름 화면은 SCREENS 에 남아 있지만 이 순서에는 없다.
+ * 실시간 가이드(live)도 지금 흐름의 화면이다 — 순서를 잇는 화면이 아니라 부위 가이드에서 들어갔다 돌아오는 곁 화면이라 여기에는 없다 (SIDE_OF)
  */
 export const SCREEN_ORDER: readonly ScreenId[] = ["consent", "capture", "answer", "partguide", "attempt", "feedback", "save", "done"];
 
 /**
- * 옛 흐름에서 빠진 화면 → 가까운 새 화면. 앱을 다시 켰을 때 옛 화면에 멈춘 세션을 옮긴다.
- * live(실시간 가이드)만은 지금도 쓴다 — 부위 가이드에서 보기만 하러 들어간다. 나머지 여섯은 가는 길이 없다 (client/OLD-FLOW.md)
+ * 곁 화면 → 그 화면을 연 본 화면. 실시간 가이드(live)는 부위 가이드의 "실시간 가이드로 보기" 로 들어가 "이전" 으로 돌아온다 (#334).
+ * 지금 흐름의 화면이지만 SCREEN_ORDER 에는 없다 (순서를 잇지 않는다)
  */
+export const SIDE_OF: Partial<Record<ScreenId, ScreenId>> = { live: "partguide" };
+
+/** 옛 흐름에서 빠진 화면 → 가까운 새 화면. 여섯 화면 모두 지금은 가는 길이 없다 (client/OLD-FLOW.md) */
 const RETIRED: Partial<Record<ScreenId, ScreenId>> = {
   processing: "answer", looks: "answer", fullrender: "answer",
-  guide: "partguide", live: "partguide", result: "partguide",
+  guide: "partguide", result: "partguide",
   review: "feedback",
 };
 
-/** 새 흐름의 화면으로 — 옛 흐름 화면이면 가까운 새 화면, 아니면 그대로 */
+/**
+ * 앱을 다시 켰을 때 설 화면 — 옛 흐름 화면이면 가까운 새 화면, 곁 화면(실시간 가이드)이면 그 본 화면, 아니면 그대로.
+ * 실시간 가이드에서 닫았다 켜면 카메라부터 다시 여는 대신 부위 가이드(사진)에서 시작한다
+ */
 export function inNewFlow(s: ScreenId): ScreenId {
-  return RETIRED[s] ?? s;
+  return RETIRED[s] ?? SIDE_OF[s] ?? s;
 }
 
 /**

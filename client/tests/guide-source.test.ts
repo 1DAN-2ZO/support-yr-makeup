@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { RgbaImage } from "@core/color";
 import { FACE_OVAL } from "@core/makeup-extract";
 import type { Baseline, Pt } from "@core/types";
-import { GUIDE_DECODE_SIDE, createGuideKeeper, drawGuidePage, loadPartGuide, type GuideLoad, type GuidePicture, type GuideView } from "@screens/guide-source";
+import { GUIDE_DECODE_SIDE, createGuideKeeper, drawGuidePage, liveOutlineOf, loadPartGuide, type GuideLoad, type GuidePicture, type GuideView } from "@screens/guide-source";
 import { BARE, LMS as SYNTH, image, lipPaint } from "./helpers/synth-face";
 
 const LMS: Pt[] = SYNTH.map((q) => ({ ...q }));
@@ -86,6 +86,24 @@ describe("부위 가이드 재료 모으기", () => {
       expect(load).toHaveBeenCalledTimes(1);
     });
 
+    it("GS6b 다 만든 것은 기다리지 않고 꺼낼 수 있다 (peek) — 만드는 중 · 정답사진이 바뀐 뒤에는 null", async () => {
+      const a = okLoad();
+      let answer: Blob | null = answerBlob;
+      let finish: (r: GuideLoad) => void = () => {};
+      const load = vi.fn(() => new Promise<GuideLoad>((ok) => { finish = ok; }));
+      const keeper = createGuideKeeper({ getBaseline: () => baseline(), getAnswer: () => (answer ? { image: answer } : null) }, load);
+      expect(keeper.peek()).toBeNull();
+      const p = keeper.get();
+      expect(keeper.peek()).toBeNull();            // 만드는 중
+      finish(a.r);
+      await p;
+      expect(keeper.peek()).toBe((a.r as { view: GuideView }).view);
+      answer = new Blob(["다른 정답사진"]);
+      expect(keeper.peek()).toBeNull();            // 옛 정답사진의 가이드를 내주지 않는다
+      answer = null;
+      expect(keeper.peek()).toBeNull();
+    });
+
     it("GS7 정답사진이 바뀌면 앞의 것을 놓고 새로 만든다 — 옛 정답사진의 가이드가 남지 않게", async () => {
       const a = okLoad(), b = okLoad();
       let answer = answerBlob;
@@ -146,5 +164,33 @@ describe("부위 가이드 재료 모으기", () => {
     // 400 / 200 = 2 배 — 점 (200, 250) → (200, 100), 화살표 끝 (240, 250) → (280, 100)
     expect(calls.some((c) => c.startsWith("arc(200,100,")), "가운데 점").toBe(true);
     expect(calls, "화살표 끝").toContain("lineTo(280,100)");
+  });
+});
+
+describe("실시간 가이드에 넘길 테두리 (liveOutlineOf) — 사진 가이드와 같은 모양을 카메라 위에", () => {
+  const view = (polys: { part: "lip"; poly: Pt[] }[], marks = { dots: [] as Pt[], arrows: [] as Pt[][] }) =>
+    ({ size: { w: 300, h: 300 }, pages: { lip: { part: "lip", crop: { x: 0, y: 0, w: 10, h: 10 }, polys, marks } } }) as unknown as GuideView;
+  const tri: Pt[] = [{ x: 10, y: 20 }, { x: 30, y: 20 }, { x: 20, y: 40 }];
+
+  it("LO1 가이드는 줄여서 푼 그림의 좌표다 — 맨얼굴 얼굴 점이 놓인 크기(촬영 크기)로 키워서 준다", () => {
+    // 줄여서 푼 그림 300 · 촬영 크기 600 → 두 배
+    const o = liveOutlineOf(view([{ part: "lip", poly: tri }]), "lip", baseline(LMS, 600, 600))!;
+    expect(o.polys).toEqual([[{ x: 20, y: 40 }, { x: 60, y: 40 }, { x: 40, y: 80 }]]);
+    expect(o.lines).toEqual([]);
+  });
+
+  it("LO2 퍼지는 방향 표시(점 · 화살표)도 같이 — 블러셔", () => {
+    const o = liveOutlineOf(view([{ part: "lip", poly: tri }], { dots: [{ x: 5, y: 5 }], arrows: [[{ x: 5, y: 5 }, { x: 15, y: 5 }]] }), "lip", baseline(LMS, 600, 600))!;
+    expect(o.dots).toEqual([{ x: 10, y: 10 }]);
+    expect(o.arrows).toEqual([[{ x: 10, y: 10 }, { x: 30, y: 10 }]]);
+  });
+
+  it("LO3 그 부위의 화장을 못 찾았으면(테두리 없음) null — 실시간 화면이 예시 틀로 물러난다", () => {
+    expect(liveOutlineOf(view([]), "lip", baseline(LMS, 600, 600))).toBeNull();
+  });
+
+  it("LO4 가이드 페이지가 없는 부위 · 촬영 크기를 모르는 맨얼굴이면 null", () => {
+    expect(liveOutlineOf(view([{ part: "lip", poly: tri }]), "brow", baseline(LMS, 600, 600))).toBeNull();
+    expect(liveOutlineOf(view([{ part: "lip", poly: tri }]), "lip", baseline(LMS, 0, 0))).toBeNull();
   });
 });

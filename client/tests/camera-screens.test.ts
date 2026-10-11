@@ -212,6 +212,29 @@ describe("화면 4 확인받기", () => {
     return { root: ctx.root, off };
   }
 
+  // 새 흐름: 실시간 가이드는 부위 가이드(사진)와 같은 모양을 카메라 위에 보여 준다 — 예상 메이크업에서 뽑은 그 부위 테두리 (#334)
+  it("LG1 예상 메이크업의 가이드를 받으면 '예시' 딱지가 없다 — 못 받으면 옛 표준 틀이라 딱지를 붙인다", async () => {
+    vi.spyOn(HTMLVideoElement.prototype, "videoWidth", "get").mockReturnValue(600);
+    vi.spyOn(HTMLVideoElement.prototype, "videoHeight", "get").mockReturnValue(600);
+    const baseline = { lm: FACE, unit: { eye: 60, lip: 100, face: 300 }, foreheadL: 62, w: 600, h: 600, expression: null } as unknown as Baseline;
+    const base: LiveDeps = { getPart: () => "lip", getBaseline: () => baseline, getBaseAb: () => null, getLookParts: () => ({}), setCapture: vi.fn(), next: "result", back: "partguide" };
+    const lipBox = [{ x: 260, y: 400 }, { x: 340, y: 400 }, { x: 340, y: 430 }, { x: 260, y: 430 }];
+
+    const getOutline = vi.fn(() => ({ polys: [lipBox], lines: [] }));
+    const a = ctxOf("live");
+    const offA = liveScreen<null>({ ...base, getOutline }).mount(a) as () => void;
+    await vi.advanceTimersByTimeAsync(100);
+    expect(getOutline).toHaveBeenCalledWith("lip");
+    expect(a.root.querySelector(".live-sample")).toBeNull();
+    offA();
+
+    const b = ctxOf("live");
+    const offB = liveScreen<null>({ ...base, getOutline: () => null }).mount(b) as () => void;
+    await vi.advanceTimersByTimeAsync(100);
+    expect(b.root.querySelector(".live-sample")?.textContent).toBe("예시");
+    offB();
+  });
+
   it("LP1 각도 차로 3초 넘게 막히면 버튼이 켜진다 — 문구는 안내 그대로, 누르면 모은다", async () => {
     const { root, off } = await open();
     detect.mockImplementation(() => seen(TURNED));

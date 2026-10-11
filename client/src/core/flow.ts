@@ -47,7 +47,7 @@ export const SCREEN_NAME: Record<ScreenId, string> = {
   looks: "2 화장 (옛 흐름)",
   fullrender: "2-b 전체 완성 예상 (옛 흐름)",
   guide: "3 완성본 (옛 흐름)",
-  live: "4 실시간 테두리 (옛 흐름)",
+  live: "4 실시간 가이드",
   result: "5 결과 (옛 흐름)",
   review: "6 전체 리뷰 (옛 흐름)",
   done: "끝",
