@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// 화장 템플릿 고르기 (#420) — 지금은 화면만. 고른 뒤 예상 메이크업을 만드는 연결은 아직 없다.
+// 화장 템플릿 고르기 (#420) — 고르고 적용하면 참고 사진 화면이 올린 사진처럼 다룬다 (#433).
 import { describe, expect, it, vi } from "vitest";
 import { createLogger, memorySink } from "@core/log";
 import { TEMPLATES, templateById } from "@core/templates";

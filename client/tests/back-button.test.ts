@@ -3,7 +3,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createLogger, memorySink } from "@core/log";
 import type { Versions } from "@core/types";
-import { feedbackSlot, partGuideSlot, saveSlot } from "@screens/flow-slots";
+import { feedbackSlot, partGuideSlot, saveSlot, templatesSlot } from "@screens/flow-slots";
 import { attemptScreen } from "@screens/attempt";
 import type { Screen, ScreenContext } from "@screens/shell";
 
@@ -110,6 +110,7 @@ describe("뒤로 가기 (#369)", () => {
     ["부위 가이드", (d: { clearAll: () => Promise<void>; startOver: () => Promise<void> }) => partGuideSlot<null>({ getPart: () => "liner", ...d })],
     ["피드백", (d: { clearAll: () => Promise<void>; startOver: () => Promise<void> }) => feedbackSlot<null>({ getFeedback: () => new Promise(() => {}), ...d })],
     ["저장", (d: { clearAll: () => Promise<void>; startOver: () => Promise<void> }) => saveSlot<null>(d)],
+    ["템플릿 고르기", (d: { clearAll: () => Promise<void>; startOver: () => Promise<void> }) => templatesSlot<null>({ getPart: () => null, ...d })],
   ] as const)("BK %s — 처음부터 다시(startOver)를 주면 로고는 저장소만 지우는 clearAll 대신 그것을 부른다", async (_name, make) => {
     const { root, ctx, go } = setup();
     const clearAll = vi.fn(async () => {}), startOver = vi.fn(async () => {});
