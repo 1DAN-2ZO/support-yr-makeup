@@ -22,8 +22,8 @@ const FORBIDDEN_KEYS = new Set(["lm", "pts", "frames", "image", "bareImage", "ph
 export function createLogger(ctx: LogContext, sink: LogSink = consoleSink) {
   const state: LogContext = { ...ctx };
   return {
-    /** 화면·부위가 바뀔 때 갱신 */
-    setContext(patch: Partial<Pick<LogContext, "screen" | "part">>): void {
+    /** 화면·부위가 바뀔 때 갱신. 세션 번호는 다시 시작할 때만 바꾼다 (core/session-id) */
+    setContext(patch: Partial<Pick<LogContext, "screen" | "part" | "sid">>): void {
       Object.assign(state, patch);
     },
     log(fields: EventFields): Event {

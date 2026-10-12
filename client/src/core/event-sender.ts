@@ -54,6 +54,8 @@ export interface EventSender {
   waiting: () => number;
   /** 이 세션에서 더 안 보낸다 */
   stop: () => void;
+  /** 새 세션 — 다시 쌓고 보낸다. 앞 세션에서 못 보낸 줄은 버린다 (끝내기 뒤 "다시 하기") */
+  restart: () => void;
 }
 
 /**
@@ -141,6 +143,10 @@ export function createEventSender(opts: EventSenderOptions): EventSender {
     },
     stop() {
       off = true;
+      outbox = [];
+    },
+    restart() {
+      off = false;
       outbox = [];
     },
   };

@@ -138,6 +138,18 @@ describe("사용 기록 보내기", () => {
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
+  it("ES11b 다시 시작(restart)하면 다시 쌓고 보낸다 — 끝내기 뒤 새 세션의 기록이 끊기지 않게", async () => {
+    const { sender, fetchFn, bodies } = setup(204);
+    sender.add(ev("old"));
+    sender.stop();
+    sender.restart();
+    expect(sender.waiting()).toBe(0);   // 앞 세션 것은 남기지 않는다
+    sender.add(ev("new"));
+    expect(await sender.send()).toBe("sent");
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(bodies[0]!).events.map((e: { screen: string }) => e.screen)).toEqual(["new"]);
+  });
+
   it("ES12 한 줄이 혼자 한도를 넘어도 묶음이 비지 않는다 — 영원히 막히면 안 된다", () => {
     const huge = [{ name: "error", where: "x", msg: "가".repeat(80000) }] as Event[];
     expect(takeBatch(huge)).toHaveLength(1);
