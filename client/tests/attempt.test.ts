@@ -1,7 +1,7 @@
 // 화면 5 시도사진 (2026-10-06 새 흐름, ⑥) — 화장을 다 한 뒤 정면 눈 뜬 장 · 감은 장 두 장만.
 // 판정 · 장 순서는 화면 1 과 같은 규칙(① capture-run · shotGate)을 쓴다
 import { describe, expect, it } from "vitest";
-import { ATTEMPT_BURST, ATTEMPT_SHOTS, attemptBurstStep, startAttemptBurst, startAttemptRun } from "@core/attempt";
+import { ATTEMPT_BURST, ATTEMPT_SHOTS, attemptBurstStep, middleShot, startAttemptBurst, startAttemptRun } from "@core/attempt";
 import type { ShotMeasure } from "@core/flow";
 
 describe("시도사진 장 순서", () => {
@@ -53,5 +53,19 @@ describe("시도사진 장 순서", () => {
     expect(attemptBurstStep(b0, OK, 200).take).toBe(true);
     const late = attemptBurstStep(b0, { ...OK, closedA: true, closedB: true }, ATTEMPT_BURST.maxMs);
     expect(late).toMatchObject({ take: false, state: { done: true } });
+  });
+});
+
+describe("서버로 보내는 장", () => {
+  it("AM1 다섯 장 중 가운데(셋째) 장 — 옮긴 그림을 만들 때 보낸다 (2026-10-07 결정 · 10-12 맞춤)", () => {
+    expect(middleShot(["a", "b", "c", "d", "e"])).toBe("c");
+  });
+
+  it("AM2 다 못 모았으면 모은 것의 가운데 — 짝수면 앞쪽 · 없으면 null", () => {
+    expect(middleShot(["a"])).toBe("a");
+    expect(middleShot(["a", "b"])).toBe("a");
+    expect(middleShot(["a", "b", "c", "d"])).toBe("b");
+    expect(middleShot([])).toBeNull();
+    expect(middleShot(undefined)).toBeNull();
   });
 });
