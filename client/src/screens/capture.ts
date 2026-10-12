@@ -27,6 +27,7 @@ import { foreheadLabOf, grabFrame, sharpnessOf } from "./frame-measure";
 import { BARE_MAX_SIDE, encodeForStore } from "./image-encode";
 import { createLandmarker } from "./landmarker";
 import type { Screen, ScreenContext } from "./shell";
+import { smoothSkinCanvas } from "./skin-canvas";
 
 /** 세션에 두는 한 장. 사진·랜드마크는 메모리에만 (draft 에는 true/false 만) */
 export interface ShotData {
@@ -387,6 +388,8 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
 
       /** 정면 눈 뜸: 기준 만들기(다시 찍었으면 나머지 장 재정렬) + 쌩얼 저장 */
       function setFront(d: ShotData): void {
+        // 피부 정돈 — 저장 · 기준 만들기 · 정답사진 모두 정돈된 맨얼굴로 (② core/skin-smooth, 2026-10-12). 끄려면 SKIN_SMOOTH.on
+        smoothSkinCanvas(d.cv, d.lm, d);
         const g = d.cv.getContext("2d");
         const image = g ? g.getImageData(0, 0, d.cv.width, d.cv.height) : undefined;
         const input = { lm: d.lm, w: d.w, h: d.h, faceShape: PENDING_FACE_SHAPE, expression: d.expr, ...(image ? { image: { data: image.data, w: image.width, h: image.height } } : {}) };

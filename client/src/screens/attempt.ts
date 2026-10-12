@@ -9,6 +9,7 @@
  */
 
 import type { FaceLandmarker, FaceLandmarkerResult } from "@mediapipe/tasks-vision";
+import { smoothSkinCanvas } from "./skin-canvas";
 import { ATTEMPT_SHOTS, attemptBurstStep, startAttemptBurst, startAttemptRun, type AttemptBurst, type AttemptShotId } from "@core/attempt";
 import { runStep, STEP_TEXT, type RunState } from "@core/capture-run";
 import { eyeWidthPxOf, eyesClosed, faceCropOf, faceInsetOf, faceRatioOf, yawFromLandmarks } from "@core/capture-measure";
@@ -289,6 +290,8 @@ export function attemptScreen<S>(deps: AttemptDeps): Screen<S> {
               line.textContent = ATTEMPT_TEXT.saving;
               // 줄이지 않는다 — 얼굴 점이 촬영 크기 기준이고, 줄이면 라이너 꼬리가 사라진다 (#328 · #240)
               void Promise.all(ATTEMPT_SHOTS.map(async (id) => {
+                // 피부 정돈 — 맨얼굴과 같게 (② core/skin-smooth, 2026-10-12). 끄려면 SKIN_SMOOTH.on
+                for (const t of taken[id]!) smoothSkinCanvas(t.cv, t.lm, t);
                 const list = await Promise.all(taken[id]!.map(async (t) => ({ blob: (await encodeForStore(t.cv, BARE_MAX_SIDE)).blob, lm: t.lm, w: t.w, h: t.h })));
                 return [id, list] as const;
               })).then((pairs) => {
