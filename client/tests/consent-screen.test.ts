@@ -27,7 +27,10 @@ describe("동의 화면", () => {
     const body = CONSENT_TEXT.body;
     expect(body).toContain("10월 19일 오후 3시까지");
     expect(body).toContain("후기 설문");
-    expect(body).toContain("사용 기록은 10월 19일 오후 5시에 모두 지워요");
+    expect(body).toContain("사용 기록도 10월 19일 오후 5시에 모두 지워요");
+    // 사진도 받은 날부터 7일이 아니라 같은 때에 지운다 (2026-10-12 결정)
+    expect(body).toContain("서버에 10월 19일 오후 5시까지 보관해요");
+    expect(body).not.toContain("7일");
     expect(body).toContain("어느 링크로 들어왔는지");   // 유입 경로도 사용 기록에 든다 (#408)
   });
   it("C1 동의하면 세션에 적고 consent(true) 를 찍고 촬영으로", () => {

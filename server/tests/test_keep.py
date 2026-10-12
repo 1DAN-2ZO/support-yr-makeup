@@ -232,7 +232,7 @@ def test_kp15_seven_days_counts_from_the_receive_day(root):
 
 def test_kp16_app_can_ask_before_uploading(client, tmp_path, monkeypatch):
     # 앱은 사진을 올리기 전에 켜져 있는지 묻는다 — 꺼져 있는데 큰 사진을 올려 보지 않게
-    assert client.get("/keep").json() == {"on": True, "days": 7}
+    assert client.get("/keep").json() == {"on": True, "days": 7, "until": None}
     monkeypatch.undo()
     monkeypatch.setenv("DHE_DATA_DIR", str(tmp_path))
     monkeypatch.delenv("DHE_KEEP_DAYS", raising=False)
@@ -310,3 +310,58 @@ def test_kp19b_cli_refuses_odd_session_ids(tmp_path, monkeypatch, sid):
     kept = make(tmp_path / "keep", "2026-10-09")
     assert keep.main(["keep", "delete"]) == 2
     assert kept.exists()
+
+
+# ── 정해 둔 때까지 보관 (2026-10-12 결정) — 받은 날부터 며칠이 아니라 테스트가 끝나는 때에 한꺼번에 지운다 ──
+UNTIL = "2026-10-19T17:00:00+09:00"
+BEFORE = datetime(2026, 10, 19, 7, 59, tzinfo=UTC)  # 한국 시간 16:59
+AFTER = datetime(2026, 10, 19, 8, 0, tzinfo=UTC)  # 한국 시간 17:00
+
+
+def test_kp20_until_alone_turns_it_on_and_stops_at_that_time(tmp_path, monkeypatch):
+    monkeypatch.setenv("DHE_DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("DHE_KEEP_DAYS", raising=False)
+    monkeypatch.setenv("DHE_KEEP_UNTIL", UNTIL)
+    monkeypatch.setattr(keep, "_last_purge", None)
+    monkeypatch.setattr(keep, "now", lambda: BEFORE)
+    c = TestClient(main.app)
+    assert c.get("/keep").json() == {"on": True, "days": 0, "until": UNTIL}
+    assert post(c).status_code == 204
+    monkeypatch.setattr(keep, "now", lambda: AFTER)
+    assert c.get("/keep").status_code == 503
+    assert post(c).status_code == 503
+
+
+def test_kp21_until_keeps_everything_until_then_and_removes_everything_after(tmp_path, monkeypatch):
+    # 10/9 에 받은 것도 7일(10/16)에 지워지지 않고 10/19 오후 5시까지 남는다. 그때가 되면 전부 지운다
+    monkeypatch.setenv("DHE_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("DHE_KEEP_DAYS", "7")
+    monkeypatch.setenv("DHE_KEEP_UNTIL", UNTIL)
+    root = tmp_path / "keep"
+    for day in ("2026-10-09", "2026-10-15", "2026-10-19"):
+        make(root, day)
+    make(root, "메모")
+    assert keep.purge_stored(BEFORE) == []
+    assert sorted(p.name for p in root.iterdir()) == ["2026-10-09", "2026-10-15", "2026-10-19", "메모"]
+    assert keep.purge_stored(AFTER) == ["2026-10-09", "2026-10-15", "2026-10-19"]
+    assert [p.name for p in root.iterdir()] == ["메모"]
+
+
+def test_kp21b_storing_does_not_purge_by_age_while_until_is_set(tmp_path, monkeypatch):
+    monkeypatch.setenv("DHE_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("DHE_KEEP_UNTIL", UNTIL)
+    monkeypatch.setattr(keep, "_last_purge", None)
+    monkeypatch.setattr(keep, "now", lambda: BEFORE)
+    make(tmp_path / "keep", "2026-10-09")
+    assert post(TestClient(main.app)).status_code == 204
+    assert (tmp_path / "keep" / "2026-10-09").exists()
+
+
+@pytest.mark.parametrize("bad", ["", "내일", "2026-10-19", "2026-10-19T17:00:00"])
+def test_kp22_until_without_a_clear_time_is_ignored(tmp_path, monkeypatch, bad):
+    # 시간대가 없으면 받지 않는다 — 서버 시계(UTC)로 읽혀 아홉 시간 어긋난 때에 지우지 않게
+    monkeypatch.setenv("DHE_DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("DHE_KEEP_DAYS", raising=False)
+    monkeypatch.setenv("DHE_KEEP_UNTIL", bad)
+    assert keep.keep_until() is None
+    assert post(TestClient(main.app)).status_code == 503

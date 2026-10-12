@@ -162,7 +162,7 @@ async function boot(): Promise<void> {
     // 동의하기 전에는 보내지 않는다. 그동안은 기기 안에만 쌓인다
     enabled: () => session.consent === true,
   });
-  // 테스트 기간 사진 보관 (2026-10-09 결정) — 참고 사진을 뺀 사진과 피드백 결과를 서버에 7일 둔다 (server/app/keep.py).
+  // 테스트 기간 사진 보관 (2026-10-09 결정) — 참고 사진을 뺀 사진과 피드백 결과를 서버에 2026-10-19 오후 5시까지 둔다 (server/app/keep.py).
   // 서버가 켜져 있을 때만(GET /keep 200), 동의한 뒤에만 보낸다. 평소(서버 설정이 없을 때)에는 아무것도 안 올라간다.
   // 세션 번호(sid)가 지워 달라는 요청의 열쇠다
   const keeper = createKeeper({
