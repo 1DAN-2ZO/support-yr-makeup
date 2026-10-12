@@ -32,6 +32,8 @@ export const SCREENS = [
   "done",
   // 새 흐름 (2026-10-06) — docs/service-definition-v6.md
   "answer",
+  // 화장 템플릿 고르기 (#420) — 참고 사진을 올리는 대신 준비한 10종에서 고른다. 지금은 화면만 있다
+  "templates",
   "partguide",
   "attempt",
   "feedback",
@@ -52,6 +54,7 @@ export const SCREEN_NAME: Record<ScreenId, string> = {
   review: "6 전체 리뷰 (옛 흐름)",
   done: "끝",
   answer: "2·3 참고 사진 · 정답사진",
+  templates: "2 화장 템플릿",
   partguide: "4 부위 가이드",
   attempt: "5 시도사진",
   feedback: "6 피드백",
