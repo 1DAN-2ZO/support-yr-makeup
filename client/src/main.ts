@@ -13,6 +13,8 @@ import { createMadePictures, type MadeKey } from "./core/made-pictures";
 import { planRestore, rebuildBaseline, toCapture } from "./core/restore";
 import { createLogStore } from "./core/log-store";
 import { readUtm } from "@core/utm";
+import { createSidHolder, surveyUrlFor } from "@core/session-id";
+import { DRAFT_TTL_MS } from "@core/session-store";
 import { middleShot } from "@core/attempt";
 import { armPhoneBack } from "./screens/phone-back";
 import { createEventSender } from "./core/event-sender";
@@ -70,6 +72,8 @@ import { inNewFlow } from "./core/screens";
 
 /** 후기 설문 (구글 폼). 끝내기를 누르면 모달로 묻고, 끝 화면에도 한 번 더 둔다 */
 const SURVEY_URL = "https://docs.google.com/forms/d/e/1FAIpQLSeSt5w2auBc_CW-ScpC5bq9TQs3SO1YsFIlT7REj1hlRmgi6g/viewform";
+/** 설문의 "세션 번호" 칸 번호 (`entry.숫자`). 설문에 그 칸이 생기면 채운다 (#431) — 비어 있으면 번호를 안 붙인다 */
+const SURVEY_SID_ENTRY = "";
 
 /** 카메라를 못 여는 환경이면 맨 위에 띄운다. 흐름은 막지 않는다 */
 function showWarning(c: SecureCheck): void {
@@ -150,7 +154,11 @@ async function boot(): Promise<void> {
   const sessionStore = await createSessionStore();
   const backend = (await indexedDbBackend()) ?? memoryBackend();
   const logStore = await createLogStore({ backend });
-  const sid = crypto.randomUUID();
+  // 세션 번호 — 폰에 적어 두고 다시 켜도 같은 번호를 쓴다 (core/session-id, #385). 끝내면 지우고, 다시 시작하면 새 번호
+  let localStore: Storage | null = null;
+  try { localStore = window.localStorage; } catch { /* 비공개 창 등 — 붙들지 않는다 */ }
+  const sidHolder = createSidHolder({ storage: localStore, ttlMs: DRAFT_TTL_MS });
+  const sid = sidHolder.sid();
 
   // 사용 기록 보내기 (PR #317). 서버는 같은 주소에 있다 — 주소를 따로 주면 그것을 쓴다.
   // 화면에 들어올 때마다 보낸다: 서버가 이탈 위치를 "마지막 screen_enter" 로 보고,
@@ -167,7 +175,7 @@ async function boot(): Promise<void> {
   // 서버가 켜져 있을 때만(GET /keep 200), 동의한 뒤에만 보낸다. 평소(서버 설정이 없을 때)에는 아무것도 안 올라간다.
   // 세션 번호(sid)가 지워 달라는 요청의 열쇠다
   const keeper = createKeeper({
-    sid,
+    sid: sidHolder.sid,
     enabled: () => session.consent === true,
     base: (import.meta.env.VITE_KEEP_BASE as string | undefined) ?? "",
   });
@@ -222,6 +230,7 @@ async function boot(): Promise<void> {
     getSession: () => session,
     read: (s) => ({ screen: s.screen, currentPart: s.currentPart, parts: s.parts }),
     setScreen: (to: ScreenId) => {
+      sidHolder.touch();
       set(setScreen(session, to));
     },
     setPart: (p) => {
@@ -258,6 +267,8 @@ async function boot(): Promise<void> {
     // 로그 저장소를 먼저 닫는다 — 안 닫으면 버퍼·시간 저장이 지운 뒤에 events 키를 다시 만든다
     await logStore.clear();
     sender.stop();
+    // 세션 번호도 폰에서 지운다 — 끝 화면의 설문 링크가 쓸 수 있게 번호 자체는 다시 시작할 때까지 들고 있는다
+    sidHolder.drop();
     const r = await sessionStore.clearAll();
     clearRemaining = r.remaining;
     return r;
@@ -267,6 +278,10 @@ async function boot(): Promise<void> {
   // 끝내기는 "끝" 화면의 "다시 시작" 이, 로고의 "지우고 다시 시작" 은 startOver 가
   const restartSession = (): void => {
     logStore.reopen();
+    // 새 세션은 새 번호로 — 사용 기록도 다시 보낸다 (전에는 끝내기 뒤 "다시 하기" 한 세션의 기록이 통째로 안 갔다)
+    log.setContext({ sid: sidHolder.renew() });
+    sender.restart();
+    log.log({ name: "landing", ...readUtm(location.search) });
     attempt = null;
     movedJob = null;
     judged = null;
@@ -383,11 +398,15 @@ async function boot(): Promise<void> {
   // 후기 설문 주소. 공개 구글 폼이라 숨길 것이 아니어서 기본값을 코드에 둔다 —
   // 그래야 배포 빌드에 따로 값을 넣지 않아도 뜬다. VITE_SURVEY_URL 로 덮어쓸 수 있다.
   // 빈 문자열을 주면(VITE_SURVEY_URL=) 설문을 끌 수 있다
-  const surveyUrl = (import.meta.env.VITE_SURVEY_URL as string | undefined) ?? SURVEY_URL;
+  const surveyBase = (import.meta.env.VITE_SURVEY_URL as string | undefined) ?? SURVEY_URL;
+  // 설문의 "세션 번호" 칸에 번호를 채워 연다 — 지워 달라는 요청을 설문으로 받는다 (#431). 칸 번호를 모르면 주소 그대로.
+  // 화면이 읽을 때마다 지금 번호로 만든다 (다시 시작하면 번호가 바뀐다)
+  const surveyEntry = (import.meta.env.VITE_SURVEY_SID_ENTRY as string | undefined) ?? SURVEY_SID_ENTRY;
+  const surveyUrlNow = (): string | null => surveyUrlFor(surveyBase, surveyEntry, sidHolder.sid());
   // 참고 사진 읽기 · 줄이기 시간 (task ref_analyze · ref_shrink) — 화면 코드는 그대로 두고 넘기는 함수만 감싼다
   const analyzeRef = (file: File) => timeTask(log, "ref_analyze", () => analyzeRefPhoto(file), noteOfRef);
   const shrinkRef = (photo: Blob) => timeTask(log, "ref_shrink", () => shrinkForUpload(photo), noteOfShrink);
-  registerFlowSlots(shell, { getPart: () => session.currentPart, getGuide, analyzeRef, shrinkRef, clearAll, startOver, surveyUrl, getAttempt, getAnswer, getFeedback, getSave, makeAnswer, makeMoved, making: maker.busy });
+  registerFlowSlots(shell, { getPart: () => session.currentPart, getGuide, analyzeRef, shrinkRef, clearAll, startOver, get surveyUrl() { return surveyUrlNow(); }, getAttempt, getAnswer, getFeedback, getSave, makeAnswer, makeMoved, making: maker.busy });
 
   registerAll(
     shell,
@@ -527,7 +546,7 @@ async function boot(): Promise<void> {
     },
     {
       remaining: () => clearRemaining,
-      surveyUrl,
+      get surveyUrl() { return surveyUrlNow(); },
       // 세션을 통째로 새로 만든다 — 앞 세션 값이 하나도 안 남게
       restart: restartSession,
     },

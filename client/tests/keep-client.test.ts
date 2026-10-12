@@ -36,6 +36,18 @@ describe("사진 보관 보내기", () => {
     ]);
   });
 
+  it("KC1b 세션 번호는 보낼 때마다 묻는다 — 다시 시작해 번호가 바뀌면 새 번호로 간다", async () => {
+    const s = server();
+    let sid = SID;
+    const k = createKeeper({ sid: () => sid, enabled: () => true, fetchFn: s.fetchFn, base: "https://x.test/" });
+    k.keep("bare", photo(10));
+    await k.idle();
+    sid = "9f2b8c1e-bbbb-4bbb-8ccc-1234567890ab";
+    k.keep("bare", photo(11));
+    await k.idle();
+    expect(s.posts().map((p) => p.sid)).toEqual([SID, sid]);
+  });
+
   it("KC2 서버가 꺼져 있으면(503) 사진을 하나도 올리지 않는다 — 다시 묻지도 않는다", async () => {
     const s = server({ on: 503 }), k = make(s);
     k.keep("bare", photo(10));

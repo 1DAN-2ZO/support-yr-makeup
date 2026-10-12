@@ -18,8 +18,8 @@ export type KeepKind = "bare" | "answer" | "moved" | "attempt_open_0" | "attempt
 export const KEEP_ATTEMPT_OPEN = 5;
 
 export interface KeeperOptions {
-  /** 세션 번호 — 지워 달라는 요청이 오면 이것으로 찾는다 */
-  sid: string;
+  /** 세션 번호 — 지워 달라는 요청이 오면 이것으로 찾는다. 함수로 주면 보낼 때마다 묻는다 (다시 시작하면 번호가 바뀐다) */
+  sid: string | (() => string);
   /** 보낼지 말지. 동의 전이면 false */
   enabled: () => boolean;
   /** 서버 주소. 없으면 같은 주소 */
@@ -72,7 +72,7 @@ export function createKeeper(opt: KeeperOptions): Keeper {
       }
       const item = waiting.shift()!;
       const body = new FormData();
-      body.append("sid", opt.sid);
+      body.append("sid", typeof opt.sid === "function" ? opt.sid() : opt.sid);
       body.append("kind", item.kind);
       body.append("file", item.file, item.kind);
       try {

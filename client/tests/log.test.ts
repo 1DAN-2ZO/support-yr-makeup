@@ -24,6 +24,15 @@ describe("log()", () => {
     expect(m.events[0]).toMatchObject({ screen: "live", part: "liner", first_fail: "occluded" });
   });
 
+  it("세션 번호가 바뀌면(다시 시작) 다음 이벤트부터 새 번호로 남는다", () => {
+    const m = memorySink();
+    const logger = createLogger({ sid: "s1", screen: "done", part: null, ver }, m.sink);
+    logger.log({ name: "button", button: "restart" });
+    logger.setContext({ sid: "s2", screen: "consent" });
+    logger.log({ name: "screen_enter", screen: "consent" });
+    expect(m.events.map((e) => e.sid)).toEqual(["s1", "s2"]);
+  });
+
   it("얼굴 데이터 필드는 거부한다", () => {
     const m = memorySink();
     const logger = createLogger({ sid: "s1", screen: "x", part: null, ver }, m.sink);
