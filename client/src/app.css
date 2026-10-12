@@ -108,7 +108,9 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
   flex-direction: column;
   width: 100%;
   min-height: 100dvh;
-  padding: calc(24px + env(safe-area-inset-top)) 26px calc(28px + env(safe-area-inset-bottom));
+  /* 아래는 넉넉히 — 스크롤이 멈추는 자리에 버튼이 걸리면 잘못 눌린다 (#369 실사용 피드백).
+     한 화면만 늘렸더니 화면마다 28px·64px 로 갈렸다 (2026-10-12) */
+  padding: calc(24px + env(safe-area-inset-top)) 26px calc(64px + env(safe-area-inset-bottom));
   background: #fff;
   color: var(--beauty-text);
 }
@@ -130,7 +132,8 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 32px 0 34px;
+  /* 로고 → 말풍선 → 제목 → 내용 간격을 32px 하나로 (2026-10-12, 전에는 32·34·30 이 섞였다) */
+  margin: 32px 0;
 }
 .slot-coach img {
   flex: 0 0 auto;
@@ -146,7 +149,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
   border-radius: 999px;
   background: #fff;
   color: var(--beauty-text);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: var(--weight-strong);
   line-height: 1.25;
   box-shadow:
@@ -193,7 +196,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
   transform-origin: 50% 100%;
 }
 .slot-head {
-  margin-bottom: 30px;
+  margin-bottom: 32px;
 }
 .slot-head h1 {
   margin: 0 0 6px;
@@ -268,7 +271,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
   display: block;
   margin-top: 5px;
   color: var(--beauty-muted);
-  font-size: 13px;
+  font-size: 12px;
   font-style: normal;
 }
 .slot-answer-preview,
@@ -298,7 +301,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 .slot-answer-loading p {
   margin: 5px 0 0;
   color: var(--beauty-muted);
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.4;
 }
 .slot-guide-card {
@@ -436,7 +439,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
   background: #fff;
   color: #ef6b85;
   font: inherit;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: var(--weight-title);
   line-height: 1;
   white-space: nowrap;
@@ -448,7 +451,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
   display: block;
   margin-top: 10px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   text-align: right;
 }
 
@@ -479,7 +482,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
   display: block;
   margin: 14px 0 0;
   text-align: center;
-  font-size: 15px;
+  font-size: 14px;
   color: var(--muted);
 }
 .attempt .cam-gate.ready { color: #ef6b85; font-weight: var(--weight-title); }
@@ -491,7 +494,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 .attempt-preview figcaption {
   margin-top: 8px;
   text-align: center;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--muted);
 }
 /* 제목 묶음이 남는 공간을 먹어 버튼을 화면 아래로 민다 — slot 화면과 같은 방식.
@@ -523,7 +526,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
   background: #fff;
   color: #ef6b85;
   font: inherit;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: var(--weight-title);
   cursor: pointer;
 }
@@ -1614,7 +1617,7 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
 .cam-flash[hidden] { display: none; }
 .cam-gate { display: none; min-height: 1.5em; margin: 12px 0 4px; text-align: center; font-size: 17px; }
 .cam-gate.ready { color: var(--accent); font-weight: var(--weight-strong); }
-.cam-hint { margin: 12px 0 0; text-align: center; color: var(--muted); font-size: 13px; }
+.cam-hint { margin: 12px 0 0; text-align: center; color: var(--muted); font-size: 12px; }
 .cam-hint[hidden] { display: none; }
 .cam-progress {
   display: flex;
@@ -1764,7 +1767,7 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
 }
 .shot-name {
   color: #565963;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: var(--weight-strong);
   text-align: center;
 }
@@ -2083,7 +2086,7 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
 }
 .palette-text em {
   font-style: normal;
-  font-size: 13px;
+  font-size: 12px;
   color: #9a9a9a;
 }
 /* 사진에서 못 읽은 부위 — 앞머리에 덮인 눈썹처럼 */
@@ -2121,7 +2124,7 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   border-radius: 999px;
   background: rgba(32, 32, 34, .62);
   color: #fff;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -2131,7 +2134,7 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   border-radius: 12px;
   background: #fff1f3;
   color: #b4475c;
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.5;
 }
 /* 정답사진 자리에 올린 참고 사진을 깔아 둔다 */
@@ -2282,13 +2285,13 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   display: block;
   margin-top: 2px;
   font-style: normal;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--beauty-pink, #ff8095);
 }
 .slot-product-row p {
   margin: 4px 0 0;
-  font-size: 12.5px;
+  font-size: 12px;
   line-height: 1.5;
   color: #8d8d8d;
 }
@@ -2319,7 +2322,6 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
-  margin-top: 4px;
 }
 .fb-photos figure { margin: 0; }
 .fb-photos img {
@@ -2332,7 +2334,7 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
 .fb-photos figcaption {
   margin-top: 7px;
   text-align: center;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--muted);
 }
 
@@ -2359,13 +2361,13 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   background: #fff;
 }
 .fb-head { display: flex; gap: 8px; align-items: baseline; }
-.fb-head strong { font-size: 15px; font-weight: var(--weight-title); }
+.fb-head strong { font-size: 16px; font-weight: var(--weight-title); }
 /* 종류를 색만으로 가르지 않는다 — 글자로도 적는다 (ok · fix · info) */
 .fb-head em {
   flex: 0 0 auto;
   padding: 2px 8px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   font-weight: var(--weight-title);
 }
@@ -2373,13 +2375,13 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
 .fb-line.is-fix .fb-head em { background: #fff2f4; color: #c2415c; }
 .fb-line.is-info .fb-head em { background: #f1efe8; color: #5f5e5a; }
 .fb-say { margin: 8px 0 0; font-size: 14px; line-height: 1.55; }
-.fb-more { margin: 4px 0 0; font-size: 13px; color: #5f5e5a; }
+.fb-more { margin: 4px 0 0; font-size: 12px; color: #5f5e5a; }
 .fb-fix {
   margin: 8px 0 0;
   padding-left: 13px;
   border-left: 2px solid #ffc3cd;
   border-radius: 0;
-  font-size: 13.5px;
+  font-size: 12px;
   line-height: 1.5;
   color: #c2415c;
 }
@@ -2432,7 +2434,11 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
    로고 자체가 버튼이 되지만 보이는 모양은 그대로여야 한다 */
 .slot-home {
   display: inline-flex;
-  padding: 0;
+  align-items: center;
+  /* 손가락으로 누르는 자리는 44px 이상 — 로고 글자만으로는 높이가 30px 이라 잘 안 눌린다 (2026-10-12).
+     위아래로 늘리되 보이는 모양은 그대로 (배경 없음) */
+  min-height: 44px;
+  padding: 0 4px;
   border: 0;
   background: none;
   cursor: pointer;
@@ -2442,7 +2448,7 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
 /* ── 아래 여백 (#369 피드백) ──
    "스크롤하다가 다시 찍기를 누른다" — 내용이 화면보다 길면 마지막 버튼이 손가락이
    머무는 자리에 걸린다. 스크롤을 멈추는 자리에 버튼이 없도록 아래를 한 뼘 더 비운다 */
-.slot-feedback,
+/* 아래 여백은 .slot 이 준다 — 시도사진은 .slot 을 안 써서 여기서만 */
 .attempt {
   padding-bottom: calc(64px + env(safe-area-inset-bottom));
 }
