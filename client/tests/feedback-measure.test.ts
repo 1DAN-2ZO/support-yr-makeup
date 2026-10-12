@@ -174,11 +174,16 @@ describe("눈썹 꼬리 끝 (browTail) — 머리카락 분할이 있어야 잰�
     expect(browTail(frameOf(image(brows), LMS), "R")).toBeNull();
   });
 
-  it("T3 머리카락 칸에서 멈춘다", () => {
-    // 꼬리 바깥을 전부 머리카락으로 표시하면 늘린 꼬리를 따라가지 않는다
+  it("T3 꼬리가 머리카락에 닿은 채 끝나면 재지 않는다 (null) — 눈썹의 끝인지 머리카락에 가린 것인지 모른다", () => {
+    // 꼬리 바깥을 전부 머리카락으로 표시한다 — 늘린 꼬리가 머리카락 속으로 이어진다
     const tailX = P(LM.browA.upper[0]!).x, W8 = 600, hair = { w: W8, h: 1, data: Float32Array.from({ length: W8 }, (_, x) => (x < tailX - 4 ? 1 : 0)) };
-    const withHair = fr(over(brows, longer("R", 0.3)), hair), base = browTail(fr(brows, hair), "R")!;
-    expect(browTail(withHair, "R")! - base).toBeLessThan(0.08);
+    expect(browTail(fr(over(brows, longer("R", 0.3)), hair), "R")).toBeNull();
+  });
+
+  it("T3b 눈썹이 끝나고 피부를 지나 머리카락이 나오면 그대로 잰다", () => {
+    const tailX = P(LM.browA.upper[0]!).x, W8 = 600, len = Math.abs(P(LM.browA.upper[LM.browA.upper.length - 1]!).x - tailX);
+    const hair = { w: W8, h: 1, data: Float32Array.from({ length: W8 }, (_, x) => (x < tailX - 0.4 * len ? 1 : 0)) };
+    expect(Math.abs(browTail(fr(brows, hair), "R")! - browTail(fr(brows), "R")!)).toBeLessThan(0.03);
   });
 
   it("T4 문장: 정답이 꼬리를 늘렸는데 안 늘렸으면 '눈썹 꼬리가 짧아요' · 정답이 안 늘렸으면 말하지 않는다", () => {
