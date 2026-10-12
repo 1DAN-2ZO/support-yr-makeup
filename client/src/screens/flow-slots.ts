@@ -257,7 +257,7 @@ function uploadCard(previewUrl: string | null, onPick: (file: File) => void): HT
   card.innerHTML = previewUrl
     ? `<div class="slot-upload-main has-photo"><img src="${previewUrl}" alt="올린 참고 사진" /><b>다른 사진으로 바꾸기</b></div>`
     : `<div class="slot-upload-main">
-         <span aria-hidden="true"></span>
+         <span aria-hidden="true"><img src="/ui/icon-camera-start.svg" alt="" /></span>
          <strong>참고 사진 업로드</strong>
          <em>정면 사진이면 가장 좋아요</em>
        </div>`;
@@ -492,7 +492,7 @@ export function slotScreen<S>(spec: SlotSpec, deps: SlotDeps = {}): Screen<S> {
           resetPage(root);
           root.append(
             testMeta(spec.title, spec.owner, spec.todo),
-            title("Beauty AI가 분석중입니다.", "참고 사진의 색감과 위치를 확인하고 있어요"),
+            title("nudy AI가 예상 사진을 만들고 있어요", "참고 사진의 색감과 위치를 확인하고 있어요"),
             loadingCard(),
           );
           if (deps.makeAnswer) {
