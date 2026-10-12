@@ -55,6 +55,7 @@ import { attemptScreen, type AttemptShots } from "./screens/attempt";
 import { createPictureMaker, type MakeResult } from "./core/picture-maker";
 import { requestTransfer } from "./core/transfer-client";
 import { within } from "./core/wait-limit";
+import { middleShot } from "./core/middle-shot";
 import { prepareSave, type SaveKit, type SaveSource } from "./screens/feedback-card";
 import { loadFeedback, type AnswerPhoto, type FeedbackLoad } from "./screens/feedback-source";
 import { createGuideKeeper, liveOutlineOf, loadPartGuide } from "./screens/guide-source";
@@ -352,7 +353,8 @@ async function boot(): Promise<void> {
       const saved = await sessionStore.loadImage("bare").catch(() => null);
       return saved instanceof Blob ? saved : saved ? new Blob([saved]) : null;
     },
-    getAttempt: () => attempt?.front_open[0]?.blob ?? null,
+    // 서버로는 묶음의 가운데 장을 보낸다 — 첫 장은 셔터를 누른 순간이라 손이 움직일 수 있다
+    getAttempt: () => (attempt ? middleShot(attempt.front_open)?.blob : undefined) ?? null,
     put: (key, picture) => {
       if (key === "answer") judged = null;
       // 테스트 기간 보관 — 정답사진 · 옮긴 그림. 참고 사진은 보내지 않는다 (보낼 이름이 없다)
