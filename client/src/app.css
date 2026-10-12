@@ -1256,8 +1256,9 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   border-radius: 22px;
   background: rgba(255, 255, 255, 0.72);
   color: var(--beauty-text);
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 16px;
+  font-family: var(--font-ui);
+  font-weight: 520;
   box-shadow:
     inset 0 0 0 1px rgba(224, 220, 222, 0.54),
     0 6px 14px rgba(38, 39, 43, 0.035);
@@ -1289,6 +1290,11 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   height: 42px;
   object-fit: contain;
 }
+/* 앞머리 그림은 여백이 적어 같은 크기면 혼자 커 보인다 */
+.intro-check:first-child .check-icon {
+  width: 37px;
+  height: 37px;
+}
 .intro-camera-start {
   flex: 0 0 auto;
   display: flex;
@@ -1310,8 +1316,8 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   box-shadow: 0 12px 24px rgba(255, 128, 149, 0.18);
 }
 .intro-camera-start img {
-  width: 29px;
-  height: 29px;
+  width: 31px;
+  height: 31px;
   object-fit: contain;
 }
 .intro-camera-notice {
