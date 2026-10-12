@@ -63,6 +63,11 @@ export const CAPTURE_TEXT = {
   doneTitle: "사진 확인",
   doneSub: "찍힌 사진을 확인해 주세요",
   doneCoach: "이상한 사진이 있으면 그 사진만 다시 찍을 수 있어요",
+  /** 카메라 아래 안내 — 버튼이 없어서 "내가 뭘 해야 하나" 를 모른 채 기다리게 된다 (2026-10-12) */
+  tips: [
+    "조건이 맞으면 자동으로 찍혀요",
+    "찍히면 소리와 진동으로 알려드려요",
+  ],
   retake: "다시 찍기",
   go: "화장 고르러 가기",
 } as const;
@@ -208,13 +213,18 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
         const line = el("p", "cam-gate", CAPTURE_TEXT.loading);
         const hint = el("p", "cam-hint");
         hint.hidden = true;
+        // 진행 칸은 찍을 장이 둘 이상일 때만 뜻이 있다 — 한 장이면 점 하나라 아무것도 알려 주지 못한다 (2026-10-12)
         const progress = el("ol", "cam-progress");
+        progress.hidden = SHOTS.length < 2;
         const drawProgress = (): void => {
           progress.textContent = "";
           for (const s of SHOTS) progress.append(el("li", shots()[s.id] ? "on" : ""));
         };
         drawProgress();
-        wrap.append(logo, title, step, stage, line, hint, progress);
+        // 카메라 아래가 비어 있어 "기다리면 되는 건지" 를 몰랐다. 지금 무슨 일이 일어나는지 적는다
+        const tips = el("ul", "cam-tips");
+        for (const t of CAPTURE_TEXT.tips) tips.append(el("li", "", t));
+        wrap.append(logo, title, step, stage, line, hint, progress, tips);
 
         let lmk: FaceLandmarker | null = null;
         let stream: MediaStream | null = null;

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GATE_TEXT } from "@core/gate";
 import { LIVE_SMOOTH } from "@core/smooth-params";
 import { LM } from "@core/landmarks";
+import { SHOTS } from "@core/flow";
 import { createLogger, memorySink } from "@core/log";
 import type { Baseline, Pt, Versions } from "@core/types";
 import { captureScreen, type CaptureDeps } from "@screens/capture";
@@ -188,6 +189,24 @@ describe("촬영(화면 1) 장 수 표시", () => {
     const text = document.querySelector(".cam-step")?.textContent ?? "";
     expect(text).not.toMatch(/\d+\/\d+/);
     expect(text).toContain("눈을 떠 주세요");
+    off();
+  });
+
+  // 2026-10-12: 찍을 장이 하나면 진행 칸이 점 하나라 아무것도 알려 주지 못한다.
+  // 장 수가 다시 늘면 저절로 보여야 하므로 SHOTS 길이로 가른다 — 숨김을 박아 두지 않는다
+  it("CS7 진행 칸은 찍을 장이 둘 이상일 때만 보인다", async () => {
+    const off = await mountCapture();
+    const bar = document.querySelector<HTMLElement>(".cam-progress");
+    expect(bar, "진행 칸은 늘 만들어 둔다 — 장 수가 늘면 보이게").not.toBeNull();
+    expect(bar!.hidden).toBe(SHOTS.length < 2);
+    off();
+  });
+
+  it("CS8 카메라 아래에 지금 무슨 일이 일어나는지 적는다 — 버튼이 없어 기다리는 화면이다", async () => {
+    const off = await mountCapture();
+    const tips = [...document.querySelectorAll(".cam-tips li")].map((e) => e.textContent);
+    expect(tips.length).toBeGreaterThan(0);
+    expect(tips.join(" ")).toContain("자동으로 찍혀요");
     off();
   });
 });

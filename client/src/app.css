@@ -1344,7 +1344,8 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: calc(14px + env(safe-area-inset-top)) 14px calc(14px + env(safe-area-inset-bottom));
+  /* 좌우 26px 는 다른 화면(.slot)과 같은 값 — 혼자 14px 이라 화면이 끝까지 꽉 차 보였다 (2026-10-12) */
+  padding: calc(24px + env(safe-area-inset-top)) 26px calc(32px + env(safe-area-inset-bottom));
   background: #fff;
   color: #454852;
 }
@@ -1361,18 +1362,17 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   width: 11px;
   height: 10px;
 }
+/* 다른 화면 제목과 같은 자리 · 같은 크기로 (2026-10-12). 전에는 작은 알약 꼬리표라 구석에 떠 보였다 */
 .capture-camera-title {
   align-self: flex-start;
-  margin: 0 0 12px;
-  padding: 8px 15px;
-  border: 1px solid rgba(255, 214, 222, 0.86);
-  border-radius: 999px;
-  background: rgba(255, 246, 248, 0.92);
-  color: var(--beauty-pink);
-  font-size: 15px;
+  margin: 18px 0 14px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--beauty-text);
+  font-size: 25px;
   font-weight: var(--weight-strong);
   line-height: 1;
-  box-shadow: 0 8px 18px rgba(255, 137, 155, 0.1);
 }
 .capture:has(.capture-guide) {
   display: grid;
@@ -1605,6 +1605,33 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
 .cam-gate.ready { color: var(--accent); font-weight: var(--weight-strong); }
 .cam-hint { margin: 12px 0 0; text-align: center; color: var(--muted); font-size: 12px; }
 .cam-hint[hidden] { display: none; }
+/* 카메라 아래 안내 (2026-10-12) — 버튼이 없어 "기다리면 되는 건지" 를 몰랐다.
+   지금 무슨 일이 일어나는지 두 줄로 적는다 */
+.cam-tips {
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.cam-tips li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.cam-tips li::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #ffc3cd;
+}
+
 .cam-progress {
   display: flex;
   gap: 7px;
@@ -1613,6 +1640,7 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   padding: 0;
   margin: 22px 0 0;
 }
+.cam-progress[hidden] { display: none; }
 .cam-progress li {
   width: 38px;
   height: 6px;
