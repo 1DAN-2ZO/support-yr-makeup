@@ -10,11 +10,10 @@ import type { RgbaImage } from "@core/color";
 import { scaleLm } from "@core/crop";
 import type { FeedbackPart } from "@core/guide-feedback";
 import { runGuide, type GuideMissing, type GuidePage } from "@core/guide-run";
-import type { ExtractPart } from "@core/makeup-extract";
 import type { Outline } from "@core/overlay";
 import type { Baseline, PartId, Pt } from "@core/types";
 import { blobToRgba, type AnswerPhoto } from "./feedback-source";
-import { strokeMarks } from "./outline-draw";
+import { PART_COLOR, strokeMarks } from "./outline-draw";
 
 /**
  * 가이드를 만들 때는 긴 변을 이만큼으로 줄여서 푼다. 원본(2160×3840)은 한 장이 33MB 쯤이라 폰에서 느리다.
@@ -139,10 +138,8 @@ export function liveOutlineOf(view: Pick<GuideView, "pages" | "size">, part: Par
   };
 }
 
-/** 테두리 색 — ② 시험 페이지(flow-poc COLOR)와 같은 값 */
-const LINE: Partial<Record<ExtractPart, string>> = {
-  brow: "rgb(255,159,28)", liner: "rgb(0,209,255)", shadow: "rgb(177,75,255)", underShadow: "rgb(224,123,255)", lip: "rgb(255,59,92)", cheek: "rgb(255,126,182)",
-};
+/** 테두리 색 — 실시간 가이드와 같은 부위 색 (outline-draw PART_COLOR, #413) */
+const LINE = PART_COLOR;
 
 /** 자른 그림의 넓이 (px) — 폰 화면 폭의 두세 배 */
 export const GUIDE_OUT_W = 960;

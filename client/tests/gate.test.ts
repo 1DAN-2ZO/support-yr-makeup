@@ -1,7 +1,7 @@
 // 화면 4 품질 게이트 (2-1 셋째 조각, #21) 검증
 // 정의서 3-3·3-7: 안 맞는 조건 하나만 한 줄, 숫자 없음. 순서 = 얼굴 → 정면 → 기준 각도 차 → 부위 보임 → 가림 → 선명 → 밝기 → 색 → 안정
 import { describe, expect, it } from "vitest";
-import { GATE_TEXT, LIVE_LIMITS, evaluateGate, gateStep, poseOf, softFail, type LiveMeasure } from "@core/gate";
+import { GATE_TEXT, LIVE_LIMITS, evaluateGate, evaluateViewGate, gateStep, poseOf, softFail, type LiveMeasure } from "@core/gate";
 import { yawFromLandmarks } from "@core/capture-measure";
 import { CAPTURE_LIMITS } from "@core/flow";
 import { PARAMS } from "@core/score";
@@ -237,5 +237,34 @@ describe("poseOf · partVisible", () => {
     const lm = LMS.map((p, i) => (i === LM.lipsOuter[0] ? { ...p, x: W * 0.01 } : p));
     expect(partVisible("lip", lm, W, H)).toBe(false);
     expect(partVisible("liner", lm, W, H)).toBe(true);
+  });
+});
+
+// 실시간 가이드는 보기만 한다 (새 흐름 2026-10-06) — 확인받기 사진용 조건(각도 · 표정 · 가림 · 선명 · 밝기 · 안정)으로 막거나
+// "확인받을 준비 됨" 이라고 하면 안 된다. 테두리를 못 그리는 때만 알린다 (#413, 조건 한계: 촬영은 엄격, 이후는 막지 않기)
+describe("evaluateViewGate — 보기만 하는 실시간 가이드 (#413)", () => {
+  it("VG1 각도 · 기준 각도 차 · 표정 · 가림 · 선명 · 밝기 · 안정이 다 어긋나도 통과 — 문구는 '확인받을 준비 됨' 이 아니라 보기 문구", () => {
+    const off = good({ yaw: 30, baseYaw: 0, pitch: 25, basePitch: 0, poseDiff: { yaw: 30, pitch: 25 }, exprDiff: 9, occluded: true, sharpness: 1, foreheadL: 5, foreheadAb: { a: 40, b: 40 }, stableCount: 0 });
+    expect(evaluateGate("liner", off).ok, "확인받기 게이트는 막는다").toBe(false);
+    const r = evaluateViewGate("liner", off);
+    expect(r).toEqual({ ok: true, firstFail: null, text: GATE_TEXT.view, stableCount: 0 });
+    expect(GATE_TEXT.view).toBe("선 안을 채워 그려 보세요");
+  });
+
+  it("VG2 테두리를 못 그리는 때는 확인받기 게이트와 같은 문구로 알린다 — 얼굴 없음 · 누움 · 부위별 화면 방향 · 부위가 화면 밖", () => {
+    for (const [part, m] of [
+      ["liner", good({ faceDetected: false })],
+      ["liner", good({ roll: 80 })],
+      ["lip", good({ roll: 80 })],
+      ["liner", good({ screen: "portrait" })],
+      ["lip", good({ screen: "landscape" })],
+      ["liner", good({ partVisible: false })],
+      ["lip", good({ partVisible: false })],
+      ["liner", good({ yaw: NaN })],
+    ] as const) {
+      const want = evaluateGate(part, m), got = evaluateViewGate(part, m);
+      expect(got.ok, `${part} ${JSON.stringify(m)}`).toBe(false);
+      expect({ firstFail: got.firstFail, text: got.text }).toEqual({ firstFail: want.firstFail, text: want.text });
+    }
   });
 });

@@ -91,6 +91,8 @@ export const GATE_TEXT = {
   color: SHOT_TEXT.color,
   stable: SHOT_TEXT.stable,
   ready: "확인받을 준비 됨",
+  // 보기만 하는 실시간 가이드(새 흐름)에서 테두리가 그려질 때 — 확인받기가 없어서 '확인받을 준비 됨' 이 맞지 않았다 (#413, 사용자 2026-10-12)
+  view: "선 안을 채워 그려 보세요",
   // 조명 색이 첫 촬영과 달라도 확인받기는 된다 — 색 판단은 채점이 한다 (#209)
   readyColor: "확인받을 준비 됨 · 조명 색이 처음과 달라요",
 } as const;
@@ -226,6 +228,22 @@ export function evaluateGate(partId: PartId, m: LiveMeasure, limits: LiveLimits 
   }
   if (stableCount < limits.stableFrames) return fail("stable", GATE_TEXT.stable);
   return { ok: true, firstFail: null, text: colorOff ? GATE_TEXT.readyColor : GATE_TEXT.ready, stableCount };
+}
+
+/**
+ * 보기만 하는 실시간 가이드(새 흐름, #413)의 게이트 — 테두리를 못 그리거나 못 보는 때만 알린다: 얼굴 없음 · 누운 얼굴(자동 회전) ·
+ * 부위별 화면 방향 · 부위가 화면 밖. 각도 · 기준 각도 차 · 표정 · 가림 · 선명 · 밝기 · 안정은 확인받기 사진용이라 보지 않는다
+ * (조건 한계: 촬영은 엄격, 이후는 막지 않기). 알리는 문구는 evaluateGate 와 같다
+ */
+export function evaluateViewGate(partId: PartId, m: LiveMeasure, limits: LiveLimits = LIVE_LIMITS): GateResult {
+  const seen: LiveMeasure = {
+    faceDetected: m.faceDetected, yaw: Number.isFinite(m.yaw) ? 0 : m.yaw, pitch: Number.isFinite(m.pitch) ? 0 : m.pitch,
+    ...(m.roll !== undefined ? { roll: m.roll } : {}), ...(m.screen ? { screen: m.screen } : {}), ...(m.partVisible !== undefined ? { partVisible: m.partVisible } : {}),
+    stableCount: Number.MAX_SAFE_INTEGER,
+  };
+  const r = evaluateGate(partId, seen, limits);
+  const stableCount = m.stableCount ?? 0;
+  return r.ok ? { ok: true, firstFail: null, text: GATE_TEXT.view, stableCount } : { ...r, stableCount };
 }
 
 /** 같은 angle 이라도 이건 기다려도 안 넘어간다 — 부위별 화면 방향(팀 협의) · 자동 회전 */

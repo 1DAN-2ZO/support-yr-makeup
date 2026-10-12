@@ -1,6 +1,6 @@
 // 화면 3·4 테두리 그리기 — 테두리는 점선, 퍼지는 방향 표시는 실선 화살표(머리 포함) + 채운 작은 점 (2026-10-05)
 import { describe, expect, it } from "vitest";
-import { strokeMarks, strokeOutline } from "@screens/outline-draw";
+import { GUIDE_COLOR, partColor, strokeMarks, strokeOutline } from "@screens/outline-draw";
 
 /** 그리기 호출을 차례대로 적는 가짜 캔버스 */
 function recorder(): { g: CanvasRenderingContext2D; calls: string[] } {
@@ -49,5 +49,22 @@ describe("strokeOutline", () => {
     expect(calls).toContain("lineTo(20,0)");
     expect(calls.filter((c) => /^lineTo\(/.test(c) && c !== "lineTo(20,0)").length).toBeGreaterThanOrEqual(2);
     expect(calls.some((c) => c.startsWith("arc(5,5,"))).toBe(true);
+  });
+});
+
+describe("부위 색 — 실시간 가이드도 사진 가이드와 같은 색 (#413: 실시간 테두리만 한 색(청록))", () => {
+  it("D4 strokeOutline 에 색을 주면 테두리 · 표시를 그 색으로, 안 주면 전처럼 청록", () => {
+    const o = { polys: [[{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 0, y: 10 }]], lines: [], dots: [{ x: 5, y: 5 }] };
+    const a = recorder(), b = recorder();
+    strokeOutline(a.g, o, 2, partColor("lip"));
+    strokeOutline(b.g, o, 2);
+    expect(a.calls.filter((c) => c.startsWith("strokeStyle=") || c.startsWith("fillStyle="))).toEqual([`strokeStyle=${partColor("lip")}`, `strokeStyle=${partColor("lip")}`, `fillStyle=${partColor("lip")}`]);
+    expect(b.calls).toContain(`strokeStyle=${GUIDE_COLOR}`);
+  });
+
+  it("D5 부위마다 다른 색 · 모르는 부위(쉐딩 등)는 청록", () => {
+    const parts = ["brow", "liner", "shadow", "lip", "cheek"] as const;
+    expect(new Set(parts.map(partColor)).size).toBe(parts.length);
+    expect(partColor("contour")).toBe(GUIDE_COLOR);
   });
 });

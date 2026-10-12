@@ -1,6 +1,6 @@
 /**
  * 가이드 테두리 그리기 — 화면 3(완성본 위)·화면 4(라이브 위)가 같이 쓴다.
- * 선만, 면 채우기·숫자 없음 (F-07). 색은 화면 5 결과 테두리와 같은 청록.
+ * 선만, 면 채우기·숫자 없음 (F-07). 색은 기본이 화면 5 결과 테두리와 같은 청록, 부위 가이드(사진 · 실시간)는 부위 색(partColor).
  * 테두리는 점선, 퍼지는 방향 표시(블러셔·섀도우·쉐딩, core/spread-marks)는 실선 화살표 + 작은 점.
  */
 
@@ -9,10 +9,18 @@ import type { Pt } from "@core/types";
 
 export const GUIDE_COLOR = "#3FD1C4";
 
+/** 부위 가이드 테두리 색 — 사진 가이드(guide-source) · 실시간 가이드(live)가 같이 쓴다. ② 시험 페이지(flow-poc COLOR)와 같은 값 (#413) */
+export const PART_COLOR: Readonly<Partial<Record<string, string>>> = {
+  brow: "rgb(255,159,28)", liner: "rgb(0,209,255)", shadow: "rgb(177,75,255)", underShadow: "rgb(224,123,255)", lip: "rgb(255,59,92)", cheek: "rgb(255,126,182)",
+};
+
+/** 그 부위 색 — 색이 없는 부위(쉐딩 등)는 청록 */
+export const partColor = (part: string): string => PART_COLOR[part] ?? GUIDE_COLOR;
+
 /** 지금 좌표계(변환 포함) 그대로 점선으로 긋는다 */
-export function strokeOutline(g: CanvasRenderingContext2D, o: Outline, lineWidth: number): void {
+export function strokeOutline(g: CanvasRenderingContext2D, o: Outline, lineWidth: number, color: string = GUIDE_COLOR): void {
   g.save();
-  g.strokeStyle = GUIDE_COLOR;
+  g.strokeStyle = color;
   g.lineWidth = lineWidth;
   g.setLineDash([lineWidth * 3, lineWidth * 2]);
   const path = (pts: readonly Pt[], close: boolean): void => {
@@ -26,7 +34,7 @@ export function strokeOutline(g: CanvasRenderingContext2D, o: Outline, lineWidth
   for (const p of o.polys) path(p, true);
   for (const l of o.lines) path(l, false);
   g.restore();
-  strokeMarks(g, o, lineWidth, GUIDE_COLOR);
+  strokeMarks(g, o, lineWidth, color);
 }
 
 /**

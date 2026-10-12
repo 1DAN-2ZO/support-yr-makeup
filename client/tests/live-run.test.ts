@@ -617,3 +617,24 @@ describe("안전장치 — 테두리 점 하나가 혼자 튀면 이웃 움직�
   });
 });
 
+
+describe("보기만 하는 실시간 가이드 — 확인받기 조건으로 막지 않는다 (#413: 안내 줄이 '확인받을 준비 됨')", () => {
+  const view = (part: "liner" | "lip" = "liner") => createLiveRun<string>({ partId: part, baseline: { lm: FACE, foreheadL: SKIN.L }, guide: lookGuide({}), viewOnly: true });
+
+  it("LV1 첫 프레임부터 · 고개를 돌려도(정면 · 기준 각도 차 한계 넘음) 보기 문구 — '확인받을 준비 됨' 은 안 나온다", () => {
+    const lr = view();
+    for (const lm of [FACE, turnedFace(0.13), FACE]) {
+      const r = lr.step(frame({ lm, sharpness: 1, lab: HAND }));
+      expect(r.gate.ok).toBe(true);
+      expect(r.gate.text).toBe(GATE_TEXT.view);
+      expect(r.outline).not.toBeNull();
+    }
+    expect(run().step(frame({ lm: turnedFace(0.13) })).gate.ok, "확인받기 쪽은 그대로 막는다").toBe(false);
+  });
+
+  it("LV2 얼굴이 없거나 부위에 안 맞는 방향이면 그대로 알린다", () => {
+    expect(view().step(frame({ lm: null })).gate.firstFail).toBe("face");
+    expect(view("liner").step(frame({ screen: "portrait" })).gate.text).toBe(GATE_TEXT.toLandscape);
+    expect(view("lip").step(frame({ screen: "landscape" })).gate.text).toBe(GATE_TEXT.toPortrait);
+  });
+});
