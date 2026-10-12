@@ -87,6 +87,39 @@ def sources(events: list[dict]) -> list[str]:
     return out
 
 
+def buttons(events: list[dict]) -> list[str]:
+    """무엇을 눌렀나 — 버튼마다 누른 세션 수 · 누른 횟수. 이름의 `:` 뒤(부위 · 까닭)는 떼고 센다.
+
+    버튼 기록이 없으면 빈 목록.
+    """
+    sessions: dict[str, set[str]] = {}
+    presses: dict[str, int] = {}
+    guide: set[str] = set()
+    for e in events:
+        sid = str(e.get("sid"))
+        if e.get("name") == "screen_enter" and e.get("screen") == "partguide":
+            guide.add(sid)
+        if e.get("name") != "button" or not isinstance(e.get("button"), str):
+            continue
+        key = e["button"].split(":", 1)[0]
+        sessions.setdefault(key, set()).add(sid)
+        presses[key] = presses.get(key, 0) + 1
+    if not presses:
+        return []
+    out = ["## 무엇을 눌렀나", "", "| 버튼 | 누른 세션 | 누른 횟수 |", "|---|---:|---:|"]
+    for key in sorted(presses, key=lambda k: (-len(sessions[k]), k)):
+        out.append(f"| {key} | {len(sessions[key])} | {presses[key]} |")
+    out.append("")
+    if guide:
+        live = len(sessions.get("slot_live", set()) & guide)
+        out += [
+            f"부위 가이드에 들어간 세션 {len(guide)}개 중 {live}개({live / len(guide) * 100:.1f}%)가"
+            " 실시간 가이드를 열었다.",
+            "",
+        ]
+    return out
+
+
 def render(files: list[Path], events: list[dict]) -> str:
     """마크다운 한 덩이"""
     out = ["# nudy 사용 기록", ""]
@@ -111,6 +144,7 @@ def render(files: list[Path], events: list[dict]) -> str:
             f"| {str(r['metric'])[len(head) :]} | {r['current']} | {r['n']} | {r['note']} |" for r in mine
         ]
         out.append("")
+    out += buttons(events)
     if not any(str(r["metric"]).startswith("작업 · ") for r in rows):
         out += [
             "## 작업마다 걸린 시간",
