@@ -31,6 +31,13 @@ export interface ProductPick {
   /** 호수(색상 이름). 확인되면 채운다. 비어 있으면 계열 이름만 안내한다 */
   shade?: string;
   /**
+   * 이 호수의 색 (소문자 #rrggbb, sRGB). **호수 하나당 한 줄**로 적는다 — 나중에 피부색·참고 사진 색과
+   * 이어 보려고 모으는 값이다. 화면에는 나가지 않는다 (위의 "계열 이름만 말한다" 는 그대로).
+   * 쓰려면 `shade` 도 같이 적는다 (`validateHex` 가 시험에서 확인). 칩 색인지 발색 사진인지 같은 출처는 줄 위 코멘트로 적는다.
+   * 색이 여럿 든 제품(팔레트 · 듀얼 · 겸용)은 칸을 한 줄로 못 적으니 hex 를 적지 않는다.
+   */
+  hex?: string;
+  /**
    * 제품 사진. 파일로 넣으면 작게 줄인 data URL, 주소로 넣으면 그 주소 그대로.
    * 주소로 넣은 것은 그쪽이 지우거나 막으면 안 보일 수 있다. 없으면 색 네모만 나간다.
    */
@@ -199,6 +206,32 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
     { families: ["로즈", "핑크", "플럼", "버건디", "레드", "딥레드", "체리"], brand: "3CE", name: "블러 워터 틴트", kind: "틴트 — 뿌옇게 번지는 느낌" },
   ],
 };
+
+const HEX_RE = /^#[0-9a-f]{6}$/;
+
+/**
+ * 호수 색(hex) 줄의 규칙을 검사해 문제를 글로 돌려준다. 비어 있으면 통과.
+ * - hex 는 소문자 #rrggbb, shade 가 같이 있어야 한다
+ * - 같은 (부위 · 브랜드 · 제품 · 호수) 에 hex 줄이 둘이면 안 된다
+ * 제품 줄을 더한 사람이 오타를 시험에서 바로 보게 하려는 것 (tests/product-picks-hex.test.ts)
+ */
+export function validateHex(picks: Readonly<Record<PalettePart, readonly ProductPick[]>> = PRODUCT_PICKS): string[] {
+  const problems: string[] = [];
+  const seen = new Map<string, number>();
+  for (const [part, list] of Object.entries(picks) as [PalettePart, readonly ProductPick[]][]) {
+    list.forEach((p, i) => {
+      const at = `${part} ${i + 1}번째 (${p.brand} ${p.name}${p.shade ? ` ${p.shade}` : ""})`;
+      if (p.hex === undefined) return;
+      if (!HEX_RE.test(p.hex)) problems.push(`${at}: hex 가 소문자 #rrggbb 가 아님 (${JSON.stringify(p.hex)})`);
+      if (!p.shade?.trim()) problems.push(`${at}: hex 가 있으면 shade(호수 이름)도 적어야 함`);
+      const key = `${part}|${p.brand}|${p.name}|${p.shade ?? ""}`;
+      const first = seen.get(key);
+      if (first !== undefined) problems.push(`${at}: ${first}번째와 같은 호수에 hex 가 또 있음`);
+      else seen.set(key, i + 1);
+    });
+  }
+  return problems;
+}
 
 /**
  * 그 색 계열에 맞는 제품.

@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <title>피부색 일괄 측정 POC — nudy</title>
+    <!--
+      [dev 전용 스파이크] 피부색 일괄 측정 + 웜/쿨 기준 T 찾기 (2026-10-09)
+      Deep Armocromia(ECCVW 2024) 폴더를 고르면 사진마다 볼 피부색을 재고, 라벨(계절 · 유형)과 맞춰 축별 분리도와 T 를 찾는다.
+      사진은 이 컴퓨터 안에서만 읽고 저장소에 남기지 않는다. 데이터는 연구 목적 한정(README) — 커밋 · 재배포 금지.
+    -->
+    <style>
+      :root { color-scheme: light dark; --line: #8884; --warm: #e8590c; --cool: #1c7ed6; }
+      body { margin: 0; padding: 16px; font: 14px/1.5 system-ui, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; background: Canvas; color: CanvasText; }
+      h1 { font-size: 18px; margin: 0 0 4px; }
+      h2 { font-size: 15px; margin: 0 0 8px; }
+      .note { margin: 0 0 12px; opacity: .75; font-size: 13px; }
+      .box { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; max-width: 1100px; }
+      .bar { display: flex; gap: 8px 14px; flex-wrap: wrap; align-items: center; margin: 6px 0; font-size: 13px; }
+      button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line); background: ButtonFace; color: ButtonText; cursor: pointer; }
+      button:disabled { opacity: .5; cursor: default; }
+      button.main { font-weight: 700; }
+      .msg { font-size: 12px; min-height: 1.4em; opacity: .85; white-space: pre-line; }
+      .warn { color: #d9480f; font-weight: 600; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 4px 24px; }
+      .slider { display: grid; grid-template-columns: 9.5em 1fr 4em; gap: 6px; align-items: center; margin: 3px 0; font-size: 13px; }
+      .slider input[type="range"] { width: 100%; }
+      .slider output { text-align: right; font-variant-numeric: tabular-nums; }
+      .sub { font-size: 12px; opacity: .7; margin: 2px 0 6px; }
+      progress { width: 260px; height: 14px; }
+      table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+      th, td { border-bottom: 1px solid var(--line); padding: 4px 6px; text-align: left; }
+      th { font-weight: 600; opacity: .8; }
+      tr.sel td { background: #74c0fc22; }
+      tr.ctrl td { opacity: .6; }
+      #hist { width: 100%; max-width: 900px; height: auto; border-radius: 8px; border: 1px solid var(--line); background: Canvas; display: block; }
+      pre { margin: 6px 0; padding: 8px; border: 1px solid var(--line); border-radius: 6px; font-size: 12px; overflow: auto; }
+      .w { color: var(--warm); font-weight: 600; } .c { color: var(--cool); font-weight: 600; }
+      input[type="number"] { width: 6em; font: inherit; }
+    </style>
+  </head>
+  <body>
+    <h1>피부색 일괄 측정 · 웜/쿨 기준 T 찾기</h1>
+    <p class="note">① 폴더를 골라 측정 → ② 라벨 · 보정 설정 → ③ 축별 분리도 비교 → ④ T 와 애매 폭 정하기. 측정은 사진마다 얼굴 점을 찾고 볼 영역 색을 재는 것이라 몇 분 걸려요.</p>
+
+    <div class="box">
+      <h2>① 측정</h2>
+      <div class="bar">
+        <label>사진 폴더 <input id="dir" type="file" webkitdirectory multiple /></label>
+        <span class="sub">Deep Armocromia 의 <code>ORIGINAL_RGB_NOT_PROCESSED</code> 폴더 (또는 <code>release</code> — 그 안 <code>RGB</code> 를 씀)</span>
+      </div>
+      <div class="bar">
+        <label>annotations.csv (CelebA 여부, 선택) <input id="annot" type="file" accept=".csv" /></label>
+        <label>측정 CSV 불러오기 (이전에 내보낸 것) <input id="loadCsv" type="file" accept=".csv" /></label>
+      </div>
+      <div class="bar">
+        <label>유형별 최대 장수(train) <input id="maxPer" type="number" min="0" value="100" /></label>
+        <span class="sub">0 = 전부 · test 는 1/4 만큼 · 같은 설정이면 같은 사진이 뽑혀요</span>
+      </div>
+      <div class="grid">
+        <div>
+          <div class="sub">볼 영역 (측정할 때 적용 — 바꾸려면 다시 측정)</div>
+          <div class="slider"><label for="qLo">밝기 하한 분위수</label><input id="qLo" type="range" min="0" max="40" value="10" /><output id="qLoV"></output></div>
+          <div class="slider"><label for="qHi">밝기 상한 분위수</label><input id="qHi" type="range" min="60" max="100" value="90" /><output id="qHiV"></output></div>
+          <div class="slider"><label for="area">볼 영역 크기</label><input id="area" type="range" min="30" max="100" step="5" value="100" /><output id="areaV"></output></div>
+          <div class="slider"><label for="aCut">a* 위 꼬리 버리기</label><input id="aCut" type="range" min="0" max="40" value="0" /><output id="aCutV"></output></div>
+        </div>
+        <div>
+          <div class="bar"><button id="start" class="main" type="button" disabled>측정 시작</button><button id="stop" type="button" disabled>중지</button>
+            <button id="export" type="button" disabled>측정 CSV 내보내기</button></div>
+          <progress id="prog" value="0" max="1"></progress>
+          <div id="runMsg" class="msg">폴더를 고르세요.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="box">
+      <h2>② 라벨 · 조명 보정 (바로 반영)</h2>
+      <div class="bar">
+        <label>웜/쿨 라벨
+          <select id="scheme">
+            <option value="subtype">유형 이름 (warm 유형 = 웜, cool 유형 = 쿨, 나머지 제외)</option>
+            <option value="season">계절 (봄 · 가을 = 웜, 여름 · 겨울 = 쿨)</option>
+          </select></label>
+        <label>사진 출처 <select id="origin"><option value="all">전체</option><option value="web">웹 사진만</option><option value="celeba">CelebA만</option></select></label>
+      </div>
+      <div class="bar">
+        <label><input id="wbOn" type="checkbox" checked /> 흰자로 조명 보정</label>
+        <label><input id="wbLin" type="checkbox" /> 선형 RGB에서 곱하기</label>
+        <label title="보정을 꺼도 똑같이 뺀다 — 켬/끔을 같은 사진끼리 견주려고"><input id="wbDrop" type="checkbox" checked /> 흰자 보정이 안 된 사진은 뺌 (보정을 꺼도)</label>
+        <label>강도 <input id="wbStr" type="range" min="0" max="100" step="5" value="100" /> <output id="wbStrV"></output></label>
+        <label>좌우 볼 합치기 <select id="merge"><option value="mean">평균</option><option value="dark">어두운 쪽</option><option value="bright">밝은 쪽</option></select></label>
+      </div>
+      <div id="counts" class="msg"></div>
+    </div>
+
+    <div class="box">
+      <h2>③ 축별 비교 — 어떤 숫자가 웜/쿨을 가장 잘 가르나</h2>
+      <div class="sub">분리도 = max(AUC, 1−AUC) — 0.5 면 못 가르고 1 이면 완전히 갈림 (T 와 무관). T 는 train 에서 찾고 test 로 확인해요. 밝기 L* 는 대조군 — 높게 나오면 라벨이 밝기와 섞여 있다는 뜻이에요. 눌러서 축을 고르세요.</div>
+      <div id="axes"></div>
+    </div>
+
+    <div class="box">
+      <h2>④ T 와 애매 폭</h2>
+      <div class="bar">
+        <label>축 <select id="axis"></select></label>
+        <label>T <input id="T" type="number" step="0.1" /></label>
+        <label>방향 <select id="dir2"><option value="1">클수록 웜</option><option value="-1">작을수록 웜</option></select></label>
+        <label>애매 폭 ±<input id="margin" type="number" step="0.1" min="0" value="0" /></label>
+        <button id="auto" type="button">train 최적값으로</button>
+      </div>
+      <canvas id="hist" width="900" height="260"></canvas>
+      <div id="evalOut"></div>
+      <div class="bar"><span class="sub" style="margin:0">T 설정 (복사해서 쓰세요)</span><button id="copy" type="button">복사</button></div>
+      <pre id="json"></pre>
+    </div>
+
+    <script type="module" src="/src/screens/skin-batch-probe.ts"></script>
+  </body>
+</html>
