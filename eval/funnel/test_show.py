@@ -123,3 +123,32 @@ def test_어느_링크로_들어왔는지에_따라_도착_동의_촬영_저장�
 def test_들어온_길_기록이_하나도_없으면_그_표를_안_그린다(tmp_path):
     write(tmp_path, "2025-10-08", session("s1"))
     assert "어디서 왔나" not in show.render(*show.load(tmp_path, None))
+
+
+def test_무엇을_눌렀나_버튼마다_누른_세션_수와_횟수(tmp_path):
+    def press(sid: str, t: int, button: str, screen: str = "partguide") -> dict:
+        return ev(sid, t, "button", screen=screen, button=button)
+
+    events = [
+        ev("a", 0, "screen_enter", screen="partguide"),
+        press("a", 10, "slot_live:brow"),
+        press("a", 20, "slot_live:lip"),
+        press("a", 30, "survey_open", screen="save"),
+        ev("b", 0, "screen_enter", screen="partguide"),
+        press("b", 10, "slot_live:brow"),
+        ev("c", 0, "screen_enter", screen="partguide"),
+        ev("d", 0, "screen_enter", screen="capture"),
+    ]
+    write(tmp_path, "2025-10-08", events)
+    text = show.render(*show.load(tmp_path, None))
+    assert "## 무엇을 눌렀나" in text
+    # 부위 이름(: 뒤)은 떼고 센다 — 세션 2개가 3번
+    assert "| slot_live | 2 | 3 |" in text
+    assert "| survey_open | 1 | 1 |" in text
+    # 실시간 가이드는 부위 가이드에 들어간 세션 가운데 몇이 눌렀나도 적는다
+    assert "부위 가이드에 들어간 세션 3개 중 2개(66.7%)가 실시간 가이드를 열었다" in text
+
+
+def test_버튼_기록이_없으면_그_표를_안_그린다(tmp_path):
+    write(tmp_path, "2025-10-08", session("s1"))
+    assert "무엇을 눌렀나" not in show.render(*show.load(tmp_path, None))
