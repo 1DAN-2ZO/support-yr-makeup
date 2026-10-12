@@ -5,7 +5,7 @@ import { pointInPoly, type RgbaImage } from "@core/color";
 import { LM } from "@core/landmarks";
 import type { Baseline } from "@core/types";
 import type { AttemptShot, AttemptShots } from "@screens/attempt";
-import { ATTEMPT_DECODE_SIDE, loadFeedback, type FeedbackSourceDeps } from "@screens/feedback-source";
+import { ATTEMPT_DECODE_SIDE, HAIR_SIDE, loadFeedback, shrinkRgba, type FeedbackSourceDeps } from "@screens/feedback-source";
 import { LMS, P, RED, SKIN, image, type Paint, type Rgb } from "./helpers/synth-face";
 
 const lipPoly = LM.lipsOuter.map(P);
@@ -132,5 +132,56 @@ describe("피드백 재료 모으기 (loadFeedback)", () => {
     expect(r.ok).toBe(true);
     expect(toRgba).toHaveBeenCalledTimes(8);
     expect(maxDecoding).toBe(1);
+  });
+});
+
+describe("머리카락 분할 싣기 (#429) — 눈썹 꼬리를 재려면 맨얼굴과 시도사진에 머리카락 자리가 있어야 한다", () => {
+  const mask = { w: 4, h: 4, data: new Float32Array(16) };
+  const three = (): AttemptShots => tries(photo(lips(0.6)), photo(lips(0.6)), photo(lips(0.6)));
+
+  it("FH1 맨얼굴 한 번 + 시도사진 장마다 한 번 — 줄인 그림으로 부른다 (분할은 작은 그림이면 된다)", async () => {
+    const seen: RgbaImage[] = [];
+    const getHair = vi.fn(async (im: RgbaImage) => { seen.push(im); return mask; });
+    const r = await loadFeedback(deps({ getAttempt: three, getHair }));
+    if (!r.ok) throw new Error(r.missing);
+    expect(getHair).toHaveBeenCalledTimes(4);
+    expect(r.view.hairFrames).toBe(3);
+    for (const im of seen) expect(Math.max(im.w, im.h)).toBeLessThanOrEqual(HAIR_SIDE);
+  });
+
+  it("FH2 안 주면 전과 같다 — 부르지 않고 hairFrames 는 0", async () => {
+    const r = await loadFeedback(deps({ getAttempt: three }));
+    if (!r.ok) throw new Error(r.missing);
+    expect(r.view.hairFrames).toBe(0);
+    expect(r.view.feedback.parts.find((p) => p.part === "lip")?.line).toBe("예상 메이크업과 비슷해요");
+  });
+
+  it("FH3 맨얼굴에서 못 만들면(모델을 못 받음 · 실패) 시도사진은 부르지 않는다 — 맨얼굴이 없으면 꼬리를 못 잰다", async () => {
+    for (const getHair of [vi.fn(async () => null), vi.fn(async () => { throw new Error("모델 없음"); })]) {
+      const r = await loadFeedback(deps({ getAttempt: three, getHair }));
+      if (!r.ok) throw new Error(r.missing);
+      expect(getHair).toHaveBeenCalledTimes(1);
+      expect(r.view.hairFrames).toBe(0);
+      expect(r.view.feedback.parts.find((p) => p.part === "lip")?.line).toBe("예상 메이크업과 비슷해요");
+    }
+  });
+
+  it("FH4 정해 둔 시간을 넘기면 남은 장은 건너뛴다 — 피드백을 오래 기다리게 하지 않는다", async () => {
+    let t = 0;
+    const getHair = vi.fn(async () => { t += 400; return mask; });
+    const r = await loadFeedback(deps({ getAttempt: three, getHair, now: () => t, hairBudgetMs: 700 }));
+    if (!r.ok) throw new Error(r.missing);
+    // 맨얼굴(0 → 400) · 첫 장(400 → 800) 까지 하고, 800 > 700 이라 나머지 두 장은 안 한다
+    expect(getHair).toHaveBeenCalledTimes(2);
+    expect(r.view.hairFrames).toBe(1);
+  });
+
+  it("FH5 shrinkRgba — 긴 변을 맞춰 줄인다 · 작은 그림은 그대로", () => {
+    const big: RgbaImage = { w: 8, h: 4, data: new Uint8ClampedArray(8 * 4 * 4).map((_, i) => i % 256) };
+    const small = shrinkRgba(big, 4);
+    expect([small.w, small.h]).toEqual([4, 2]);
+    expect(small.data).toHaveLength(4 * 2 * 4);
+    expect([...small.data.slice(0, 4)]).toEqual([...big.data.slice(0, 4)]);
+    expect(shrinkRgba(big, 100)).toBe(big);
   });
 });

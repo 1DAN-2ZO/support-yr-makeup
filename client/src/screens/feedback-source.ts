@@ -10,6 +10,7 @@ import type { RgbaImage } from "@core/color";
 import { scaleLm } from "@core/crop";
 import { runFeedback, type FeedbackMissing, type FeedbackPhoto } from "@core/feedback-run";
 import type { WholeFeedback } from "@core/feedback-whole";
+import type { HairMask } from "@core/sampling";
 import type { Baseline, Pt } from "@core/types";
 import type { AttemptShots } from "./attempt";
 
@@ -27,6 +28,13 @@ export interface FeedbackSourceDeps {
   getAnswer: () => AnswerPhoto | null;
   /** 옮긴 그림 받아 오기 (서버). 없으면 라이너는 보지 않는다. 실패해도 나머지 부위는 판정한다 */
   getMoved?: () => Promise<Blob | null>;
+  /**
+   * 머리카락 분할 (screens/hair-segmenter 의 HairMasker, #429). 주면 맨얼굴과 시도사진 장마다 머리카락 자리를 실어 넘긴다 —
+   * 눈썹 꼬리는 그것이 있어야 잰다 (core/feedback-measure browTail). 안 주거나 못 만들면 전처럼 없이 넘긴다 (꼬리 문장만 빠진다)
+   */
+  getHair?: (im: RgbaImage) => Promise<HairMask | null>;
+  /** 머리카락 분할에 쓰는 시간 한도 (기본 HAIR_BUDGET_MS) */
+  hairBudgetMs?: number;
   /** 사진 → 픽셀. maxSide 를 주면 긴 변을 그만큼으로 줄여서 푼다. 테스트에서 갈아 끼운다 */
   toRgba?: (src: Blob | ImageBitmap, maxSide?: number) => Promise<RgbaImage>;
   now?: () => number;
@@ -46,6 +54,8 @@ export interface FeedbackView {
   ms: number;
   /** 본 시도사진 장 수 */
   frames: number;
+  /** 머리카락 분할을 실은 시도사진 장 수 — 0 이면 눈썹 꼬리는 재지 않았다 (맨얼굴에서 못 만들었거나 안 켬) */
+  hairFrames: number;
   /** 옮긴 그림을 받지 못했거나(서버 실패) 크기가 달라 쓰지 못했다 — 라이너 줄이 "볼 수 없었어요" 인 까닭 */
   movedFailed: boolean;
   dispose: () => void;
@@ -75,6 +85,28 @@ export async function blobToRgba(src: Blob | ImageBitmap, maxSide = Infinity): P
   return { data: d.data, w: d.width, h: d.height };
 }
 
+/** 머리카락 분할에 넣는 그림의 긴 변 — 모델이 어차피 512 로 줄여 본다. 원본을 통째로 넘기면 한 장에 수십 MB 를 한 번 더 복사한다 */
+export const HAIR_SIDE = 512;
+/** 머리카락 분할 전체(맨얼굴 1 + 시도사진 장 수)에 쓰는 시간 한도. 넘기면 남은 장은 없이 넘긴다 */
+export const HAIR_BUDGET_MS = 6000;
+/** 한 장에 쓰는 한도 — 모델을 받다가 멈추면 끝없이 기다리지 않게 */
+const HAIR_ONE_MS = 4000;
+
+/** 긴 변을 maxSide 로 줄인 그림 (가까운 칸을 고른다). 이미 작으면 그대로 */
+export function shrinkRgba(im: RgbaImage, maxSide: number): RgbaImage {
+  const k = maxSide / Math.max(im.w, im.h);
+  if (k >= 1) return im;
+  const w = Math.max(1, Math.round(im.w * k)), h = Math.max(1, Math.round(im.h * k)), data = new Uint8ClampedArray(w * h * 4);
+  for (let y = 0; y < h; y++) {
+    const sy = Math.min(im.h - 1, Math.floor(y / k));
+    for (let x = 0; x < w; x++) {
+      const s = (sy * im.w + Math.min(im.w - 1, Math.floor(x / k))) * 4, d = (y * w + x) * 4;
+      data[d] = im.data[s]!; data[d + 1] = im.data[s + 1]!; data[d + 2] = im.data[s + 2]!; data[d + 3] = im.data[s + 3]!;
+    }
+  }
+  return { data, w, h };
+}
+
 /** 얼굴 점은 촬영 크기 좌표다 — 사진이 다른 크기로 저장돼 있으면 사진 크기로 맞춘다 (예전 세션의 줄인 맨얼굴, #240) */
 const photoOf = (image: RgbaImage, lm: readonly Pt[], shot: { w: number; h: number }): FeedbackPhoto =>
   ({ image, lm: scaleLm(lm, shot, { w: image.w, h: image.h }) });
@@ -92,9 +124,25 @@ export async function loadFeedback(deps: FeedbackSourceDeps): Promise<FeedbackLo
   const movedBlob = deps.getMoved ? await deps.getMoved().catch(() => { movedFailed = true; return null; }) : null;
   // 한 장씩 푼다 — 한꺼번에 풀면 원본 크기 여러 장이 메모리에 같이 올라간다
   const bareIm = await toRgba(base.bareImage), answerIm = await toRgba(answer.image), movedIm = movedBlob ? await toRgba(movedBlob) : null;
+  // 머리카락 분할 (#429) — 한 장씩, 시간 한도 안에서만. 못 만든 장은 없이 넘긴다
+  const hairT0 = now(), budget = deps.hairBudgetMs ?? HAIR_BUDGET_MS;
+  const hairOf = async (im: RgbaImage): Promise<HairMask | null> => {
+    if (!deps.getHair || now() - hairT0 > budget) return null;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<null>((r) => { timer = setTimeout(() => r(null), HAIR_ONE_MS); });
+    try { return await Promise.race([deps.getHair(shrinkRgba(im, HAIR_SIDE)), late]); } catch { return null; } finally { clearTimeout(timer); }
+  };
+  // 맨얼굴에서 못 만들면 시도사진은 하지 않는다 — 늘린 양은 맨얼굴의 끝을 빼서 재는 것이라 맨얼굴이 없으면 못 잰다
+  const bareHair = await hairOf(bareIm);
   const attempt: FeedbackPhoto[] = [];
-  for (const s of open) attempt.push(photoOf(await toRgba(s.blob, ATTEMPT_DECODE_SIDE), s.lm, s));
-  const run = runFeedback({ bare: photoOf(bareIm, base.lm, base), answer: answerIm, attempt, moved: movedIm });
+  let hairFrames = 0;
+  for (const s of open) {
+    const im = await toRgba(s.blob, ATTEMPT_DECODE_SIDE), hair = bareHair ? await hairOf(im) : null;
+    if (hair) hairFrames++;
+    attempt.push({ ...photoOf(im, s.lm, s), ...(hair ? { hair } : {}) });
+  }
+  const bare: FeedbackPhoto = { ...photoOf(bareIm, base.lm, base), ...(bareHair && hairFrames ? { hair: bareHair } : {}) };
+  const run = runFeedback({ bare, answer: answerIm, attempt, moved: movedIm });
   if (!run.ok) return run;
 
   const urls = [URL.createObjectURL(answer.image), URL.createObjectURL(open[0]!.blob)];
@@ -102,7 +150,7 @@ export async function loadFeedback(deps: FeedbackSourceDeps): Promise<FeedbackLo
     ok: true,
     view: {
       answerUrl: urls[0]!, attemptUrl: urls[1]!, answer: answer.image, attempt: open[0]!.blob, feedback: run.feedback,
-      ms: Math.round(now() - t0), frames: open.length, movedFailed: movedFailed || run.movedDropped,
+      ms: Math.round(now() - t0), frames: open.length, hairFrames, movedFailed: movedFailed || run.movedDropped,
       dispose: () => { for (const u of urls) URL.revokeObjectURL(u); },
     },
   };

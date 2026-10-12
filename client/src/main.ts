@@ -188,7 +188,7 @@ async function boot(): Promise<void> {
       if (ev.name === "screen_enter" || ev.name === "session_end") void sender.send();
     },
   );
-  // [옛 흐름 · 지금 안 씀] 머리카락 분할은 옛 화면(2-b · 3 · 5) 설정에만 넘긴다 — client/OLD-FLOW.md. 모델은 그 화면에 들어갈 때 받으니 지금은 받지 않는다.
+  // 머리카락 분할 — 피드백이 눈썹 꼬리를 잴 때 쓴다 (#429, 모델은 시도사진을 찍을 때 받기 시작한다). 옛 화면(2-b · 3 · 5) 설정에도 넘긴다 — client/OLD-FLOW.md
   // 속눈썹 그림(screens/lash-assets loadLashes)을 앱을 켤 때 미리 받던 것은 뺐다 (2026-10-11) — 그리는 화면이 옛 흐름뿐이라 쓰이지 않는 내려받기(168KB · 요청 5번)였다.
   // 옛 화면을 되살리면 그 화면에 들어가기 전에 loadLashes() 를 다시 불러야 마스카라가 그려진다 (안 부르면 마스카라만 빠진다)
   // 머리카락 분할 (screens/hair-segmenter) — 화면 5 채점용. 실패는 로그에 한 번 남기고 마스크 없이 간다
@@ -313,6 +313,8 @@ async function boot(): Promise<void> {
       // 옛 시도사진으로 만든 옮긴 그림은 못 쓴다 — 만드는 중이던 것도 버린다
       maker.cancel("moved");
       void putMade("moved", null);
+      // 머리카락 분할 모델을 미리 받아 둔다 (#429) — 피드백이 눈썹 꼬리를 잴 때 쓴다. 받는 동안 화면은 안 막는다
+      void hairMask({ data: new Uint8ClampedArray(16 * 16 * 4), w: 16, h: 16 });
       // 옮긴 그림을 뒤에서 만들기 시작한다 — 피드백 화면(getFeedback)이 이것을 기다린다. 화면에 보여 주지 않고 라이너 계산에만 쓴다
       movedJob = makeMoved();
       movedJob.catch(() => {});   // 실패는 getMoved 가 받는다 — 피드백 화면에 가기 전에 끝난 실패가 경고로 새지 않게
@@ -346,7 +348,7 @@ async function boot(): Promise<void> {
   };
   const getFeedback = async (): Promise<FeedbackLoad> => {
     // 걸린 시간을 사용 기록에 남긴다 (task feedback_run — core/task-timer)
-    const r = await timeTask(log, "feedback_run", () => loadFeedback({ getBaseline: () => session.baseline, getAttempt, getAnswer, getMoved }), noteOfFeedback);
+    const r = await timeTask(log, "feedback_run", () => loadFeedback({ getBaseline: () => session.baseline, getAttempt, getAnswer, getMoved, getHair: hairMask }), noteOfFeedback);
     judged = r.ok ? { feedback: r.view.feedback, answer: r.view.answer, attempt: r.view.attempt } : null;
     // 테스트 기간 보관 — 판정 결과(글)도 같이 둔다. 사진과 견줘 기준값을 맞추려면 그때 무엇이라고 말했는지가 필요하다
     if (r.ok) keeper.keepFeedback(r.view.feedback);
