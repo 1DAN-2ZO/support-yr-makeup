@@ -68,7 +68,11 @@ describe("빈 자리 화면", () => {
     slotScreen<null>(SPEC, { analyze }).mount(ctx);
     pickPhoto(ctx.root);
     button(ctx.root, "적용하기").click();
-    expect(ctx.root.textContent).toContain("분석중");
+    // 문구가 아니라 "기다리는 칸이 떴나" 를 본다 — 말투는 바뀔 수 있다 (2026-10-12)
+    expect(ctx.root.querySelector(".slot-answer-loading")).not.toBeNull();
+    // 다만 부르는 이름은 지킨다 — 화면에서는 "예상 메이크업" (2026-10-09), "예상 사진" 이 아니다
+    expect(ctx.root.textContent).toContain("예상 메이크업을 만들고 있어요");
+    expect(ctx.root.textContent).not.toContain("예상 사진");
     await vi.waitFor(() => expect(ctx.root.textContent).toContain("예상 메이크업 완성"));
     expect(analyze).toHaveBeenCalledTimes(1);
     // 읽은 색이 그대로 화면에 — 48색에 없는 탁한 색이라 규칙으로 지은 이름이 나온다
