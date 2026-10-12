@@ -663,6 +663,8 @@ export function partGuideSlot<S>(deps: PartGuideSlotDeps): Screen<S> {
           none.className = "muted slot-status";
           none.textContent = "예상 메이크업에서 이 부위의 화장은 찾지 못했어요. 사진을 보고 따라 해 주세요.";
           photo.after(none);
+          // 실시간 가이드로 가는 길도 뺀다 (2026-10-12 결정) — 그릴 테두리가 없어, 가면 참고 사진과 상관없는 옛 표준 틀이 "예시" 로 나온다
+          guide.querySelector(".slot-live")?.remove();
         }
       }).catch(() => { if (alive) photo.replaceChildren(...mock); });
       return () => { alive = false; };

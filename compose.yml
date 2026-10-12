@@ -22,7 +22,7 @@ services:
       # 그림 만들기(/transfer)가 부르는 GPU PC 의 FLUX 서버 (Tailscale 주소) — 없으면 /transfer 가 503 off (server/app/flux.py)
       - DHE_FLUX_URL=http://100.110.57.95:7861
       # 테스트 기간 사진 보관 (2026-10-09 켬) — 참고 사진을 뺀 사진 · 피드백 결과를 /data/keep 에 받은 날 기준 7일 (server/app/keep.py).
-      # 동의 화면 문구(client/src/screens/consent.ts 의 테스트 기간 문단)와 짝이다 — 테스트가 끝나면 이 줄과 그 문단을 같이 뺀다
+      # 동의 화면 문구(client/src/screens/consent.ts 의 테스트 기간 문단)와 짝이다 — 테스트가 끝나면(2026-10-19 오후 3시) 이 줄과 그 문단을 같이 뺀다
       - DHE_KEEP_DAYS=7
 
     restart: unless-stopped

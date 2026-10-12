@@ -269,6 +269,19 @@ describe("빈 자리 화면", () => {
       expect(ctx.root.textContent).toContain("찾지 못했어요");
     });
 
+    it("FS5e 그 부위의 화장을 못 찾았으면 실시간 가이드로 가는 버튼을 뺀다 — 그릴 테두리가 없다. 찾았으면 둔다", async () => {
+      const live = (root: HTMLElement): Element | null => root.querySelector("button.slot-live");
+      const none = ctxOf();
+      partGuideSlot<null>({ getPart: () => "cheek", getGuide: async () => ({ ok: true, view }), paintGuide: () => true }).mount(none);
+      expect(live(none.root)).not.toBeNull();   // 알기 전에는 둔다
+      await vi.waitFor(() => expect(none.root.textContent).toContain("찾지 못했어요"));
+      expect(live(none.root)).toBeNull();
+      const has = ctxOf();
+      partGuideSlot<null>({ getPart: () => "lip", getGuide: async () => ({ ok: true, view }), paintGuide: () => true }).mount(has);
+      await flush(); await flush();
+      expect(live(has.root)).not.toBeNull();
+    });
+
     it.each(["answer", "bare", "answer_size"] as const)("FS5d 재료가 없으면(%s) 견본 그림 그대로 — 화면이 비지 않는다", async (missing) => {
       const paintGuide = vi.fn(() => true);
       const ctx = ctxOf();

@@ -2,6 +2,7 @@ name: 사용 기록 보기
 
 # 백엔드 PC 에 쌓인 사용 기록(D:/nudy-data/events — 컨테이너 안 /data/events)을 모아 이 실행 화면의 Summary 에 표로 보여 준다:
 # 작업마다 몇 초 걸렸나 · 화면마다 얼마나 머물렀나 · 어디까지 갔나 (eval/funnel/show.py).
+# 사용 기록은 2026-10-19 오후 5시에 모두 지운다 (동의 화면에 그렇게 적었다) — 그 뒤에는 볼 것이 없다.
 # 손으로만 돌린다 (Actions → "사용 기록 보기" → Run workflow). 서버 · 기록은 건드리지 않고 읽기만 한다.
 on:
   workflow_dispatch:

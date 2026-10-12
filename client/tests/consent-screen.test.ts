@@ -23,6 +23,12 @@ const click = (root: HTMLElement, text: string): void => {
 };
 
 describe("동의 화면", () => {
+  it("C0 테스트 기간이 언제까지인지 · 지워 달라는 말을 어디에 하는지 · 사용 기록을 언제 지우는지 적는다 (2026-10-12 결정)", () => {
+    const body = CONSENT_TEXT.body;
+    expect(body).toContain("10월 19일 오후 3시까지");
+    expect(body).toContain("후기 설문");
+    expect(body).toContain("사용 기록은 10월 19일 오후 5시에 모두 지워요");
+  });
   it("C1 동의하면 세션에 적고 consent(true) 를 찍고 촬영으로", () => {
     const { root, ctx, go } = setup();
     const setConsent = vi.fn(), onConsent = vi.fn();
