@@ -168,3 +168,19 @@ export function chipLabel(c: Chip): string {
   if (c.status === "passed" && typeof c.score === "number") return String(c.score);
   return STATUS_LABEL[c.status];
 }
+
+/**
+ * 뒤로 가면 설 자리 — 화면 안의 "뒤로" 버튼과 같은 곳. 폰의 뒤로 버튼이 쓴다 (#369, screens/phone-back).
+ * 앞 화면이 없으면 null (동의 · 촬영 · 예상 메이크업 · 끝 — 화면에도 뒤로 버튼이 없다. 그때는 막지 않고 원래대로 나가게 둔다).
+ * part 가 있으면 그 부위의 부위 가이드로, 없으면 지금 부위 그대로 그 화면으로
+ */
+export function backTarget(screen: ScreenId, part: PartId | null): { screen: ScreenId; part?: PartId } | null {
+  if (screen === "partguide") {
+    const prev = prevGuidePart(part);
+    return prev ? { screen: "partguide", part: prev } : { screen: "answer" };
+  }
+  if (screen === "live" || screen === "attempt") return { screen: "partguide" };
+  if (screen === "feedback") return { screen: "attempt" };
+  if (screen === "save") return { screen: "feedback" };
+  return null;
+}
