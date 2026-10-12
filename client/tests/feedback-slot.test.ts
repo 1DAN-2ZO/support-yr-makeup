@@ -26,7 +26,7 @@ function view(feedback: WholeFeedback) {
   return {
     answerUrl: "blob:answer", attemptUrl: "blob:attempt",
     answer: new Blob(), attempt: new Blob(),
-    feedback, ms: 10, frames: 5, movedFailed: false, dispose,
+    feedback, ms: 10, frames: 5, hairFrames: 0, movedFailed: false, dispose,
   };
 }
 const FULL: WholeFeedback = {
