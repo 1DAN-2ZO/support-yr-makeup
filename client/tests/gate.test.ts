@@ -248,7 +248,7 @@ describe("evaluateViewGate — 보기만 하는 실시간 가이드 (#413)", () 
     expect(evaluateGate("liner", off).ok, "확인받기 게이트는 막는다").toBe(false);
     const r = evaluateViewGate("liner", off);
     expect(r).toEqual({ ok: true, firstFail: null, text: GATE_TEXT.view, stableCount: 0 });
-    expect(GATE_TEXT.view).not.toMatch(/확인/);
+    expect(GATE_TEXT.view).toBe("선 안을 채워 그려 보세요");
   });
 
   it("VG2 테두리를 못 그리는 때는 확인받기 게이트와 같은 문구로 알린다 — 얼굴 없음 · 누움 · 부위별 화면 방향 · 부위가 화면 밖", () => {
