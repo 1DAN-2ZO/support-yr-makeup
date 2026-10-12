@@ -158,6 +158,7 @@ export const BROW_TAIL = { min: 9, gap: 0.06, step: 0.02, band: 0.28, skin: [0.3
  * 눈썹 머리 → 꼬리 축을 따라가며, 축에 수직인 줄에서 가장 어두운 칸이 위 · 아래 피부(밝은 쪽)보다 min 넘게 어두운 데까지가 눈썹이다.
  * 머리카락 칸은 보지 않고, 줄의 가운데가 머리카락이면 거기서 멈춘다 — 꼬리 자리는 관자놀이 머리카락과 붙어 있어, 머리카락 분할 없이는
  * 늘린 꼬리가 머리카락까지 이어 읽힌다 (실험 32). 그래서 **머리카락 분할(f.hair)이 없으면 재지 않는다 (null)**.
+ * 눈썹이 끊기지 않고 머리카락에 닿아도 재지 않는다 (null) — 끝을 알 수 없다.
  * 맨얼굴의 끝을 뺀 것이 '늘린 양'. 같은 방식으로 찍은 사진 사이의 흔들림은 ±2%p
  */
 export function browTail(f: SampleFrame, k: Side2): number | null {
@@ -174,7 +175,8 @@ export function browTail(f: SampleFrame, k: Side2): number | null {
   for (let u = 0.5; u <= 1 + C.far; u += C.step) {
     let hairMid = 0, q = 0;
     for (let v = -0.1; v <= 0.1 + 1e-6; v += 0.03) { if (hair(xy(u, v))) hairMid++; q++; }
-    if (hairMid / q > 0.5) break;
+    // 눈썹이 이어지다가 바로 머리카락에 닿았다 — 눈썹의 끝이 아니라 머리카락에 가린 자리다. 만든 그림에서 이 값이 사진마다 튀었다 (실험 62)
+    if (hairMid / q > 0.5) { if (gap === 0 && u > 0.5) return null; break; }
     const up = along(u, C.skin[0], C.skin[1]), dn = along(u, -C.skin[1], -C.skin[0]), band = along(u, -C.band, C.band);
     const skin = Math.max(up.length ? meanOf(up) : -1e9, dn.length ? meanOf(dn) : -1e9);
     if (band.length && skin > -1e8 && skin - Math.min(...band) >= C.min) { end = u; gap = 0; } else if ((gap += C.step) > C.gap) break;
