@@ -19,7 +19,7 @@
 <line x1="430" y1="192" x2="430" y2="238" stroke="#1f2d3a" stroke-width="2.5" marker-end="url(#ar-k)"/>
 <rect x="210.0" y="240" width="440" height="88" rx="10" fill="#fff" stroke="#8a8a8a" stroke-width="2.5"/>
 <text x="430" y="276" font-size="18" font-weight="700" text-anchor="middle" fill="#1f2d3a">처리 안내 · 동의</text>
-<text x="430" y="302" font-size="13.5" text-anchor="middle" fill="#6b7280">테스트 기간: 참고 사진을 뺀 사진 · 결과를 서버에 7일 보관 (동의해야 사용)</text>
+<text x="430" y="302" font-size="13.5" text-anchor="middle" fill="#6b7280">테스트 기간: 사진 · 결과를 서버에 보관, 10/19 오후 5시에 삭제</text>
 <line x1="650.0" y1="284.0" x2="694.0" y2="284.0" stroke="#8a8a8a" stroke-width="2"/>
 <rect x="694.0" y="252.0" width="300" height="64" rx="8" fill="#fff" stroke="#8a8a8a" stroke-width="2"/>
 <text x="708.0" y="278.0" font-size="13" fill="#1f2d3a">닫기를 누르면 첫 화면에 그대로</text>
@@ -101,10 +101,10 @@
 <text x="430" y="1602" font-size="13.5" text-anchor="middle" fill="#6b7280">결과와 피드백을 내 폰에 저장하거나 공유</text>
 <line x1="650.0" y1="1584.0" x2="694.0" y2="1584.0" stroke="#8a8a8a" stroke-width="2"/>
 <rect x="694.0" y="1552.0" width="300" height="64" rx="8" fill="#fff" stroke="#8a8a8a" stroke-width="2"/>
-<text x="708.0" y="1578.0" font-size="13" fill="#1f2d3a">테스트 기간에는 서버에도 7일 보관</text>
+<text x="708.0" y="1578.0" font-size="13" fill="#1f2d3a">테스트 기간에는 서버에도 보관 (10/19 삭제)</text>
 <text x="708.0" y="1600.0" font-size="13" fill="#1f2d3a">(참고 사진은 보관하지 않음)</text>
 <line x1="430" y1="1628" x2="430" y2="1678" stroke="#1f2d3a" stroke-width="2.5" marker-end="url(#ar-k)"/>
 <rect x="280" y="1680" width="300" height="52" rx="26" fill="#e6f1ef" stroke="#2a8f86" stroke-width="2.5"/>
 <text x="430" y="1712" font-size="17" font-weight="700" text-anchor="middle" fill="#1f2d3a">끝 (폰 안 세션 데이터 삭제)</text>
-<text x="40" y="1762" font-size="12.5" fill="#6b7280">서버로 가는 것: 그림을 만들 때의 사진(GPU 서버는 만든 뒤 바로 지움) · 테스트 기간 보관(참고 사진 빼고 7일) · 사용 기록(사진 · 얼굴 점 없음). 옛 그림은 archive/ 에.</text>
+<text x="40" y="1762" font-size="12.5" fill="#6b7280">서버로 가는 것: 그림을 만들 때의 사진(GPU 서버는 만든 뒤 바로 지움) · 테스트 기간 보관(참고 사진 빼고, 10/19 삭제) · 사용 기록(사진 · 얼굴 점 없음). 옛 그림은 archive/ 에.</text>
 </svg>

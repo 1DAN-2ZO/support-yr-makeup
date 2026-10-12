@@ -4,7 +4,7 @@
   GET  /health   상태·버전
   POST /events   사용 기록 받기 (어느 화면에서 나갔는지) — 사진·얼굴 점은 받지 않는다. events.py
   POST /transfer 그림 만들기 (맨얼굴 + 화장 사진 → GPU 의 FLUX 서버 → 그림 한 장). 저장하지 않는다. flux.py
-  POST /keep     테스트 기간 사진 보관 (참고 사진 빼고) — 기본은 꺼짐, DHE_KEEP_DAYS 를 줘야 받는다. keep.py
+  POST /keep     테스트 기간 사진 보관 (참고 사진 빼고) — 기본은 꺼짐, DHE_KEEP_UNTIL 을 줘야 받는다. keep.py
 
 실행:  uv run uvicorn server.app.main:app --reload --port 8000
 
@@ -33,8 +33,10 @@ from .schemas import Health
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("dhe.api")
 
-# 보관한 사진 치우기를 도는 간격 — 받은 날 기준 7일이 지난 것을 지운다 (keep.py)
-PURGE_EVERY_S = 3600
+# 보관한 사진 치우기를 도는 간격 — 기한(DHE_KEEP_UNTIL)이 되면 전부,
+# 기한이 없으면 일수가 지난 것을 지운다 (keep.py).
+# 1분: 동의 화면에 "오후 5시에 지운다" 고 적었으니 그 시각에서 크게 늦지 않게 (폴더 이름만 훑는다)
+PURGE_EVERY_S = 60
 
 
 async def _purge_loop() -> None:
@@ -193,8 +195,9 @@ MAX_KEEP_BODY = keep.MAX_FILE + 64 * 1024
 def keep_state() -> dict:
     """보관이 켜져 있나 — 앱이 사진을 올리기 전에 묻는다 (꺼져 있는데 큰 사진을 올려 보지 않게). 꺼짐은 503"""
     if keep.keep_dir() is None:
-        raise _fail(503, "off", "keep off (DHE_KEEP_DAYS)")
-    return {"on": True, "days": keep.keep_days()}
+        raise _fail(503, "off", "keep off (DHE_KEEP_UNTIL · DHE_KEEP_DAYS)")
+    until = keep.keep_until()
+    return {"on": True, "days": keep.keep_days(), "until": until.isoformat() if until else None}
 
 
 @app.post("/keep", status_code=204)
@@ -205,7 +208,7 @@ async def post_keep(request: Request) -> Response:
     """
     root = keep.keep_dir()
     if root is None:
-        raise _fail(503, "off", "keep off (DHE_KEEP_DAYS)")
+        raise _fail(503, "off", "keep off (DHE_KEEP_UNTIL · DHE_KEEP_DAYS)")
     length = request.headers.get("content-length", "")
     if not length.isdigit():
         raise _fail(411, "length")

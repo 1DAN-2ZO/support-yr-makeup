@@ -2,14 +2,19 @@
 
 쓰는 곳: 판정 기준값을 맞추는 데와 사람이 눈으로 검증하는 데. 테스트 기간에만, 동의한 사용자의 것만.
 평소 원칙은 "사진은 서버에 저장하지 않는다" 다 — 그래서 **기본은 꺼져 있다.**
-DHE_KEEP_DAYS(보관 일수)를 줘야 받는다.
+DHE_KEEP_UNTIL(언제까지 — 시간대가 붙은 시각) 이나 DHE_KEEP_DAYS(보관 일수)를 줘야 받는다.
+**지금은 DHE_KEEP_UNTIL 을 쓴다** (2026-10-12 결정): 받은 날부터 며칠이 아니라,
+그 시각까지 다 두었다가 그때 한꺼번에 지운다.
+그 시각이 지나면 받지도 않는다. DHE_KEEP_UNTIL 이 있으면 DHE_KEEP_DAYS 는 보지 않는다.
 동의 문구가 보관을 알리기 전에는 켜지 않는다.
 
 - 쌓는 곳: $DHE_DATA_DIR/keep/<받은 날 UTC>/<세션 번호>/<종류>.<확장자> — 저장소 밖
 - 받는 종류: bare 맨얼굴 · answer 정답사진 · moved 옮긴 그림 · attempt_open_0~4 시도사진 눈 뜬 장 ·
   attempt_closed 시도사진 눈 감은 장 · feedback 피드백 결과(글).
   **참고 사진은 받는 이름이 없다** (다른 사람의 얼굴)
-- 받은 날 기준 DHE_KEEP_DAYS 일이 지나면 날짜 폴더째 지운다 (받을 때마다 · 서버를 켤 때 치운다)
+- DHE_KEEP_UNTIL 이 있으면 그 시각에 전부 지운다.
+  없으면 받은 날 기준 DHE_KEEP_DAYS 일이 지난 날짜 폴더를 지운다
+  (서버가 켤 때 · 1분마다 본다)
 - 지워 달라는 요청: 세션 번호로 그 사람의 것을 전부 지운다 (delete_sid). 세션 번호는 앱이 만든 무작위 값이라
   이름 · 주소(IP) 같은 것은 같이 두지 않는다
 
@@ -57,9 +62,29 @@ def keep_days() -> int:
         return 0
 
 
+def keep_until() -> datetime | None:
+    """언제까지 보관하나 (DHE_KEEP_UNTIL, 예: 2026-10-19T17:00:00+09:00). 없거나 읽을 수 없으면 None.
+
+    시간대가 없는 값은 받지 않는다 — 서버 시계(UTC)로 읽혀 아홉 시간 어긋난 때에 지우지 않게
+    """
+    raw = os.environ.get("DHE_KEEP_UNTIL", "").strip()
+    if not raw:
+        return None
+    try:
+        t = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    return t if t.tzinfo is not None else None
+
+
 def keep_dir() -> Path | None:
+    """받는 자리. 꺼져 있으면 None — 기한(DHE_KEEP_UNTIL)이 있으면 그때까지만, 없으면 일수가 있을 때"""
     root = os.environ.get("DHE_DATA_DIR")
-    return Path(root) / "keep" if root and keep_days() > 0 else None
+    if not root:
+        return None
+    until = keep_until()
+    on = now() < until if until else keep_days() > 0
+    return Path(root) / "keep" if on else None
 
 
 # 보관을 끈 뒤에도 남아 있는 것을 치울 때 쓰는 일수 (DHE_KEEP_DAYS 가 없을 때)
@@ -75,7 +100,13 @@ def stored_root() -> Path | None:
 def purge_stored(at: datetime | None = None) -> list[str]:
     """기한이 지난 것을 치운다 — 새로 들어오는 것이 없어도, 보관을 끈 뒤에도 돈다 (서버가 주기적으로 부름)"""
     root = stored_root()
-    return purge(root, keep_days() or DEFAULT_DAYS, at or now()) if root else []
+    if not root:
+        return []
+    at, until = at or now(), keep_until()
+    if until:
+        # 기한이 있으면 그때까지는 며칠이 지났든 두고, 그때가 되면 전부 지운다
+        return purge_all(root) if at >= until else []
+    return purge(root, keep_days() or DEFAULT_DAYS, at)
 
 
 def now() -> datetime:
@@ -127,6 +158,19 @@ def purge(root: Path, days: int, at: datetime) -> list[str]:
     return gone
 
 
+def purge_all(root: Path) -> list[str]:
+    """날짜 폴더를 전부 지운다 (기한이 됐을 때). 날짜 모양이 아닌 것은 안 건드린다. 지운 폴더 이름들"""
+    if not root.is_dir():
+        return []
+    gone = []
+    with _lock:
+        for p in sorted(root.iterdir()):
+            if _day_of(p) is not None:
+                shutil.rmtree(p, ignore_errors=True)
+                gone.append(p.name)
+    return gone
+
+
 def delete_sid(root: Path, sid: str) -> int:
     """한 세션의 것을 날짜와 상관없이 전부 지운다. 지운 파일 수"""
     if not _SID.match(sid):
@@ -164,12 +208,16 @@ _last_purge: datetime | None = None
 
 
 def purge_sometimes(root: Path) -> None:
-    """한 시간에 한 번쯤 치운다 — 받을 때마다 폴더를 다 훑지 않게"""
+    """한 시간에 한 번쯤 치운다 — 받을 때마다 폴더를 다 훑지 않게.
+
+    기한(DHE_KEEP_UNTIL)이 있으면 일수로는 안 치운다
+    """
     global _last_purge
     at = now()
     if _last_purge is None or at - _last_purge >= timedelta(hours=1) or at < _last_purge:
         _last_purge = at
-        purge(root, keep_days(), at)
+        if keep_until() is None:
+            purge(root, keep_days(), at)
 
 
 def main(argv: list[str]) -> int:
@@ -183,7 +231,8 @@ def main(argv: list[str]) -> int:
     if cmd == "list":
         rows = listing(root)
         print(
-            f"보관 중: 세션 {len({r[1] for r in rows})}개 · 폴더 {len(rows)}개 · 보관 일수 설정 {keep_days()}"
+            f"보관 중: 세션 {len({r[1] for r in rows})}개 · 폴더 {len(rows)}개"
+            f" · 기한 {keep_until() or '없음'} · 보관 일수 설정 {keep_days()}"
         )
         for day, sid, names, size in rows:
             print(f"{day}  {sid}  {size / 1024:.0f}KB  {' '.join(names)}")
@@ -198,7 +247,9 @@ def main(argv: list[str]) -> int:
             return 2
         return 0
     if cmd == "purge":
-        print(f"{keep_days() or DEFAULT_DAYS}일 지난 폴더 지움: {purge_stored() or '없음'}")
+        until = keep_until()
+        rule = f"기한({until})이 지났으면 전부" if until else f"{keep_days() or DEFAULT_DAYS}일 지난 폴더"
+        print(f"{rule} 지움: {purge_stored() or '없음'}")
         return 0
     print("쓰는 법: list | delete <세션 번호> | purge")
     return 2

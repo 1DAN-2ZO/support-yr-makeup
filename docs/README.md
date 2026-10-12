@@ -10,7 +10,7 @@
 
 | 파일 | 내용 | 기준일 |
 |---|---|---|
-| [`service-definition-v6.md`](service-definition-v6.md) | **서비스 정의** — 흐름 · 화면별로 하는 것 · 원칙(사진 처리 · 테스트 기간 7일 보관) · 팀 일 나누기. 맨 아래 부록에 옛 흐름의 결정 이력 | 2026-10-09 |
+| [`service-definition-v6.md`](service-definition-v6.md) | **서비스 정의** — 흐름 · 화면별로 하는 것 · 원칙(사진 처리 · 테스트 기간 보관 — 10-19 오후 5시에 모두 삭제) · 팀 일 나누기. 맨 아래 부록에 옛 흐름의 결정 이력 | 2026-10-12 |
 | [`flowchart-new-flow.svg`](flowchart-new-flow.svg) · `.png` | **사용자 흐름 그림** | 2026-10-09 |
 | [`feedback-input-contract.md`](feedback-input-contract.md) | **피드백(화면 6)이 받는 그림** — 정답사진 · 옮긴 그림이 지킬 것, 모델을 두 번 부르는 흐름(시간 · 형식 · 기다림 60초), 라이너는 꼬리가 뚜렷할 때만 견준다는 것 | 2026-10-11 |
 | [`TODO-color-name-fixes.md`](TODO-color-name-fixes.md) | 참고 사진 색조 팔레트의 색 이름 규칙 — 데이터를 모은 뒤 고칠 것 | 2026-10-07 |
