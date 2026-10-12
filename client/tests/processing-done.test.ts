@@ -186,7 +186,9 @@ describe("끝 화면 (F-11)", () => {
     const { root, ctx, deps } = setupDone({ remaining: () => 0 });
     doneScreen<null>(deps).mount(ctx);
     expect(root.textContent).toContain("모두 지웠어요");
-    expect(root.textContent).toContain("서버에도 남아 있지 않아요");
+    // 테스트 기간에는 서버에 사진이 남아 있다 — "서버에도 남아 있지 않아요" 는 틀린 말이었다 (2026-10-12)
+    expect(root.textContent).not.toContain("서버에도 남아 있지 않아요");
+    expect(root.textContent).toContain("서버에 보관한 사진은 10월 19일 오후 5시에 지워요");
   });
 
   it("남은 게 있으면 다르게 말하고 로그를 남긴다 — 숫자는 화면에 안 낸다", () => {

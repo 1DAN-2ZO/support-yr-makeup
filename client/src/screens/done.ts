@@ -39,7 +39,8 @@ export function doneScreen<S>(deps: DoneDeps): Screen<S> {
       p.className = "muted";
       p.textContent =
         left === 0
-          ? "사진과 기록은 모두 지웠어요. 이 기기에도, 서버에도 남아 있지 않아요."
+          // 테스트 기간 문구 — 서버 보관(compose.yml DHE_KEEP_UNTIL) · 동의 화면 둘째 문단과 짝이다. 보관을 끄면 뒤 문장을 뺀다
+          ? "이 기기의 사진과 기록은 모두 지웠어요. 테스트 기간이라 서버에 보관한 사진은 10월 19일 오후 5시에 지워요."
           : "사진은 지웠지만 일부 기록이 남았어요. 브라우저 저장소를 비우면 완전히 지워집니다.";
 
       wrap.append(h, p);

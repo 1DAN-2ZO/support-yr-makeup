@@ -14,6 +14,7 @@ import { planRestore, rebuildBaseline, toCapture } from "./core/restore";
 import { createLogStore } from "./core/log-store";
 import { readUtm } from "@core/utm";
 import { middleShot } from "@core/attempt";
+import { armPhoneBack } from "./screens/phone-back";
 import { createEventSender } from "./core/event-sender";
 import { emptyJobSource } from "./core/look-jobs";
 import {
@@ -537,6 +538,15 @@ async function boot(): Promise<void> {
   window.matchMedia("(orientation: landscape)").addEventListener("change", () => shell.render());
 
   // 탭을 닫기 전에 버퍼에 남은 로그를 저장
+  // 폰의 뒤로 버튼 — 사이트를 나가지 않고 화면 안의 "뒤로" 와 같은 자리로 (#369, screens/phone-back)
+  armPhoneBack({
+    listen: (onPop) => { window.addEventListener("popstate", onPop); return () => window.removeEventListener("popstate", onPop); },
+    history: window.history,
+    where: () => ({ screen: session.screen, part: session.currentPart }),
+    go: shell.go,
+    goPart: shell.goPart,
+    log: (button) => log.log({ name: "button", button }),
+  });
   window.addEventListener("pagehide", () => void logStore.flush());
   // 화면이 가려질 때(앱 전환·탭 닫기) 남은 줄을 보낸다 — 답을 기다리지 않는다
   document.addEventListener("visibilitychange", () => {
