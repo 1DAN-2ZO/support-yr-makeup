@@ -12,6 +12,7 @@ import { createCaptureEvents, type CaptureEvents } from "./core/capture-events";
 import { createMadePictures, type MadeKey } from "./core/made-pictures";
 import { planRestore, rebuildBaseline, toCapture } from "./core/restore";
 import { createLogStore } from "./core/log-store";
+import { readUtm } from "@core/utm";
 import { createEventSender } from "./core/event-sender";
 import { emptyJobSource } from "./core/look-jobs";
 import {
@@ -183,6 +184,8 @@ async function boot(): Promise<void> {
   // 머리카락 분할 (screens/hair-segmenter) — 화면 5 채점용. 실패는 로그에 한 번 남기고 마스크 없이 간다
   const hairMask = createHairMasker(undefined, (e) => log.log({ name: "error", where: "hair", msg: (e instanceof Error ? e.message : String(e)).slice(0, 120) }));
   const events = createCaptureEvents(log);
+  // 어느 링크로 들어왔는지 — 켤 때 한 번 (#408, core/utm). 동의 전이라 폰에 쌓여 있다가 동의하면 같이 간다
+  log.log({ name: "landing", ...readUtm(location.search) });
 
   // 세션을 바꾸는 곳은 전부 여기로 — 바뀔 때마다 draft 저장 (앱이 꺼져도 돌아오게, F-07)
   // 동의 전·거부·끝은 저장하지 않는다: 되살릴 게 없고, 끝내기(clearAll) 뒤에 키가 다시 생기면 안 된다 (F-11)

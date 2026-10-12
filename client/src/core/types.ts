@@ -197,6 +197,8 @@ export interface EventBase {
 }
 
 export type EventFields =
+  /** 앱을 켠 때 한 번 — 어느 링크로 들어왔는지 (2026-10-12, core/utm). 꼬리가 없으면 utm_source 가 "direct" */
+  | { name: "landing"; utm_source: string; utm_campaign: string | null; utm_content: string | null }
   | { name: "screen_enter" | "screen_leave"; screen: string }
   | { name: "button"; button: string }
   | { name: "consent"; ok: boolean }

@@ -92,3 +92,34 @@ def test_main_은_파일로_쓴다(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "argv", ["show.py", str(tmp_path / "events"), "--out", str(out)])
     assert show.main() == 0
     assert "## 작업마다 걸린 시간" in out.read_text(encoding="utf-8")
+
+
+def test_어느_링크로_들어왔는지에_따라_도착_동의_촬영_저장을_센다(tmp_path):
+    def came(sid: str, t: int, **utm) -> dict:
+        return ev(sid, t, "landing", screen="consent", **utm)
+
+    yt = {"utm_source": "youtube", "utm_campaign": "tester-flow", "utm_content": "description"}
+    events = [
+        # 유튜브에서 온 두 사람 — 한 사람은 저장까지, 한 사람은 동의만
+        came("a", 0, **yt),
+        ev("a", 10, "consent", screen="consent", ok=True),
+        ev("a", 20, "capture", screen="capture", shot="front_open", ok=True, retry=0, reason=None),
+        ev("a", 30, "button", screen="save", button="save_image"),
+        came("b", 100, **yt),
+        ev("b", 110, "consent", screen="consent", ok=True),
+        # 주소를 바로 치고 온 사람
+        came("c", 200, utm_source="direct", utm_campaign=None, utm_content=None),
+        # 이 기록이 생기기 전 버전의 앱
+        ev("d", 300, "consent", screen="consent", ok=True),
+    ]
+    write(tmp_path, "2025-10-08", events)
+    text = show.render(*show.load(tmp_path, None))
+    assert "## 어디서 왔나" in text
+    assert "| youtube | tester-flow | description | 2 | 2 | 1 | 1 |" in text
+    assert "| direct |  |  | 1 | 0 | 0 | 0 |" in text
+    assert "| (기록 없음) |  |  | 1 | 1 | 0 | 0 |" in text
+
+
+def test_들어온_길_기록이_하나도_없으면_그_표를_안_그린다(tmp_path):
+    write(tmp_path, "2025-10-08", session("s1"))
+    assert "어디서 왔나" not in show.render(*show.load(tmp_path, None))
