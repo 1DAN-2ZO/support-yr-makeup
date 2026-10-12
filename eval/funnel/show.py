@@ -22,7 +22,7 @@ from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from funnel import aggregate, by_session, parse_jsonl  # noqa: E402
+from funnel import aggregate, by_session, parse_jsonl, summarize_session  # noqa: E402
 
 KST = timezone(timedelta(hours=9))
 RECENT = 30
@@ -55,6 +55,38 @@ def load(folder: Path, days: int | None) -> tuple[list[Path], list[dict]]:
     return files, events
 
 
+def sources(events: list[dict]) -> list[str]:
+    """어디서 왔나 — 들어온 링크(landing 줄의 utm)마다 도착 · 동의 · 촬영 · 저장한 세션 수.
+
+    앱이 켤 때 남긴다 (client/src/core/utm.ts).
+
+    landing 줄이 하나도 없으면 빈 목록 (그 기록이 생기기 전의 기록만 있을 때).
+    """
+    if not any(e.get("name") == "landing" for e in events):
+        return []
+    count: dict[tuple[str, str, str], list[int]] = {}
+    for evs in by_session(events).values():
+        land = next((e for e in evs if e.get("name") == "landing"), None)
+        key = ("(기록 없음)", "", "")
+        if land:
+            src, camp, cont = (land.get(k) for k in ("utm_source", "utm_campaign", "utm_content"))
+            key = (str(src or "direct"), str(camp or ""), str(cont or ""))
+        s = summarize_session(evs)
+        row = count.setdefault(key, [0, 0, 0, 0])
+        for i, hit in enumerate((True, s.consented is True, bool(s.shots_ok), s.saved_result)):
+            row[i] += int(hit)
+    out = [
+        "## 어디서 왔나",
+        "",
+        "| 출처 | 캠페인 | 내용 | 도착 | 동의 | 촬영 | 저장 |",
+        "|---|---|---|---:|---:|---:|---:|",
+    ]
+    for key, row in sorted(count.items(), key=lambda kv: (-kv[1][0], kv[0])):
+        out.append("| " + " | ".join([*key, *map(str, row)]) + " |")
+    out += ["", "동의하지 않은 사람의 기록은 서버로 오지 않아, 도착은 대부분 동의한 사람 수와 같다.", ""]
+    return out
+
+
 def render(files: list[Path], events: list[dict]) -> str:
     """마크다운 한 덩이"""
     out = ["# nudy 사용 기록", ""]
@@ -68,6 +100,7 @@ def render(files: list[Path], events: list[dict]) -> str:
         f"- 기간 {_when(min(times))} ~ {_when(max(times))} (한국 시간)" if times else "- 기간 알 수 없음",
         "",
     ]
+    out += sources(events)
     rows = aggregate(events)
     for title, head in SECTIONS:
         mine = [r for r in rows if str(r["metric"]).startswith(head)]
