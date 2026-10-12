@@ -13,6 +13,7 @@ import { createMadePictures, type MadeKey } from "./core/made-pictures";
 import { planRestore, rebuildBaseline, toCapture } from "./core/restore";
 import { createLogStore } from "./core/log-store";
 import { readUtm } from "@core/utm";
+import { middleShot } from "@core/attempt";
 import { createEventSender } from "./core/event-sender";
 import { emptyJobSource } from "./core/look-jobs";
 import {
@@ -351,7 +352,8 @@ async function boot(): Promise<void> {
       const saved = await sessionStore.loadImage("bare").catch(() => null);
       return saved instanceof Blob ? saved : saved ? new Blob([saved]) : null;
     },
-    getAttempt: () => attempt?.front_open[0]?.blob ?? null,
+    // 다섯 장 중 가운데 장을 보낸다 (core/attempt middleShot)
+    getAttempt: () => middleShot(attempt?.front_open)?.blob ?? null,
     put: (key, picture) => {
       if (key === "answer") judged = null;
       // 테스트 기간 보관 — 정답사진 · 옮긴 그림. 참고 사진은 보내지 않는다 (보낼 이름이 없다)
