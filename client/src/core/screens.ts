@@ -183,5 +183,6 @@ export function backTarget(screen: ScreenId, part: PartId | null): { screen: Scr
   if (screen === "live" || screen === "attempt") return { screen: "partguide" };
   if (screen === "feedback") return { screen: "attempt" };
   if (screen === "save") return { screen: "feedback" };
+  if (screen === "templates") return { screen: "answer" };
   return null;
 }

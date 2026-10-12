@@ -822,8 +822,7 @@ export function feedbackSlot<S>(deps: FeedbackSlotDeps): Screen<S> {
 /**
  * 화장 템플릿 고르기 (#420).
  *
- * **지금은 화면만이다** — 고르면 예상 메이크업을 만드는 연결은 아직 없다 (2026-10-12).
- * 그래서 고른 뒤 "곧 이어져요" 를 말하고 더 가지 않는다. 눌러도 아무 일이 없는 것보다 낫다.
+ * 고르고 "적용하기" 를 누르면 고른 템플릿을 넘기고 참고 사진 화면으로 돌아간다 — 거기서 올린 사진처럼 다룬다 (#433).
  */
 export function templatesSlot<S>(deps: PartGuideSlotDeps): Screen<S> {
   return {
@@ -834,7 +833,7 @@ export function templatesSlot<S>(deps: PartGuideSlotDeps): Screen<S> {
           ctx.log.log({ name: "button", button: "back:answer" });
           ctx.go("answer");
         },
-      }, home(ctx as ScreenContext<unknown>, deps.clearAll));
+      }, home(ctx as ScreenContext<unknown>, deps.startOver ?? deps.clearAll));
 
       const grid = document.createElement("ul");
       grid.className = "tpl-grid";
