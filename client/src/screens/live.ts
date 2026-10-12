@@ -54,7 +54,7 @@ import { startFrameLoop } from "./camera-loop";
 import { smoothTuner } from "./smooth-tune";
 import { foreheadLabOf, grabFrame, sharpnessOf } from "./frame-measure";
 import { createLandmarker } from "./landmarker";
-import { strokeOutline } from "./outline-draw";
+import { partColor, strokeOutline } from "./outline-draw";
 import { createPoseProbe } from "./pose-probe";
 import type { Screen, ScreenContext } from "./shell";
 
@@ -112,7 +112,7 @@ interface ViewMap { s: number; ox: number; oy: number; crop: Rect }
 const EYE_DOTS: readonly number[] = [...LM.eyeA.upper, ...LM.eyeA.lower, ...LM.eyeB.upper, ...LM.eyeB.lower];
 
 /** 확대 창만 거울로 그리고 그 위에 테두리 (선만, F-07) */
-function drawView(cv: HTMLCanvasElement, video: HTMLVideoElement, crop: Rect, o: Outline | null, dots: readonly Pt[] | null = null, alpha: readonly number[] | null = null): ViewMap | null {
+function drawView(cv: HTMLCanvasElement, video: HTMLVideoElement, crop: Rect, o: Outline | null, dots: readonly Pt[] | null = null, alpha: readonly number[] | null = null, color?: string): ViewMap | null {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   const W = Math.round(cv.clientWidth * dpr), H = Math.round(cv.clientHeight * dpr);
   if (!W || !H) return null;
@@ -132,13 +132,13 @@ function drawView(cv: HTMLCanvasElement, video: HTMLVideoElement, crop: Rect, o:
   if (o) {
     const lw = Math.max(2, W / 400) / s;
     // 고개를 많이 돌리면 먼 쪽 눈 테두리는 흐리게 (live-run alpha, FAR_FADE)
-    strokeOutline(g, alpha ? { ...o, polys: o.polys.filter((_, i) => (alpha[i] ?? 1) >= 1) } : o, lw);
+    strokeOutline(g, alpha ? { ...o, polys: o.polys.filter((_, i) => (alpha[i] ?? 1) >= 1) } : o, lw, color);
     if (alpha) {
       o.polys.forEach((poly, i) => {
         const a = alpha[i] ?? 1;
         if (a >= 1) return;
         g.globalAlpha = a;
-        strokeOutline(g, { polys: [poly], lines: [] }, lw);
+        strokeOutline(g, { polys: [poly], lines: [] }, lw, color);
         g.globalAlpha = 1;
       });
     }
@@ -258,6 +258,8 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
         baseExpr: deps.getBaseExpr?.() ?? null,
         ...(own ? { outline: own } : { guide: deps.getGuide?.() ?? lookGuide(deps.getLookParts()) }),
         smooth: stab,
+        // 보기만(back)이면 확인받기 조건으로 막지 않는다 — 안내 줄에 '확인받을 준비 됨' 이 떴다 (#413)
+        ...(backTo ? { viewOnly: true } : {}),
         // 개발용 ?g=: 먼 쪽 눈 틀 맞추기 다듬기를 하나씩 켜서 비교 (1 눈머리 고정 · 2 눈썹 앞쪽 절반 · 3 높이 제한 · h 눈꼬리를 눈썹으로). 없으면 23h
         ...(fadeQ === "0" ? { fade: null } : fadeR ? { fade: { ...FAR_FADE, from: Number(fadeR[1]), to: Number(fadeR[2]) } } : {}),
         ...(q.has("g") ? { farEye: { anchorInner: (q.get("g") ?? "").includes("1"), browHalf: (q.get("g") ?? "").includes("2"), capHeight: (q.get("g") ?? "").includes("3"), outerFromBrow: (q.get("g") ?? "").includes("h") } } : {}),
@@ -365,7 +367,7 @@ export function liveScreen<S>(deps: LiveDeps): Screen<S> {
 ${j}` : j;
         }
         tp = perf ? performance.now() : 0;
-        const vm = drawView(view, video, shown, r.outline, dots && lm ? EYE_DOTS.map((i) => lm[i]!) : null, r.alpha);
+        const vm = drawView(view, video, shown, r.outline, dots && lm ? EYE_DOTS.map((i) => lm[i]!) : null, r.alpha, partColor(part!));
         lap("그리기");
         if (perf) {
           perf.frame(now);

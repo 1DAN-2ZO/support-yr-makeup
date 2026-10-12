@@ -15,7 +15,7 @@ import { faceRoll } from "./crop";
 import type { Rect } from "./crop";
 import { createBundleCollector, type BundleState } from "./capture-bundle";
 import { exprDiff } from "./expression";
-import { gateStep, rigidPoseDiff, softFail, type LiveLimits, LIVE_LIMITS, livePose, type LiveMeasure } from "./gate";
+import { evaluateViewGate, gateStep, rigidPoseDiff, softFail, type LiveLimits, LIVE_LIMITS, livePose, type LiveMeasure } from "./gate";
 import { linerOutline, GUIDE_PARAMS } from "./guides";
 import { LM, RIGID_IDS, partInRect } from "./landmarks";
 import { pinOutline, placeOutline } from "./mesh-pin";
@@ -71,6 +71,8 @@ export interface LiveRunOptions {
   outline?: Outline;
   /** 테두리를 그릴 점에 One-Euro(④ smoothing.ts, 값은 LIVE_SMOOTH)를 건다. 기본 켬 — 떨림 비교(#23)용으로 끌 수 있다 */
   smooth?: boolean;
+  /** 보기만 하는 실시간 가이드(새 흐름) — 확인받기 조건으로 막지 않고 테두리를 못 그리는 때만 알린다 (gate.evaluateViewGate, #413) */
+  viewOnly?: boolean;
   limits?: LiveLimits;
   /** 먼 쪽 눈 틀 맞추기 다듬기(G안 · H안)를 하나씩 켜고 끄기 — 화면 4 개발용 ?g= 비교. 기본 FAR_EYE_DEFAULT */
   farEye?: FarEyeOptions;
@@ -260,7 +262,7 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
         smoother?.smooth(null, f.t);
         const r = gateStep(stable, opt.partId, { faceDetected: false, yaw: 0, pitch: 0 }, limits);
         stable = r.stable;
-        gate = r.gate;
+        gate = opt.viewOnly ? evaluateViewGate(opt.partId, { faceDetected: false, yaw: 0, pitch: 0 }, limits) : r.gate;
       } else {
         // 정면 각도도 턱 없이 — 맨얼굴 각도 + 강체 점 변화 (#193). 입을 벌려도 "조금만 정면으로" 가 안 뜬다
         const pose = livePose(opt.baseline.lm, f.lm);
@@ -284,7 +286,7 @@ export function createLiveRun<I>(opt: LiveRunOptions): { step(f: LiveFrame<I>): 
         };
         const r = gateStep(stable, opt.partId, m, limits);
         stable = r.stable;
-        gate = r.gate;
+        gate = opt.viewOnly ? evaluateViewGate(opt.partId, { ...m, stableCount: r.stable }, limits) : r.gate;
         measure = { ...m, stableCount: r.stable };
         const cur = smoother?.smooth(f.lm, f.t) ?? f.lm;
         outline = placeOutline(pinned, cur);
