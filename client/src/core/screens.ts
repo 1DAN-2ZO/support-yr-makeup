@@ -63,6 +63,7 @@ export const SCREEN_OWNER: Record<ScreenId, "capture" | "guide" | "score" | "app
   review: "app",
   done: "app",
   answer: "prep",
+  templates: "prep",
   partguide: "guide",
   attempt: "app",
   feedback: "score",

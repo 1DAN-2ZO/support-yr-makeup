@@ -9,6 +9,7 @@ import { pickProducts, pickShadeText } from "@core/product-picks";
 import { FEEDBACK_ORDER, type FeedbackPart } from "@core/guide-feedback";
 import type { MakeResult } from "@core/picture-maker";
 import { PART_NAME } from "@core/score";
+import { TEMPLATES } from "@core/templates";
 import type { PartId } from "@core/types";
 import { MAKE_WAIT_TEXT, makeFailText, shrinkForUpload } from "./answer-make";
 import { colorPalette } from "./color-palette";
@@ -212,6 +213,13 @@ function action(ctx: ScreenContext<unknown>, label: string, next: ScreenId): HTM
  * "눈썹(으)로" 처럼 괄호를 넣으면 화면 읽어 주는 기기가 그대로 읽어 어색하다.
  * ㄹ 받침은 "로" 다 (예: 물로)
  */
+/** 받침이 있으면 "을", 없으면 "를". "을(를)" 은 화면 읽어 주는 기기가 괄호째 읽어 어색하다 */
+function eul(word: string): string {
+  const c = word.charCodeAt(word.length - 1) - 0xac00;
+  if (c < 0 || c > 11171) return "를";
+  return c % 28 === 0 ? "를" : "을";
+}
+
 function ro(word: string): string {
   const c = word.charCodeAt(word.length - 1) - 0xac00;
   if (c < 0 || c > 11171) return "로";
@@ -240,6 +248,14 @@ function home(ctx: ScreenContext<unknown>, clearAll?: () => Promise<unknown>): (
       onRestart: () => { void clearAll().finally(() => ctx.go("consent")); },
     }));
   };
+}
+
+/** 두 길 사이의 "또는" — 가로줄 가운데에 글자 (#420) */
+function orLine(text: string): HTMLElement {
+  const e = document.createElement("div");
+  e.className = "slot-or";
+  e.innerHTML = `<span>${text}</span>`;
+  return e;
 }
 
 function resetPage(root: HTMLElement): void {
@@ -483,6 +499,12 @@ export function slotScreen<S>(spec: SlotSpec, deps: SlotDeps = {}): Screen<S> {
               picked = f;
               previewUrl = URL.createObjectURL(f);
               renderUpload();
+            }),
+            // 사진이 없어도 시작할 수 있는 다른 길 (#420). 고르는 화면은 따로 있다
+            orLine("또는"),
+            liveButton("템플릿 선택", () => {
+              ctx.log.log({ name: "button", button: "go:templates" });
+              ctx.go("templates");
             }),
           );
           if (warn) root.append(uploadWarn(warn));
@@ -775,6 +797,69 @@ export function feedbackSlot<S>(deps: FeedbackSlotDeps): Screen<S> {
         alive = false;
         drop?.();
       };
+    },
+  };
+}
+
+/**
+ * 화장 템플릿 고르기 (#420).
+ *
+ * **지금은 화면만이다** — 고르면 예상 메이크업을 만드는 연결은 아직 없다 (2026-10-12).
+ * 그래서 고른 뒤 "곧 이어져요" 를 말하고 더 가지 않는다. 눌러도 아무 일이 없는 것보다 낫다.
+ */
+export function templatesSlot<S>(deps: PartGuideSlotDeps): Screen<S> {
+  return {
+    mount(ctx: ScreenContext<S>) {
+      const root = page("slot-templates", {
+        label: "참고 사진 올리기로 돌아가기",
+        onBack: () => {
+          ctx.log.log({ name: "button", button: "back:answer" });
+          ctx.go("answer");
+        },
+      }, home(ctx as ScreenContext<unknown>, deps.clearAll));
+
+      const grid = document.createElement("ul");
+      grid.className = "tpl-grid";
+      let chosen: string | null = null;
+      const note = document.createElement("p");
+      note.className = "tpl-note";
+      note.hidden = true;
+
+      for (const t of TEMPLATES) {
+        const li = document.createElement("li");
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "tpl-card";
+        b.setAttribute("aria-pressed", "false");
+        b.innerHTML = `
+          <img src="${t.thumb}" alt="" aria-hidden="true" loading="lazy" />
+          <strong>${t.name}</strong>
+          <em>${t.about}</em>
+        `;
+        b.addEventListener("click", () => {
+          chosen = t.id;
+          ctx.log.log({ name: "button", button: `template:${t.id}` });
+          for (const other of grid.querySelectorAll<HTMLButtonElement>(".tpl-card")) {
+            other.classList.remove("is-on");
+            other.setAttribute("aria-pressed", "false");
+          }
+          b.classList.add("is-on");
+          b.setAttribute("aria-pressed", "true");
+          note.hidden = false;
+          note.textContent = `${t.name}${eul(t.name)} 골랐어요. 예상 메이크업 만들기는 곧 이어져요.`;
+        });
+        li.append(b);
+        grid.append(li);
+      }
+
+      root.append(
+        coach("따라 하고 싶은 화장을 골라 주세요"),
+        title("화장 템플릿", "사진을 올리지 않아도 여기서 고를 수 있어요"),
+        grid,
+        note,
+      );
+      ctx.root.append(root);
+      return () => { chosen = null; void chosen; };
     },
   };
 }
