@@ -11,7 +11,8 @@ import { scaleLm } from "@core/crop";
 import type { FeedbackPart } from "@core/guide-feedback";
 import { runGuide, type GuideMissing, type GuidePage } from "@core/guide-run";
 import type { ExtractPart } from "@core/makeup-extract";
-import type { Baseline, Pt } from "@core/types";
+import type { Outline } from "@core/overlay";
+import type { Baseline, PartId, Pt } from "@core/types";
 import { blobToRgba, type AnswerPhoto } from "./feedback-source";
 import { strokeMarks } from "./outline-draw";
 
@@ -78,6 +79,11 @@ export async function loadPartGuide(deps: GuideSourceDeps): Promise<GuideLoad> {
 export interface GuideKeeper {
   /** 지금 정답사진의 가이드 재료 — 같은 정답사진이면 만들어 둔 것을 그대로 준다 */
   get(): Promise<GuideLoad>;
+  /**
+   * 다 만들어 둔 것을 기다리지 않고 꺼낸다 — 만드는 중이거나, 없거나, 그 뒤에 정답사진이 바뀌었으면 null.
+   * 실시간 가이드가 쓴다: 화면을 띄울 때 바로 필요하고, 부위 가이드(사진)를 거쳐 들어오니 보통은 이미 있다
+   */
+  peek(): GuideView | null;
   /** 만들어 둔 것을 놓는다 (붙들고 있던 정답사진 그림도) */
   drop(): void;
 }
@@ -87,7 +93,8 @@ export interface GuideKeeper {
  * 정답사진이 바뀌거나 없어지면(끝내기 · 맨얼굴 다시 찍기) 앞의 것을 놓는다. 못 만든 것은 보관하지 않는다
  */
 export function createGuideKeeper(deps: GuideSourceDeps, load: (d: GuideSourceDeps) => Promise<GuideLoad> = loadPartGuide): GuideKeeper {
-  let held: { answer: Blob; p: Promise<GuideLoad> } | null = null;
+  type Held = { answer: Blob; p: Promise<GuideLoad>; view?: GuideView };
+  let held: Held | null = null;
   const drop = (): void => {
     const old = held;
     held = null;
@@ -100,12 +107,35 @@ export function createGuideKeeper(deps: GuideSourceDeps, load: (d: GuideSourceDe
       if (!answer) return load(deps);
       if (!held) {
         const p = load(deps);
-        const mine = (held = { answer, p });
-        void p.then((r) => { if (!r.ok && held === mine) held = null; }).catch(() => { if (held === mine) held = null; });
+        const mine: Held = { answer, p };
+        held = mine;
+        void p.then((r) => { if (held !== mine) return; if (r.ok) mine.view = r.view; else held = null; }).catch(() => { if (held === mine) held = null; });
       }
       return held.p;
     },
+    peek() {
+      const answer = deps.getAnswer()?.image ?? null;
+      return held && answer && held.answer === answer ? (held.view ?? null) : null;
+    },
     drop,
+  };
+}
+
+/**
+ * 실시간 가이드(screens/live)에 넘길 테두리 — 사진 가이드와 **같은 모양**을 카메라 속 얼굴 위에 보여 주려고 (#334).
+ * 가이드 좌표는 줄여서 푼 그림(view.size) 기준이라, 맨얼굴 얼굴 점이 놓인 촬영 크기(base.w)로 키워서 준다 —
+ * 실시간 엔진(core/live-run)이 이 모양을 맨얼굴 얼굴 그물에 붙여 지금 얼굴로 옮긴다.
+ * 그 부위의 화장을 못 찾았거나(테두리 없음) 가이드가 없는 부위면 null — 실시간 화면은 옛 표준 틀을 "예시" 로 그린다
+ */
+export function liveOutlineOf(view: Pick<GuideView, "pages" | "size">, part: PartId, base: Pick<Baseline, "w" | "h">): Outline | null {
+  const page = (view.pages as Partial<Record<PartId, GuidePage>>)[part];
+  if (!page || !page.polys.length || !(base.w > 0) || !(view.size.w > 0)) return null;
+  const k = base.w / view.size.w, at = (q: Pt): Pt => ({ x: q.x * k, y: q.y * k });
+  const dots = page.marks?.dots ?? [], arrows = page.marks?.arrows ?? [];
+  return {
+    polys: page.polys.map((q) => q.poly.map(at)), lines: [],
+    ...(dots.length ? { dots: dots.map(at) } : {}),
+    ...(arrows.length ? { arrows: arrows.map((a) => a.map(at)) } : {}),
   };
 }
 

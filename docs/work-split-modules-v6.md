@@ -3,7 +3,7 @@
 nudy · 2026-09-18 작성 · 담당자 2026-09-22 확정 (§0-0)
 
 > **2026-09-29 변경** — Stable-Makeup(서버 생성 그림)을 뺐다. 화장을 누르면 **VLM 이 이 얼굴에 맞춰 개인화 계획을 정하고 규칙 관문이 거른다**("개인화 중입니다"). 그 계획으로 2-b **AR**, 화면 3 완성본(2-b AR 장면 줌), 가이드 테두리, 채점이 모두 같은 것을 쓴다. 서버 처리 화면 없음, **VLM 이 없으면 이용 불가**. 서버(학원 PC)는 VLM 개인화에만 쓰고 사진을 저장하지 않는다. 서비스 이름 nudy, 화면 문구는 "화장". 자세히는 `service-definition-v6.md` 맨 위.
-근거: `feature-spec-v6.md` §12 모듈·담당(구판), `tech-review-full-flow-v6.md`, `tech-review-screen5-v6.md`, `tech-review-screen6-v6.md`, 데이터 계획 4차(`data-plan-v6.md`), `poc/full` @ 50607ac · AI 파이프라인(호출 그래프·평가 하네스·버전·서빙 지표)은 `ai-pipeline-v6.md`
+근거: `archive/feature-spec-v6.md` §12 모듈·담당(구판), `archive/tech-review-full-flow-v6.md`, `archive/tech-review-screen5-v6.md`, `archive/tech-review-screen6-v6.md`, 데이터 계획 4차(`archive/data-plan-v6.md`), `poc/full` @ 50607ac · AI 파이프라인(호출 그래프·평가 하네스·버전·서빙 지표)은 `ai-pipeline-v6.md`
 
 > **한눈에**
 화면이 아니라 **모듈**로 나눈다. 화면으로 나누면 가이드 기하·랜드마크 표·크롭 코드가 사람마다 복제되고(지금 POC 6개가 그 상태), 모듈로 나누면 "내가 받는 것 / 내가 주는 것"만 맞추면 따로 돌릴 수 있다.
@@ -233,7 +233,7 @@ FORCE_OK=1 git push --force-with-lease
 | 맡는 기능 | F-02 얼굴형 분류기(자체 학습) · 데이터 계획 전부(촬영 세트·동의서·라벨·AI Hub·공개 셋) · **평가 데이터 공급과 결과표 취합** |
 | 받는 것 | 실촬영 사진(팀 전체가 찍음), `Baseline` 랜드마크(①) |
 | 주는 것 | `faceShape` 예측 함수(클라이언트에서 돌아가는 소형 모델 또는 규칙 + 보정), 평가 데이터셋(실촬영 200장 + 사람 판정 + 얼굴형 라벨), `docs/eval-results-v6.md` |
-| 지금 있는 것 | `estimateFaceShape`(규칙 4임계), `datasets-ranked-v6.md`, `poc/datasets-eval`(EasyPortrait·Periorbital 실측), `poc/synth`(보류분) |
+| 지금 있는 것 | `estimateFaceShape`(규칙 4임계), `archive/datasets-ranked-v6.md`, `poc/datasets-eval`(EasyPortrait·Periorbital 실측), `poc/synth`(보류분) |
 | 해야 할 것 | 동의서 양식 → 촬영 세션 20명 × 10장(단계별, 일부러 벗어난 장 포함, 조명 3종) · 부위별 사람 판정 3단계 + 얼굴형 2인 독립 라벨(불일치 3인 판정, κ 기록) · 규칙 정확도 기준선 **먼저** · Kaggle Face Shape 1차 학습 → 자체 라벨 파인튜닝 · AI Hub 3종 신청 · EasyPortrait 영역 IoU 측정 · 룩 참조 사진 방법 결정 지원(생성/구매 조사) · **평가 하네스**(`ai-pipeline-v6.md` 2절): `eval/` 골격, 골든 세트 30장 고정(`golden-v1`, 사람 단위 분할), `run-all.sh`, `report.mjs`로 `eval-results-v6.md` 자동 생성, 실험 기록(설정 JSON + 시드 + 결과 CSV + 실험 노트) · 데이터 파이프라인(5절): 라벨러별 파일 + 합의본, 학습 재현 한 줄 |
 | 안 되는 것 | Kaggle 셋은 라벨 근거·라이선스 불명 → 1차 학습까지만 |
 | 검증 | §3 전부 |

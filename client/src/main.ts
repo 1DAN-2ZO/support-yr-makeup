@@ -47,7 +47,6 @@ import { fullRenderScreen, type FullRenderDeps } from "./screens/fullrender";
 import { looksScreen, type LooksDeps } from "./screens/looks";
 import { processingScreen, type ProcessingDeps } from "./screens/processing";
 import { resultScreen, type ResultDeps } from "./screens/result";
-import { loadLashes } from "./screens/lash-assets";
 import { reviewScreen, type ReviewDeps } from "./screens/review";
 import { startReviewShot } from "./screens/review-shot";
 import { createShell } from "./screens/shell";
@@ -57,7 +56,7 @@ import { requestTransfer } from "./core/transfer-client";
 import { within } from "./core/wait-limit";
 import { prepareSave, type SaveKit, type SaveSource } from "./screens/feedback-card";
 import { loadFeedback, type AnswerPhoto, type FeedbackLoad } from "./screens/feedback-source";
-import { createGuideKeeper, loadPartGuide } from "./screens/guide-source";
+import { createGuideKeeper, liveOutlineOf, loadPartGuide } from "./screens/guide-source";
 import { analyzeRefPhoto } from "./screens/ref-analyze";
 import { shrinkForUpload } from "./screens/answer-make";
 import { noteOfFeedback, noteOfGuide, noteOfMake, noteOfRef, noteOfSave, noteOfShrink } from "./screens/task-notes";
@@ -178,10 +177,11 @@ async function boot(): Promise<void> {
       if (ev.name === "screen_enter" || ev.name === "session_end") void sender.send();
     },
   );
+  // [옛 흐름 · 지금 안 씀] 머리카락 분할은 옛 화면(2-b · 3 · 5) 설정에만 넘긴다 — client/OLD-FLOW.md. 모델은 그 화면에 들어갈 때 받으니 지금은 받지 않는다.
+  // 속눈썹 그림(screens/lash-assets loadLashes)을 앱을 켤 때 미리 받던 것은 뺐다 (2026-10-11) — 그리는 화면이 옛 흐름뿐이라 쓰이지 않는 내려받기(168KB · 요청 5번)였다.
+  // 옛 화면을 되살리면 그 화면에 들어가기 전에 loadLashes() 를 다시 불러야 마스카라가 그려진다 (안 부르면 마스카라만 빠진다)
   // 머리카락 분할 (screens/hair-segmenter) — 화면 5 채점용. 실패는 로그에 한 번 남기고 마스크 없이 간다
   const hairMask = createHairMasker(undefined, (e) => log.log({ name: "error", where: "hair", msg: (e instanceof Error ? e.message : String(e)).slice(0, 120) }));
-  // 마스카라 텍스처 (#250) — 화면 3·2-b 전에 미리 받아 둔다. 실패하면 마스카라만 빼고 그린다 (다음 화장에서 다시 받는다)
-  void loadLashes().catch((e: unknown) => log.log({ name: "error", where: "lashes", msg: (e instanceof Error ? e.message : String(e)).slice(0, 120) }));
   const events = createCaptureEvents(log);
 
   // 세션을 바꾸는 곳은 전부 여기로 — 바뀔 때마다 draft 저장 (앱이 꺼져도 돌아오게, F-07)
@@ -419,6 +419,7 @@ async function boot(): Promise<void> {
       // 새 흐름 (2026-10-06): 맨얼굴 사진 다음은 참고 사진 · 정답사진
       next: "answer",
     },
+    // [옛 흐름 · 지금 안 씀] 화면 2 화장 고르기 · 2-b AR (looks · fullrender) 의 설정
     {
       getLookId: () => session.lookId,
       setLookId: (lookId: string) => {
@@ -428,6 +429,7 @@ async function boot(): Promise<void> {
       // 2-b AR 도 앞머리 위엔 보정·화장 안 함 — 화면 3·5 와 같은 분할기 (#173)
       hairMask,
     },
+    // [옛 흐름 · 지금 안 씀] 화면 6 전체 리뷰 (review) 의 설정 — 새 흐름의 피드백은 아래 registerFlowSlots 의 feedback
     {
       getParts: () => toReviewParts(session),
       getLookName: () => lookById(session.lookId).name,
@@ -445,6 +447,7 @@ async function boot(): Promise<void> {
       // 합산 설정은 전 룩 공통이다 (결정 2026-09-22). 값은 rules/looks.json
       template: SUMMARY_TEMPLATE,
     },
+    // [옛 흐름 · 지금 안 씀] 화면 5 부위 결과 (result) 의 설정
     {
       getPart: () => session.currentPart,
       getBaseline: () => session.baseline,
@@ -469,8 +472,10 @@ async function boot(): Promise<void> {
       // ?tune "채점 사진 저장" 에 같이 — PC 에서 같은 가이드로 재현하려고
       tuneInfo: () => ({ lookId: session.lookId, plan: planFor(), ver: getVersions() }),
     },
+    // [옛 흐름 · 지금 안 씀] 서버 처리 화면 (processing) 의 설정
     // 서버 처리 화면은 흐름에서 빠졌다 (등록만 남김 — 되살린 세션은 위에서 화장 선택으로 보낸다)
     { jobs: emptyJobSource() },
+    // [옛 흐름 · 지금 안 씀] 화면 3 부위 완성본 (guide) 의 설정 — 새 흐름의 부위 가이드는 registerFlowSlots 의 partguide
     {
       getPart: () => session.currentPart,
       firstPart: () => nextPart(session, null),
@@ -484,6 +489,8 @@ async function boot(): Promise<void> {
       getHairMask: (d) => maskOfImage(hairMask, d.img, d.w, d.h),
       getGuide: guideFor,
     },
+    // 화면 4 실시간 가이드 (live) — 지금 흐름의 화면이다: 부위 가이드의 "실시간 가이드로 보기" 가 연다. 보기만 하고 "이전" 으로 돌아간다 (#334).
+    // 그리는 테두리는 부위 가이드(사진)와 같은 것 — 예상 메이크업에서 뽑은 그 부위 모양을 카메라 속 얼굴에 붙인다 (getOutline)
     {
       getPart: () => session.currentPart,
       getBaseline: () => session.baseline,
@@ -495,13 +502,19 @@ async function boot(): Promise<void> {
       getLookParts: () => lookById(session.lookId).parts,
       // 맨얼굴 정면 때 표정 — ① 이 촬영·복원 때 Baseline 에 채운다 (#177). 없으면 화면 4 가 표정 조건을 건너뛴다
       getBaseExpr: () => session.baseline?.expression ?? null,
+      // 예상 메이크업에서 뽑은 그 부위 테두리 — 부위 가이드가 만들어 둔 것을 꺼내 쓴다 (기다리지 않는다).
+      // 아직 못 만들었거나 그 부위의 화장이 없으면 null → 화면이 아래의 옛 표준 틀(getGuide)을 "예시" 로 그린다
+      getOutline: (part) => {
+        const view = guides.peek(), b = session.baseline;
+        return view && b ? liveOutlineOf(view, part, b) : null;
+      },
       getGuide: guideFor,
       setCapture: (part, bundle) => {
         set({ ...session, parts: session.parts.map((p) => (p.partId === part ? { ...p, captured: bundle } : p)) });
       },
+      // [옛 흐름 · 지금 안 씀] 묶음을 모아 채점(result)으로 넘어가던 길 — 아래 back 이 있는 동안 쓰이지 않는다
       next: "result",
-      // 새 흐름(#334): 실시간 가이드는 보기만 한다 — 버튼이 "이전" 이 되어 부위 가이드로 돌아간다.
-      // 묶음을 모아 채점으로 넘어가던 옛 길(next: "result")은 이 설정이 있는 동안 쓰이지 않는다
+      // 새 흐름(#334): 실시간 가이드는 보기만 한다 — 버튼이 "이전" 이 되어 부위 가이드로 돌아간다
       back: "partguide",
     },
     {
@@ -555,14 +568,17 @@ function registerAll(
   shell.register("consent", consentScreen<Session>(consent));
   shell.register("denied", deniedScreen<Session>());
   shell.register("capture", captureScreen<Session>(capture));
+  shell.register("done", doneScreen<Session>(done));
+  // 실시간 가이드 — 지금 흐름의 화면 (부위 가이드의 "실시간 가이드로 보기")
+  shell.register("live", liveScreen<Session>(live));
+  // [옛 흐름 · 지금 안 씀] 아래 여섯은 2026-10-06 에 흐름이 바뀌면서 가는 길이 없어졌다 — 등록만 남아 있다 (client/OLD-FLOW.md).
+  // 이 화면에 멈춘 채 저장된 옛 세션은 앱을 켤 때 가까운 새 화면으로 옮긴다 (core/screens.ts inNewFlow)
   shell.register("processing", processingScreen<Session>(processing));
   shell.register("looks", looksScreen<Session>(look));
   shell.register("fullrender", fullRenderScreen<Session>(look));
+  shell.register("guide", guideScreen<Session>(guide));
   shell.register("result", resultScreen<Session>(result));
   shell.register("review", reviewScreen<Session>(review));
-  shell.register("done", doneScreen<Session>(done));
-  shell.register("guide", guideScreen<Session>(guide));
-  shell.register("live", liveScreen<Session>(live));
   // 등록 안 된 화면은 담당 모듈을 알려주는 자리표시가 뜬다
 }
 

@@ -13,7 +13,7 @@
 받은 파일은 sha256 으로 목록과 같은지 확인한다 — 다르면 멈춘다.
 
 라이선스: FFHQ-Makeup (cyberagent) CC BY-NC-SA 4.0. **비상업 · 평가·참고만,
-학습 데이터(합성 학습의 바탕 얼굴 포함)로 쓰지 않는다** (docs/data-plan-v6.md).
+학습 데이터(합성 학습의 바탕 얼굴 포함)로 쓰지 않는다** (docs/archive/data-plan-v6.md).
 사진은 저장소에 넣지 않는다 — 꺼내는 곳은 $DHE_DATA_DIR 아래.
 """
 

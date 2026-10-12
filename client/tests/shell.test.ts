@@ -59,7 +59,7 @@ describe("껍데기", () => {
   it("등록 안 한 화면은 담당 모듈을 알려주는 자리표시가 뜬다", () => {
     const { shell, root } = setup({ screen: "live" });
     shell.render();
-    expect(root.textContent).toContain("4 실시간 테두리");
+    expect(root.textContent).toContain("4 실시간 가이드");
     expect(root.textContent).toContain("guide");
   });
 

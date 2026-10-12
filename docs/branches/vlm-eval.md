@@ -27,7 +27,7 @@
 
 ### #258 [app] VLM 선정 — 개인화 프롬프트 형식 E 확정(vlm-prompt-v2) · Gemma 4 E4B · 서버 인수인계 · 평가지
 - 브랜치: `vlm-eval` · 병합 2026-10-01 · +1609 −364
-- 한 일: 개인화 VLM 선정 실험을 마치고 결과를 앱에 반영했다(첫 PR #178 뒤의 작업). 모델은 Gemma 4 E4B, 프롬프트는 형식 E 로 정했다 — 후보 5개 1차 선별 → Gemma·Qwen3.5-9B 2차 → 새 화장 템플릿(look-v0.2)에서 재확인. 앱 프롬프트를 형식 E 로 바꾸고(`PROMPT_VER = vlm-prompt-v2`, `allowedChoices(m)`, 얼굴마다 다른 `vlmSchema(m)`), 서버 인수인계 문서 `docs/vlm-server-handoff.md`(`/plan` 계약, llama-server 설정, 생각 모드 끄기 등)와 사람 평가용 평가지(A/B 비교)를 넣었다.
+- 한 일: 개인화 VLM 선정 실험을 마치고 결과를 앱에 반영했다(첫 PR #178 뒤의 작업). 모델은 Gemma 4 E4B, 프롬프트는 형식 E 로 정했다 — 후보 5개 1차 선별 → Gemma·Qwen3.5-9B 2차 → 새 화장 템플릿(look-v0.2)에서 재확인. 앱 프롬프트를 형식 E 로 바꾸고(`PROMPT_VER = vlm-prompt-v2`, `allowedChoices(m)`, 얼굴마다 다른 `vlmSchema(m)`), 서버 인수인계 문서 `docs/archive/vlm-server-handoff.md`(`/plan` 계약, llama-server 설정, 생각 모드 끄기 등)와 사람 평가용 평가지(A/B 비교)를 넣었다.
 - 결과: 관문 100%(결정 값·근거 문장), 측정값 뒤집기 따름 98.9~100%, p95 약 5.5~5.8초, VRAM 8.3GB. client vitest 775 · tsc · eslint, `pytest eval` · ruff. 앱 프롬프트·스키마가 실험 형식 E 와 같은지 같은 얼굴로 대조했다. 평가지는 헤드리스 Edge 로 그려 확인했다. 병합 뒤 main 에서 `check.sh` 통과(vitest 797).
 - 트러블슈팅:
   - 섀도·오버라인·블러셔·라이너 두께가 모든 얼굴에서 같았다 → 옛 앱 프롬프트 끝의 예시 JSON 값을 모델이 그대로 베꼈다. 나쁜 예 문장까지 베꼈다 → 예시를 없앴다(형식 E).
