@@ -492,7 +492,7 @@ export function slotScreen<S>(spec: SlotSpec, deps: SlotDeps = {}): Screen<S> {
           resetPage(root);
           root.append(
             testMeta(spec.title, spec.owner, spec.todo),
-            title("nudy AI가 예상 사진을 만들고 있어요", "참고 사진의 색감과 위치를 확인하고 있어요"),
+            title("nudy AI가 예상 메이크업을 만들고 있어요", "참고 사진의 색감과 위치를 확인하고 있어요"),
             loadingCard(),
           );
           if (deps.makeAnswer) {

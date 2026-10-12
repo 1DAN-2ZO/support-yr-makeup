@@ -237,8 +237,11 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
   place-items: center;
   width: 56px;
   height: 56px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.22);
+  margin-bottom: 12px;
+  /* 분홍 바탕 — 아이콘(icon-camera-start.svg)의 몸통이 흰색이라 칸의 흰 바탕 위에서는 렌즈 고리만 남는다 (#421) */
+  border-radius: 16px;
+  background: #f27aa9;
+  box-shadow: 0 10px 18px rgba(255, 128, 149, 0.16);
 }
 /* 그림 파일이라 크기만 잡는다 (2026-10-12, 코덱스 아이콘) */
 .slot-upload-main span img {
