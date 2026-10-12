@@ -7,6 +7,7 @@ import type { ScreenId } from "@core/screens";
 import { nextGuidePart, prevGuidePart } from "@core/screens";
 import { pickProducts, pickShadeText } from "@core/product-picks";
 import { FEEDBACK_ORDER, type FeedbackPart } from "@core/guide-feedback";
+import type { Logger } from "@core/log";
 import type { MakeResult } from "@core/picture-maker";
 import { PART_NAME } from "@core/score";
 import { TEMPLATES } from "@core/templates";
@@ -721,6 +722,8 @@ export interface FeedbackSlotDeps {
   startOver?: () => Promise<unknown>;
   /** 재료 모으기 (⑥ main.ts) — 사진 두 장 · 부위별 문장. 화면은 그리기만 한다 */
   getFeedback: () => Promise<FeedbackLoad>;
+  /** 후기 설문 주소. 있으면 피드백 아래에 조용한 링크를 둔다 (#431) */
+  surveyUrl?: string | null;
   /**
    * 로고를 눌러 처음부터 다시 할 때 지운다 (#369) — 끝내기가 쓰는 것과 같다.
    * 안 주면 로고는 **지우지 않고 안내 화면으로 가기만** 한다 (묻지도 않는다) —
@@ -737,6 +740,29 @@ export interface FeedbackSlotDeps {
  *
  * 점수·숫자는 보여 주지 않는다. 문장은 ③ 가 준 그대로 쓴다 — 화면에서 만들지 않는다.
  */
+/**
+ * 피드백 아래의 후기 링크 (#431).
+ *
+ * 설문은 저장 화면의 "끝내기" 를 눌러야 떴는데, 10/8~10/12 세션 46개 중 뜬 것이 **1번**이었다.
+ * 후기도 사진 삭제 요청도 이 설문 하나로 받으므로 길이 하나뿐이면 안 된다. 피드백까지는 13개가
+ * 왔고 결과를 막 본 때라 답하기 좋다.
+ *
+ * 다만 "다음 · 저장하러 가기" 보다 **눈에 덜 띄어야 한다** — 흐름을 끊으려는 것이 아니라
+ * 나가려는 사람을 붙잡는 것이다. 그래서 저장 화면(done-survey)의 분홍 버튼이 아니라 글 링크다.
+ */
+function surveyLine(url: string, log: Logger): HTMLElement {
+  const box = document.createElement("p");
+  box.className = "slot-survey";
+  const a = document.createElement("a");
+  a.href = url;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  a.textContent = "후기 남기기 (1분)";
+  a.addEventListener("click", () => log.log({ name: "button", button: "survey_open:feedback" }));
+  box.append("써 보니 어땠는지 알려 주시면 서비스를 고치는 데 쓸게요. ", a);
+  return box;
+}
+
 export function feedbackSlot<S>(deps: FeedbackSlotDeps): Screen<S> {
   return {
     mount(ctx: ScreenContext<S>) {
@@ -807,6 +833,7 @@ export function feedbackSlot<S>(deps: FeedbackSlotDeps): Screen<S> {
           feedbackSummary(fb.ok, fb.fix),
           feedbackLines(fb.parts),
           next(),
+          deps.surveyUrl ? surveyLine(deps.surveyUrl, ctx.log) : null,
         );
       // 재료 모으기가 오류로 끝나도(사진을 못 풂 등) 기다리는 화면에서 멈추지 않는다
       }).catch(() => { if (alive) cannot("error"); });

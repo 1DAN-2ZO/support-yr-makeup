@@ -2170,6 +2170,25 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   box-shadow: 0 8px 18px rgba(255, 128, 149, .25);
 }
 
+/* 피드백 아래 후기 링크 (#431) — 저장 화면의 분홍 버튼과 달리 조용해야 한다.
+   "다음 · 저장하러 가기" 를 가리면 흐름을 끊게 된다 */
+.slot-survey {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+  text-align: center;
+}
+.slot-survey a {
+  color: #ef6b85;
+  font-weight: var(--weight-title);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  /* 글 링크라도 손가락으로 눌러야 한다 — 줄 높이로 44px 를 못 채우니 여백으로 만든다 */
+  display: inline-block;
+  padding: 6px 2px;
+}
+
 /* 끝 화면 후기 모달 — 서비스가 끝난 뒤 가운데에 한 번 */
 .done-modal-back {
   /* #app 안에 가둔다 — #app 이 position:relative 이고 폰 폭을 갖는다.

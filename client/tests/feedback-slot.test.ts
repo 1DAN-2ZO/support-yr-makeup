@@ -38,9 +38,9 @@ const FULL: WholeFeedback = {
   ],
 };
 
-const mount = async (load: () => Promise<FeedbackLoad>) => {
+const mount = async (load: () => Promise<FeedbackLoad>, surveyUrl?: string) => {
   const s = setup();
-  const off = feedbackSlot<null>({ getFeedback: load, clearAll: async () => {} }).mount(s.ctx) as () => void;
+  const off = feedbackSlot<null>({ getFeedback: load, clearAll: async () => {}, ...(surveyUrl ? { surveyUrl } : {}) }).mount(s.ctx) as () => void;
   await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
   return { ...s, off };
 };
@@ -130,5 +130,29 @@ describe("화면 6 피드백", () => {
     fail(new Error("늦은 오류"));
     await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
     expect(s.root.innerHTML).toBe(before);
+  });
+
+  // #431 — 설문이 저장 화면의 "끝내기" 에만 걸려 있어 46개 세션 중 1번만 떴다. 길을 하나 더 둔다
+  it("FB9 후기 설문 주소를 주면 피드백 아래에 링크가 나온다 — 주지 않으면 안 나온다", async () => {
+    const { root, off } = await mount(async () => ({ ok: true, view: view(FULL) }), "https://forms.example/x");
+    const a = root.querySelector<HTMLAnchorElement>(".slot-survey a");
+    expect(a?.href).toBe("https://forms.example/x");
+    expect(a?.target).toBe("_blank");
+    // 새 창으로 여는 링크는 rel 을 달아야 한다 (연 쪽 창을 건드릴 수 있다)
+    expect(a?.rel).toContain("noopener");
+    // "다음 · 저장하러 가기" 보다 **뒤에** 있어야 한다 — 앞서면 흐름을 끊는다
+    const btns = [...root.querySelectorAll("button")].map((b) => b.textContent ?? "");
+    expect(btns.some((t) => t.includes("저장하러"))).toBe(true);
+    const page = root.querySelector<HTMLElement>(".slot-survey")!.parentElement!;
+    const kids = [...page.children];
+    const next = kids.findIndex((e) => e.textContent?.includes("저장하러"));
+    const line = kids.findIndex((e) => e.classList.contains("slot-survey"));
+    expect(next).toBeGreaterThanOrEqual(0);
+    expect(line).toBeGreaterThan(next);
+    off();
+
+    const plain = await mount(async () => ({ ok: true, view: view(FULL) }));
+    expect(plain.root.querySelector(".slot-survey")).toBeNull();
+    plain.off();
   });
 });
