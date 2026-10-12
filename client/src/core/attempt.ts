@@ -54,10 +54,11 @@ export function attemptBurstStep(b: AttemptBurst, m: ShotMeasure, now: number, o
 
 /**
  * 서버로 보내는 장 — 묶음의 가운데 장 (다섯 장이면 셋째. 2026-10-07 결정, docs/feedback-input-contract.md).
- * 옮긴 그림은 이 한 장으로 만든다. 다 못 모았으면 모은 것의 가운데(짝수면 앞쪽), 없으면 null.
+ * 옮긴 그림은 이 한 장으로 만든다. 첫 장은 셔터 순간이라 손이 움직일 수 있다.
+ * 다 못 모았으면 모은 것의 가운데(짝수면 뒤쪽 — 셔터 순간에서 더 먼 쪽, #415), 없으면 null.
  * 가장 덜 흔들린 장을 고르는 것이 아니다 — 묶음 안에서 흔들림을 견줄 만큼 고운 값을 재지 않는다
  */
 export function middleShot<T>(shots: readonly T[] | undefined): T | null {
   if (!shots?.length) return null;
-  return shots[Math.floor((shots.length - 1) / 2)] ?? null;
+  return shots[Math.floor(shots.length / 2)] ?? null;
 }

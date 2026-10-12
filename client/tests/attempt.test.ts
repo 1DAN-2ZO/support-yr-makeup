@@ -61,10 +61,10 @@ describe("서버로 보내는 장", () => {
     expect(middleShot(["a", "b", "c", "d", "e"])).toBe("c");
   });
 
-  it("AM2 다 못 모았으면 모은 것의 가운데 — 짝수면 앞쪽 · 없으면 null", () => {
+  it("AM2 다 못 모았으면 모은 것의 가운데 — 짝수면 뒤쪽(셔터 순간에서 더 먼 쪽, #415) · 없으면 null", () => {
     expect(middleShot(["a"])).toBe("a");
-    expect(middleShot(["a", "b"])).toBe("a");
-    expect(middleShot(["a", "b", "c", "d"])).toBe("b");
+    expect(middleShot(["a", "b"])).toBe("b");
+    expect(middleShot(["a", "b", "c", "d"])).toBe("c");
     expect(middleShot([])).toBeNull();
     expect(middleShot(undefined)).toBeNull();
   });
