@@ -5,6 +5,7 @@ import { createLogger, memorySink } from "@core/log";
 import { TEMPLATES, templateById } from "@core/templates";
 import type { Versions } from "@core/types";
 import { templatesSlot } from "@screens/flow-slots";
+import { peekPickedTemplate, setPickedTemplate, takePickedTemplate } from "@screens/template-store";
 import type { ScreenContext } from "@screens/shell";
 
 const ver: Versions = { app: "test", score: "s", look: "l", faceshape: "f", transfer: "t" };
@@ -48,11 +49,11 @@ describe("화장 템플릿 고르기 (#420)", () => {
     expect(c[5]!.getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("TP4 아직 이어지지 않았다고 말한다 — 눌러도 화면을 넘기지 않는다", () => {
+  it("TP4 고르면 다음에 할 일을 말한다 — 카드를 눌렀다고 바로 넘어가지 않는다", () => {
     const { root, go } = setup();
     cards(root)[0]!.click();
-    const note = root.querySelector(".tpl-note");
-    expect(note?.textContent).toContain("곧 이어져요");
+    expect(root.querySelector(".tpl-note")?.textContent).toContain("적용하기를 누르면");
+    // 고르는 것과 적용하는 것은 다른 일이다 — 잘못 눌렀을 때 되돌릴 수 있어야 한다
     expect(go).not.toHaveBeenCalled();
   });
 
@@ -68,7 +69,30 @@ describe("화장 템플릿 고르기 (#420)", () => {
     expect(pick("누드")).toContain("누드를 골랐어요");     // 받침 없음 → 를
   });
 
-  it("TP6 뒤로는 참고 사진 화면으로", () => {
+  it("TP6 적용하기는 고르기 전에는 못 누른다 — 고르면 켜진다", () => {
+    const { root } = setup();
+    const apply = [...root.querySelectorAll("button")].find((b) => b.textContent === "적용하기")!;
+    expect(apply.disabled).toBe(true);
+    cards(root)[0]!.click();
+    expect(apply.disabled).toBe(false);
+  });
+
+  it("TP7 적용하면 고른 템플릿을 넘기고 참고 사진 화면으로 — 거기서 올린 사진처럼 다룬다", () => {
+    setPickedTemplate(null);
+    const { root, go } = setup();
+    cards(root)[2]!.click();
+    [...root.querySelectorAll("button")].find((b) => b.textContent === "적용하기")!.click();
+    expect(peekPickedTemplate()?.id).toBe(TEMPLATES[2]!.id);
+    expect(go).toHaveBeenCalledWith("answer");
+  });
+
+  it("TP8 넘긴 템플릿은 한 번 꺼내면 비워진다 — 내 사진을 올릴 때 덮이지 않게", () => {
+    setPickedTemplate(TEMPLATES[0]!);
+    expect(takePickedTemplate()?.id).toBe(TEMPLATES[0]!.id);
+    expect(takePickedTemplate()).toBeNull();
+  });
+
+  it("TP9 뒤로는 참고 사진 화면으로", () => {
     const { root, go } = setup();
     root.querySelector<HTMLButtonElement>(".slot-back")!.click();
     expect(go).toHaveBeenCalledWith("answer");

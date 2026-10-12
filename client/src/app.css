@@ -2525,6 +2525,14 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
 }
 .tpl-note[hidden] { display: none; }
 
+/* 적용하기 — 고르기 전에는 못 누른다. 눌릴 수 없다는 것이 보여야 한다 */
+.slot-templates > button.primary:disabled {
+  background: var(--line);
+  color: var(--muted);
+  cursor: default;
+  box-shadow: none;
+}
+
 /* "또는" 아래의 템플릿 버튼 — .slot-live 는 부위 가이드 카드 안에서만 꾸며진다.
    업로드 화면에서도 같은 테두리 알약으로 보이게 (2026-10-12, #420) */
 .slot > button.slot-live {

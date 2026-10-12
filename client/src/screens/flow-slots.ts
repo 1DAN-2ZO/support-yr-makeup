@@ -19,6 +19,7 @@ import { analyzeRefPhoto, REF_FAIL_TEXT } from "./ref-analyze";
 import type { RefAnalysis } from "./ref-analyze";
 import { DEMO_REF_COLORS } from "./ref-demo";
 import { restartModal } from "./restart-modal";
+import { setPickedTemplate, takePickedTemplate } from "./template-store";
 import { surveyModal } from "./survey-modal";
 import { getRefColors, setRefColors } from "./ref-store";
 import type { RefFailure } from "./ref-analyze";
@@ -581,7 +582,24 @@ export function slotScreen<S>(spec: SlotSpec, deps: SlotDeps = {}): Screen<S> {
             action(ctx as ScreenContext<unknown>, "다음 · 화장 가이드 보기", spec.next),
           );
         };
-        renderUpload();
+        // 템플릿을 고르고 왔으면 그 사진을 **올린 사진과 똑같이** 다룬다 (#420).
+        // take 라서 한 번만 — 안 그러면 내 사진을 올리려 해도 템플릿으로 덮인다
+        const fromTemplate = takePickedTemplate();
+        if (fromTemplate) {
+          renderLoading();
+          void (async () => {
+            try {
+              const res = await fetch(fromTemplate.thumb);
+              const blob = await res.blob();
+              if (!alive) return;
+              await run(new File([blob], `template-${fromTemplate.id}.webp`, { type: blob.type || "image/webp" }));
+            } catch {
+              if (alive) renderUpload("템플릿 사진을 불러오지 못했어요. 다시 골라 주세요");
+            }
+          })();
+        } else {
+          renderUpload();
+        }
       } else if (spec.next === "feedback") {
         root.append(
           testMeta(spec.title, spec.owner, spec.todo),
@@ -846,17 +864,29 @@ export function templatesSlot<S>(deps: PartGuideSlotDeps): Screen<S> {
           b.classList.add("is-on");
           b.setAttribute("aria-pressed", "true");
           note.hidden = false;
-          note.textContent = `${t.name}${eul(t.name)} 골랐어요. 예상 메이크업 만들기는 곧 이어져요.`;
+          note.textContent = `${t.name}${eul(t.name)} 골랐어요. 적용하기를 누르면 내 얼굴에 맞춰 만들어드릴게요.`;
+          apply.disabled = false;
         });
         li.append(b);
         grid.append(li);
       }
+
+      // 고른 템플릿을 참고 사진 화면으로 넘긴다 — 거기서 올린 사진과 똑같이 다뤄 예상 메이크업을 만든다
+      const apply = button("적용하기", () => {
+        const t = chosen ? TEMPLATES.find((x) => x.id === chosen) : null;
+        if (!t) return;
+        ctx.log.log({ name: "button", button: `template_apply:${t.id}` });
+        setPickedTemplate(t);
+        ctx.go("answer");
+      });
+      apply.disabled = true;
 
       root.append(
         coach("따라 하고 싶은 화장을 골라 주세요"),
         title("화장 템플릿", "사진을 올리지 않아도 여기서 고를 수 있어요"),
         grid,
         note,
+        apply,
       );
       ctx.root.append(root);
       return () => { chosen = null; void chosen; };
