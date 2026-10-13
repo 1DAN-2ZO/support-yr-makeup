@@ -190,3 +190,31 @@ def test_촬영에서_무엇에_막혔나_사유마다_막힌_세션_수와_끝�
 def test_촬영_기록이_없으면_그_표를_안_그린다(tmp_path):
     write(tmp_path, "2025-10-08", session("a"))
     assert "## 촬영에서 무엇에 막혔나" not in show.render(*show.load(tmp_path, None))
+
+
+def test_오류는_어디서_무슨_오류인지_세션_수와_횟수로(tmp_path):
+    def err(sid: str, t: int, where: str, msg: str) -> dict:
+        return ev(sid, t, "error", screen=where, where=where, msg=msg)
+
+    denied = "camera:NotAllowedError: Permission denied"
+    events = [
+        err("a", 0, "capture", denied),
+        err("a", 10, "capture", denied),
+        err("b", 0, "capture", denied),
+        err("c", 0, "capture", "camera:NotFoundError: Requested device not found"),
+        # 표를 깨는 글자(| · 줄바꿈)와 긴 글은 다듬는다
+        err("d", 0, "live", "bitmap:a|b\nc " + "x" * 200),
+    ]
+    write(tmp_path, "2025-10-08", events)
+    text = show.render(*show.load(tmp_path, None))
+    assert "## 오류" in text
+    assert "| capture | camera:NotAllowedError: Permission denied | 2 | 3 |" in text
+    assert "| capture | camera:NotFoundError: Requested device not found | 1 | 1 |" in text
+    assert text.index("NotAllowedError") < text.index("NotFoundError")
+    row = next(ln for ln in text.splitlines() if ln.startswith("| live |"))
+    assert row.count("|") == 5 and len(row) < 130 and "a/b c" in row
+
+
+def test_오류_기록이_없으면_그_표를_안_그린다(tmp_path):
+    write(tmp_path, "2025-10-08", session("a"))
+    assert "## 오류" not in show.render(*show.load(tmp_path, None))

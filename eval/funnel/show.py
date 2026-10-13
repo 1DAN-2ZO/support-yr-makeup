@@ -161,6 +161,30 @@ def capture_blocks(events: list[dict]) -> list[str]:
     return out
 
 
+def errors(events: list[dict]) -> list[str]:
+    """오류 — 어디서 · 무슨 오류가 몇 세션에서 몇 번.
+
+    카메라를 못 연 것(camera:NotAllowedError 등)이 여기 나온다.
+    글은 80자까지만, 표를 깨는 글자는 바꾼다. 오류 기록이 없으면 빈 목록.
+    """
+    sessions: dict[tuple[str, str], set[str]] = {}
+    count: dict[tuple[str, str], int] = {}
+    for e in events:
+        if e.get("name") != "error":
+            continue
+        msg = " ".join(str(e.get("msg")).replace("|", "/").split())[:80]
+        key = (str(e.get("where")), msg)
+        sessions.setdefault(key, set()).add(str(e.get("sid")))
+        count[key] = count.get(key, 0) + 1
+    if not count:
+        return []
+    out = ["## 오류", "", "| 어디서 | 무슨 오류 | 세션 | 횟수 |", "|---|---|---:|---:|"]
+    for key in sorted(count, key=lambda k: (-len(sessions[k]), k)):
+        out.append(f"| {key[0]} | {key[1]} | {len(sessions[key])} | {count[key]} |")
+    out.append("")
+    return out
+
+
 def render(files: list[Path], events: list[dict]) -> str:
     """마크다운 한 덩이"""
     out = ["# nudy 사용 기록", ""]
@@ -186,6 +210,7 @@ def render(files: list[Path], events: list[dict]) -> str:
         ]
         out.append("")
     out += capture_blocks(events)
+    out += errors(events)
     out += buttons(events)
     if not any(str(r["metric"]).startswith("작업 · ") for r in rows):
         out += [
