@@ -1,7 +1,7 @@
 /**
  * 그림 만들기 부르기 (2026-10-08, 모듈 ⑥ 백 연결) — 앱 → 백엔드 `POST /transfer` → GPU 의 FLUX 서버 → 그림 한 장.
  *
- * 맨얼굴(bare) + 화장 사진(ref)을 올리면 화장을 입힌 내 얼굴이 온다. 정답사진(ref = 참고 사진)과
+ * 맨얼굴(bare) + 화장 사진(ref) — 또는 템플릿 번호(template)를 올리면 화장을 입힌 내 얼굴이 온다. 정답사진(ref = 참고 사진)과
  * 옮긴 그림(ref = 시도사진 눈 뜬 장)이 같은 길이다. 서버 쪽은 server/app/flux.py.
  * 서버는 같은 주소에 있다 (프론트 nginx 가 /transfer 를 백엔드로 넘긴다) — 따로 주면 그 주소를 쓴다.
  *
@@ -9,6 +9,13 @@
  *   off 꺼져 있음(주소 설정 전) · busy 줄이 꽉 참 · down GPU 서버가 꺼졌거나 이상함 · rejected 그릴 수 없는 사진(얼굴을 못 찾음 등)
  *   · too_large 사진이 너무 큼 · timeout 너무 오래 걸림 · network 인터넷이 끊김
  */
+
+/**
+ * 화장 출처 (#420) — 둘 중 하나:
+ *   Blob              사용자가 올린 화장 사진 · 시도사진 → 맨얼굴 + 그 사진 두 장을 올린다
+ *   { template: 번호 } 우리가 준비한 템플릿(1~10) → 맨얼굴 + 번호만 올린다. 사진은 서버가 같은 번호의 것을 직접 쓴다
+ */
+export type TransferRef = Blob | { template: number };
 
 export type TransferFail = "off" | "busy" | "down" | "rejected" | "too_large" | "timeout" | "network";
 
@@ -51,11 +58,12 @@ async function failOf(res: Response): Promise<TransferResult> {
   return { ok: false, why: res.status === 503 ? "busy" : "down" };
 }
 
-export async function requestTransfer(bare: Blob, ref: Blob, opt: TransferOptions = {}): Promise<TransferResult> {
+export async function requestTransfer(bare: Blob, ref: TransferRef, opt: TransferOptions = {}): Promise<TransferResult> {
   const doFetch = opt.fetchFn ?? ((u: RequestInfo | URL, i?: RequestInit) => fetch(u, i));
   const body = new FormData();
   body.append("bare", bare, "bare");
-  body.append("ref", ref, "ref");
+  if (ref instanceof Blob) body.append("ref", ref, "ref");
+  else body.append("template", String(ref.template));
   const stop = new AbortController();
   let timedOut = false;
   const timer = setTimeout(() => { timedOut = true; stop.abort(); }, opt.timeoutMs ?? TRANSFER_TIMEOUT_MS);

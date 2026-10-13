@@ -1,6 +1,6 @@
 /**
  * 그림 만들어 보관하기 (2026-10-08, 모듈 ⑥ 백 연결) — 화면이 부르는 두 가지:
- *   makeAnswer(참고 사진) : 맨얼굴 + 참고 사진 → 정답사진 → answer 칸   (화면 3)
+ *   makeAnswer(참고 사진 | 템플릿 번호) : 맨얼굴 + 참고 사진(또는 템플릿 번호) → 정답사진 → answer 칸   (화면 3)
  *   makeMoved()          : 맨얼굴 + 시도사진 눈 뜬 장 → 옮긴 그림 → moved 칸   (화면 5 뒤 — 피드백이 계산에만 쓴다. 화면에 보여 주지 않는다)
  * 서버 부르기는 core/transfer-client, 보관은 core/made-pictures. 화면(⑤)은 결과의 ok · why 만 보고 그리면 된다.
  *
@@ -11,7 +11,7 @@
  */
 
 import type { MadeKey } from "./made-pictures";
-import type { TransferFail, TransferResult } from "./transfer-client";
+import type { TransferFail, TransferRef, TransferResult } from "./transfer-client";
 
 /** no_bare 맨얼굴이 없음(촬영 전) · no_attempt 시도사진이 없음 · cancelled 기다리는 사이에 버려짐 — 나머지는 서버 쪽 까닭 */
 export type MakeFail = TransferFail | "no_bare" | "no_attempt" | "cancelled";
@@ -27,11 +27,11 @@ export interface PictureMakerDeps {
   getAttempt: () => Blob | null;
   /** 받은 그림을 칸에 넣는다 */
   put: (key: MadeKey, picture: Blob) => Promise<void>;
-  request: (bare: Blob, ref: Blob) => Promise<TransferResult>;
+  request: (bare: Blob, ref: TransferRef) => Promise<TransferResult>;
 }
 
 export interface PictureMaker {
-  makeAnswer(ref: Blob): Promise<MakeResult>;
+  makeAnswer(ref: TransferRef): Promise<MakeResult>;
   makeMoved(): Promise<MakeResult>;
   /** 지금 만드는 중인가 */
   busy(key: MadeKey): boolean;
@@ -41,15 +41,21 @@ export interface PictureMaker {
 
 const KEYS: readonly MadeKey[] = ["answer", "moved"];
 
+/** 같은 출처인가 — 사진은 같은 Blob, 템플릿은 같은 번호 */
+function sameRef(a: TransferRef, b: TransferRef): boolean {
+  if (a instanceof Blob || b instanceof Blob) return a === b;
+  return a.template === b.template;
+}
+
 export function createPictureMaker(deps: PictureMakerDeps): PictureMaker {
-  const running: Partial<Record<MadeKey, { ref: Blob; p: Promise<MakeResult> }>> = {};
+  const running: Partial<Record<MadeKey, { ref: TransferRef; p: Promise<MakeResult> }>> = {};
   /** cancel 할 때마다 오른다 — 시작할 때의 값과 달라졌으면 버려진 것이다 */
   const round: Record<MadeKey, number> = { answer: 0, moved: 0 };
 
-  function once(key: MadeKey, ref: Blob | null, missing: MakeFail): Promise<MakeResult> {
+  function once(key: MadeKey, ref: TransferRef | null, missing: MakeFail): Promise<MakeResult> {
     if (!ref) return Promise.resolve({ ok: false, why: missing });
     const going = running[key];
-    if (going) return going.ref === ref ? going.p : Promise.resolve({ ok: false, why: "busy" });
+    if (going) return sameRef(going.ref, ref) ? going.p : Promise.resolve({ ok: false, why: "busy" });
     const mine = round[key];
     const p = (async (): Promise<MakeResult> => {
       const bare = await deps.getBare();

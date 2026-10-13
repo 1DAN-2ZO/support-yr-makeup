@@ -10,7 +10,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from server.app import flux, main
+from server.app import flux, main, templates
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"made-picture"
 # 사진 종류는 올린 쪽 말이 아니라 내용의 첫머리로 본다 — 진짜 WebP · JPEG 첫머리를 붙인다
@@ -379,3 +379,76 @@ def test_tr20_waiting_in_line_is_counted_apart():
     assert second.queue_ms >= 120
     # 그리는 시간에는 줄 선 시간이 들어가지 않는다
     assert second.ms < 300
+
+
+# ── 템플릿 번호로 요청 (#420) — 화장 사진을 올리는 대신 `template` 번호 하나 ──
+
+
+def post_template(c: TestClient, template, bare=BARE, **more):
+    return c.post("/transfer", files={"bare": bare}, data={"template": template, **more})
+
+
+def test_tr21_template_number_sends_the_server_side_photo(monkeypatch):
+    fake = FakeFlux()
+    r = post_template(client_with(fake, monkeypatch), "3")
+    assert r.status_code == 200
+    assert r.content == PNG
+    data = fake.calls[0]["data"]
+    want, kind = templates.photo(3)
+    # 올린 맨얼굴은 그대로, 화장 사진 자리에는 서버가 가진 03 번 사진 — 설정은 사진을 올렸을 때와 같다
+    assert data[0]["url"] == "data:image/webp;base64," + base64.b64encode(WEBP).decode()
+    assert data[1]["url"] == f"data:{kind};base64," + base64.b64encode(want).decode()
+    assert data[2:] == [flux.STEPS, flux.STRENGTH, True, flux.SEED]
+
+
+@pytest.mark.parametrize("n", [str(i) for i in range(1, templates.COUNT + 1)])
+def test_tr22_every_template_has_a_photo_on_the_server(n):
+    # 번호를 받고도 줄 사진이 없으면 안 된다 — 사진 폴더가 비었거나 이름이 틀린 것을 배포 전에 잡는다
+    found = templates.photo(templates.parse(n))
+    assert found is not None
+    data, kind = found
+    assert main._kind(data) == kind
+
+
+@pytest.mark.parametrize("bad", ["0", "11", "-1", "abc", "", "1.5", "01x", " "])
+def test_tr23_bad_template_number_is_rejected_before_flux(monkeypatch, bad):
+    fake = FakeFlux()
+    r = post_template(client_with(fake, monkeypatch), bad)
+    assert r.status_code == 422
+    assert r.json()["detail"]["code"] == "bad_template"
+    assert fake.calls == []
+
+
+def test_tr24_leading_zero_is_the_same_number(monkeypatch):
+    fake = FakeFlux()
+    assert post_template(client_with(fake, monkeypatch), "03").status_code == 200
+    assert templates.parse("03") == 3
+
+
+def test_tr25_ref_and_template_together_is_rejected(monkeypatch):
+    fake = FakeFlux()
+    c = client_with(fake, monkeypatch)
+    r = c.post("/transfer", files={"bare": BARE, "ref": REF}, data={"template": "1"})
+    assert r.status_code == 422
+    assert r.json()["detail"]["code"] == "both"
+    assert fake.calls == []
+
+
+def test_tr26_neither_ref_nor_template_is_missing(monkeypatch):
+    r = client_with(FakeFlux(), monkeypatch).post("/transfer", files={"bare": BARE})
+    assert r.status_code == 422
+    assert r.json()["detail"]["code"] == "missing"
+
+
+def test_tr27_missing_server_photo_is_a_server_fault(monkeypatch):
+    fake = FakeFlux()
+    monkeypatch.setattr(templates, "photo", lambda n: None)
+    r = post_template(client_with(fake, monkeypatch), "2")
+    assert r.status_code == 500
+    assert r.json()["detail"]["code"] == "template_missing"
+    assert fake.calls == []
+
+
+def test_tr28_template_still_needs_the_bare_photo(monkeypatch):
+    r = client_with(FakeFlux(), monkeypatch).post("/transfer", data={"template": "2"})
+    assert r.status_code == 422

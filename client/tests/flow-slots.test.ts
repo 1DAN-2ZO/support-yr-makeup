@@ -4,9 +4,13 @@ import { GUIDE_PART_IDS } from "@core/screens";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createLogger, memorySink } from "@core/log";
 import type { MakeResult } from "@core/picture-maker";
+import { parseTemplateManifest } from "@core/template-prep";
+import { TEMPLATES } from "@core/templates";
+import type { TransferRef } from "@core/transfer-client";
 import { PART_NAME } from "@core/score";
 import { PART_IDS, type PartId, type Versions } from "@core/types";
 import { partGuideSlot, saveSlot, slotScreen, type PartGuideSlotDeps } from "@screens/flow-slots";
+import { setPickedTemplate } from "@screens/template-store";
 import { SAVE_TEXT, SHARE_HINT, type SaveKit } from "@screens/feedback-card";
 import type { GuideLoad, GuideView } from "@screens/guide-source";
 import type { RefAnalysis, RefFailure } from "@screens/ref-analyze";
@@ -159,7 +163,7 @@ describe("빈 자리 화면", () => {
     });
 
     it("FS4d 사진을 줄이지 못하면 고른 사진 그대로 보낸다", async () => {
-      const makeAnswer = vi.fn(async (_ref: Blob): Promise<MakeResult> => ({ ok: true, picture: made, ms: null }));
+      const makeAnswer = vi.fn(async (_ref: TransferRef): Promise<MakeResult> => ({ ok: true, picture: made, ms: null }));
       const ctx = ctxOf();
       slotScreen<null>(SPEC, { analyze: async () => fakeAnalysis(), makeAnswer, shrink: async () => { throw new Error("못 줄임"); } }).mount(ctx);
       pickPhoto(ctx.root);
@@ -191,6 +195,77 @@ describe("빈 자리 화면", () => {
       await vi.waitFor(() => expect(ctx.root.textContent).toContain("예상 메이크업 완성"));
       // 고른 참고 사진의 미리보기 주소를 놓았다
       expect(revoke).toHaveBeenCalledWith("blob:test");
+    });
+
+    describe("템플릿을 골랐을 때 (#420) — 사진 대신 번호만 보낸다", () => {
+      const manifest = async () => parseTemplateManifest({ version: "tpl-v1", items: [{ id: "03", colors: fakeAnalysis().colors }] });
+      const pick03 = () => setPickedTemplate(TEMPLATES.find((x) => x.id === "03")!);
+
+      it("FT1 맨얼굴 + 템플릿 번호(숫자)를 보내고, 분석 · 줄이기는 하지 않는다", async () => {
+        pick03();
+        const analyze = vi.fn(async () => fakeAnalysis());
+        const shrink = vi.fn(async () => small);
+        const makeAnswer = vi.fn(async (_r: TransferRef): Promise<MakeResult> => ({ ok: true, picture: made, ms: 1 }));
+        const ctx = ctxOf();
+        slotScreen<null>(SPEC, { analyze, makeAnswer, shrink, templateManifest: manifest }).mount(ctx);
+        await vi.waitFor(() => expect(ctx.root.textContent).toContain("예상 메이크업 완성"));
+        expect(makeAnswer).toHaveBeenCalledTimes(1);
+        expect(makeAnswer).toHaveBeenCalledWith({ template: 3 });
+        expect(analyze).not.toHaveBeenCalled();
+        expect(shrink).not.toHaveBeenCalled();
+        // 색은 미리 읽어 둔 것을 쓴다
+        expect(ctx.root.textContent).toContain("뮤트 브릭");
+      });
+
+      it("FT2 사진을 올렸을 때는 그대로 사진을 보낸다 — 두 길이 섞이지 않는다", async () => {
+        setPickedTemplate(null); // 템플릿을 안 고르고 온 경우
+        const makeAnswer = vi.fn(async (_r: TransferRef): Promise<MakeResult> => ({ ok: true, picture: made, ms: 1 }));
+        const ctx = ctxOf();
+        slotScreen<null>(SPEC, { analyze: async () => fakeAnalysis(), makeAnswer, shrink: async () => small, templateManifest: manifest }).mount(ctx);
+        pickPhoto(ctx.root);
+        button(ctx.root, "적용하기").click();
+        await vi.waitFor(() => expect(makeAnswer).toHaveBeenCalledTimes(1));
+        expect(makeAnswer).toHaveBeenCalledWith(small);
+      });
+
+      it("FT3 템플릿 정보를 못 읽으면 서버를 부르지 않고 다시 고르게 한다", async () => {
+        pick03();
+        const makeAnswer = vi.fn(async (): Promise<MakeResult> => ({ ok: true, picture: made, ms: 1 }));
+        const ctx = ctxOf();
+        slotScreen<null>(SPEC, { analyze: async () => fakeAnalysis(), makeAnswer, templateManifest: async () => { throw new Error("404"); } }).mount(ctx);
+        await vi.waitFor(() => expect(ctx.root.querySelector(".slot-upload-warn")?.textContent).toContain("템플릿 정보를 불러오지 못했어요"));
+        expect(makeAnswer).not.toHaveBeenCalled();
+      });
+
+      it("FT3b 목록에 없는 번호여도 서버를 부르지 않는다", async () => {
+        pick03();
+        const makeAnswer = vi.fn(async (): Promise<MakeResult> => ({ ok: true, picture: made, ms: 1 }));
+        const ctx = ctxOf();
+        const other = async () => parseTemplateManifest({ version: "tpl-v1", items: [{ id: "05", colors: {} }] });
+        slotScreen<null>(SPEC, { makeAnswer, templateManifest: other }).mount(ctx);
+        await vi.waitFor(() => expect(ctx.root.querySelector(".slot-upload-warn")).not.toBeNull());
+        expect(makeAnswer).not.toHaveBeenCalled();
+      });
+
+      it("FT4 서버가 못 만들면 까닭을 알리고 업로드 화면으로 — 다른 템플릿이나 내 사진으로 다시", async () => {
+        pick03();
+        const makeAnswer = vi.fn(async (): Promise<MakeResult> => ({ ok: false, why: "busy" }));
+        const ctx = ctxOf();
+        slotScreen<null>(SPEC, { makeAnswer, templateManifest: manifest }).mount(ctx);
+        await vi.waitFor(() => expect(ctx.root.querySelector(".slot-upload-warn")?.textContent).toContain("사람이 많아요"));
+        expect(ctx.root.textContent).not.toContain("예상 메이크업 완성");
+      });
+
+      it("FT5 한 번 쓰면 비운다 — 화면에 다시 들어오면 업로드 화면부터", async () => {
+        pick03();
+        const makeAnswer = vi.fn(async (): Promise<MakeResult> => ({ ok: true, picture: made, ms: 1 }));
+        slotScreen<null>(SPEC, { makeAnswer, templateManifest: manifest }).mount(ctxOf());
+        await vi.waitFor(() => expect(makeAnswer).toHaveBeenCalledTimes(1));
+        const ctx2 = ctxOf();
+        slotScreen<null>(SPEC, { makeAnswer, templateManifest: manifest }).mount(ctx2);
+        expect(button(ctx2.root, "적용하기").disabled).toBe(true);
+        expect(makeAnswer).toHaveBeenCalledTimes(1);
+      });
     });
   });
 

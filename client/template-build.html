@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>템플릿 준비물 만들기 — nudy</title>
+    <!-- [dev 전용] 화장 템플릿 사진(PNG 10장)에서 앱에 싣는 준비물을 만든다 (#420).
+         사진마다 참고 사진 분석(얼굴 찾기 · 색 팔레트) + 서버용 사진 줄이기를 돌려
+         server/app/templates/ (사진) · public/templates/prep/ (색)에 저장한다. 원본 PNG 는 저장하지 않는다. 빌드에는 안 들어간다. -->
+    <style>
+      :root { --pink: #ff8095; --line: #e6e1dd; --ink: #2b2b2b; --muted: #8d8d8d; --bad: #c0392b; --ok: #2e7d4f; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; padding: 24px 20px 60px; background: #f4f1ee; color: var(--ink);
+        font: 14px/1.6 system-ui, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+      }
+      .wrap { max-width: 980px; margin: 0 auto; }
+      h1 { margin: 0 0 4px; font-size: 22px; letter-spacing: -.02em; }
+      .sub { margin: 0 0 20px; color: var(--muted); font-size: 13px; }
+      .card { padding: 18px 20px; border-radius: 16px; background: #fff; box-shadow: 0 6px 18px rgba(0,0,0,.05); }
+      .card + .card { margin-top: 16px; }
+      .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+      input[type="text"] { padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; font: inherit; width: 120px; }
+      button {
+        padding: 9px 16px; border: 0; border-radius: 10px; background: var(--pink); color: #fff;
+        font: inherit; font-weight: 700; cursor: pointer;
+      }
+      button:disabled { background: #d8d3cf; cursor: default; }
+      .list { display: grid; gap: 12px; margin-top: 14px; }
+      .row { display: flex; gap: 14px; align-items: flex-start; padding: 12px; border: 1px solid var(--line); border-radius: 12px; }
+      .row img { width: 90px; height: 135px; object-fit: cover; border-radius: 8px; background: #eee; flex: none; }
+      .row h3 { margin: 0 0 2px; font-size: 15px; }
+      .meta { color: var(--muted); font-size: 12px; }
+      .sw { display: inline-flex; align-items: center; gap: 4px; margin: 4px 10px 0 0; font-size: 12px; }
+      .sw i { width: 16px; height: 16px; border-radius: 50%; border: 1px solid rgba(0,0,0,.12); }
+      .ok { color: var(--ok); } .bad { color: var(--bad); }
+      #log { margin: 0; white-space: pre-wrap; font: 12px/1.5 ui-monospace, Consolas, monospace; color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>템플릿 준비물 만들기</h1>
+      <p class="sub">파일 이름이 <code>01_…</code> ~ <code>10_…</code> 로 시작하는 PNG 를 고르면 순서대로 번호와 이름이 붙는다 · dev 서버에서만 저장된다</p>
+      <div class="card">
+        <div class="bar">
+          <input id="files" type="file" accept="image/*" multiple />
+          <label>버전 <input id="version" type="text" value="tpl-v1" /></label>
+          <button id="save" disabled>저장 (서버 사진 + 앱 색)</button>
+        </div>
+        <div id="list" class="list"></div>
+      </div>
+      <div class="card"><pre id="log"></pre></div>
+    </div>
+    <script type="module" src="/src/screens/template-build.ts"></script>
+  </body>
+</html>

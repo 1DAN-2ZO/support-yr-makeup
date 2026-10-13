@@ -58,6 +58,7 @@ import { createShell } from "./screens/shell";
 import { attemptScreen, type AttemptShots } from "./screens/attempt";
 import { createPictureMaker, type MakeResult } from "./core/picture-maker";
 import { requestTransfer } from "./core/transfer-client";
+import type { TransferRef } from "./core/transfer-client";
 import { within } from "./core/wait-limit";
 import { prepareSave, type SaveKit, type SaveSource } from "./screens/feedback-card";
 import { loadFeedback, type AnswerPhoto, type FeedbackLoad } from "./screens/feedback-source";
@@ -363,7 +364,7 @@ async function boot(): Promise<void> {
   const getGuide = guides.get;
 
   // 그림 만들기 (⑥ 백 연결) — 백엔드 POST /transfer → GPU 의 FLUX 서버 (server/app/flux.py). 받은 그림은 폰 저장소 칸에 넣는다.
-  //   makeAnswer(참고 사진): 화면 3 이 부른다 → 정답사진.  makeMoved(): 시도사진을 찍은 뒤 → 옮긴 그림 (계산에만 쓴다. 화면에 안 보여 준다)
+  //   makeAnswer(참고 사진 | { template: 번호 }): 화면 3 이 부른다 → 정답사진.  makeMoved(): 시도사진을 찍은 뒤 → 옮긴 그림 (계산에만 쓴다. 화면에 안 보여 준다)
   // 화면(⑤)은 결과의 ok · why 만 보고 그린다. 서버 주소(DHE_FLUX_URL)를 넣기 전에는 why: "off" 로 돌아온다
   const maker = createPictureMaker({
     getBare: async () => {
@@ -383,7 +384,7 @@ async function boot(): Promise<void> {
     request: (bare, ref) => requestTransfer(bare, ref, { base: (import.meta.env.VITE_TRANSFER_BASE as string | undefined) ?? "" }),
   });
   // 누른 뒤 받을 때까지 걸린 시간을 사용 기록에 남긴다 (task answer_make · moved_make) — 서버가 나눠 알려 준 시간(줄 · FLUX)도 같이
-  const makeAnswer = (ref: Blob): Promise<MakeResult> => timeTask(log, "answer_make", () => maker.makeAnswer(ref), noteOfMake);
+  const makeAnswer = (ref: TransferRef): Promise<MakeResult> => timeTask(log, "answer_make", () => maker.makeAnswer(ref), noteOfMake);
   const makeMoved = (): Promise<MakeResult> => timeTask(log, "moved_make", () => maker.makeMoved(), noteOfMake);
 
   // 7 저장 · 공유 재료 (⑥ 연결) — 마지막으로 본 피드백으로 결과 한 장을 미리 만들어 둔다. 화면(⑤)은 kit.save() 를 버튼에 걸기만 한다.
@@ -624,7 +625,7 @@ function registerAll(
  * 새 흐름(2026-10-06)의 빈 자리 — 순서는 core/screens.ts SCREEN_ORDER.
  * 옛 흐름 화면(looks · fullrender · guide · live · result · review)은 registerAll 에 그대로 등록돼 있지만 흐름이 가지 않는다
  */
-function registerFlowSlots(shell: ReturnType<typeof createShell<Session>>, deps: PartGuideSlotDeps & SaveSlotDeps & { getAttempt: () => AttemptShots | null; getAnswer: () => AnswerPhoto | null; getFeedback: () => Promise<FeedbackLoad>; getSave: () => Promise<SaveKit | null>; makeAnswer: (ref: Blob) => Promise<MakeResult>; makeMoved: () => Promise<MakeResult>; making: (key: MadeKey) => boolean; analyzeRef: NonNullable<SlotDeps["analyze"]>; shrinkRef: NonNullable<SlotDeps["shrink"]> }): void {
+function registerFlowSlots(shell: ReturnType<typeof createShell<Session>>, deps: PartGuideSlotDeps & SaveSlotDeps & { getAttempt: () => AttemptShots | null; getAnswer: () => AnswerPhoto | null; getFeedback: () => Promise<FeedbackLoad>; getSave: () => Promise<SaveKit | null>; makeAnswer: (ref: TransferRef) => Promise<MakeResult>; makeMoved: () => Promise<MakeResult>; making: (key: MadeKey) => boolean; analyzeRef: NonNullable<SlotDeps["analyze"]>; shrinkRef: NonNullable<SlotDeps["shrink"]> }): void {
   shell.register("answer", slotScreen<Session>({
     title: "2 · 3 참고 사진 · 정답사진",
     owner: "① · ② · ④",
