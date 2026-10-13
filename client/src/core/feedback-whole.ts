@@ -72,7 +72,7 @@ export const FEEDBACK = {
   /**
    * 라이너 꼬리(눈 폭 비율): 이보다 짧으면 없는 것으로 친다 · 정답과 이만큼 넘게 다르면 짧다 · 길다.
    * linerMin 은 0.1 이었다 — 안 그린 눈에 0.13 이 읽혀 "한쪽에 꼬리가 없어요 · 한쪽이 짧아요"가 나갔다 (실험 66).
-   * 실제로 그린 가는 꼬리도 0.15 ~ 0.17 이라 틈이 좁다. 그래서 한쪽만 없거나 짧을 때는 어느 쪽인지 짚지 않는다
+   * 실제로 그린 가는 꼬리도 0.15 ~ 0.17 이라 틈이 좁다. 그래서 한쪽만 없거나 짧거나 길 때는 어느 쪽인지 짚지 않는다
    */
   linerMin: 0.15,
   linerTol: 0.08,
@@ -196,13 +196,11 @@ export function composeFeedback(m: WholeMeasures): WholeFeedback {
       const gone = ks.filter((k) => got[k] < F.linerMin);
       if (gone.length === ks.length) { parts.push(pick(part, null, [], ["내 화장에서 꼬리를 찾지 못했어요", "눈꼬리에서 바깥으로 꼬리를 빼 보세요"])); continue; }
       const rest = ks.filter((k) => !gone.includes(k)), short = rest.filter((k) => got[k] < want[k] - F.linerTol), long = rest.filter((k) => got[k] > want[k] + F.linerTol);
-      const who = (list: readonly ("R" | "L")[]): string => (list.length === ks.length ? "꼬리가" : `${side(list[0]!)} 꼬리가`);
-      // 한쪽만 없거나 짧다 — 어느 쪽인지 짚지 않는다. 가는 꼬리는 한쪽이 안 읽히거나 짧게 읽히곤 해서, 양쪽 다 그린 사람에게 "오른쪽 눈에 꼬리가 없어요"가 나갔다 (실험 66)
-      if (gone.length || (short.length && short.length < ks.length)) says.push(["양쪽 꼬리 길이가 달라 보여요", "양쪽 꼬리 길이를 확인해 보세요"]);
-      else {
-        if (short.length) says.push([`${who(short)} 예상 메이크업보다 짧아요`, "꼬리를 조금 더 길게 빼 보세요"]);
-        if (long.length) says.push([`${who(long)} 예상 메이크업보다 길어요`, "꼬리 끝을 조금 지워 보세요"]);
-      }
+      // 한쪽만 없거나 짧거나 길다 — 어느 쪽인지 짚지 않는다. 가는 꼬리는 한쪽이 안 읽히거나 짧게 읽히곤 해서, 양쪽 다 그린 사람에게 "오른쪽 눈에 꼬리가 없어요"가 나갔다 (실험 66)
+      const all = (list: readonly ("R" | "L")[]): boolean => list.length === ks.length;
+      if (gone.length || ((short.length || long.length) && !all(short) && !all(long))) says.push(["양쪽 꼬리 길이가 달라 보여요", "양쪽 꼬리 길이를 확인해 보세요"]);
+      else if (short.length) says.push(["꼬리가 예상 메이크업보다 짧아요", "꼬리를 조금 더 길게 빼 보세요"]);
+      else if (long.length) says.push(["꼬리가 예상 메이크업보다 길어요", "꼬리 끝을 조금 지워 보세요"]);
       parts.push(pick(part, null, says));
     } else if (part !== "cheek") parts.push({ part, name: NAME[part], tone: "info", line: UNSEEN });   // 볼은 잰 값이 있을 때만 줄을 낸다 (했나 안 했나만 보는 부위)
   }

@@ -66,7 +66,7 @@ describe("화면 6 피드백 문장 (composeFeedback)", () => {
     expect(line({ ...good, liner: { targetR: 0.13, targetL: 0.12, R: 0.2, L: 0.2 } }, "liner").line).toBe("예상 메이크업에서 변화를 찾지 못했어요");
     expect(line({ ...good, liner: { ...good.liner!, R: null, L: null } }, "liner").line).toBe("내 화장에서 꼬리를 찾지 못했어요");
     expect(line({ ...good, liner: { ...good.liner!, R: 0.17, L: 0.16 } }, "liner").line).toBe("꼬리가 예상 메이크업보다 짧아요");
-    expect(line({ ...good, liner: { ...good.liner!, R: 0.45, L: 0.26 } }, "liner").line).toBe("오른쪽 꼬리가 예상 메이크업보다 길어요");
+    expect(line({ ...good, liner: { ...good.liner!, R: 0.45, L: 0.42 } }, "liner").line).toBe("꼬리가 예상 메이크업보다 길어요");
     expect(line({ ...good, liner: { ...good.liner!, R: 0.25, L: 0.22 } }, "liner").line).toBe("예상 메이크업과 비슷해요");   // 5%p 차 — 흔들림 안
   });
   it("C7b 짧게 읽힌 꼬리(0.15 미만)는 없는 것 — 안 그린 눈에 0.13 이 읽혀도 '꼬리를 찾지 못했어요' (실험 66)", () => {
@@ -74,8 +74,8 @@ describe("화면 6 피드백 문장 (composeFeedback)", () => {
     expect(none.line).toBe("내 화장에서 꼬리를 찾지 못했어요");
     expect(none.fix).toBe("눈꼬리에서 바깥으로 꼬리를 빼 보세요");
   });
-  it("C7c 한쪽만 없거나 짧으면 어느 쪽인지 짚지 않고 양쪽을 확인하라고 한다 — 가는 꼬리는 한쪽이 안 읽히곤 한다 (실험 66)", () => {
-    for (const liner of [{ ...good.liner!, L: null }, { ...good.liner!, R: null, L: 0.16 }, { ...good.liner!, R: 0.17 }, { ...good.liner!, R: 0.17, L: 0.45 }]) {
+  it("C7c 한쪽만 없거나 짧거나 길면 어느 쪽인지 짚지 않고 양쪽을 확인하라고 한다 — 가는 꼬리는 한쪽이 안 읽히곤 한다 (실험 66)", () => {
+    for (const liner of [{ ...good.liner!, L: null }, { ...good.liner!, R: null, L: 0.16 }, { ...good.liner!, R: 0.17 }, { ...good.liner!, R: 0.17, L: 0.45 }, { ...good.liner!, R: 0.45 }]) {
       const p = line({ ...good, liner }, "liner");
       expect(p.tone).toBe("fix");
       expect(p.line).toBe("양쪽 꼬리 길이가 달라 보여요");
