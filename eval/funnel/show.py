@@ -120,6 +120,47 @@ def buttons(events: list[dict]) -> list[str]:
     return out
 
 
+def capture_blocks(events: list[dict]) -> list[str]:
+    """촬영에서 무엇에 막혔나 — 사유마다 막힌 세션 수 · 그중 끝내 못 찍은 세션 수 · 막힌 횟수.
+
+    앱은 같은 조건에 3초 넘게 막히면 capture{ok: false, reason} 을 한 번 남긴다 (client core/capture-events).
+    찍으면 capture{ok: true}. 촬영 기록이 하나도 없으면 빈 목록.
+    """
+    entered: set[str] = set()
+    shot: set[str] = set()
+    stuck: dict[str, set[str]] = {}
+    count: dict[str, int] = {}
+    for e in events:
+        sid = str(e.get("sid"))
+        if e.get("name") == "screen_enter" and e.get("screen") == "capture":
+            entered.add(sid)
+        if e.get("name") != "capture":
+            continue
+        entered.add(sid)
+        if e.get("ok") is True:
+            shot.add(sid)
+        elif isinstance(e.get("reason"), str):
+            stuck.setdefault(e["reason"], set()).add(sid)
+            count[e["reason"]] = count.get(e["reason"], 0) + 1
+    if not shot and not count:
+        return []
+    out = ["## 촬영에서 무엇에 막혔나", ""]
+    if count:
+        out += ["| 사유 | 막힌 세션 | 그중 끝내 못 찍은 세션 | 막힌 횟수 |", "|---|---:|---:|---:|"]
+        for key in sorted(count, key=lambda k: (-len(stuck[k]), k)):
+            out.append(f"| {key} | {len(stuck[key])} | {len(stuck[key] - shot)} | {count[key]} |")
+        out.append("")
+    missed = entered - shot
+    silent = missed - set().union(*stuck.values()) if stuck else missed
+    out += [
+        f"촬영 화면에 들어간 세션 {len(entered)}개 중 {len(shot & entered)}개가 찍었다."
+        f" 못 찍은 {len(missed)}개 중 {len(silent)}개는 막힌 기록도 없이 떠났다"
+        " (3초 넘게 같은 조건에 막혀야 기록이 남는다).",
+        "",
+    ]
+    return out
+
+
 def render(files: list[Path], events: list[dict]) -> str:
     """마크다운 한 덩이"""
     out = ["# nudy 사용 기록", ""]
@@ -144,6 +185,7 @@ def render(files: list[Path], events: list[dict]) -> str:
             f"| {str(r['metric'])[len(head) :]} | {r['current']} | {r['n']} | {r['note']} |" for r in mine
         ]
         out.append("")
+    out += capture_blocks(events)
     out += buttons(events)
     if not any(str(r["metric"]).startswith("작업 · ") for r in rows):
         out += [
