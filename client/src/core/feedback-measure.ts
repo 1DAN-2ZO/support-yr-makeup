@@ -184,6 +184,12 @@ export function browTail(f: SampleFrame, k: Side2): number | null {
   return end;
 }
 
+/**
+ * 눈썹 꼬리를 재서 넘길지 — 지금은 끈다 (2026-10-13, 실험 67). 재는 것(browTail)은 되는데 견줄 짝이 안 맞는다:
+ * 만든 그림(예상 메이크업)은 실제 화장만큼 꼬리를 늘려 그리지 않는다 — 자기 완성 화장을 참고로 넣어도 정답 +4% · 실제 +28%.
+ * 눈썹을 그린 실제 사진 98쌍 중 58쌍(피부 정돈 뒤 70쌍)에 "꼬리가 길어요"가 나갔고, 기준을 25 ~ 30%p 로 올려야 멎는다
+ */
+const BROW_TAIL_READY = false;
 function browMeasure(fs: Frames): WholeMeasures["brow"] | undefined {
   const eyes = (f: SampleFrame): Pt[][] => SIDES2.map((k) => eyePoly(f, k)), of = (ks: readonly Side2[]) => ringAmount(fs, (f) => ks.map((k) => browPoly(f, k)), eyes);
   const all = of(SIDES2), r = of(["R"]), l = of(["L"]);
@@ -195,7 +201,7 @@ function browMeasure(fs: Frames): WholeMeasures["brow"] | undefined {
   // 꼬리를 늘린 양 = 그 사진의 꼬리 끝 − 맨얼굴의 꼬리 끝. 세 장 모두 머리카락 분할이 있어야 잰다
   const ext = (base: SampleFrame, f: SampleFrame, k: Side2): number | null => { const b = browTail(base, k), v = browTail(f, k); return b === null || v === null ? null : v - b; };
   const tR = ext(fs.tBare, fs.target, "R"), tL = ext(fs.tBare, fs.target, "L"), cR = ext(fs.bare, fs.cur, "R"), cL = ext(fs.bare, fs.cur, "L");
-  const tail = tR !== null && tL !== null && cR !== null && cL !== null ? { tailTargetR: tR, tailTargetL: tL, tailR: cR, tailL: cL } : {};
+  const tail = BROW_TAIL_READY && tR !== null && tL !== null && cR !== null && cL !== null ? { tailTargetR: tR, tailTargetL: tL, tailR: cR, tailL: cL } : {};
   return { target: all.target, amountR: r.amount ?? 0, amountL: l.amount ?? 0, below: core && below ? dot3(below.d, core.t) / tn2 : 0, belowTarget: core && below ? dot3(below.t, core.t) / tn2 : 0, ...tail };
 }
 
