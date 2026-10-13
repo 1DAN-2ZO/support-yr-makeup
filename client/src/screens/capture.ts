@@ -11,6 +11,7 @@
  *  - 얼굴형 분류(⑤)는 아직 없다 → faceShape 는 자리값(confidence 0). ⑤ 가 오면 buildBaseline 입력만 바뀐다.
  */
 
+import { cameraFailKind, cameraFailText } from "@core/camera-fail";
 import type { FaceLandmarker, FaceLandmarkerResult } from "@mediapipe/tasks-vision";
 import type { Lab } from "@core/color";
 import type { CaptureEvents } from "@core/capture-events";
@@ -60,7 +61,8 @@ export const PENDING_FACE_SHAPE: FaceShape = { label: "oval", confidence: 0, met
 
 export const CAPTURE_TEXT = {
   loading: "카메라를 준비하고 있어요…",
-  cameraFail: "카메라를 열 수 없어요. 브라우저 설정에서 카메라를 허용해 주세요",
+  /** 카메라를 못 열었을 때 누르는 버튼 — 안내 문장은 까닭마다 다르다 (core/camera-fail) */
+  cameraRetry: "다시 시도",
   doneTitle: "사진 확인",
   doneSub: "찍힌 사진을 확인해 주세요",
   doneCoach: "이상한 사진이 있으면 그 사진만 다시 찍을 수 있어요",
@@ -381,8 +383,19 @@ export function captureScreen<S>(deps: CaptureDeps): Screen<S> {
         }
 
         start().catch((e: unknown) => {
-          setCoach(CAPTURE_TEXT.cameraFail);
           ctx.log.log({ name: "error", where: "capture", msg: `camera:${String(e).slice(0, 120)}` });
+          if (!live()) return;
+          // 까닭에 맞는 말 + 다시 시도 (2026-10-13, #422) — 전에는 무슨 오류든 "카메라를 허용해 주세요" 뿐이고 다시 해 볼 길이 없었다.
+          // 반쯤 켜진 카메라는 끄고(다른 앱이 못 쓰게 붙들지 않게), 누르면 화면을 처음부터 다시 그려 연다
+          stopCamera();
+          setCoach(cameraFailText(e));
+          const retry = el("button", "primary cam-retry", CAPTURE_TEXT.cameraRetry);
+          retry.type = "button";
+          retry.addEventListener("click", () => {
+            ctx.log.log({ name: "button", button: `camera_retry:${cameraFailKind(e)}` });
+            showCamera();
+          });
+          line.after(retry);
         });
       }
 

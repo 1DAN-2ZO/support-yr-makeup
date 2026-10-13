@@ -1603,6 +1603,8 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
 .cam-flash[hidden] { display: none; }
 .cam-gate { display: none; min-height: 1.5em; margin: 12px 0 4px; text-align: center; font-size: 17px; }
 .cam-gate.ready { color: var(--accent); font-weight: var(--weight-strong); }
+/* 카메라를 못 열었을 때의 "다시 시도" (2026-10-13) — 카메라 칸 바로 아래 가운데 */
+.cam-retry { display: block; min-height: 48px; margin: 16px auto 0; padding: 12px 28px; border-radius: 999px; }
 .cam-hint { margin: 12px 0 0; text-align: center; color: var(--muted); font-size: 12px; }
 .cam-hint[hidden] { display: none; }
 .cam-progress {

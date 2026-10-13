@@ -2,6 +2,7 @@
 // 화면 1(촬영) · 화면 4 · 2-b AR · 화면 6 정면 1장이 공용 카메라 루프(#245)를 쓰나 — 카메라 새 장면에만 얼굴을 찾고, 화면 그리기(rAF)로는 안 찾는다. 떠나면 멈춘다.
 // 카메라·모델·rVFC·rAF 는 전부 가짜. 얼굴은 안 찾아지는 장면만 (분석 횟수만 본다)
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CAMERA_FAIL_TEXT } from "@core/camera-fail";
 import { GATE_TEXT } from "@core/gate";
 import { LIVE_SMOOTH } from "@core/smooth-params";
 import { LM } from "@core/landmarks";
@@ -188,6 +189,38 @@ describe("촬영(화면 1) 장 수 표시", () => {
     const text = document.querySelector(".cam-step")?.textContent ?? "";
     expect(text).not.toMatch(/\d+\/\d+/);
     expect(text).toContain("눈을 떠 주세요");
+    off();
+  });
+});
+
+// 카메라를 못 열었을 때 (2026-10-13, #422) — 까닭에 맞는 말 + 다시 시도. 전에는 "카메라를 허용해 주세요" 한 줄뿐이고 다시 해 볼 길이 없었다
+describe("촬영(화면 1) 카메라를 못 열었을 때", () => {
+  it("CS7 다른 프로그램이 카메라를 쓰는 중이면 그렇게 말하고, '다시 시도' 를 누르면 카메라를 다시 연다", async () => {
+    const ok = await navigator.mediaDevices.getUserMedia({ video: true });
+    const gum = vi.fn()
+      .mockRejectedValueOnce(Object.assign(new Error("Could not start video source"), { name: "NotReadableError" }))
+      .mockResolvedValue(ok);
+    Object.defineProperty(navigator, "mediaDevices", { value: { getUserMedia: gum }, configurable: true });
+    const off = await mountCapture();
+    expect(document.querySelector(".cam-gate")?.textContent).toBe(CAMERA_FAIL_TEXT.busy);
+    const retry = Array.from(document.querySelectorAll("button")).find((b) => b.textContent === "다시 시도");
+    expect(retry).toBeTruthy();
+    expect(gum).toHaveBeenCalledTimes(1);
+    retry!.click();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(gum).toHaveBeenCalledTimes(2);
+    // 열렸으면 실패 안내와 버튼이 사라진다
+    expect(document.body.textContent).not.toContain(CAMERA_FAIL_TEXT.busy);
+    expect(Array.from(document.querySelectorAll("button")).some((b) => b.textContent === "다시 시도")).toBe(false);
+    off();
+  });
+
+  it("CS8 권한을 안 주면 권한을 말한다 — 그때도 다시 시도할 수 있다", async () => {
+    const gum = vi.fn().mockRejectedValue(Object.assign(new Error("Permission dismissed"), { name: "NotAllowedError" }));
+    Object.defineProperty(navigator, "mediaDevices", { value: { getUserMedia: gum }, configurable: true });
+    const off = await mountCapture();
+    expect(document.querySelector(".cam-gate")?.textContent).toBe(CAMERA_FAIL_TEXT.denied);
+    expect(Array.from(document.querySelectorAll("button")).some((b) => b.textContent === "다시 시도")).toBe(true);
     off();
   });
 });
