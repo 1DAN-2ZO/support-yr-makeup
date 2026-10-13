@@ -10,7 +10,6 @@ import type { TransferRef } from "@core/transfer-client";
 import { PART_NAME } from "@core/score";
 import { PART_IDS, type PartId, type Versions } from "@core/types";
 import { partGuideSlot, saveSlot, slotScreen, type PartGuideSlotDeps } from "@screens/flow-slots";
-import { setPickedTemplate } from "@screens/template-store";
 import { SAVE_TEXT, SHARE_HINT, type SaveKit } from "@screens/feedback-card";
 import type { GuideLoad, GuideView } from "@screens/guide-source";
 import type { RefAnalysis, RefFailure } from "@screens/ref-analyze";
@@ -52,6 +51,17 @@ const button = (root: HTMLElement, text: string): HTMLButtonElement => {
   if (!b) throw new Error(`"${text}" 버튼이 없습니다`);
   return b;
 };
+
+/** 템플릿을 고른다 (#447) — 화면 이동 없이 같은 자리에서 펼치고 카드를 누른다 */
+function pickTemplate(root: HTMLElement, id: string): void {
+  button(root, "템플릿 고르기").click();
+  const i = TEMPLATES.findIndex((t) => t.id === id);
+  if (i < 0) throw new Error(`템플릿 ${id} 이 없습니다`);
+  const cards = root.querySelectorAll<HTMLButtonElement>(".tpl-card");
+  const card = cards[i];
+  if (!card) throw new Error("템플릿 카드가 없습니다");
+  card.click();
+}
 
 describe("빈 자리 화면", () => {
   const SPEC = { title: "참고 사진 · 예상 메이크업", owner: "①·②·④", todo: ["참고 사진 업로드", "예상 메이크업 생성"], next: "partguide" } as const;
@@ -199,15 +209,15 @@ describe("빈 자리 화면", () => {
 
     describe("템플릿을 골랐을 때 (#420) — 사진 대신 번호만 보낸다", () => {
       const manifest = async () => parseTemplateManifest({ version: "tpl-v1", items: [{ id: "03", colors: fakeAnalysis().colors }] });
-      const pick03 = () => setPickedTemplate(TEMPLATES.find((x) => x.id === "03")!);
+      const apply03 = (root: HTMLElement) => { pickTemplate(root, "03"); button(root, "적용하기").click(); };
 
       it("FT1 맨얼굴 + 템플릿 번호(숫자)를 보내고, 분석 · 줄이기는 하지 않는다", async () => {
-        pick03();
         const analyze = vi.fn(async () => fakeAnalysis());
         const shrink = vi.fn(async () => small);
         const makeAnswer = vi.fn(async (_r: TransferRef): Promise<MakeResult> => ({ ok: true, picture: made, ms: 1 }));
         const ctx = ctxOf();
         slotScreen<null>(SPEC, { analyze, makeAnswer, shrink, templateManifest: manifest }).mount(ctx);
+        apply03(ctx.root);
         await vi.waitFor(() => expect(ctx.root.textContent).toContain("예상 메이크업 완성"));
         expect(makeAnswer).toHaveBeenCalledTimes(1);
         expect(makeAnswer).toHaveBeenCalledWith({ template: 3 });
@@ -218,7 +228,6 @@ describe("빈 자리 화면", () => {
       });
 
       it("FT2 사진을 올렸을 때는 그대로 사진을 보낸다 — 두 길이 섞이지 않는다", async () => {
-        setPickedTemplate(null); // 템플릿을 안 고르고 온 경우
         const makeAnswer = vi.fn(async (_r: TransferRef): Promise<MakeResult> => ({ ok: true, picture: made, ms: 1 }));
         const ctx = ctxOf();
         slotScreen<null>(SPEC, { analyze: async () => fakeAnalysis(), makeAnswer, shrink: async () => small, templateManifest: manifest }).mount(ctx);
@@ -229,43 +238,136 @@ describe("빈 자리 화면", () => {
       });
 
       it("FT3 템플릿 정보를 못 읽으면 서버를 부르지 않고 다시 고르게 한다", async () => {
-        pick03();
         const makeAnswer = vi.fn(async (): Promise<MakeResult> => ({ ok: true, picture: made, ms: 1 }));
         const ctx = ctxOf();
         slotScreen<null>(SPEC, { analyze: async () => fakeAnalysis(), makeAnswer, templateManifest: async () => { throw new Error("404"); } }).mount(ctx);
+        apply03(ctx.root);
         await vi.waitFor(() => expect(ctx.root.querySelector(".slot-upload-warn")?.textContent).toContain("템플릿 정보를 불러오지 못했어요"));
         expect(makeAnswer).not.toHaveBeenCalled();
       });
 
       it("FT3b 목록에 없는 번호여도 서버를 부르지 않는다", async () => {
-        pick03();
         const makeAnswer = vi.fn(async (): Promise<MakeResult> => ({ ok: true, picture: made, ms: 1 }));
         const ctx = ctxOf();
         const other = async () => parseTemplateManifest({ version: "tpl-v1", items: [{ id: "05", colors: {} }] });
         slotScreen<null>(SPEC, { makeAnswer, templateManifest: other }).mount(ctx);
+        apply03(ctx.root);
         await vi.waitFor(() => expect(ctx.root.querySelector(".slot-upload-warn")).not.toBeNull());
         expect(makeAnswer).not.toHaveBeenCalled();
       });
 
       it("FT4 서버가 못 만들면 까닭을 알리고 업로드 화면으로 — 다른 템플릿이나 내 사진으로 다시", async () => {
-        pick03();
         const makeAnswer = vi.fn(async (): Promise<MakeResult> => ({ ok: false, why: "busy" }));
         const ctx = ctxOf();
         slotScreen<null>(SPEC, { makeAnswer, templateManifest: manifest }).mount(ctx);
+        apply03(ctx.root);
         await vi.waitFor(() => expect(ctx.root.querySelector(".slot-upload-warn")?.textContent).toContain("사람이 많아요"));
         expect(ctx.root.textContent).not.toContain("예상 메이크업 완성");
       });
 
-      it("FT5 한 번 쓰면 비운다 — 화면에 다시 들어오면 업로드 화면부터", async () => {
-        pick03();
+      it("FT5 화면에 다시 들어오면 처음 모양 — 고른 것이 남아 있지 않다", async () => {
         const makeAnswer = vi.fn(async (): Promise<MakeResult> => ({ ok: true, picture: made, ms: 1 }));
-        slotScreen<null>(SPEC, { makeAnswer, templateManifest: manifest }).mount(ctxOf());
+        const ctx = ctxOf();
+        slotScreen<null>(SPEC, { makeAnswer, templateManifest: manifest }).mount(ctx);
+        apply03(ctx.root);
         await vi.waitFor(() => expect(makeAnswer).toHaveBeenCalledTimes(1));
         const ctx2 = ctxOf();
         slotScreen<null>(SPEC, { makeAnswer, templateManifest: manifest }).mount(ctx2);
         expect(button(ctx2.root, "적용하기").disabled).toBe(true);
+        expect(ctx2.root.querySelector(".tpl-scroll")).toBeNull();
         expect(makeAnswer).toHaveBeenCalledTimes(1);
       });
+    });
+  });
+
+  describe("고르기 · 다시 고르기 (#447) — 적용하기는 하나뿐이다", () => {
+    const SPEC2 = { title: "참고 사진 · 예상 메이크업", owner: "①·②·④", todo: [], next: "partguide" } as const;
+    const manifest = async () => parseTemplateManifest({ version: "tpl-v1", items: [{ id: "03", colors: fakeAnalysis().colors }] });
+    const made2 = new Blob([new Uint8Array([9])], { type: "image/png" });
+
+    it("FR1 처음에는 고른 것이 없어 적용하기가 꺼져 있고, 다시 고르기도 없다", () => {
+      const ctx = ctxOf();
+      slotScreen<null>(SPEC2).mount(ctx);
+      expect(button(ctx.root, "적용하기").disabled).toBe(true);
+      expect([...ctx.root.querySelectorAll("button")].some((b) => b.textContent === "다시 고르기")).toBe(false);
+    });
+
+    it("FR2 템플릿은 같은 화면에서 펼쳐진다 — 다른 화면으로 가지 않는다", () => {
+      const ctx = ctxOf();
+      slotScreen<null>(SPEC2).mount(ctx);
+      button(ctx.root, "템플릿 고르기").click();
+      expect(ctx.root.querySelectorAll(".tpl-card")).toHaveLength(TEMPLATES.length);
+      expect(ctx.go).not.toHaveBeenCalled();
+    });
+
+    it("FR3 사진을 고르면 다시 고르기가 보이고 적용하기가 켜진다", () => {
+      const ctx = ctxOf();
+      slotScreen<null>(SPEC2).mount(ctx);
+      pickPhoto(ctx.root);
+      expect(button(ctx.root, "적용하기").disabled).toBe(false);
+      expect(button(ctx.root, "다시 고르기")).toBeTruthy();
+    });
+
+    it("FR4 템플릿을 골라도 마찬가지 — 격자가 펼쳐진 동안에도 다시 고르기가 보인다", () => {
+      const ctx = ctxOf();
+      slotScreen<null>(SPEC2).mount(ctx);
+      pickTemplate(ctx.root, "03");
+      expect(button(ctx.root, "적용하기").disabled).toBe(false);
+      expect(button(ctx.root, "다시 고르기")).toBeTruthy();
+      expect(ctx.root.querySelector(".tpl-card.is-on")).not.toBeNull();
+    });
+
+    it("FR5 둘 중 하나만 고른 상태다 — 템플릿을 고르면 업로드 칸이 사라지고, 사진을 고르면 격자가 사라진다", () => {
+      const ctx = ctxOf();
+      slotScreen<null>(SPEC2).mount(ctx);
+      pickTemplate(ctx.root, "03");
+      expect(ctx.root.querySelector(".slot-upload")).toBeNull();
+      // 업로드 칸이 없으면 "또는" 도 혼자 남지 않는다
+      expect(ctx.root.querySelector(".slot-or")).toBeNull();
+      button(ctx.root, "다시 고르기").click();
+      pickPhoto(ctx.root);
+      expect(ctx.root.querySelector(".tpl-scroll")).toBeNull();
+    });
+
+    it("FR6 다시 고르기를 누르면 처음 모양 — 고른 것이 지워지고 적용하기가 다시 꺼진다", () => {
+      const ctx = ctxOf();
+      slotScreen<null>(SPEC2).mount(ctx);
+      pickTemplate(ctx.root, "03");
+      button(ctx.root, "다시 고르기").click();
+      expect(button(ctx.root, "적용하기").disabled).toBe(true);
+      expect(ctx.root.querySelector(".tpl-scroll")).toBeNull();
+      expect(ctx.root.querySelector(".slot-upload")).not.toBeNull();
+    });
+
+    it("FR7 예상 메이크업이 나온 뒤에도 다시 고를 수 있다 — 누르는 것만으로는 서버를 안 부른다", async () => {
+      const makeAnswer = vi.fn(async (): Promise<MakeResult> => ({ ok: true, picture: made2, ms: 1 }));
+      const ctx = ctxOf();
+      slotScreen<null>(SPEC2, { makeAnswer, templateManifest: manifest }).mount(ctx);
+      pickTemplate(ctx.root, "03");
+      button(ctx.root, "적용하기").click();
+      await vi.waitFor(() => expect(ctx.root.textContent).toContain("예상 메이크업 완성"));
+      expect(makeAnswer).toHaveBeenCalledTimes(1);
+
+      button(ctx.root, "다시 고르기").click();
+      // 처음 모양으로 돌아가고, 앞 결과가 화면에 남지 않는다
+      expect(ctx.root.textContent).not.toContain("예상 메이크업 완성");
+      expect(button(ctx.root, "적용하기").disabled).toBe(true);
+      expect(makeAnswer).toHaveBeenCalledTimes(1);
+
+      // 다시 골라 적용하면 그때 새로 만든다
+      pickTemplate(ctx.root, "03");
+      button(ctx.root, "적용하기").click();
+      await vi.waitFor(() => expect(makeAnswer).toHaveBeenCalledTimes(2));
+    });
+
+    it("FR8 템플릿을 고른 것은 사용 기록에 template:NN 으로 남는다 (합치기 전과 같다)", () => {
+      const sink = memorySink();
+      document.body.innerHTML = `<div id="root"></div>`;
+      const root = document.getElementById("root") as HTMLElement;
+      const ctx: ScreenContext<null> = { root, session: null, go: vi.fn(), goPart: vi.fn(), log: createLogger({ sid: "s1", screen: "answer", part: null, ver }, sink.sink) };
+      slotScreen<null>(SPEC2).mount(ctx);
+      pickTemplate(root, "03");
+      expect(sink.events.some((e) => e.name === "button" && e.button === "template:03")).toBe(true);
     });
   });
 
