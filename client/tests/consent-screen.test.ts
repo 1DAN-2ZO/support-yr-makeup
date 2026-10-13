@@ -33,6 +33,19 @@ describe("동의 화면", () => {
     expect(body).not.toContain("7일");
     expect(body).toContain("어느 링크로 들어왔는지");   // 유입 경로도 사용 기록에 든다 (#408)
   });
+  it("C0b 안내문을 소제목 넷으로 나누고 핵심을 굵게 보여 준다 — 한 덩어리 글이라 데이터 처리 방식이 안 보였다 (2026-10-13)", () => {
+    const { root, ctx } = setup();
+    consentScreen<null>({ setConsent: vi.fn(), onConsent: vi.fn() }).mount(ctx);
+    const sheet = root.querySelector(".consent-sheet")!;
+    expect([...sheet.querySelectorAll("h3")].map((h) => h.textContent)).toEqual(["서버로 보내는 사진", "테스트 기간 보관", "폰에 남는 것", "사용 기록"]);
+    const strong = [...sheet.querySelectorAll("strong")].map((s) => s.textContent);
+    for (const key of ["서버에 10월 19일 오후 5시까지 보관해요.", "10월 19일 오후 5시에 모두 지우고", "끝낼 때 나오는 후기 설문에 적어 주세요.", "참고 사진은 보관하지 않고", "사진과 얼굴 위치는 보내지 않아요."]) expect(strong).toContain(key);
+    // 글은 그대로다 — 모양만 바꿨다. 굵게 표시(**)가 화면에 새지 않는다
+    expect([...sheet.querySelectorAll(".consent-body p")].map((p) => p.textContent).join("\n\n")).toBe(CONSENT_TEXT.body);
+    expect(sheet.textContent).not.toContain("**");
+    expect(CONSENT_TEXT.body).not.toContain("**");
+  });
+
   it("C1 동의하면 세션에 적고 consent(true) 를 찍고 촬영으로", () => {
     const { root, ctx, go } = setup();
     const setConsent = vi.fn(), onConsent = vi.fn();

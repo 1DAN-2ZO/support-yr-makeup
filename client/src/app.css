@@ -2135,8 +2135,23 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
 .slot-answer-photo-frame.has-ref .slot-answer-face,
 .slot-answer-photo-frame.has-ref .slot-answer-line { display: none; }
 .slot-answer-photo-frame.has-ref .slot-answer-ref { opacity: 1; }
-/* 동의 안내문 — 문단 사이 줄바꿈을 살린다 */
-.consent-sheet p { white-space: pre-line; }
+/* 동의 안내문 — 소제목 넷 + 문단, 핵심은 굵게 (2026-10-13). 길어서 글만 따로 굴린다 — 버튼은 늘 보인다 */
+.consent-body {
+  max-height: calc(100vh - 240px);
+  max-height: calc(100dvh - 240px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+}
+.consent-body h3 {
+  margin: 14px 0 4px;
+  color: var(--beauty-ink);
+  font-size: 14px;
+  font-weight: 760;
+  line-height: 1.3;
+}
+.consent-body h3:first-child { margin-top: 0; }
+.consent-body strong { color: var(--beauty-ink); font-weight: 760; }
 
 /* 끝 화면 후기 설문 */
 .done-survey {
