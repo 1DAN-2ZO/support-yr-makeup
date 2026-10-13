@@ -15,6 +15,30 @@ export interface ConsentDeps {
   onConsent: (ok: boolean) => void;
 }
 
+/**
+ * 안내문 — 소제목 넷. `**…**` 로 감싼 곳은 화면에서 굵게 보인다 (2026-10-13: 한 덩어리 글이라 데이터 처리 방식이 안 보인다는 피드백).
+ * 테스트 기간은 2026-10-19 오후 3시까지, 사진 · 사용 기록은 같은 날 오후 5시에 모두 지운다. 지워 달라는 요청은 후기 설문으로 받는다 (2026-10-12 결정).
+ * "테스트 기간 보관" 은 서버의 보관 설정(compose.yml DHE_KEEP_UNTIL)과 짝이다 — 보관을 끄면 이 묶음도 같이 뺀다
+ */
+export const CONSENT_SECTIONS = [
+  {
+    head: "서버로 보내는 사진",
+    text: "맨얼굴 사진을 한 장 찍어요. 그 사진과 올려 주신 참고 사진을 **서버로 보내** 예상 메이크업을 만들어요. 화장을 다 한 뒤에 찍는 사진도 **서버로 보내** 피드백에 써요.",
+  },
+  {
+    head: "테스트 기간 보관",
+    text: "지금은 테스트 기간이에요 (10월 19일 오후 3시까지). 맨얼굴, 예상 메이크업, 화장한 뒤 찍은 사진과 피드백 결과를 **서버에 10월 19일 오후 5시까지 보관해요.** 피드백이 맞는지 사람이 확인하고 기준을 다듬는 데만 써요. **10월 19일 오후 5시에 모두 지우고**, 그 전에도 지워 달라고 하시면 바로 지워요 — **끝낼 때 나오는 후기 설문에 적어 주세요.** 올려 주신 **참고 사진은 보관하지 않고**, 예상 메이크업을 만든 뒤 바로 지워요.",
+  },
+  {
+    head: "폰에 남는 것",
+    text: "폰에 있는 사진과 결과는 **끝내기를 누르면 바로 지워져요.** 누르지 않고 닫으면 폰에 남아 있다가, 2시간이 지난 뒤 다시 열 때 지워져요.",
+  },
+  {
+    head: "사용 기록",
+    text: "서비스를 고치는 데 쓰려고 사용 기록도 함께 보내요. 어느 링크로 들어왔는지, 어느 화면까지 갔는지, 버튼을 눌렀는지 같은 것만이고 — **사진과 얼굴 위치는 보내지 않아요.** 사용 기록도 **10월 19일 오후 5시에 모두 지워요.**",
+  },
+] as const;
+
 export const CONSENT_TEXT = {
   start: "촬영 시작",
   notice: "처리 안내",
@@ -23,9 +47,8 @@ export const CONSENT_TEXT = {
   coachMessage: "찍기전에 확인해주세요",
   checks: ["앞머리", "안경", "밝기"],
   title: "사진 처리 안내",
-  // 테스트 기간은 2026-10-19 오후 3시까지, 사용 기록은 같은 날 오후 5시에 모두 지운다. 지워 달라는 요청은 후기 설문으로 받는다 (2026-10-12 결정).
-  // 둘째 문단(테스트 기간 보관 — 10월 19일 오후 5시에 모두 지움)은 서버의 보관 설정(compose.yml DHE_KEEP_UNTIL)과 짝이다 — 보관을 끄면 이 문단도 같이 뺀다
-  body: "맨얼굴 사진을 한 장 찍어요. 그 사진과 올려 주신 참고 사진을 서버로 보내 예상 메이크업을 만들어요. 화장을 다 한 뒤에 찍는 사진도 서버로 보내 피드백에 써요.\n\n지금은 테스트 기간이에요 (10월 19일 오후 3시까지). 맨얼굴, 예상 메이크업, 화장한 뒤 찍은 사진과 피드백 결과를 서버에 10월 19일 오후 5시까지 보관해요. 피드백이 맞는지 사람이 확인하고 기준을 다듬는 데만 써요. 10월 19일 오후 5시에 모두 지우고, 그 전에도 지워 달라고 하시면 바로 지워요 — 끝낼 때 나오는 후기 설문에 적어 주세요. 올려 주신 참고 사진은 보관하지 않고, 예상 메이크업을 만든 뒤 바로 지워요.\n\n폰에 있는 사진과 결과는 끝내기를 누르면 바로 지워져요. 누르지 않고 닫으면 폰에 남아 있다가, 2시간이 지난 뒤 다시 열 때 지워져요.\n\n서비스를 고치는 데 쓰려고 사용 기록도 함께 보내요. 어느 링크로 들어왔는지, 어느 화면까지 갔는지, 버튼을 눌렀는지 같은 것만이고 — 사진과 얼굴 위치는 보내지 않아요. 사용 기록도 10월 19일 오후 5시에 모두 지워요.",
+  // 안내문 전체 (굵게 표시를 뺀 글) — 화면은 CONSENT_SECTIONS 로 그린다
+  body: CONSENT_SECTIONS.map((s) => s.text.replaceAll("**", "")).join("\n\n"),
   agree: "동의하고 시작",
   deny: "닫기",
   denied: "서버 처리에 동의해야 사용할 수 있어요",
@@ -108,8 +131,23 @@ export function consentScreen<S>(deps: ConsentDeps): Screen<S> {
       `;
       const sheetTitle = document.createElement("h2");
       sheetTitle.textContent = CONSENT_TEXT.title;
-      const sheetBody = document.createElement("p");
-      sheetBody.textContent = CONSENT_TEXT.body;
+      // 소제목 + 문단. `**…**` 사이만 굵게 — 글자를 그대로 넣는다 (innerHTML 안 씀)
+      const sheetBody = document.createElement("div");
+      sheetBody.className = "consent-body";
+      for (const s of CONSENT_SECTIONS) {
+        const head = document.createElement("h3");
+        head.textContent = s.head;
+        const p = document.createElement("p");
+        s.text.split("**").forEach((piece, i) => {
+          if (!piece) return;
+          if (i % 2) {
+            const b = document.createElement("strong");
+            b.textContent = piece;
+            p.append(b);
+          } else p.append(piece);
+        });
+        sheetBody.append(head, p);
+      }
       const row = document.createElement("div");
       row.className = "row";
       row.append(button(CONSENT_TEXT.agree, "primary", choose(true)), button(CONSENT_TEXT.deny, "", closeSheet));

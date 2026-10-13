@@ -220,6 +220,11 @@ def purge_sometimes(root: Path) -> None:
             purge(root, keep_days(), at)
 
 
+def short(sid: str) -> str:
+    """세션 번호의 앞 네 글자만 — 공개 저장소의 실행 화면에 번호를 다 찍지 않으려고 (2026-10-13)"""
+    return f"{sid[:4]}…"
+
+
 def main(argv: list[str]) -> int:
     sys.stdout.reconfigure(encoding="utf-8")
     root_env = os.environ.get("DHE_DATA_DIR")
@@ -234,14 +239,17 @@ def main(argv: list[str]) -> int:
             f"보관 중: 세션 {len({r[1] for r in rows})}개 · 폴더 {len(rows)}개"
             f" · 기한 {keep_until() or '없음'} · 보관 일수 설정 {keep_days()}"
         )
+        # 세션 번호는 앞 네 글자만 찍는다 — 워크플로의 실행 화면은 누구나 본다.
+        # 전부 보려면 서버 PC 에서 list --full
+        full = "--full" in argv[2:]
         for day, sid, names, size in rows:
-            print(f"{day}  {sid}  {size / 1024:.0f}KB  {' '.join(names)}")
+            print(f"{day}  {sid if full else short(sid)}  {size / 1024:.0f}KB  {' '.join(names)}")
         return 0
     if cmd == "delete":
         # 세션 번호는 인자 또는 환경 변수 KEEP_SID (워크플로가 명령 줄을 거치지 않고 넘긴다)
         sid = argv[2] if len(argv) > 2 else os.environ.get("KEEP_SID", "")
         try:
-            print(f"지운 파일 {delete_sid(root, sid)}개 (세션 {sid})")
+            print(f"지운 파일 {delete_sid(root, sid)}개 (세션 {short(sid)})")
         except ValueError:
             print("세션 번호 모양이 아닙니다 (영문 · 숫자 · 줄표 8~64자)")
             return 2
@@ -251,7 +259,7 @@ def main(argv: list[str]) -> int:
         rule = f"기한({until})이 지났으면 전부" if until else f"{keep_days() or DEFAULT_DAYS}일 지난 폴더"
         print(f"{rule} 지움: {purge_stored() or '없음'}")
         return 0
-    print("쓰는 법: list | delete <세션 번호> | purge")
+    print("쓰는 법: list [--full] | delete <세션 번호> | purge")
     return 2
 
 

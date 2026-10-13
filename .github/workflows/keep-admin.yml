@@ -6,6 +6,10 @@ name: 보관 사진 관리
 #   purge  기한(DHE_KEEP_UNTIL — 2026-10-19 오후 5시)이 지났으면 전부 지운다 — 서버가 1분마다 스스로 하지만 손으로도 돌릴 수 있다.
 #          기한 전에는 아무것도 안 지운다 (2026-10-12: 받은 날부터 7일이 아니라 그 시각에 한꺼번에)
 # 손으로만 돌린다 (Actions → "보관 사진 관리" → Run workflow). 사진을 밖으로 내보내지 않는다.
+#
+# **저장소가 공개라 이 실행 화면은 누구나 본다 (2026-10-13).** 그래서 세션 번호는 앞 네 글자만 찍고(keep.py),
+# delete 에 넣은 번호는 실행 기록에서 가린다 (아래 첫 단계). 번호를 전부 보려면 서버 PC 에서:
+#   docker exec back-server python -m server.app.keep list --full
 on:
   workflow_dispatch:
     inputs:
@@ -29,9 +33,25 @@ jobs:
 
     env:
       ACTION: ${{ inputs.action }}
-      KEEP_SID: ${{ inputs.sid }}
 
     steps:
+      # 넣은 세션 번호를 실행 기록에서 가린다. env 에 바로 넣으면 단계마다 찍히는 env 목록에 그대로 나오므로,
+      # 이벤트 파일에서 읽어 먼저 가리고(add-mask) 그다음 단계부터 환경 변수로 넘긴다. 모양이 아니면 넘기지 않는다
+      # (줄바꿈이 섞인 값이 환경 변수 파일에 다른 줄을 끼워 넣지 못하게).
+      # Out-File 대신 AppendAllText 를 쓴다 — Out-File 은 파일 앞에 BOM 을 붙여 변수 이름이 깨진다.
+      # 이 단계의 스크립트에는 한글을 쓰지 않는다 — PowerShell 5.1 이 깨뜨릴 수 있다
+      - name: 세션 번호 가리기
+        shell: powershell
+        run: |
+          $sid = (Get-Content $env:GITHUB_EVENT_PATH -Raw -Encoding UTF8 | ConvertFrom-Json).inputs.sid
+          if ($sid -and $sid -cmatch '\A[A-Za-z0-9-]{8,64}\z') {
+            Write-Output "::add-mask::$sid"
+            [System.IO.File]::AppendAllText($env:GITHUB_ENV, "KEEP_SID=$sid`n")
+          } elseif ($sid) {
+            Write-Output "bad session id (letters, digits, hyphen, 8-64 chars)"
+            exit 2
+          }
+
       # 세션 번호는 명령 줄에 넣지 않는다 — 환경 변수째로 컨테이너에 넘긴다 (docker exec -e 이름). 그러면 무슨 글자가 들어와도
       # 명령으로 읽히지 않는다. 모양(영문 · 숫자 · 줄표 8~64자)은 keep.py 가 본다
       - name: 실행 (백엔드 컨테이너 안에서)
