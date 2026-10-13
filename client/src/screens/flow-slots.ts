@@ -362,6 +362,14 @@ function guideMock(part: PartId): HTMLElement {
   // 지금은 가릴 길이 없으므로 둘 다 보여 주고 고르게 한다
   const wanted = [...new Set([read?.name.base, read?.product.name.base].filter((f): f is string => !!f))];
   const picks = part === "contour" || !wanted.length ? [] : pickProducts(part, wanted, 2);
+  // 그 색에 맞는 제품이 아직 없을 때. 전에는 먼 색이라도 억지로 채워 카키를 뽑아도 검정이 떴다 —
+  // 지금은 안 채우므로(product-picks NEAR_MAX) 이 자리가 빈다. 말없이 사라지면 "왜 없지" 가 되므로 적는다
+  if (!picks.length && part !== "contour" && read) {
+    const none = document.createElement("div");
+    none.className = "slot-product is-none";
+    none.innerHTML = `<b>이런 제품이면 돼요</b><p>이 색에 맞는 제품은 아직 못 찾았어요. 비슷한 색으로 골라 주세요.</p>`;
+    card.append(none);
+  }
   if (picks.length) {
     const box = document.createElement("div");
     box.className = "slot-product";

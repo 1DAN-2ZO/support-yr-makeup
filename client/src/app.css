@@ -2570,3 +2570,11 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   line-height: 1;
   cursor: pointer;
 }
+
+/* 그 색에 맞는 제품이 아직 없을 때 (2026-10-12) — 말없이 사라지면 "왜 없지" 가 된다 */
+.slot-product.is-none p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}

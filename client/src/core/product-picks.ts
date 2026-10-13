@@ -74,6 +74,89 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
     { families: ["다크브라운", "브라운"], brand: "에뛰드", name: "드로잉 아이 브라우", kind: "펜슬 — 무르고 부드러워 넓게 채우기 좋아요" },
   ],
   liner: [
+    // 삐아 라스트 오토 젤 — 26색이라 계열을 여럿 덮는다. 호수 묶음별로 나눠 넣되
+    // 화면에는 같은 이름으로 한 번만 뜬다 (pickProducts 가 이름으로 걸러낸다)
+    {
+      // 11 리넨베이지 · 12 크림베이지 · 13 피넛베이지 · 14 아몬드베이지 · 16 쿨베이지 · 25 밀크 베이지 · 26 메이플 베이지
+      families: ["베이지"],
+      brand: "삐아", name: "라스트 오토 젤 아이라이너",
+      kind: "젤 펜슬 — 가늘고 부드러워 애교살·음영에 좋아요",
+      photo: "/products/bbia-last-auto-gel-liner.jpg",   // 사진 출처: 올리브영 A000000162672 (2026-10-12, public/products/SOURCES.md)
+      checked: true,
+    },
+    {
+      // 03 로즈브라운 · 07 로즈번 · 24 로지 파스텔
+      families: ["로즈"],
+      brand: "삐아", name: "라스트 오토 젤 아이라이너",
+      kind: "젤 펜슬 — 가늘고 부드러워 애교살·음영에 좋아요",
+      photo: "/products/bbia-last-auto-gel-liner.jpg",
+      checked: true,
+    },
+    {
+      // 15 살몬베이지 · 22 피치 파스텔
+      families: ["코랄"],
+      brand: "삐아", name: "라스트 오토 젤 아이라이너",
+      kind: "젤 펜슬 — 가늘고 부드러워 애교살·음영에 좋아요",
+      photo: "/products/bbia-last-auto-gel-liner.jpg",
+      checked: true,
+    },
+    {
+      // 20 모브번
+      families: ["플럼"],
+      brand: "삐아", name: "라스트 오토 젤 아이라이너",
+      kind: "젤 펜슬 — 가늘고 부드러워 애교살·음영에 좋아요",
+      photo: "/products/bbia-last-auto-gel-liner.jpg",
+      checked: true,
+    },
+    {
+      // 04 멜로우브라운 · 21 뮤트 브라운 · 05 소울브라운 · 06 초코무스 · 27 모카번 · 01 느와르 · 02 재즈
+      families: ["밀크브라운", "브라운", "다크브라운", "블랙", "소프트블랙"],
+      brand: "삐아", name: "라스트 오토 젤 아이라이너",
+      kind: "젤 펜슬 — 가늘고 부드러워 애교살·음영에 좋아요",
+      photo: "/products/bbia-last-auto-gel-liner.jpg",
+      checked: true,
+    },
+    // 머지 더 퍼스트 슬림 젤 — 7색. 삐아와 같이 호수 묶음별로 나눠 넣는다
+    {
+      // GS1 블랙 오닉스 · GS2 블랙 스피넬
+      families: ["블랙", "소프트블랙"],
+      brand: "머지", name: "더 퍼스트 슬림 젤 아이라이너",
+      kind: "젤 펜슬 — 심이 얇아 속눈썹 사이를 메우기 좋아요",
+      photo: "/products/merzy-the-first-slim-gel-liner.jpg",   // 사진 출처: 올리브영 A000000119523 (2026-10-12, public/products/SOURCES.md)
+      checked: true,
+    },
+    {
+      // GS3 브론즈 오팔 · GS4 브라운 쿼츠
+      families: ["밀크브라운", "브라운", "다크브라운"],
+      brand: "머지", name: "더 퍼스트 슬림 젤 아이라이너",
+      kind: "젤 펜슬 — 심이 얇아 속눈썹 사이를 메우기 좋아요",
+      photo: "/products/merzy-the-first-slim-gel-liner.jpg",
+      checked: true,
+    },
+    {
+      // GS5 버건디 베릴
+      families: ["버건디"],
+      brand: "머지", name: "더 퍼스트 슬림 젤 아이라이너",
+      kind: "젤 펜슬 — 심이 얇아 속눈썹 사이를 메우기 좋아요",
+      photo: "/products/merzy-the-first-slim-gel-liner.jpg",
+      checked: true,
+    },
+    {
+      // GS6 모브 로즈
+      families: ["로즈"],
+      brand: "머지", name: "더 퍼스트 슬림 젤 아이라이너",
+      kind: "젤 펜슬 — 심이 얇아 속눈썹 사이를 메우기 좋아요",
+      photo: "/products/merzy-the-first-slim-gel-liner.jpg",
+      checked: true,
+    },
+    {
+      // GS7 모브 팬시
+      families: ["플럼"],
+      brand: "머지", name: "더 퍼스트 슬림 젤 아이라이너",
+      kind: "젤 펜슬 — 심이 얇아 속눈썹 사이를 메우기 좋아요",
+      photo: "/products/merzy-the-first-slim-gel-liner.jpg",
+      checked: true,
+    },
     {
       // 3색: 01 블랙 · 02 브라운 · 03 다크브라운
       families: ["블랙", "소프트블랙", "브라운", "다크브라운"],
@@ -282,13 +365,14 @@ export function pickProducts(part: PalettePart, families: readonly string[], max
   }
   if (out.length >= max) return out;
 
-  // ② 모자라면 색이 가까운 계열에서. 기준 색은 첫 번째 계열
+  // ② 모자라면 색이 **가까운** 계열에서만. 기준 색은 첫 번째 계열.
+  //
+  // 전에는 거리에 한계가 없어서 아무리 먼 색이라도 끌어왔다. 그래서 카키 · 플럼을 뽑아도
+  // 검정 라이너가 따라붙었고, 제품을 더 넣어도 추천이 달라지지 않았다 (2026-10-12).
+  // 억지로 두 개를 채우느니 **하나만 보여 주는 편**이 낫다 — 안 맞는 추천은 추천이 아니다.
   const want = families.map((f) => familyLab(part, f)).find((l) => l);
   const rest = list.filter((p) => !seen.has(p));
-  if (!want) {
-    for (const p of rest) add(p, p.families[0] ?? families[0] ?? "");
-    return out;
-  }
+  if (!want) return out;
   const scored = rest.map((p) => {
     let bd = Infinity, bf = p.families[0] ?? "";
     for (const f of p.families) {
@@ -299,9 +383,20 @@ export function pickProducts(part: PalettePart, families: readonly string[], max
     }
     return { p, bd, bf };
   }).sort((a, b) => a.bd - b.bd);
-  for (const { p, bf } of scored) add(p, bf);
+  for (const { p, bd, bf } of scored) {
+    if (bd > NEAR_MAX) break;   // 여기서부터는 눈에 다른 색이다 — 채우지 않는다
+    add(p, bf);
+  }
   return out;
 }
+
+/**
+ * "가까운 색" 으로 볼 거리(ΔE). 이보다 멀면 다른 색으로 본다.
+ *
+ * 18 은 48색 팔레트에서 이웃 색까지의 거리(7~12, docs/research/color-match-lighting-2026-10-07.md)보다
+ * 조금 넉넉한 값이다 — 한 칸 옆 계열까지는 쓸 만하지만 두 칸 넘게 떨어지면 다른 색이다.
+ */
+const NEAR_MAX = 18;
 
 /** 그 계열 이름을 가진 48색들의 평균. 팔레트에 없는 이름이면 null */
 function familyLab(part: PalettePart, family: string): Lab | null {
