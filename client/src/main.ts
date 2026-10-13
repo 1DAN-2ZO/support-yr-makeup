@@ -73,7 +73,7 @@ import { inNewFlow } from "./core/screens";
 /** 후기 설문 (구글 폼). 끝내기를 누르면 모달로 묻고, 끝 화면에도 한 번 더 둔다 */
 const SURVEY_URL = "https://docs.google.com/forms/d/e/1FAIpQLSeSt5w2auBc_CW-ScpC5bq9TQs3SO1YsFIlT7REj1hlRmgi6g/viewform";
 /** 설문의 "세션 번호" 칸 번호 (`entry.숫자`). 설문에 그 칸이 생기면 채운다 (#431) — 비어 있으면 번호를 안 붙인다 */
-const SURVEY_SID_ENTRY = "";
+const SURVEY_SID_ENTRY = "entry.1452881246";
 
 /** 카메라를 못 여는 환경이면 맨 위에 띄운다. 흐름은 막지 않는다 */
 function showWarning(c: SecureCheck): void {
