@@ -291,7 +291,7 @@ def test_kp19_cli_lists_deletes_and_purges(tmp_path, monkeypatch, capsys):
     today = datetime.now(UTC).strftime("%Y-%m-%d")
     make(tmp_path / "keep", today)
     make(tmp_path / "keep", "2026-01-01")
-    assert keep.main(["keep", "list"]) == 0
+    assert keep.main(["keep", "list", "--full"]) == 0
     out = capsys.readouterr().out
     assert SID in out and "bare.jpg" in out and "세션 1개" in out
     assert keep.main(["keep", "purge"]) == 0
@@ -299,8 +299,21 @@ def test_kp19_cli_lists_deletes_and_purges(tmp_path, monkeypatch, capsys):
     # 세션 번호는 환경 변수로도 받는다 — 워크플로가 명령 줄을 거치지 않고 넘긴다
     monkeypatch.setenv("KEEP_SID", SID)
     assert keep.main(["keep", "delete"]) == 0
-    assert "지운 파일 1개" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "지운 파일 1개" in out
+    assert SID not in out and f"{SID[:4]}…" in out
     assert files(tmp_path / "keep") == []
+
+
+def test_kp19c_cli_does_not_print_whole_session_ids(tmp_path, monkeypatch, capsys):
+    # 저장소가 공개라 워크플로의 실행 화면은 누구나 본다 (2026-10-13) — 세션 번호는 앞 네 글자만 찍는다.
+    # 전부 보려면 서버 PC 에서 직접 list --full
+    monkeypatch.setenv("DHE_DATA_DIR", str(tmp_path))
+    make(tmp_path / "keep", "2026-10-09")
+    assert keep.main(["keep", "list"]) == 0
+    out = capsys.readouterr().out
+    assert SID not in out
+    assert f"{SID[:4]}…" in out and "bare.jpg" in out and "세션 1개" in out
 
 
 @pytest.mark.parametrize("sid", ["", "x; rm -rf /", "a & del b", "../.."])
