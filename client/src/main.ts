@@ -162,7 +162,7 @@ function showSplash(): () => Promise<void> {
   splash.setAttribute("aria-label", "nudy");
   splash.innerHTML = `
     <div class="splash-frame">
-      <img src="/ui/nudy-splash.png" alt="" aria-hidden="true" />
+      <img src="/ui/nudy-splash.webp" alt="" aria-hidden="true" />
     </div>
   `;
   document.body.append(splash);

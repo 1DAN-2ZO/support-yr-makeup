@@ -931,6 +931,32 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   font-size: 13px;
   line-height: 1.55;
 }
+/* 「동의하고 시작」 바로 위의 요약 세 줄 (2026-10-13).
+   전문(.consent-body)보다 눈에 들어와야 하지만 제목보다 세면 안 된다 — 분홍 바탕에 체크 하나씩 */
+.consent-points {
+  margin: 18px 0 0;
+  padding: 13px 14px;
+  border-radius: 10px;
+  background: #fff6f7;
+  list-style: none;
+}
+.consent-points li {
+  position: relative;
+  padding-left: 20px;
+  color: #8a5663;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.consent-points li + li { margin-top: 7px; }
+/* 체크 표시는 꾸밈이라 읽어 주는 기계에는 안 들린다 — 글만 읽혀도 뜻이 통한다 */
+.consent-points li::before {
+  content: "✓";
+  position: absolute;
+  left: 2px;
+  color: #ef6b85;
+  font-weight: 700;
+}
+
 .consent-sheet .row {
   gap: 10px;
   margin-top: 22px;
@@ -967,7 +993,8 @@ button.primary:disabled { background: var(--line); color: var(--muted); cursor: 
   position: relative;
   width: 100%;
   aspect-ratio: 941 / 1672;
-  background: url("/ui/intro-face-guides.png") center / cover no-repeat;
+  /* webp 로 바꿈 (2026-10-13) — png 1.9MB 였다. 첫 화면에서 받는 것이라 체감이 크다 */
+  background: url("/ui/intro-face-guides.webp") center / cover no-repeat;
   overflow: hidden;
 }
 .intro-overlay-logo {

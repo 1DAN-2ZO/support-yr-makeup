@@ -52,7 +52,7 @@ export const SCREEN_NAME: Record<ScreenId, string> = {
   result: "5 결과 (옛 흐름)",
   review: "6 전체 리뷰 (옛 흐름)",
   done: "끝",
-  answer: "2·3 참고 사진 · 정답사진",
+  answer: "참고 사진 · 예상 메이크업",
   partguide: "4 부위 가이드",
   attempt: "5 시도사진",
   feedback: "6 피드백",
