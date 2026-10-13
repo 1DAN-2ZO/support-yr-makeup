@@ -56,6 +56,34 @@ const probeSink: Plugin = {
 };
 
 /**
+ * [dev 전용] 템플릿 준비물 만들기 페이지(template-build.html, #420)가 만든 파일을 저장한다.
+ *   POST /__templates/server/NN.webp|jpg   → server/app/templates/  (서버가 템플릿 번호로 꺼내는 사진)
+ *   POST /__templates/prep/<이름>.json      → public/templates/prep/  (앱이 읽는 색 팔레트)
+ * 파일 이름은 영문 · 숫자 · . _ - 만. 서버 사진은 두 자리 번호의 webp · jpg 만, 앱 쪽은 json 만 받는다. 빌드에는 안 들어간다.
+ */
+const templateSink: Plugin = {
+  name: "template-sink",
+  apply: "serve",
+  configureServer(server) {
+    server.middlewares.use("/__templates", (req, res) => {
+      const path = ((req.url ?? "").replace(/^\//, "").split("?")[0] ?? "");
+      if (req.method !== "POST") { res.statusCode = 405; res.end(); return; }
+      const target = /^server\/(\d{2}\.(webp|jpg))$/.exec(path) ?? /^prep\/([a-z0-9][a-z0-9._-]*\.json)$/i.exec(path);
+      if (!target || path.includes("..")) { res.statusCode = 400; res.end("bad name"); return; }
+      const dir = fileURLToPath(new URL(path.startsWith("server/") ? "../server/app/templates/" : "./public/templates/prep/", import.meta.url));
+      const chunks: Buffer[] = [];
+      req.on("data", (c: Buffer) => { chunks.push(c); });
+      req.on("end", () => {
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(dir + target[1], Buffer.concat(chunks));
+        res.setHeader("content-type", "text/plain; charset=utf-8");
+        res.end(path);
+      });
+    });
+  },
+};
+
+/**
  * [빌드 전용] MediaPipe wasm 을 dist/mediapipe/wasm/ 으로 복사한다.
  * dev 서버는 /node_modules/… 를 그대로 열어 주지만 빌드 결과물에는 없어서 얼굴 모델이 404 로 안 뜬다 (#162 ⑥ 리뷰).
  * 경로는 screens/landmarker.ts 의 WASM_BASE 와 맞춘다.
@@ -72,7 +100,7 @@ const mediapipeWasm: Plugin = {
 };
 
 export default defineConfig({
-  plugins: [probeSink, mediapipeWasm],
+  plugins: [probeSink, templateSink, mediapipeWasm],
   define: { __APP_VERSION__: JSON.stringify(appVersion()) },
   resolve: {
     alias: {

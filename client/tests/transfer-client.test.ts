@@ -37,6 +37,20 @@ describe("그림 만들기 부르기 (requestTransfer)", () => {
     expect(await (fd.get("ref") as Blob).text()).toBe("ref");
   });
 
+  it("TC1b 템플릿이면 사진 대신 번호만 올린다 — ref 는 보내지 않는다 (#420)", async () => {
+    const fetchFn = vi.fn(async (_u: RequestInfo | URL, _i?: RequestInit) => ok());
+    const r = await requestTransfer(bare, { template: 3 }, { fetchFn });
+    expect(r.ok).toBe(true);
+    const fd = fetchFn.mock.calls[0]![1]!.body as FormData;
+    expect(await (fd.get("bare") as Blob).text()).toBe("bare");
+    expect(fd.get("template")).toBe("3");
+    expect(fd.has("ref")).toBe(false);
+    // 사진을 올릴 때는 반대 — 번호가 없다
+    await requestTransfer(bare, ref, { fetchFn });
+    const fd2 = fetchFn.mock.calls[1]![1]!.body as FormData;
+    expect(fd2.has("template")).toBe(false);
+  });
+
   it("TC2 서버 주소를 따로 주면 그 주소로 (끝의 / 는 있어도 없어도)", async () => {
     const fetchFn = vi.fn(async (_u: RequestInfo | URL, _i?: RequestInit) => ok());
     await requestTransfer(bare, ref, { fetchFn, base: "https://api.example/" });
@@ -87,7 +101,7 @@ describe("그림 만들어 보관하기 (createPictureMaker)", () => {
   const made = (text: string): TransferResult => ({ ok: true, picture: new Blob([text], { type: "image/png" }), ms: 1 });
   const setup = (over: Partial<Parameters<typeof createPictureMaker>[0]> = {}) => {
     const put = vi.fn(async (_k: "answer" | "moved", _b: Blob) => {});
-    const request = vi.fn(async (_b: Blob, _r: Blob) => made("A"));
+    const request = vi.fn(async (_b: Blob, _r: Blob | { template: number }) => made("A"));
     const maker = createPictureMaker({ getBare: async () => bare, getAttempt: () => ref, put, request, ...over });
     return { put, request, maker };
   };
@@ -100,6 +114,28 @@ describe("그림 만들어 보관하기 (createPictureMaker)", () => {
     expect(request).toHaveBeenCalledWith(bare, given);
     expect(put.mock.calls[0]![0]).toBe("answer");
     expect(await put.mock.calls[0]![1].text()).toBe("A");
+  });
+
+  it("PM1b 템플릿을 골랐으면 맨얼굴 + 템플릿 번호를 보낸다 — 사진은 안 보낸다 (#420)", async () => {
+    const { put, request, maker } = setup();
+    const r = await maker.makeAnswer({ template: 5 });
+    expect(r.ok).toBe(true);
+    expect(request).toHaveBeenCalledWith(bare, { template: 5 });
+    expect(put.mock.calls[0]![0]).toBe("answer");
+  });
+
+  it("PM1c 같은 템플릿을 또 부르면 새로 보내지 않고, 다른 번호면 만드는 중(busy)이다", async () => {
+    let done: (r: TransferResult) => void = () => {};
+    const request = vi.fn(() => new Promise<TransferResult>((r) => { done = r; }));
+    const { maker } = setup({ request });
+    const first = maker.makeAnswer({ template: 2 });
+    const again = maker.makeAnswer({ template: 2 });
+    expect(await maker.makeAnswer({ template: 7 })).toEqual({ ok: false, why: "busy" });
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(1));
+    done(made("T"));
+    expect((await first).ok).toBe(true);
+    expect((await again).ok).toBe(true);
+    expect(request).toHaveBeenCalledTimes(1);
   });
 
   it("PM2 옮긴 그림: 맨얼굴 + 시도사진 눈 뜬 장을 보내고 moved 칸에 넣는다", async () => {
@@ -155,7 +191,7 @@ describe("그림 만들어 보관하기 (createPictureMaker)", () => {
 
   it("PM7 만드는 중에 다른 사진으로 또 부르면 앞의 결과를 그 사진의 결과인 것처럼 돌려주지 않는다 — 만드는 중이라고 답한다", async () => {
     let done: (r: TransferResult) => void = () => {};
-    const request = vi.fn((_b: Blob, _r: Blob) => new Promise<TransferResult>((res) => { done = res; }));
+    const request = vi.fn((_b: Blob, _r: Blob | { template: number }) => new Promise<TransferResult>((res) => { done = res; }));
     const { put, maker } = setup({ request });
     const lookA = new Blob(["A"]), lookB = new Blob(["B"]);
     const first = maker.makeAnswer(lookA);

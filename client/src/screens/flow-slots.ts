@@ -10,7 +10,10 @@ import { FEEDBACK_ORDER, type FeedbackPart } from "@core/guide-feedback";
 import type { Logger } from "@core/log";
 import type { MakeResult } from "@core/picture-maker";
 import { PART_NAME } from "@core/score";
+import { loadTemplateManifest, templateAnalysis, templateNumber } from "@core/template-prep";
+import type { TemplateManifest } from "@core/template-prep";
 import { TEMPLATES } from "@core/templates";
+import type { TransferRef } from "@core/transfer-client";
 import type { PartId } from "@core/types";
 import { MAKE_WAIT_TEXT, makeFailText, shrinkForUpload } from "./answer-make";
 import { colorPalette } from "./color-palette";
@@ -44,7 +47,12 @@ export interface SlotDeps {
    * 정답사진 만들기 (⑥ 백 연결 — main.ts 의 makeAnswer). 주면 "적용하기" 가 참고 사진을 서버로 보내 정답사진을 받아 보여 준다.
    * 안 주면 색만 읽고 참고 사진을 보여 준다 (서버 없이 화면만 볼 때 — ui-preview)
    */
-  makeAnswer?: (ref: Blob) => Promise<MakeResult>;
+  makeAnswer?: (ref: TransferRef) => Promise<MakeResult>;
+  /**
+   * 템플릿 색 팔레트 목록을 읽는다 (#420). 안 주면 앱에 실린 public/templates/prep/templates.json — 테스트에서 바꿔 끼운다.
+   * 템플릿을 고르면 사진을 올리지 않고 번호만 서버로 보낸다 — 색은 여기서 읽은 것을 쓴다
+   */
+  templateManifest?: () => Promise<TemplateManifest>;
   /** 올리기 전에 참고 사진을 줄이는 함수. 안 주면 진짜 (screens/answer-make) — 테스트에서 바꿔 끼운다 */
   shrink?: (photo: Blob) => Promise<Blob>;
 }
@@ -591,21 +599,43 @@ export function slotScreen<S>(spec: SlotSpec, deps: SlotDeps = {}): Screen<S> {
             action(ctx as ScreenContext<unknown>, "다음 · 화장 가이드 보기", spec.next),
           );
         };
-        // 템플릿을 고르고 왔으면 그 사진을 **올린 사진과 똑같이** 다룬다 (#420).
+        /**
+         * 템플릿을 골랐을 때 (#420) — 사진을 올리지도, 분석하지도, 줄이지도 않는다.
+         * 색은 미리 읽어 둔 것을 쓰고, 서버에는 맨얼굴 + **템플릿 번호**만 보낸다 (서버가 같은 번호의 사진을 갖고 있다).
+         * 올린 사진 길(run)과 갈라지는 곳은 여기 하나고, 받은 뒤(renderAnswer)는 같다
+         */
+        const runTemplate = async (id: string, thumb: string): Promise<void> => {
+          renderLoading();
+          let res: RefAnalysis | null = null;
+          try {
+            res = templateAnalysis(await (deps.templateManifest ?? (() => loadTemplateManifest(import.meta.env.BASE_URL)))(), id, thumb);
+          } catch { /* 아래에서 같이 안내 */ }
+          if (!alive) return;
+          if (!res) {
+            ctx.log.log({ name: "button", button: `template_fail:${id}` });
+            renderUpload("템플릿 정보를 불러오지 못했어요. 다시 골라 주세요");
+            return;
+          }
+          let made: Blob | null = null;
+          if (deps.makeAnswer) {
+            const r = await deps.makeAnswer({ template: templateNumber(id) });
+            if (!alive) return;
+            if (!r.ok) {
+              ctx.log.log({ name: "button", button: `answer_make_fail:${r.why}` });
+              renderUpload(makeFailText(r.why) ?? undefined);
+              return;
+            }
+            ctx.log.log({ name: "button", button: "answer_make_ok" });
+            made = r.picture;
+          }
+          setRefColors(res.colors);
+          renderAnswer(res, made);
+        };
+        // 템플릿을 고르고 왔으면 바로 예상 메이크업을 만든다.
         // take 라서 한 번만 — 안 그러면 내 사진을 올리려 해도 템플릿으로 덮인다
         const fromTemplate = takePickedTemplate();
         if (fromTemplate) {
-          renderLoading();
-          void (async () => {
-            try {
-              const res = await fetch(fromTemplate.thumb);
-              const blob = await res.blob();
-              if (!alive) return;
-              await run(new File([blob], `template-${fromTemplate.id}.webp`, { type: blob.type || "image/webp" }));
-            } catch {
-              if (alive) renderUpload("템플릿 사진을 불러오지 못했어요. 다시 골라 주세요");
-            }
-          })();
+          void runTemplate(fromTemplate.id, fromTemplate.thumb);
         } else {
           renderUpload();
         }

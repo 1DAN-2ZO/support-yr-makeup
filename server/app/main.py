@@ -3,7 +3,8 @@
 엔드포인트:
   GET  /health   상태·버전
   POST /events   사용 기록 받기 (어느 화면에서 나갔는지) — 사진·얼굴 점은 받지 않는다. events.py
-  POST /transfer 그림 만들기 (맨얼굴 + 화장 사진 → GPU 의 FLUX 서버 → 그림 한 장). 저장하지 않는다. flux.py
+  POST /transfer 그림 만들기 (맨얼굴 + 화장 사진 또는 템플릿 번호 → GPU 의 FLUX 서버 → 그림 한 장).
+                 저장하지 않는다. flux.py · 템플릿 사진은 templates.py
   POST /keep     테스트 기간 사진 보관 (참고 사진 빼고) — 기본은 꺼짐, DHE_KEEP_UNTIL 을 줘야 받는다. keep.py
 
 실행:  uv run uvicorn server.app.main:app --reload --port 8000
@@ -25,7 +26,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.datastructures import UploadFile
 
-from . import events, keep
+from . import events, keep, templates
 from .config import settings
 from .flux import FluxError, Gone, get_flux, unless_gone
 from .schemas import Health
@@ -135,9 +136,33 @@ async def _photo(f: object) -> tuple[bytes, str]:
     return data, kind
 
 
+async def _ref(form: object) -> tuple[bytes, str]:
+    """화장 사진 — 올린 사진(ref) 아니면 템플릿 번호(template) 중 하나.
+
+    둘 다이거나 둘 다 없으면 거절한다 (#420)
+    """
+    get = form.get  # type: ignore[attr-defined]
+    has_ref, has_tpl = get("ref") is not None, get("template") is not None
+    if has_ref and has_tpl:
+        raise _fail(422, "both", "ref 와 template 중 하나만 보내 주세요")
+    if not has_tpl:
+        return await _photo(get("ref"))
+    n = templates.parse(get("template"))
+    if n is None:
+        raise _fail(422, "bad_template", f"template 은 1~{templates.COUNT} 번호예요")
+    found = templates.photo(n)
+    if found is None:
+        # 우리 쪽 폴더가 비어 있다 — 사용자 잘못이 아니다
+        log.error("template %d photo missing (server/app/templates)", n)
+        raise _fail(500, "template_missing", "템플릿 사진이 서버에 없어요")
+    return found
+
+
 @app.post("/transfer")
 async def transfer(request: Request) -> Response:
-    """맨얼굴(bare)에 화장 사진(ref)의 화장을 입힌 그림 한 장. 정답사진 · 옮긴 그림이 같은 길이다.
+    """맨얼굴(bare)에 화장 사진(ref) 또는 템플릿 번호(template, 1~10)의 화장을 입힌 그림 한 장.
+
+    정답사진 · 옮긴 그림이 같은 길이다.
 
     몸통(사진 두 장)을 받기 전에 걸러 낸다 — 꺼짐 · 너무 큼 · 줄이 꽉 참.
     다 받은 뒤에 거절하면 그동안 디스크와 메모리를 내준다
@@ -157,7 +182,7 @@ async def transfer(request: Request) -> Response:
     except Exception as e:  # noqa: BLE001 — 깨진 multipart 는 종류가 여럿이다
         raise _fail(422, "missing") from e
     b, bt = await _photo(form.get("bare"))
-    r, rt = await _photo(form.get("ref"))
+    r, rt = await _ref(form)
     try:
         # 앱이 끊으면(화면을 떠남 · 시간 초과) 그만둔다 — 받을 사람이 없는 요청이 줄을 차지하지 않게
         made = await unless_gone(flux.transfer(b, bt, r, rt), request.is_disconnected)
