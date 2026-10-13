@@ -13,7 +13,8 @@ import { createMadePictures, type MadeKey } from "./core/made-pictures";
 import { planRestore, rebuildBaseline, toCapture } from "./core/restore";
 import { createLogStore } from "./core/log-store";
 import { readUtm } from "@core/utm";
-import { createSidHolder, surveyUrlFor } from "@core/session-id";
+import { SID_KEY, createSidHolder, surveyUrlFor } from "@core/session-id";
+import { CLOSED_TEXT, isTestClosed } from "@core/test-period";
 import { DRAFT_TTL_MS } from "@core/session-store";
 import { middleShot } from "@core/attempt";
 import { armPhoneBack } from "./screens/phone-back";
@@ -120,6 +121,37 @@ function showBootError(e: unknown): void {
 }
 
 /** 앱 첫 진입 스플래시를 닫는 함수. 세션 화면이 아니라 부팅 중에만 보인다 (최소 3초) */
+/**
+ * 테스트 기간이 끝난 뒤의 화면 (2026-10-13 결정, core/test-period) — 앱을 켜지 않고 이것만 보여 준다.
+ * 이 기기에 남아 있던 사진 · 기록은 여기서 지운다: 평소에는 다시 열 때(2시간 뒤) 지우는데, 앱이 안 켜지면 그 기회가 없다
+ */
+async function showClosed(): Promise<void> {
+  try {
+    await (await createSessionStore()).clearAll();
+    window.localStorage.removeItem(SID_KEY);
+  } catch { /* 저장소가 막혀 있으면 남은 것도 없다 */ }
+  const root = el("screen");
+  root.textContent = "";
+  const box = document.createElement("div");
+  box.className = "unavailable";
+  const h = document.createElement("h1");
+  h.textContent = CLOSED_TEXT.title;
+  const p = document.createElement("p");
+  p.className = "muted";
+  p.textContent = CLOSED_TEXT.body;
+  const a = document.createElement("a");
+  a.href = SURVEY_URL;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  a.textContent = CLOSED_TEXT.survey;
+  // 피드백 화면의 후기 링크와 같은 모양 (.slot-survey)
+  const more = document.createElement("p");
+  more.className = "slot-survey";
+  more.append(a);
+  box.append(h, p, more);
+  root.append(box);
+}
+
 let closeBootSplash: (() => Promise<void>) | null = null;
 
 function showSplash(): () => Promise<void> {
@@ -147,6 +179,11 @@ function showSplash(): () => Promise<void> {
 }
 
 async function boot(): Promise<void> {
+  // 테스트 기간이 끝났으면 앱을 켜지 않는다 (10월 19일 오후 3시부터). 주소에 ?team 을 붙이면 연다 — 발표 시연 · 확인용
+  if (isTestClosed(Date.now(), location.search)) {
+    await showClosed();
+    return;
+  }
   closeBootSplash = showSplash();
   let session: Session = createSession();
 

@@ -15,6 +15,9 @@ services:
       - D:/nudy-data:/data
 
     environment:
+      # 로그 시각을 한국 시간으로 (없으면 UTC 라 9시간 늦게 찍힌다). 지역 이름(Asia/Seoul) 대신 POSIX 꼴로 적는다 —
+      # 이미지에 시간대 자료(tzdata)가 없어도 통한다. 사용 기록 · 보관 사진의 날짜 폴더 이름은 코드가 UTC 로 고정해 두어 그대로다
+      - TZ=KST-9
       # 배포 프론트(https)에서 이 API를 부를 수 있게 허용 (CORS). 개발용 localhost 도 유지
       - DHE_CORS_ORIGINS=https://nudy.shelldocs.cloud,http://localhost:5173,http://127.0.0.1:5173,https://localhost:5173,https://127.0.0.1:5173
       # 사용 기록 저장 폴더 — 없으면 /events 가 503 (server/app/events.py)
