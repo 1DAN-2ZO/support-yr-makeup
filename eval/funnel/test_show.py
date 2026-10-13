@@ -152,3 +152,69 @@ def test_무엇을_눌렀나_버튼마다_누른_세션_수와_횟수(tmp_path):
 def test_버튼_기록이_없으면_그_표를_안_그린다(tmp_path):
     write(tmp_path, "2025-10-08", session("s1"))
     assert "무엇을 눌렀나" not in show.render(*show.load(tmp_path, None))
+
+
+def test_촬영에서_무엇에_막혔나_사유마다_막힌_세션_수와_끝내_못_찍은_세션(tmp_path):
+    def stuck(sid: str, t: int, reason: str) -> dict:
+        return ev(sid, t, "capture", screen="capture", shot="front_open", ok=False, retry=0, reason=reason)
+
+    def done(sid: str, t: int) -> dict:
+        return ev(sid, t, "capture", screen="capture", shot="front_open", ok=True, retry=0, reason=None)
+
+    events = [
+        # a: 크기에 두 번 막혔다가 찍음
+        ev("a", 0, "screen_enter", screen="capture"),
+        stuck("a", 10, "size"),
+        stuck("a", 20, "size"),
+        done("a", 30),
+        # b: 크기 · 밝기에 막히고 끝내 못 찍음
+        ev("b", 0, "screen_enter", screen="capture"),
+        stuck("b", 10, "size"),
+        stuck("b", 20, "bright"),
+        # c: 한 번도 안 막히고 찍음
+        ev("c", 0, "screen_enter", screen="capture"),
+        done("c", 10),
+        # d: 막힌 기록도 없이 떠남
+        ev("d", 0, "screen_enter", screen="capture"),
+    ]
+    write(tmp_path, "2025-10-08", events)
+    text = show.render(*show.load(tmp_path, None))
+    assert "## 촬영에서 무엇에 막혔나" in text
+    # 사유 | 막힌 세션 | 그중 끝내 못 찍은 세션 | 막힌 횟수 — 막힌 세션이 많은 것부터
+    assert "| size | 2 | 1 | 3 |" in text
+    assert "| bright | 1 | 1 | 1 |" in text
+    assert text.index("| size |") < text.index("| bright |")
+    assert "촬영 화면에 들어간 세션 4개 중 2개가 찍었다. 못 찍은 2개 중 1개는 막힌 기록도 없이 떠났다" in text
+
+
+def test_촬영_기록이_없으면_그_표를_안_그린다(tmp_path):
+    write(tmp_path, "2025-10-08", session("a"))
+    assert "## 촬영에서 무엇에 막혔나" not in show.render(*show.load(tmp_path, None))
+
+
+def test_오류는_어디서_무슨_오류인지_세션_수와_횟수로(tmp_path):
+    def err(sid: str, t: int, where: str, msg: str) -> dict:
+        return ev(sid, t, "error", screen=where, where=where, msg=msg)
+
+    denied = "camera:NotAllowedError: Permission denied"
+    events = [
+        err("a", 0, "capture", denied),
+        err("a", 10, "capture", denied),
+        err("b", 0, "capture", denied),
+        err("c", 0, "capture", "camera:NotFoundError: Requested device not found"),
+        # 표를 깨는 글자(| · 줄바꿈)와 긴 글은 다듬는다
+        err("d", 0, "live", "bitmap:a|b\nc " + "x" * 200),
+    ]
+    write(tmp_path, "2025-10-08", events)
+    text = show.render(*show.load(tmp_path, None))
+    assert "## 오류" in text
+    assert "| capture | camera:NotAllowedError: Permission denied | 2 | 3 |" in text
+    assert "| capture | camera:NotFoundError: Requested device not found | 1 | 1 |" in text
+    assert text.index("NotAllowedError") < text.index("NotFoundError")
+    row = next(ln for ln in text.splitlines() if ln.startswith("| live |"))
+    assert row.count("|") == 5 and len(row) < 130 and "a/b c" in row
+
+
+def test_오류_기록이_없으면_그_표를_안_그린다(tmp_path):
+    write(tmp_path, "2025-10-08", session("a"))
+    assert "## 오류" not in show.render(*show.load(tmp_path, None))

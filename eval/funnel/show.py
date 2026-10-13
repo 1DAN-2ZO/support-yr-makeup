@@ -120,6 +120,71 @@ def buttons(events: list[dict]) -> list[str]:
     return out
 
 
+def capture_blocks(events: list[dict]) -> list[str]:
+    """촬영에서 무엇에 막혔나 — 사유마다 막힌 세션 수 · 그중 끝내 못 찍은 세션 수 · 막힌 횟수.
+
+    앱은 같은 조건에 3초 넘게 막히면 capture{ok: false, reason} 을 한 번 남긴다 (client core/capture-events).
+    찍으면 capture{ok: true}. 촬영 기록이 하나도 없으면 빈 목록.
+    """
+    entered: set[str] = set()
+    shot: set[str] = set()
+    stuck: dict[str, set[str]] = {}
+    count: dict[str, int] = {}
+    for e in events:
+        sid = str(e.get("sid"))
+        if e.get("name") == "screen_enter" and e.get("screen") == "capture":
+            entered.add(sid)
+        if e.get("name") != "capture":
+            continue
+        entered.add(sid)
+        if e.get("ok") is True:
+            shot.add(sid)
+        elif isinstance(e.get("reason"), str):
+            stuck.setdefault(e["reason"], set()).add(sid)
+            count[e["reason"]] = count.get(e["reason"], 0) + 1
+    if not shot and not count:
+        return []
+    out = ["## 촬영에서 무엇에 막혔나", ""]
+    if count:
+        out += ["| 사유 | 막힌 세션 | 그중 끝내 못 찍은 세션 | 막힌 횟수 |", "|---|---:|---:|---:|"]
+        for key in sorted(count, key=lambda k: (-len(stuck[k]), k)):
+            out.append(f"| {key} | {len(stuck[key])} | {len(stuck[key] - shot)} | {count[key]} |")
+        out.append("")
+    missed = entered - shot
+    silent = missed - set().union(*stuck.values()) if stuck else missed
+    out += [
+        f"촬영 화면에 들어간 세션 {len(entered)}개 중 {len(shot & entered)}개가 찍었다."
+        f" 못 찍은 {len(missed)}개 중 {len(silent)}개는 막힌 기록도 없이 떠났다"
+        " (3초 넘게 같은 조건에 막혀야 기록이 남는다).",
+        "",
+    ]
+    return out
+
+
+def errors(events: list[dict]) -> list[str]:
+    """오류 — 어디서 · 무슨 오류가 몇 세션에서 몇 번.
+
+    카메라를 못 연 것(camera:NotAllowedError 등)이 여기 나온다.
+    글은 80자까지만, 표를 깨는 글자는 바꾼다. 오류 기록이 없으면 빈 목록.
+    """
+    sessions: dict[tuple[str, str], set[str]] = {}
+    count: dict[tuple[str, str], int] = {}
+    for e in events:
+        if e.get("name") != "error":
+            continue
+        msg = " ".join(str(e.get("msg")).replace("|", "/").split())[:80]
+        key = (str(e.get("where")), msg)
+        sessions.setdefault(key, set()).add(str(e.get("sid")))
+        count[key] = count.get(key, 0) + 1
+    if not count:
+        return []
+    out = ["## 오류", "", "| 어디서 | 무슨 오류 | 세션 | 횟수 |", "|---|---|---:|---:|"]
+    for key in sorted(count, key=lambda k: (-len(sessions[k]), k)):
+        out.append(f"| {key[0]} | {key[1]} | {len(sessions[key])} | {count[key]} |")
+    out.append("")
+    return out
+
+
 def render(files: list[Path], events: list[dict]) -> str:
     """마크다운 한 덩이"""
     out = ["# nudy 사용 기록", ""]
@@ -144,6 +209,8 @@ def render(files: list[Path], events: list[dict]) -> str:
             f"| {str(r['metric'])[len(head) :]} | {r['current']} | {r['n']} | {r['note']} |" for r in mine
         ]
         out.append("")
+    out += capture_blocks(events)
+    out += errors(events)
     out += buttons(events)
     if not any(str(r["metric"]).startswith("작업 · ") for r in rows):
         out += [
