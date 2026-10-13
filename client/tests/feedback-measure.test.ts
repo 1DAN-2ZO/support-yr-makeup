@@ -112,7 +112,7 @@ describe("사진에서 재서 문장까지 (feedbackWhole)", () => {
     expect(say(lips(0.6)).liner!.line).toBe("이번에는 볼 수 없었어요");
     expect(say(lips(0.6), over(tail("R", 0.3), tail("L", 0.3))).liner!.line).toBe("예상 메이크업과 비슷해요");
     expect(say(lips(0.6), over(tail("R", 0.15), tail("L", 0.15))).liner!.line).toBe("꼬리가 예상 메이크업보다 짧아요");
-    expect(say(lips(0.6), tail("R", 0.3)).liner!.line).toBe("왼쪽 눈에 꼬리가 없어요");
+    expect(say(lips(0.6), tail("R", 0.3)).liner!.line).toBe("양쪽 꼬리 길이가 달라 보여요");
     expect(say(lips(0.6), () => null).liner!.line).toBe("내 화장에서 꼬리를 찾지 못했어요");
   });
 
@@ -122,7 +122,7 @@ describe("사진에서 재서 문장까지 (feedbackWhole)", () => {
     expect(lineOf(wings(0.35)).line).toBe("예상 메이크업과 비슷해요");
     expect(lineOf(() => null).line).toBe("내 화장에서 꼬리를 찾지 못했어요");
     expect(lineOf(wings(0.15)).line).toBe("꼬리가 예상 메이크업보다 짧아요");
-    expect(lineOf(thickTail("R", 0.35, half)).line).toBe("왼쪽 눈에 꼬리가 없어요");
+    expect(lineOf(thickTail("R", 0.35, half)).line).toBe("양쪽 꼬리 길이가 달라 보여요");
   });
 
   it("F3b 예상 메이크업의 꼬리가 옅거나 한 눈에만 뚜렷하면 라이너를 견주지 않는다 — 그려진 속눈썹을 꼬리로 읽던 것 (실험 54 · 56)", () => {

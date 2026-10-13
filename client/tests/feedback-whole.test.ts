@@ -62,13 +62,26 @@ describe("화면 6 피드백 문장 (composeFeedback)", () => {
     expect(FEEDBACK.weak).toBe(0.5);
   });
 
-  it("C7 라이너 꼬리: 눈 폭의 10% 미만은 보지 않는다 · 8%p 넘게 다를 때만 짧다 · 길다", () => {
-    expect(line({ ...good, liner: { targetR: 0.08, targetL: 0.07, R: 0.2, L: 0.2 } }, "liner").line).toBe("예상 메이크업에서 변화를 찾지 못했어요");
+  it("C7 라이너 꼬리: 눈 폭의 15% 미만은 없는 것으로 친다 · 8%p 넘게 다를 때만 짧다 · 길다", () => {
+    expect(line({ ...good, liner: { targetR: 0.13, targetL: 0.12, R: 0.2, L: 0.2 } }, "liner").line).toBe("예상 메이크업에서 변화를 찾지 못했어요");
     expect(line({ ...good, liner: { ...good.liner!, R: null, L: null } }, "liner").line).toBe("내 화장에서 꼬리를 찾지 못했어요");
-    expect(line({ ...good, liner: { ...good.liner!, L: null } }, "liner").line).toBe("왼쪽 눈에 꼬리가 없어요");
-    expect(line({ ...good, liner: { ...good.liner!, R: 0.15, L: 0.14 } }, "liner").line).toBe("꼬리가 예상 메이크업보다 짧아요");
-    expect(line({ ...good, liner: { ...good.liner!, R: 0.45, L: 0.26 } }, "liner").line).toBe("오른쪽 꼬리가 예상 메이크업보다 길어요");
+    expect(line({ ...good, liner: { ...good.liner!, R: 0.17, L: 0.16 } }, "liner").line).toBe("꼬리가 예상 메이크업보다 짧아요");
+    expect(line({ ...good, liner: { ...good.liner!, R: 0.45, L: 0.42 } }, "liner").line).toBe("꼬리가 예상 메이크업보다 길어요");
     expect(line({ ...good, liner: { ...good.liner!, R: 0.25, L: 0.22 } }, "liner").line).toBe("예상 메이크업과 비슷해요");   // 5%p 차 — 흔들림 안
+  });
+  it("C7b 짧게 읽힌 꼬리(0.15 미만)는 없는 것 — 안 그린 눈에 0.13 이 읽혀도 '꼬리를 찾지 못했어요' (실험 66)", () => {
+    const none = line({ ...good, liner: { ...good.liner!, R: 0.13, L: null } }, "liner");
+    expect(none.line).toBe("내 화장에서 꼬리를 찾지 못했어요");
+    expect(none.fix).toBe("눈꼬리에서 바깥으로 꼬리를 빼 보세요");
+  });
+  it("C7c 한쪽만 없거나 짧거나 길면 어느 쪽인지 짚지 않고 양쪽을 확인하라고 한다 — 가는 꼬리는 한쪽이 안 읽히곤 한다 (실험 66)", () => {
+    for (const liner of [{ ...good.liner!, L: null }, { ...good.liner!, R: null, L: 0.16 }, { ...good.liner!, R: 0.17 }, { ...good.liner!, R: 0.17, L: 0.45 }, { ...good.liner!, R: 0.45 }]) {
+      const p = line({ ...good, liner }, "liner");
+      expect(p.tone).toBe("fix");
+      expect(p.line).toBe("양쪽 꼬리 길이가 달라 보여요");
+      expect(p.fix).toBe("양쪽 꼬리 길이를 확인해 보세요");
+      expect(p.more).toBeUndefined();
+    }
   });
 
   it("C8 못 잰 부위는 이유를 말한다 · 사진 조건이 다르면 판정 대신 그것을 알린다", () => {
@@ -107,7 +120,7 @@ describe("화면 6 피드백 문장 (composeFeedback)", () => {
 
 describe("고치는 방법 (fix) — 방향만 말한다", () => {
   it("C10 고칠 것이 있는 부위에만 붙고, 양(몇 mm)은 말하지 않는다", () => {
-    const r = composeFeedback({ ...good, liner: { ...good.liner!, R: 0.15, L: 0.14 }, lip: { ...good.lip!, out: 0.5 }, cheek: { target: 9, amount: 0.2 } });
+    const r = composeFeedback({ ...good, liner: { ...good.liner!, R: 0.17, L: 0.16 }, lip: { ...good.lip!, out: 0.5 }, cheek: { target: 9, amount: 0.2 } });
     const by = Object.fromEntries(r.parts.map((p) => [p.part, p]));
     expect(by.liner!.fix).toBe("꼬리를 조금 더 길게 빼 보세요");
     expect(by.lip!.fix).toBe("입술선 안쪽으로 정리해 보세요");

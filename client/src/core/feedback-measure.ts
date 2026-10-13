@@ -244,7 +244,7 @@ export const TAIL_CLEAR = { min: 17, dark: 28 } as const;
  * 칸마다 선 값 = 양옆(네 방향, side 떨어진 두 칸) 중 더 어두운 쪽보다 얼마나 더 어두운가. 넓은 그늘(섀도우 띠)은 양옆도 어두워 0 이다.
  * 맨얼굴의 선 값을 뺀 것이 min 이상이고 맨얼굴보다 dark 넘게 어두워진 칸이 새 선. 눈꼬리 얼굴 점에서 reach 안에 닿는 덩어리만 본다.
  * 시작점은 보지 않는다 — 얼굴 점의 눈꼬리가 실제 눈꼬리보다 안쪽일 수 있고, 모델은 실제 눈꼬리에서 그린다.
- * 기준값은 눈 폭 134 · 146px 사진 두 묶음에서 맞춘 것 (실험 30 · 45 · 52). 눈 폭의 10% 아래 꼬리는 못 찾는다
+ * 기준값은 눈 폭 134 · 146px 사진 두 묶음에서 맞춘 것 (실험 30 · 45 · 52). 눈 폭의 10% 아래 꼬리는 못 찾는다 (문장은 15% 아래를 없는 것으로 친다 — FEEDBACK.linerMin)
  */
 export function ridgeTail(bare: SampleFrame, im: RgbaImage, k: Side2, strict = false): number | null {
   if (im.w !== bare.im.w || im.h !== bare.im.h) return null;
