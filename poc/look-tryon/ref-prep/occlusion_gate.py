@@ -1,14 +1,50 @@
-"""PoC — 참고 사진 가림 판정: 눈썹 · 눈 · 볼 · 입술이 잘 보이는가.
+"""PoC — 참고 사진 가림 판정: 눈썹 · 눈 · 볼 · 입술이 잘 보이는가. (서버 FLUX 담당자 인수인계용 설명 포함)
 
-  "reject" 얼굴을 못 찾음 · 얼굴 각도가 큼 · 머리카락(옷 · 기타)이 양쪽 다 많이 가림 · 손이 양쪽 다 많이 가림
-           · 머리카락이 한쪽을 가렸는데 반대쪽도 깨끗하지 않음 → "다른 사진 요청"
-           (PoC 에서만 개발자가 본다 — 서비스 동작은 바꾸지 않고 원본을 그대로 통과시킨다)
-  "fill"   머리카락이 한쪽만 많이 가렸고 반대쪽은 깨끗함 (모든 부위 15% 이하) → 반대쪽을 좌우반전해서 채운다 (mirror_half.py)
-  "pass"   그 밖 (잘 보임 · 약간만 가림 · 손이 한쪽만 가림) → 원본 그대로 통과
-  코드 오류(우리 쪽 예외)는 pass — 전처리 때문에 서비스가 막히면 안 된다.
+■ 무엇을 하나
+  사용자가 올린 "따라 하고 싶은 화장 사진(참고 사진)"이 머리카락 · 손으로 눈썹/눈/볼/입술을 가렸거나 고개가 많이 돌아갔을 때,
+  서버 파이프라인(app_klein.py `_run`)에 넣기 *전에* 걸러 내거나 고친다. 파이프라인 자체는 건드리지 않는다 —
+  이 모듈이 없어도 서비스는 지금처럼 돌아야 한다 (실패 · 불확실하면 원본을 그대로 통과).
+  참고 사진은 `_run` 안에서 얼굴 점 → `warp_to`(맨얼굴 모양으로 펴기) → 512px 로 쓰이는데, 가림이 있으면 그 가림이 같이 옮겨져
+  결과에 얼룩이 생긴다 (머리카락이 눈썹을 걸치면 눈썹이 검게 번짐 · 3/4 각도면 먼 쪽 눈썹 · 눈이 뭉개짐).
 
-가림 = 얼굴 분할(selfie_multiclass_256x256)이 머리카락 · 옷 · 기타 · (몸 피부 = 손)로 본 부위 비율.
-L / R 은 사진 기준 왼쪽 / 오른쪽.
+■ 판정 (analyze → prep 순서. 원본으로 *먼저* 판별한다 — CPU 사진 한 장 약 0.2초. 거절은 FLUX 를 돌리기 전에 바로 나온다)
+  "reject"     얼굴을 못 찾음 · 머리카락(옷 · 기타)이 양쪽 다 많이 가림 · 손이 양쪽 다 많이 가림
+               · 머리카락이 한쪽을 가렸는데 반대쪽도 깨끗하지 않음(15% 초과) · 각도가 크면서 한쪽이 가림 → "다른 사진 요청"
+  "fill"       머리카락이 한쪽만 많이 가렸고 반대쪽은 깨끗함(모든 부위 15% 이하) → 반대쪽을 좌우반전해 덮는다 (mirror_half.py, FLUX 안 씀)
+  "frontalize" 거절이 아닌데 얼굴 각도(좌우 · 위아래 · 기울임)가 25° 넘음 → FLUX 로 정면으로 돌림 (frontalize 콜백, 약 +9초, GPU)
+  "pass"       그 밖 (잘 보임 · 약간만 가림 · 손이 한쪽만 가림 — 손은 피부색이라 얼룩은 없고 화장만 빠진다) → 원본 그대로
+  코드 오류(우리 쪽 예외)는 pass — 전처리 때문에 서비스가 막히면 안 된다. 정면화한 사진은 다시 판정하지 않는다 (얼굴이 아직 보이는지만 확인).
+  "많이 가림" = 눈썹 30% · 눈/볼/입술 40% 초과. 가림 = 얼굴 분할이 머리카락 · 옷 · 기타 · (몸 피부 = 손)로 본 부위 비율. L/R 은 사진 기준 왼쪽/오른쪽.
+  왜 이렇게 정했나: 팀 기준이 "원본을 그대로 넣으면 서버 결과가 깨지는가"였다 — 머리카락이 눈썹을 걸치면 검게 번지고, 손은 화장만 빠진다.
+
+■ 서버(app_klein.py)에 붙이는 방법 (아직 안 붙였다 — 이 폴더는 PoC. 같은 한 줄을 로컬에서 시험한 것이 server_local.py)
+  `_run` 안의 `ref = makeup_image.convert("RGB")` 바로 뒤, `rlm = landmarks(ref)` 앞에:
+      ref, rep = prep(ref, frontalize=<아래 콜백>)        # rep["verdict"] · rep["why"] 는 로그에 남긴다
+  - 켜고 끄는 환경변수 스위치를 둘 것 (꺼지면 이 줄을 건너뛴다 — 모듈이 없어도 서비스가 돌아야 한다).
+  - 거절("reject")을 사용자에게 알릴지 · 어떻게 알릴지는 팀 합의 전이다. PoC 합의는 "판정은 개발자만 보고, 서비스는 원본을 그대로 통과".
+    알리게 된다면 기존 통로가 있다: app_klein 이 `gr.Error("…")` 를 던지면 백엔드 flux.py 가 문구를 보고 FluxRejected(422, code="rejected")로 바꾼다
+    (지금은 `_no_face` 가 "얼굴" + "못 찾" 문구만 알아본다). 참고 사진 탓임을 구분하려면 문구 · 매칭 · 앱 문구를 같이 바꿔야 한다.
+  - frontalize 콜백 = server_local.make_prep_b: 서버가 이미 올린 부품을 나눠 쓰는 `Flux2KleinPipeline(scheduler=pipe.scheduler, vae=pipe.vae,
+    text_encoder=None, tokenizer=None, transformer=pipe.transformer, is_distilled=True)` — VRAM 이 늘지 않는다. 사진은 긴 변 768px(16 배수),
+    4 step · guidance 1.0 · seed 1234. 지시문 해석(embeds)은 text encoder 로 미리 구해 저장해 둔 것을 쓴다 (klein_edit.embeds_for — 서빙 때는
+    text encoder 7.5GB 를 올리지 않는다, app_klein.prompt_embeds 와 같은 방식). 지시문: "Remove the hand and fingers from the face and turn the
+    head to face the camera straight on. Keep the same person and exactly the same makeup."
+  - 시간: 판별 0.2초 · 채우기 거의 0 · 정면화 약 +9초 (서버 `_run` 약 11~12초 + 9초 ≈ 21초). 백엔드 제한(총 85초 · 클라이언트 95초 · Cloudflare 100초) 안.
+
+■ 의존성 · 환경
+  - 모델 두 개 (아래 LANDMARKER_PATH · SEG_PATH 주석에 출처). 경로는 이 PC 의 D: 라서 서버에서는 설정 · 환경변수로 바꿀 것.
+  - mediapipe tasks (FaceLandmarker 의 output_facial_transformation_matrixes · ImageSegmenter), opencv, numpy, PIL.
+  - 서버 배포 환경의 diffusers · transformers · torch 버전은 *확인 못 했다* — frontalize 는 `Flux2KleinPipeline`(`is_distilled` 인자)이 필요하다.
+    로컬 시험 환경: diffusers 0.41.0 · transformers 5.19.0 · torch 2.6.0+cu124.
+
+■ 알려진 한계 (기준값은 모두 임시 — AI 생성 사진 12장 + 실제 사진 6장으로 맞췄다. 실제 가림 샘플이 부족하다)
+  - 분할 모델이 어두운 눈썹을 머리카락으로 잘못 보는 경우가 있다 (한쪽 앞머리 사진이 양쪽 가림 → 거절로 나옴). 안전한 쪽으로 틀린다.
+  - 각도 기준 25° 는 3/4 샘플 한 장(좌우 -38° · 기울임 -32°)과 정면 26장(좌우 ±7° · 위아래 ±10° · 기울임 ±3° 이내) 사이에서 넉넉히 잡은 값이다.
+  - 각도가 크고 한쪽이 가린 사진 · 정면화가 화장을 바꾸는 정도는 거의 시험하지 못했다 (정면화는 화장이 옅어지거나 볼터치가 생긴 적이 있어, 각도가 큰 사진에만 건다).
+  - mirror_half(채우기)는 정면에서만 성립한다 (3/4 에서는 중심선이 접힌 점 때문에 틀어진다).
+
+■ 시험 방법
+  gate_test.py 로 판정 · 겹침 그림, server_local.py(mode "gate")로 판정 → 서버 `_run` 까지, sheet_labeled.py 로 이름표 붙은 비교 시트.
 """
 from pathlib import Path
 
@@ -19,7 +55,12 @@ from mediapipe.tasks.python import BaseOptions
 from mediapipe.tasks.python.vision import FaceLandmarker, FaceLandmarkerOptions, ImageSegmenter, ImageSegmenterOptions
 from PIL import Image
 
+# 얼굴 점 478개 · 머리 자세(각도): MediaPipe Face Landmarker — face_landmarker.task (float16, v1). 서버 app_klein.py 가 쓰는 모델과 같다
+#   https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task
 LANDMARKER_PATH = Path(r"D:\flux2-poc\models\face_landmarker.task")
+# 가림 분할: MediaPipe Image Segmenter — selfie_multiclass_256x256.tflite (float32, latest).
+#   클래스 0 배경 · 1 머리카락 · 2 몸 피부 · 3 얼굴 피부 · 4 옷 · 5 기타
+#   https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite
 SEG_PATH = Path(r"D:\flux2-poc\models\selfie_multiclass_256x256.tflite")
 OCCLUDER = (1, 2, 4, 5)       # 1 머리카락 · 2 몸 피부(손) · 4 옷 · 5 기타.  (0 배경 · 3 얼굴 피부)
 HAIR_LIKE = (1, 4, 5)         # 머리카락 · 옷 · 기타 — 많이 가리면 다른 사진 요청 (서버 결과에 검은 얼룩이 생긴다)
