@@ -22,6 +22,13 @@ klein base 4B 로 학습(ai-toolkit)해 이 증류판에 그대로 끼운다 —
 이 파일 옆(D:\\)에 받아 둔다. 끼우려면 diffusers 와 같은 환경에 peft 가 있어야 한다.
 못 끼우면 서버를 멈추지 않고 klein 그대로 켠다 — 켤 때 "[lora] loaded · failed · off" 한 줄을 남기고, 배포가 그 줄을 본다.
 
+참고 사진 손보기 (2026-10-14, #451 의 PoC 를 이어받아 1단계) — 따로 낸 창구 prep_ref. 그리기(predict)는 그대로다.
+백엔드가 정답사진의 올린 참고 사진만 먼저 여기에 보낸다 (옮긴 그림의 시도사진 · 템플릿은 안 보낸다).
+머리카락이 한쪽 눈썹 · 눈 · 볼 · 입술을 많이 가리고 반대쪽은 깨끗하면, 반대쪽을 얼굴 중심선으로 뒤집어 덮은 사진을 돌려준다
+(가림 판정 · 뒤집기는 poc/look-tryon/ref-prep 의 occlusion_gate · mirror_half — GPU 서버는 배포가 두 파일을 이 파일 옆에 둔다).
+그 밖(잘 보임 · 다른 사진 요청 · 고개를 많이 돌림)은 사진 없이 판정만 — 원본 그대로 그린다. 거절 알림 · FLUX 정면화는 아직 안 켰다.
+끄려면 KLEIN_REF_PREP=off. 못 켜면(모델을 못 받음 등) 서버는 그대로 켜고 "[ref-prep] on · off" 한 줄을 남긴다.
+
 지시문은 고정이라 글 해석 부품(7.5GB)은 처음 한 번만 돌려 결과를 ~/.cache/nudy/klein_prompt_embeds.pt 에 두고(지시문 · 모델이
 바뀌면 다시), 서버에는 그리는 부품(7.3GB) + 그림 변환 부품만 그래픽카드에 통째로 올린다 — RTX 3060 12GB 에 들어간다.
 전에는 다 안 들어가 부분씩 올렸는데(enable_model_cpu_offload) 쓸 때마다 PC 메모리 → 그래픽카드로 옮기는 순간 프로그램이
@@ -32,6 +39,8 @@ Stable-Makeup 서버와 같이 켜면 그래픽카드 메모리(12GB)가 모자�
 """
 import gc
 import os
+import sys
+import threading
 import time
 import urllib.request
 import queue
@@ -157,6 +166,28 @@ if LORA:
         LORA = ""
 else:
     print("[lora] off", flush=True)
+
+
+def load_ref_prep():
+    """참고 사진 손보기 모듈 — GPU 서버는 이 파일 옆, 저장소에서는 ../ref-prep 에 있다. 못 쓰면 None (서버는 그대로 켠다)"""
+    if os.environ.get("KLEIN_REF_PREP", "").strip().lower() == "off":
+        print("[ref-prep] off (KLEIN_REF_PREP=off)", flush=True)
+        return None
+    sys.path.append(str(Path(__file__).resolve().parent.parent / "ref-prep"))
+    try:
+        import occlusion_gate
+        import mirror_half  # noqa: F401  (fill 때 occlusion_gate.prep 이 부른다 — 켤 때 있는지만 본다)
+
+        occlusion_gate.ensure_models()
+    except Exception as e:  # 모듈 · 모델이 없어도 그리기는 된다
+        print(f"[ref-prep] off {type(e).__name__}: {e}", flush=True)
+        return None
+    print("[ref-prep] on", flush=True)
+    return occlusion_gate
+
+
+REF_PREP = load_ref_prep()
+_REF_PREP_LOCK = threading.Lock()   # 판정 모델(mediapipe)은 한 번에 하나씩
 print(f"Loaded in {time.perf_counter() - _t0:.1f}s · VRAM {torch.cuda.memory_allocated() / 2**30:.1f}GB. Launching Gradio UI...")
 
 
@@ -405,6 +436,34 @@ demo = gr.Interface(
     api_name="predict",   # 페이지가 부르는 이름 — Stable-Makeup 서버(Gradio 5)와 같게. Gradio 6 은 기본이 함수 이름(run)
     delete_cache=(60, 120),   # 1분마다 2분 지난 임시 파일(받은 사진 · 만든 그림)을 지운다 — 페이지가 받아 갈 시간은 충분
 )
+
+
+def prep_ref(makeup_image):
+    """참고 사진 손보기 — (뒤집어 채운 사진 또는 None, "판정: 까닭"). None 이면 받은 사진 그대로 쓰면 된다.
+    판정만 하고 그래픽카드는 안 쓴다 (0.2초쯤). 사진은 남기지 않고 판정만 로그에 남긴다"""
+    if makeup_image is None:
+        raise gr.Error("참고 사진을 넣으세요.")
+    if REF_PREP is None:
+        return None, "off"
+    src = makeup_image.convert("RGB")
+    with _REF_PREP_LOCK:
+        out, rep = REF_PREP.prep(src)   # FLUX 정면화(frontalize)는 안 넘긴다 — 1단계
+    said = f"{rep.get('verdict', 'pass')}: {rep.get('why', '')}"
+    print(f"[ref-prep] {said}", flush=True)
+    # fill 이어도 뒤집기에 실패하면 원본이 돌아온다 (mirror_half.prep) — 그때는 사진 없이
+    return (out if out is not src else None), said
+
+
+# 따로 낸 창구 — 그리기(predict)의 입력은 그대로 둔다 (그 창구를 부르는 옛 백엔드 · 시험 페이지가 그대로 돈다).
+# 이 창구를 못 만들어도(다른 Gradio 판 등) 그리기는 된다 — 백엔드는 이 창구가 없으면 받은 사진 그대로 그린다
+try:
+    with demo:
+        _prep_in = gr.Image(type="pil", visible=False)
+        _prep_out = gr.Image(type="pil", format="png", visible=False)
+        _prep_said = gr.Textbox(visible=False)
+        gr.Button(visible=False).click(prep_ref, inputs=_prep_in, outputs=[_prep_out, _prep_said], api_name="prep_ref")
+except Exception as e:
+    print(f"[ref-prep] no endpoint {type(e).__name__}: {e}", flush=True)
 
 if __name__ == "__main__":
     demo.queue().launch(server_name="127.0.0.1", server_port=7861, share=False, prevent_thread_lock=True)
