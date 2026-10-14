@@ -1,6 +1,10 @@
 name: Deploy frontend+backend (Docker)
 
 # 화면·백엔드 도커 배포. main 에 올라오면 프론트백 서버에서 재배포한다.
+#
+# 순서는 **빌드 먼저, 성공했을 때만 교체**다 (2026-10-15). 전에는 down → build → up 이라 빌드가 실패하면
+# 내려간 채로 끝났다 — #453 머지 때 실제로 10분 다운(프론트 빌드 실패, 이전 이미지로 손으로 복구).
+# 지금은 빌드가 실패하면 돌던 컨테이너가 그대로 남고 배포만 빨갛게 뜬다. 끊김은 down → up 사이 몇 초뿐이다.
 on:
   push:
     branches:
@@ -17,16 +21,18 @@ jobs:
         with:
           path: .
 
-      - name: Docker Down
-        working-directory: .
-        run: docker compose down
-        continue-on-error: true
-
+      # 돌고 있는 컨테이너는 건드리지 않고 새 이미지를 만든다. 실패하면 여기서 끝 — 서비스는 그대로
       - name: Docker Build
         working-directory: .
         run: |
           docker builder prune -af
           docker compose build --no-cache
+
+      # 새 이미지가 있을 때만 교체한다
+      - name: Docker Down
+        working-directory: .
+        run: docker compose down
+        continue-on-error: true
 
       - name: Docker Up
         working-directory: .
