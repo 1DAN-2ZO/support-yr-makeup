@@ -80,6 +80,12 @@ OCC_MIN = 0.10                # 이 이하 = 잘 보임 (채울 원본인 반대
 OCC_HEAVY = {"brow": 0.10, "eye": 0.10, "cheek": 0.10, "lip": 0.10}
 # 손은 처음 값 그대로 — 손이 가린 사진은 정답 표시에 없어서 견주지 못했다
 HAND_HEAVY = {"brow": 0.30, "eye": 0.40, "cheek": 0.40, "lip": 0.40}
+# 실제로 뒤집어 채우는 것은 같은 쪽이 FILL_PARTS 부위 넘게 가렸거나, 한 부위라도 FILL_ONE 넘게 가렸을 때만.
+# 2026-10-14 실제 사진으로 그려 보니 눈썹 끝만 10 ~ 30% 걸친 사진은 원본 그대로도 결과가 괜찮았고, 뒤집어 채우면 오히려
+# 눈썹에 반대쪽 머리카락 가닥이 생기거나 눈썹이 납작한 띠가 됐다 (3장). 눈썹 · 눈 · 볼이 같이 가린 사진(고개를 살짝 돌림)은
+# 원본이면 볼 · 눈썹에 갈색 얼룩, 채우면 깨끗했다. 한 부위만이라도 거의 덮였으면(앞머리가 눈썹을 덮음) 채워야 검게 안 번진다
+FILL_PARTS = 2
+FILL_ONE = 0.50
 # 한쪽(눈썹 · 눈 · 볼)씩 크게 잘라 분할을 한 번 더 — 얼굴 전체를 256 으로 줄여 보면 가는 머리카락이 사라진다.
 # 머리카락 전용 모델(hair_segmenter)을 크게 잘라 돌리면 진한 눈썹을 머리카락으로 봐서(안 가린 눈썹 0.5) 쓰지 않는다
 ZOOM_SIDE = 512
@@ -273,7 +279,10 @@ def analyze(rgb: np.ndarray) -> dict:
             occluded = hair_sides[0]
             keep = "R" if occluded == "L" else "L"
             keep_worst = max(rep["scores"][keep].values())
-            if keep in hand_sides:
+            covered = [b for b in hair_bad if b[0] == occluded]
+            if len(covered) < FILL_PARTS and max(rep["hair"][occluded].values()) <= FILL_ONE:
+                rep["why"] = f"머리카락이 {occluded} 쪽 한 부위만 조금 가림 ({', '.join(covered)}) → 원본 그대로 (뒤집어 채우면 오히려 어색했다)"
+            elif keep in hand_sides:
                 rep["verdict"], rep["why"] = "reject", f"머리카락이 {occluded} 쪽을, 손이 {keep} 쪽을 많이 가림 → 다른 사진 요청"
             elif keep_worst > OCC_MIN:
                 # 채울 원본인 반대쪽도 깨끗하지 않으면 뒤집어도 가림이 복사된다 (AI 생성 시험 ⑥: 반대쪽 눈썹 25%)
