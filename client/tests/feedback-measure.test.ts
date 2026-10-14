@@ -195,6 +195,12 @@ describe("눈썹 꼬리 끝 (browTail) — 머리카락 분할이 있어야 잰�
     expect(line({ ...base, tailTargetR: 0.02, tailTargetL: 0.0, tailR: 0.25, tailL: 0.25 }).line).toBe("눈썹 꼬리가 예상 메이크업보다 길어요");
     expect(line({ ...base, tailTargetR: 0.02, tailTargetL: 0.0, tailR: 0.05, tailL: 0.04 }).line).toBe("예상 메이크업과 비슷해요");
   });
+  it("T5 지금은 꼬리를 재서 넘기지 않는다 — 만든 그림이 실제 화장만큼 꼬리를 늘려 그리지 않아, 그린 사람 대부분에게 '길어요'가 나갔다 (실험 67)", () => {
+    const both = over(longer("R", 0.3), longer("L", 0.3));
+    const m = measureWhole({ bare: fr(brows), target: image(over(brows, both)), cur: fr(brows) }).brow!;
+    expect(m.tailTargetR).toBeUndefined();
+    expect(m.tailR).toBeUndefined();
+  });
 });
 
 describe("정답사진의 맨얼굴이 따로 있을 때 (targetBare)", () => {
