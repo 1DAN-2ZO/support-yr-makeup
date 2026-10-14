@@ -50,11 +50,10 @@ export interface PartGuide {
  * waveSmooth: 꼬리 끝 → 띠 윗선을 이웃 3점 평균으로 다듬는 횟수 · wingTaper: 꼬리 끝에서 이 비율 구간은 끝으로 곧게 모인다 ·
  * lashOpen: 라이너 진한 픽셀에서 이 굵기(눈 폭 비율)보다 가는 가닥(마스카라 속눈썹)은 지운다 ·
  * shadowExtMax · shadowExtN: 섀도가 라이너 꼬리 끝 바깥으로 번진 곳을 찾는 거리(눈 폭) · 다시 잡는 칸 수 ·
- * shadowStep · shadowSmooth: 섀도 바깥 테두리를 다시 찍는 간격(눈 폭) · 모서리 깎기 횟수 ·
+ * shadowStep: 섀도 바깥 테두리를 다시 찍는 간격(눈 폭) ·
  * browGrow: 눈썹 위 · 아래 선을 원래 눈썹 두께(얼굴 점)의 이 비율까지만 넓히거나 줄인다 ·
  * shadowStart · shadowGap: 섀도 칸 높이는 라이너 윗선에서 shadowStart 안에 시작해 shadowGap 넘게 끊기지 않고 이어진 데까지 ·
  * browGap: 섀도 테두리는 눈썹 가이드에서 이만큼 떨어진다 ·
- * fanIn · fanOut: 섀도 부채꼴 윗선이 아랫선 양 끝(눈머리 · 라이너 끝)보다 바깥으로 더 나가는 길이 ·
  * wingCurve: 라이너 꼬리 윗선 틀 — 눈꼬리에서 꼬리 끝까지 올라가는 곡선의 휨 (1 = 곧게, 클수록 처음엔 천천히 · 끝에서 빨리 올라가 물결이 깊다) ·
  * blushCover: 블러셔 타원은 가장 큰 덩어리 픽셀의 이 비율이 안에 들어오게 넓힌다 ·
  * linerRamp: 라이너 두께가 구간 경계(눈 폭 1/3 · 2/3) 앞뒤 이만큼(눈꺼풀 길이 비율) 안에서 다음 구간 두께로 넘어간다 ·
@@ -64,9 +63,13 @@ export interface PartGuide {
  */
 export const PART_GUIDE = {
   mouthOpen: 0.06, profileN: 24, shadowMax: 1.0, browMax: 0.4, minH: 0.03,
-  wingMin: 0.03, taper: 0.2, linerStart: 0.06, linerMax: 0.3, linerMin: 0.015, wingMax: 0.8, wingTrack: 0.06, wingN: 10, waveSmooth: 3, wingTaper: 0.3, shadowExtMax: 0.8, shadowExtN: 8, shadowStep: 0.04, shadowSmooth: 5, lashOpen: 0.012,
+  wingMin: 0.03, taper: 0.2, linerStart: 0.06, linerMax: 0.3, linerMin: 0.015, wingMax: 0.8, wingTrack: 0.06, wingN: 10, waveSmooth: 3, wingTaper: 0.3, shadowExtMax: 0.8, shadowExtN: 8, shadowStep: 0.04, lashOpen: 0.012,
   browGrow: 0.5, shadowStart: 0.08, shadowGap: 0.05, browGap: 0.03,
-  fanIn: 0.08, fanOut: 0.12, wingCurve: 1.6, blushCover: 0.995, linerRamp: 0.08, browN: 25, browTaper: 0.3, browContrast: 8,
+  wingCurve: 1.6, blushCover: 0.995, linerRamp: 0.08, browN: 25, browTaper: 0.3, browContrast: 8,
+  // 섀도 돔 받침점 [s, k] — 사용자가 섀도 모양 잡기 화면에서 잡은 그대로 (2026-10-14 19:21). 눈꼬리 → 바깥 → 윗선 → 눈머리 순서
+  shadowShape: [[0.1991, -0.0219], [0.3404, 0.0613], [0.4389, 0.4808], [0.2693, 0.8042], [-0.0215, 0.8809], [-0.2567, 0.8934], [-0.5053, 0.8763],
+    [-0.6761, 0.8232], [-0.8292, 0.7012], [-0.9335, 0.5013], [-0.9697, 0.2688]],
+  shadowDotAt: [0.2, 0.5, 0.82], shadowArrowDeg: [75, 45, 15], shadowArrowMin: 0.08, shadowArrowGap: 0.02, shadowArrowStart: 0.25, shadowArrowSkip: 0.1,
 } as const;
 
 type SV = { s: number; v: number };
@@ -276,44 +279,60 @@ export function partGuides(parts: readonly PartMask[], lm: readonly Pt[], w: num
     return (linerPoly[s] = [...base, ...upper]);
   }, "mixed");
 
-  // 섀도: 라이너 윗선(라이너가 없으면 눈꺼풀)에서 올라간 높이 하나
+  // 섀도 (사용자 그림 2026-10-14) — 경계 없이 펴 바르는 화장이라 정확한 영역은 따지 않는다 (뗀 영역이 다시 그린 자리 전체의 옅은
+  // 변화까지 잡혀 흔들렸다). 테두리는 칠해도 되는 최대 범위인 돔: 라이너 윗선(없으면 눈꺼풀) 위로 눈머리에서 둥글게 올라가 눈썹 아래까지,
+  // 눈꼬리 바깥으로 나가 눈꼬리 높이 조금 아래까지 감싸 내려온다. 화장 정도는 화살표로 — 라이너 윗선 위 점 셋(눈머리 쪽 · 가운데 ·
+  // 눈꼬리 쪽)에서 위 → 대각선 → 바깥으로, 길이는 그쪽으로 섀도가 실제로 퍼진 만큼(테두리 안까지). 눈 밑 섀도 · 진하기는 뺀다
   const shadowBase = (s: Side) => samples(linerTop[s] ?? lidOf(s, true), PART_GUIDE.profileN + 1);
+  /** 라이너 띠 밖으로 밀어 올린 섀도 아랫선 (눈머리 → 눈꼬리 · 꼬리 끝) */
+  const shadowFloor = (s: Side) => {
+    const all = shadowBase(s), nrm = normals(all, F[s].up), liner = linerPoly[s];
+    return all.map((p, i) => (liner ? pushOut(p, nrm[i]!, liner) : p));
+  };
+  /** 점 셋 — 아랫선 중 눈 안쪽 폭(눈꼬리까지)에서 shadowDotAt 자리 */
+  const shadowDots = (s: Side) => {
+    const span = shadowFloor(s).filter((p) => F[s].to(p).s <= 0);
+    return span.length < 3 ? [] : PART_GUIDE.shadowDotAt.map((t) => span[Math.round(t * (span.length - 1))]!);
+  };
+  /** k 번째 화살표 방향 — 바깥에서 위로 shadowArrowDeg 도 */
+  const shadowDir = (f: EyeFrame, k: number): Pt => {
+    const a = (PART_GUIDE.shadowArrowDeg[k]! * Math.PI) / 180;
+    return { x: f.out.x * Math.cos(a) + f.up.x * Math.sin(a), y: f.out.y * Math.cos(a) + f.up.y * Math.sin(a) };
+  };
+  const shadowMarks: Partial<Record<Side, SpreadMarks>> = {};
   both("shadow", (inside, f, s) => {
     const base = shadowBase(s), nrm = normals(base, f.up);
     // 칸 높이는 라이너 윗선 쪽에서 이어진 섀도 끝까지 — 가장 먼 픽셀까지 재니 살을 두고 떨어진 위쪽 띠(다시 그린 눈썹 자리 · 얼룩)까지 올라가
-    // 섀도가 눈썹 밑까지 꽉 찼다 (실사진 2026-10-09, 시험 SH6)
+    // 섀도가 눈썹 밑까지 꽉 찼다 (실사진 2026-10-09, 시험 SH6). 지금은 섀도가 있는지만 본다
     const run = (p: Pt, d: Pt) => runReach(inside, p, d, PART_GUIDE.shadowStart * f.ew, PART_GUIDE.shadowGap * f.ew, PART_GUIDE.shadowMax * f.ew);
-    return { prof: base.map((p, i) => run(p, nrm[i]!) / f.ew), ext: shadowExt(inside, f, base[base.length - 1]!) };
-  }, (a, b) => ({ prof: a.prof.map((x, i) => (x + b.prof[i]!) / 2), ext: a.ext && b.ext ? avgExt(a.ext, b.ext) : a.ext ?? b.ext }), ({ prof, ext }, f, s) => {
+    // 화살표 길이 — 점에서 그 방향으로 이어진 섀도 끝까지. 라이너 바로 위 띠는 라이너로 떼어 가서 섀도는 점에서 조금 떨어져 시작하고
+    // (shadowArrowStart 안), 펴 바른 섀도는 군데군데 비어 shadowArrowSkip 까지는 끊겨도 잇는다 — 처음 값(0.08 · 0.05)으론 실사진 화살표가 거의 다 가장 짧았다
+    const spread = shadowDots(s).map((d, k) => runReach(inside, d, shadowDir(f, k), PART_GUIDE.shadowArrowStart * f.ew, PART_GUIDE.shadowArrowSkip * f.ew, PART_GUIDE.shadowMax * f.ew) / f.ew);
+    return { prof: base.map((p, i) => run(p, nrm[i]!) / f.ew), ext: shadowExt(inside, f, base[base.length - 1]!), spread };
+  }, (a, b) => ({
+    prof: a.prof.map((x, i) => (x + b.prof[i]!) / 2), ext: a.ext && b.ext ? avgExt(a.ext, b.ext) : a.ext ?? b.ext,
+    spread: a.spread.map((x, i) => (x + (b.spread[i] ?? x)) / 2),
+  }), ({ prof, ext, spread }, f, s) => {
     // 눈머리부터 라이너 꼬리 끝까지(라이너가 없으면 눈꼬리까지) 부채꼴 — 높이는 칸마다 보이는 대로 재서 이웃 칸끼리 다듬고
     // (5칸 중앙값 → 3칸 평균), 윗선은 그중 가장 높은 점들만 잇는다(아래). 눈머리 끝은 아랫선으로 내려와 닫힌다 (사용자 2026-10-07, 시험 SH1 · SH2).
     // 그 바깥으로 섀도가 더 번졌으면 칸마다 아래 · 위 끝을 따라 거기까지 (사용자: 뗀 섀도보다 범위가 모자라다, 시험 SH3)
     if (!prof.some((x) => x >= PART_GUIDE.minH) && !ext) return [];
     // 틀 (사용자 2026-10-09: 눈 위부터 눈썹 아래까지를 범위로, 부채꼴 · 사다리꼴) — 사진에서는 섀도가 있는지와 바깥 끝(라이너 꼬리 끝 ·
     // 더 번졌으면 거기)만 읽는다. 칸마다 보이는 높이로 그렸더니 다시 그린 자리 전체의 옅은 변화까지 섀도로 잡혀 들쭉날쭉했다
-    const all = shadowBase(s), nrm = normals(all, f.up), liner = linerPoly[s];
-    // 라이너 안에 든 아랫선 점은 라이너 밖으로 밀어 올린다 (겹치지 않게)
-    const base = all.map((p, i) => (liner ? pushOut(p, nrm[i]!, liner) : p));
-    // 더 번졌으면 아랫선을 번진 끝까지 곧게 — 칸마다 번진 아랫끝을 따라가니 바깥 끝이 울퉁불퉁했다 (실사진 2026-10-09). 틀이라 끝 자리만 읽는다
-    let lo: Pt[] = [];
-    if (ext) {
-      const e = f.to(base[base.length - 1]!), K = ext.low.length - 1, end = { s: e.s + ext.ds, v: ext.low[K]! };
-      lo = Array.from({ length: K }, (_, k) => { const u = (k + 1) / K; return f.from({ s: e.s + (end.s - e.s) * u, v: e.v + (end.v - e.v) * u }); });
-    }
-    // 윗선 = 눈썹 아랫선(얼굴 점)을 browGap 만큼 내린 선 — 아랫선 양 끝보다 fanIn · fanOut 만큼 바깥까지 (위로 갈수록 벌어지는 부채꼴).
-    // 눈썹 끝보다 바깥은 눈썹 끝 높이 그대로
+    // 아랫선 = 라이너 윗선(라이너 띠 밖으로 밀어 올림) 중 눈머리 → 눈꼬리. 라이너 꼬리는 돔 안에 든다
+    const base = shadowFloor(s).filter((p) => f.to(p).s <= 0);
+    if (base.length < 2) return [];
+    // 돔 = 사용자가 섀도 모양 잡기 화면에서 잡은 받침점(shadowShape)을 지나는 매끈한 곡선 — 눈꼬리 → 바깥 → 윗선 → 눈머리.
+    // 받침점 세로 k 는 그 자리 눈꺼풀(0) ~ 눈썹 아랫선 − browGap(1) 사이 비율이라 눈썹이 높거나 낮은 얼굴에도 같은 모양으로 맞는다.
+    // 눈썹 끝보다 바깥은 눈썹 끝 높이, 눈꼬리보다 바깥은 눈꼬리 높이를 잇는다
+    const lid = (s === "R" ? LM.eyeA : LM.eyeB).upper.map((i) => f.to(P(i))).sort((p, q) => p.s - q.s);
     const bl = (s === "R" ? LM.browA : LM.browB).lower.map((i) => f.to(P(i))).sort((p, q) => p.s - q.s);
-    const browV = (x: number) => {
-      if (x <= bl[0]!.s) return bl[0]!.v;
-      for (let k = 1; k < bl.length; k++) if (x <= bl[k]!.s) { const p = bl[k - 1]!, q = bl[k]!; return p.v + ((q.v - p.v) * (x - p.s)) / (q.s - p.s || 1); }
-      return bl[bl.length - 1]!.v;
+    const at = ([x, k]: readonly [number, number]): SV => {
+      const lv = lerpSV(lid, x);
+      return { s: x, v: lv + k * (lerpSV(bl, x) - PART_GUIDE.browGap - lv) };
     };
-    const s0 = f.to(base[0]!).s + PART_GUIDE.fanIn, s1 = f.to((lo.length ? lo : base)[(lo.length ? lo : base).length - 1]!).s + PART_GUIDE.fanOut;
-    const N = PART_GUIDE.profileN;
-    const roof = Array.from({ length: N + 1 }, (_, k) => { const x = s1 + ((s0 - s1) * k) / N; return f.from({ s: x, v: browV(x) - PART_GUIDE.browGap }); });
-    const outer = [...lo, ...roof];
-    // 바깥 테두리(번진 끝 + 옆선 + 윗선)는 다시 찍은 뒤 모서리를 조금씩 깎아(차이킨) 매끄럽게. 아랫선(라이너 위)은 그대로 (사용자, 시험 SH4)
-    const chain = resample([base[base.length - 1]!, ...outer, base[0]!], PART_GUIDE.shadowStep * f.ew);
+    const ctrl: SV[] = [f.to(base[base.length - 1]!), ...PART_GUIDE.shadowShape.map(at), f.to(base[0]!)];
+    const chain = resample(spline(ctrl.map((q) => f.from(q))), PART_GUIDE.shadowStep * f.ew);
     // 눈썹 가이드와 겹치지 않게 — 들어가거나 browGap 보다 붙은 점은 아래로 내린다 (실사진 2026-10-09: 섀도와 눈썹 가이드가 겹쳤다, 시험 SH7)
     const brow = out.find((g) => g.part === "brow" && g.side === s)?.polys[0], gap = Math.max(2, PART_GUIDE.browGap * f.ew);
     const clear = (q: Pt) => {
@@ -324,8 +343,20 @@ export function partGuides(parts: readonly PartMask[], lm: readonly Pt[], w: num
       }
       return q;
     };
-    return [...base, ...chaikinOpen(chain, PART_GUIDE.shadowSmooth).slice(1, -1).map(clear)];
+    const poly = [...base, ...chain.slice(1, -1).map(clear)];
+    // 화살표 — 점에서 그 방향으로 섀도가 퍼진 만큼 (짧아도 shadowArrowMin 은 보이게), 테두리 밖으로는 안 나간다
+    const inPoly = (q: Pt) => pointInPoly(q.x, q.y, poly);
+    const dots = shadowDots(s), arrows = dots.map((d, k) => {
+      const dir = shadowDir(f, k);
+      let edge = 0;
+      while (edge < 3 * f.ew && inPoly(add(d, dir, edge + 0.5))) edge += 0.5;
+      const L = Math.min(Math.max(PART_GUIDE.shadowArrowMin, spread[k] ?? 0) * f.ew, 0.92 * edge);
+      return [add(d, dir, Math.min(L, PART_GUIDE.shadowArrowGap * f.ew)), add(d, dir, L)];
+    });
+    shadowMarks[s] = { dots, arrows };
+    return poly;
   }, "mixed");
+  for (const g of out) { const m = g.part === "shadow" && g.side ? shadowMarks[g.side] : undefined; if (m) g.marks = m; }
 
   // 아래 섀도는 가이드를 그리지 않는다 (사용자 2026-10-09: 일단 없애기, 시험 U1). 떼기는 그대로 — 그 자리 화장이 다른 부위로 안 잡히게
 
@@ -488,21 +519,6 @@ function avgWing(a: Wing, b: Wing): Wing {
 function resample(line: readonly Pt[], step: number): Pt[] {
   const len = line.slice(1).reduce((a, b, i) => a + Math.hypot(b.x - line[i]!.x, b.y - line[i]!.y), 0);
   return samples(line, Math.max(2, Math.round(len / Math.max(step, 0.5)) + 1));
-}
-
-/** 열린 꺾은선 모서리 깎기 (차이킨) n 번 — 양 끝 점은 그대로 */
-function chaikinOpen(chain: readonly Pt[], n: number): Pt[] {
-  let c = [...chain];
-  for (let k = 0; k < n && c.length > 2; k++) {
-    const out: Pt[] = [c[0]!];
-    for (let i = 0; i < c.length - 1; i++) {
-      const a = c[i]!, b = c[i + 1]!;
-      out.push({ x: 0.75 * a.x + 0.25 * b.x, y: 0.75 * a.y + 0.25 * b.y }, { x: 0.25 * a.x + 0.75 * b.x, y: 0.25 * a.y + 0.75 * b.y });
-    }
-    out.push(c[c.length - 1]!);
-    c = out;
-  }
-  return c;
 }
 
 /** 열린 꺾은선을 이웃 3점 평균으로 n 번 다듬는다 (양 끝 점은 그대로) */
@@ -719,6 +735,13 @@ function splineClosed(p: readonly Pt[], k = 8): Pt[] {
 }
 
 /** 점들을 그대로 지나는 매끈한 열린 곡선 (캣멀-롬, 구간마다 k 칸) */
+/** 눈 좌표 꺾은선(s 순서)에서 s 자리의 v — 양 끝 밖은 끝 값 그대로 */
+function lerpSV(arr: readonly SV[], x: number): number {
+  if (x <= arr[0]!.s) return arr[0]!.v;
+  for (let k = 1; k < arr.length; k++) if (x <= arr[k]!.s) { const p = arr[k - 1]!, q = arr[k]!; return p.v + ((q.v - p.v) * (x - p.s)) / (q.s - p.s || 1); }
+  return arr[arr.length - 1]!.v;
+}
+
 function spline(p: readonly Pt[], k = 8): Pt[] {
   if (p.length < 3) return [...p];
   const q = (i: number) => p[Math.max(0, Math.min(p.length - 1, i))]!, out: Pt[] = [];
