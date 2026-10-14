@@ -1,0 +1,348 @@
+/*
+ * 카메라 화면 모양 — `src/screens/Capture.tsx` · `Live.tsx` · `Attempt.tsx` 가 같이 쓴다.
+ *
+ * 색·둥근 모서리 같은 공통 값은 app.css 의 `:root` 에 있는 것을 그대로 가져다 쓴다
+ * (--pink · --ink-weak · --line …) — 여기서 색을 다시 정하면 나중에 app.css 색이 바뀔 때
+ * 이 화면만 어긋난다.
+ *
+ * 2026-10-14 에 **본 앱(support-yr-makeup/client/src/app.css)의 값으로 맞췄다.** 크기·여백은
+ * 본 앱 `.cam-*` · `.capture-*` 규칙에서 복사한 것이다.
+ *
+ * 본 앱과 **일부러 다르게 둔 것 셋** —
+ *  ① 찍는 중 안내는 **영상 위 스티커 말풍선 하나**로 한다 (2026-10-14).
+ *    처음에는 본 앱이 숨겨 둔 `.cam-step`·`.cam-gate` 를 되살려 띄웠다 (#344 의 2번).
+ *    그런데 폰에서 보니 스티커가 말해 주는 아래에 같은 자리 글이 또 나와 겹쳐 읽혔다.
+ *    둘 다 눈에는 안 보이게 하고(.sr-only) 화면 읽어 주는 기능에만 남겼다 — 지우지는 않는다.
+ *  ② 조건이 다 맞았을 때(ready)의 색이 분홍이다. 본 앱 촬영 화면은 청록(--accent)인데, 그
+ *    줄은 본 앱에서 안 보이는 줄이라 실제로 눈에 띄는 적이 없다 — 본 앱도 **보이는 쪽**
+ *    (`.attempt .cam-gate.ready`)에서는 분홍(#ef6b85)을 쓴다. 여기서는 그 분홍을 따른다.
+ *  ③ 썸네일의 「다시 찍기」가 44px 다 (본 앱 34px). 손가락으로 누르는 것은 44px 이상이다.
+ */
+
+/* 카메라 칸은 폰 폭(.app) 안에 들어간다 — 본 앱처럼 화면을 꽉 채우지 않는다.
+   이 버전은 다른 화면들과 같은 `.app` 안에 들어가서, 100dvh 로 잡으면 로고 줄과 겹친다 */
+.capture {
+  width: 100%;
+}
+
+/* 「사진 촬영」 — 둥근 알약 꼬리표 (본 앱 `.capture-camera-title`) */
+.capture-title {
+  align-self: flex-start;
+  /*
+   * 위 84px 은 로고 줄과의 사이다. 다른 화면은 코치 말풍선(.coach)이 `margin: 32px 0` 으로
+   * 그 간격을 만드는데, **촬영 화면에는 코치가 없어 0 이 됐다** — 로고에 바로 붙어 보였다
+   * (2026-10-14, 폰에서 확인). 본 앱은 촬영이 화면을 꽉 채워 로고 줄 자체가 없어 생기지 않던 일이다.
+   *
+   * 숫자는 **배포본을 실제로 재서** 맞췄다 (2026-10-14, 375×812). 배포본은 로고 바닥 55.6 ·
+   * 딱지 위 141.5 로 사이가 85.9px 인데, 32px 일 때 이 버전은 34.4px 이었다. 그만큼(51.5) 더해
+   * 카메라 칸 위치까지 배포본(186.5)과 거의 같아진다(182.5).
+   */
+  margin: 84px 0 12px;   /* 아래 12px — 본 앱 `.capture-camera-title` 과 같다. 카메라 칸에 붙는다 */
+  padding: 8px 15px;
+  border: 1px solid rgb(255 214 222 / 86%);
+  border-radius: 999px;
+  background: rgb(255 246 248 / 92%);
+  color: var(--pink);
+  font-size: 15px;
+  font-weight: var(--weight-strong);
+  line-height: 1;
+  box-shadow: 0 8px 18px rgb(255 137 155 / 10%);
+}
+
+/* 단계 안내 — "정면을 보고 눈을 떠 주세요" (core/capture-run 의 STEP_TEXT).
+   안이 숨은 글뿐이라 자리를 안 차지한다 (위 ①) */
+/* 안이 숨은 글(.sr-only)뿐이라 자리를 차지하지 않는다 — 눈에는 스티커 말풍선 하나만 보인다 */
+.cam-step {
+  min-height: 0;
+  margin: 0;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: var(--weight-title);
+  text-align: center;
+}
+
+.cam {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  aspect-ratio: 3 / 4;
+  overflow: hidden;
+  border-radius: 12px;
+  /* 카메라가 아직 안 열렸을 때 흰 칸이 아니라 검은 칸이라야 "준비 중" 으로 읽힌다 */
+  background: #000;
+}
+
+/* 거울처럼 좌우를 뒤집는다 — 안 뒤집으면 "조금 오른쪽" 이 반대로 느껴진다 */
+.cam-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+
+/* 얼굴을 맞추는 타원. 조건이 다 맞으면(ready) 점선이 실선 분홍으로 바뀐다 (위 ②) */
+.cam-oval {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: 62%;
+  height: 70%;
+  transform: translate(-50%, -50%);
+  border: 3px dashed rgb(255 255 255 / 80%);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.cam-oval.ready {
+  border-style: solid;
+  border-color: var(--pink-ink);
+}
+
+/* 찍히는 순간 한 번 하얗게. 자동으로 찍히니 이 번쩍임이 "찍혔다" 는 신호다 */
+.cam-flash {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* 영상 위 말풍선 — 조건 한 줄을 눈이 가는 자리(얼굴 아래)에 한 번 (본 앱 `.cam-coach`) */
+.cam-coach {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: min(86%, 350px);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.cam-coach img {
+  flex: 0 0 auto;
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+  filter: drop-shadow(0 6px 14px rgb(0 0 0 / 16%));
+}
+
+.cam-coach span {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 94%);
+  color: #555862;
+  font-size: 15px;
+  font-weight: var(--weight-strong);
+  line-height: 1.25;
+  text-align: center;
+  box-shadow: 0 8px 22px rgb(0 0 0 / 14%);
+}
+
+/* 꼬리 — 네모를 45도 돌려 코치 쪽을 가리킨다 (본 앱 `.cam-coach div::before`) */
+.cam-coach span::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 50%;
+  width: 13px;
+  height: 13px;
+  border-radius: 3px;
+  background: rgb(255 255 255 / 94%);
+  transform: translateY(-50%) rotate(45deg);
+}
+
+/* 말풍선 오른쪽 위의 작은 하트 (본 앱 `.cam-coach i`) */
+.cam-coach i {
+  position: absolute;
+  right: -2px;
+  top: -8px;
+  width: 12px;
+  height: 11px;
+  transform: rotate(-14deg);
+}
+
+.cam-coach i::before,
+.cam-coach i::after {
+  content: "";
+  position: absolute;
+  width: 7px;
+  height: 11px;
+  border-radius: 999px 999px 0 0;
+  background: var(--pink-logo);
+  transform-origin: 50% 100%;
+}
+
+.cam-coach i::before {
+  left: 5px;
+  transform: rotate(-45deg);
+}
+
+.cam-coach i::after {
+  left: 0;
+  transform: rotate(45deg);
+}
+
+/*
+ * 조건 한 줄 — 말풍선과 같은 글을 카메라 칸 아래에 한 번 더 (위 ①).
+ * min-height 로 한 줄 자리를 비워 둔다 — 글이 바뀔 때마다 아래 것들이 위아래로 튀지 않게
+ */
+.cam-gate {
+  min-height: 1.5em;
+  margin: 12px 0 4px;
+  text-align: center;
+  font-size: 17px;
+}
+
+.cam-gate.ready {
+  color: var(--pink-ink);
+  font-weight: var(--weight-title);
+}
+
+/* 15초 넘게 못 찍었을 때의 힌트 (core/capture-run 의 SLOW_HINT). 조건 한 줄보다 작고 흐리게 */
+.cam-hint {
+  margin: 12px 0 0;
+  text-align: center;
+  /* 본 앱 `.cam-hint` 는 --muted 다 (흰 카드 안의 연한 글 #83858c 이 아니다) */
+  color: var(--ink-dim);
+  font-size: 12px;
+}
+
+/* 카메라를 못 열었을 때의 "다시 시도" — 카메라 칸 바로 아래 가운데 (본 앱 `.cam-retry`).
+   `.go` 와 같은 무게로 적으면 어느 쪽이 이길지 불러오는 차례에 달린다 — 둘을 같이 적어 못 박는다 */
+.go.cam-retry {
+  width: auto;
+  min-height: 48px;
+  margin: 16px auto 0;
+  padding: 12px 28px;
+}
+
+/* 찍은 장수. 지금은 한 칸이지만 SHOTS 를 따라간다 (본 앱 `.cam-progress`) */
+.cam-progress {
+  display: flex;
+  gap: 7px;
+  justify-content: center;
+  list-style: none;
+  padding: 0;
+  margin: 22px 0 0;
+}
+
+.cam-progress li {
+  width: 38px;
+  height: 6px;
+  border-radius: 999px;
+  background: #eee7eb;
+}
+
+.cam-progress li.on {
+  background: var(--pink-logo);
+}
+
+/* ---------- 확인 화면 ---------- */
+
+/* 본 앱 `.capture-done-header h1` — 다른 화면의 제목보다 위를 더 띄운다 (로고 바로 밑이라서) */
+.capture .title {
+  margin: 24px 0 4px;
+}
+
+.capture .sub {
+  /* 아래 간격은 말풍선(.coach)의 margin 이 준다 */
+  margin-bottom: 0;
+}
+
+/* 장이 하나면 가운데, 늘면 나란히 — 장 수에 맞춰 늘고 줄게 둔다 (본 앱 `.shot-grid`, #386) */
+.shot-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 14px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.shot-cell {
+  flex: 1 1 150px;
+  /* 한 장일 때 화면 폭만큼 늘어나면 썸네일이 지나치게 커진다 */
+  max-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: 0 8px 18px rgb(38 39 43 / 3.5%);
+}
+
+/* 캔버스를 넣는 자리. 사진 비율이 제각각이라 폭만 맞추고 높이는 그대로 둔다 */
+.shot-thumb-slot {
+  display: block;
+  width: 100%;
+}
+
+.shot-thumb {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 3 / 4;
+  border-radius: var(--radius);
+  background: #f0edf0;
+  object-fit: cover;
+}
+
+.shot-name {
+  color: #565963;
+  font-size: 12px;
+  font-weight: var(--weight-strong);
+  text-align: center;
+}
+
+/* 본 앱은 34px 인데 손가락으로 누르는 것은 44px 이상이다 (위 ③) */
+.shot-retake {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px;
+  border: 0;
+  border-radius: 999px;
+  background: #fff0f3;
+  color: #ff8296;
+  font: inherit;
+  font-size: 12px;
+  font-weight: var(--weight-title);
+  cursor: pointer;
+}
+
+/* 본 앱 `.capture-done-screen .row` · `.primary` */
+.capture-done .row {
+  margin-top: 18px;
+}
+
+.capture-done .row .go:not(.ghost) {
+  min-height: 58px;
+  font-size: 18px;
+}
+
+/* 화면 읽어 주는 기능에만 들리는 글. 눈에는 안 보이지만 자리도 안 차지한다 —
+   `display: none` 으로 숨기면 읽어 주지도 않으므로 이렇게 가린다 */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+.cam-gate:has(> .sr-only:only-child) {
+  margin: 0;
+  min-height: 0;
+}
