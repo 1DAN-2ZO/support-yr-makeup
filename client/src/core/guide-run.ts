@@ -66,7 +66,8 @@ export function runGuide(s: GuideSources): GuideRun {
     const mask = p.mask.map((v, i) => (v && keep[i] ? 1 : 0));
     return { ...p, mask, count: mask.reduce((a, v) => a + v, 0) };
   });
-  const guides = partGuides(parts, lm, w, h, { clip, made });
+  // 블러셔 테두리는 실제 얼굴 윤곽 안까지 (사용자가 잡은 모양 — 윤곽 90% 너머까지 잡았다)
+  const guides = partGuides(parts, lm, w, h, { clip, made, face: oval });
 
   const pages = {} as Record<FeedbackPart, GuidePage>;
   for (const part of FEEDBACK_ORDER) {

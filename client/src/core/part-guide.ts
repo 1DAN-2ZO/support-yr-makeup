@@ -55,27 +55,30 @@ export interface PartGuide {
  * shadowStart · shadowGap: 섀도 칸 높이는 라이너 윗선에서 shadowStart 안에 시작해 shadowGap 넘게 끊기지 않고 이어진 데까지 ·
  * browGap: 섀도 테두리는 눈썹 가이드에서 이만큼 떨어진다 ·
  * wingCurve: 라이너 꼬리 윗선 틀 — 눈꼬리에서 꼬리 끝까지 올라가는 곡선의 휨 (1 = 곧게, 클수록 처음엔 천천히 · 끝에서 빨리 올라가 물결이 깊다) ·
- * blushCover: 블러셔 타원은 가장 큰 덩어리 픽셀의 이 비율이 안에 들어오게 넓힌다 ·
  * linerRamp: 라이너 두께가 구간 경계(눈 폭 1/3 · 2/3) 앞뒤 이만큼(눈꺼풀 길이 비율) 안에서 다음 구간 두께로 넘어간다 ·
  * browN · browTaper: 눈썹 털을 잴 칸 수 · 꼬리 쪽 뾰족하게 모으는 구간 (눈썹 길이 비율) ·
  * browContrast: 그 칸 살보다 이만큼(밝기 0~255) 넘게 어두운 곳이 없으면 털 없음
- * (browGrow 는 눈썹 두께 비율, blushCover 는 비율, 나머지는 눈 폭 비율). 눈대중 시작값
+ * (browGrow 는 눈썹 두께 비율, 나머지는 눈 폭 비율). 눈대중 시작값
  */
 export const PART_GUIDE = {
   mouthOpen: 0.06, profileN: 24, shadowMax: 1.0, browMax: 0.4, minH: 0.03,
   wingMin: 0.03, taper: 0.2, linerStart: 0.06, linerMax: 0.3, linerMin: 0.015, wingMax: 0.8, wingTrack: 0.06, wingN: 10, waveSmooth: 3, wingTaper: 0.3, shadowExtMax: 0.8, shadowExtN: 8, shadowStep: 0.04, lashOpen: 0.012,
   browGrow: 0.5, shadowStart: 0.08, shadowGap: 0.05, browGap: 0.03,
-  wingCurve: 1.6, blushCover: 0.995, linerRamp: 0.08, browN: 25, browTaper: 0.3, browContrast: 8,
+  wingCurve: 1.6, linerRamp: 0.08, browN: 25, browTaper: 0.3, browContrast: 8,
   // 섀도 돔 받침점 [s, k] — 사용자가 섀도 모양 잡기 화면에서 잡은 그대로 (2026-10-14 19:21). 눈꼬리 → 바깥 → 윗선 → 눈머리 순서
   shadowShape: [[0.1991, -0.0219], [0.3404, 0.0613], [0.4389, 0.4808], [0.2693, 0.8042], [-0.0215, 0.8809], [-0.2567, 0.8934], [-0.5053, 0.8763],
     [-0.6761, 0.8232], [-0.8292, 0.7012], [-0.9335, 0.5013], [-0.9697, 0.2688]],
+  // 블러셔 받침점 [s, k] — 사용자가 블러셔 모양 잡기 화면에서 잡은 그대로 (2026-10-14 19:58). 닫힌 곡선, 바깥 → 아래 → 눈머리 쪽 → 위 순서.
+  // s = 눈꼬리에서 바깥으로 눈 폭 몇 배, k = 아래 눈꺼풀(0) ~ 입꼬리 높이(1)
+  cheekShape: [[0.517, 0.4409], [0.2879, 0.5524], [0.0293, 0.6213], [-0.2582, 0.6029], [-0.4853, 0.5363], [-0.5757, 0.4455], [-0.5869, 0.3327],
+    [-0.4787, 0.2307], [-0.2355, 0.1628], [0.0903, 0.1699], [0.4406, 0.152], [0.6244, 0.2459]],
   shadowDotAt: [0.2, 0.5, 0.82], shadowArrowDeg: [75, 45, 15], shadowArrowMin: 0.08, shadowArrowGap: 0.02, shadowArrowStart: 0.25, shadowArrowSkip: 0.1,
 } as const;
 
 type SV = { s: number; v: number };
 interface EyeFrame { o: Pt; out: Pt; up: Pt; ew: number; from: (q: SV) => Pt; to: (p: Pt) => SV }
 
-export function partGuides(parts: readonly PartMask[], lm: readonly Pt[], w: number, h: number, opts: { clip?: readonly Pt[]; made?: RgbaImage } = {}): PartGuide[] {
+export function partGuides(parts: readonly PartMask[], lm: readonly Pt[], w: number, h: number, opts: { clip?: readonly Pt[]; made?: RgbaImage; face?: readonly Pt[] } = {}): PartGuide[] {
   const P = (i: number): Pt => lm[i]!;
   const masks = new Map<string, { m: Uint8Array; count: number; raw?: Uint8Array }>();
   for (const p of parts) {
@@ -360,26 +363,28 @@ export function partGuides(parts: readonly PartMask[], lm: readonly Pt[], w: num
 
   // 아래 섀도는 가이드를 그리지 않는다 (사용자 2026-10-09: 일단 없애기, 시험 U1). 떼기는 그대로 — 그 자리 화장이 다른 부위로 안 잡히게
 
-  // 블러셔: 모멘트 타원 (눈 좌표)
-  // 가장 큰 덩어리만 — 흩어진 작은 점(반짝이)까지 넣으니 눈부터 입까지 긴 타원이 됐다 (실사진)
-  both("cheek", (_inside, f, _s, m) => {
+  // 블러셔 (사용자 2026-10-14) — 경계 없이 펴 바르는 그러데이션이라 영역을 따지 않는다. 뗀 볼 영역은 모델이 볼 피부 전체를 조금씩
+  // 바꿔 네모 덩어리로 잡혔고, 그 덩어리로 잰 타원은 실제 블러셔보다 컸다 (실사진 17장). 테두리는 사용자가 블러셔 모양 잡기 화면에서
+  // 잡은 범위(cheekShape)를 지나는 닫힌 매끈한 곡선 — 받침점 세로 k 는 그 자리 아래 눈꺼풀(0) ~ 입꼬리 높이(1) 비율이라 얼굴 길이가
+  // 달라도 같은 자리에 맞는다. 실제 얼굴 윤곽(face) 밖으로 나간 점만 가운데 쪽으로 당긴다 — 화장 영역을 거르는 clip(윤곽 90%)으로
+  // 자르면 사용자가 그 선 너머까지 잡은 바깥쪽이 줄었다 (블러셔 모양 잡기 화면과 21px 차이).
+  // 볼에 화장이 잡혔을 때만 그린다 (가장 큰 덩어리가 있어야 — 흩어진 작은 점은 블러셔가 아니다)
+  both<boolean>("cheek", (_inside, f, _s, m) => {
     const main = maskOutlines(m, w, h, { close: Math.max(1, Math.round(f.ew * 0.06)) })[0];
-    if (!main) return null;
-    const xs = main.map((p) => p.x), ys = main.map((p) => p.y), pts: SV[] = [];
-    for (let y = Math.floor(Math.min(...ys)); y <= Math.ceil(Math.max(...ys)); y++) for (let x = Math.floor(Math.min(...xs)); x <= Math.ceil(Math.max(...xs)); x++) {
-      if (pointInPoly(x, y, main)) pts.push(f.to({ x, y }));
-    }
-    if (pts.length < 10) return null;
-    // 가장 큰 덩어리를 다 덮게 넓힌다 (사용자 2026-10-09: 블러셔는 최대한 넓은 범위로) — 모멘트 타원은 한쪽으로 늘어난 덩어리의 끝을 잘랐다 (시험 BL1)
-    const e = ellipseOf(pts), c = Math.cos(e.ang), sn = Math.sin(e.ang);
-    const r = pts.map((p) => { const ds = p.s - e.cs, dv = p.v - e.cv; return Math.hypot((ds * c + dv * sn) / (e.rx || 1e-9), (-ds * sn + dv * c) / (e.ry || 1e-9)); }).sort((a, b) => a - b);
-    const k = Math.max(1, r[Math.min(r.length - 1, Math.floor(r.length * PART_GUIDE.blushCover))]! * 1.02);
-    return { ...e, rx: e.rx * k, ry: e.ry * k };
-  }, (a, b) => ({ cs: (a.cs + b.cs) / 2, cv: (a.cv + b.cv) / 2, rx: (a.rx + b.rx) / 2, ry: (a.ry + b.ry) / 2, ang: (a.ang + b.ang) / 2 }), (e, f) =>
-    Array.from({ length: 64 }, (_, k) => {
-      const t = (2 * Math.PI * k) / 64, x = e.rx * Math.cos(t), y = e.ry * Math.sin(t);
-      return f.from({ s: e.cs + x * Math.cos(e.ang) - y * Math.sin(e.ang), v: e.cv + x * Math.sin(e.ang) + y * Math.cos(e.ang) });
-    }), "region");
+    return main && main.length >= 3 ? true : null;
+  }, (a) => a, (_v, f, s) => {
+    const low = (s === "R" ? LM.eyeA : LM.eyeB).lower.map((i) => f.to(P(i))).sort((p, q) => p.s - q.s);
+    const mouthV = f.to(P(s === "R" ? 61 : 291)).v;   // 그쪽 입꼬리 (61 = 사진 왼쪽)
+    const pts = PART_GUIDE.cheekShape.map(([x, k]) => { const lv = lerpSV(low, x); return f.from({ s: x, v: lv + k * (mouthV - lv) }); });
+    const ring = resample([...splineClosed(pts), pts[0]!], PART_GUIDE.shadowStep * f.ew).slice(0, -1);
+    const clip = opts.face;
+    if (!clip) return ring;
+    const c = ring.reduce((a, q) => ({ x: a.x + q.x / ring.length, y: a.y + q.y / ring.length }), { x: 0, y: 0 });
+    return ring.map((q) => {
+      for (let t = 0; t <= 1; t += 0.02) { const r = { x: q.x + (c.x - q.x) * t, y: q.y + (c.y - q.y) * t }; if (pointInPoly(r.x, r.y, clip)) return r; }
+      return c;
+    });
+  }, "landmark");
   // 블러셔 안에 퍼지는 방향 — 가운데 점 + 사방 화살표 (사용자 2026-10-09, 시험 BL2). 그러데이션은 가운데에서 바깥으로
   for (const g of out) if (g.part === "cheek") g.marks = spreadMarks("cheek", g.polys);
 
@@ -704,15 +709,6 @@ function quadFit(t: readonly number[], y: readonly number[]): (x: number) => num
   return (x) => c[0]! + c[1]! * x + c[2]! * x * x;
 }
 
-/** 점들의 모멘트 타원 — 가운데 · 반지름(고르게 찬 타원이면 축 방향 분산 = 반지름² / 4) · 기울기 */
-function ellipseOf(pts: readonly SV[]): { cs: number; cv: number; rx: number; ry: number; ang: number } {
-  const n = pts.length, cs = pts.reduce((a, p) => a + p.s, 0) / n, cv = pts.reduce((a, p) => a + p.v, 0) / n;
-  let xx = 0, yy = 0, xy = 0;
-  for (const p of pts) { const dx = p.s - cs, dy = p.v - cv; xx += dx * dx; yy += dy * dy; xy += dx * dy; }
-  xx /= n; yy /= n; xy /= n;
-  const tr = (xx + yy) / 2, d = Math.sqrt(Math.max(0, ((xx - yy) / 2) ** 2 + xy * xy));
-  return { cs, cv, rx: 2 * Math.sqrt(tr + d), ry: 2 * Math.sqrt(Math.max(0, tr - d)), ang: 0.5 * Math.atan2(2 * xy, xx - yy) };
-}
 
 const neg = (p: Pt): Pt => ({ x: -p.x, y: -p.y });
 const add = (a: Pt, d: Pt, k: number): Pt => ({ x: a.x + d.x * k, y: a.y + d.y * k });
