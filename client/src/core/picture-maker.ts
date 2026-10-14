@@ -27,7 +27,8 @@ export interface PictureMakerDeps {
   getAttempt: () => Blob | null;
   /** 받은 그림을 칸에 넣는다 */
   put: (key: MadeKey, picture: Blob) => Promise<void>;
-  request: (bare: Blob, ref: TransferRef) => Promise<TransferResult>;
+  /** kind: 무엇을 만드는지 — 서버는 정답사진의 참고 사진만 손보고, 옮긴 그림의 시도사진은 그대로 쓴다 */
+  request: (bare: Blob, ref: TransferRef, kind: MadeKey) => Promise<TransferResult>;
 }
 
 export interface PictureMaker {
@@ -60,7 +61,7 @@ export function createPictureMaker(deps: PictureMakerDeps): PictureMaker {
     const p = (async (): Promise<MakeResult> => {
       const bare = await deps.getBare();
       if (!bare) return { ok: false, why: "no_bare" };
-      const r = await deps.request(bare, ref);
+      const r = await deps.request(bare, ref, key);
       if (round[key] !== mine) return { ok: false, why: "cancelled" };
       if (r.ok) await deps.put(key, r.picture);
       return r;

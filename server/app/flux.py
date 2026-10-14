@@ -111,6 +111,12 @@ class Made(NamedTuple):
     """앞사람이 끝나기를 기다린 시간"""
     flux_ms: int | None
     """FLUX 가 스스로 잰 그리는 시간 — app_klein 이 그림과 함께 주는 측정 문장("8.6초 …")의 맨 앞"""
+    prep: str | None = None
+    """참고 사진 손보기 판정 (fill · pass · reject · frontalize · off · skip). 손보기를 안 부른 요청은 None"""
+
+
+# 참고 사진 손보기 한도 (초). 판정은 0.2초쯤이라 넉넉하다 — 넘기면 받은 사진 그대로 그린다
+PREP_LIMIT = 15.0
 
 
 _FLUX_SAID_SEC = re.compile(r"^\s*(\d+(?:\.\d+)?)초")
@@ -147,8 +153,11 @@ class FluxClient:
         """줄이 꽉 찼나 (그리는 1 + 기다리는 max_waiting)"""
         return self._waiting > self._max_waiting
 
-    async def transfer(self, bare: bytes, bare_type: str, ref: bytes, ref_type: str) -> Made:
-        """그림과 걸린 시간들. 실패는 FluxError"""
+    async def transfer(
+        self, bare: bytes, bare_type: str, ref: bytes, ref_type: str, *, prep: bool = False
+    ) -> Made:
+        """그림과 걸린 시간들. 실패는 FluxError.
+        prep 이면 그리기 전에 참고 사진을 GPU 서버에서 손본다 (_prep) — 같은 줄 · 같은 시간 한도 안에서"""
         if self.full():
             raise FluxBusy()
         self._waiting += 1
@@ -158,9 +167,14 @@ class FluxClient:
                 async with asyncio.timeout(self._total):
                     async with self._lock:
                         t0 = time.perf_counter()
+                        verdict = None
+                        if prep:
+                            ref, ref_type, verdict = await self._prep(ref, ref_type)
                         picture, media_type, said = await self._call(bare, bare_type, ref, ref_type)
                         ms = round((time.perf_counter() - t0) * 1000)
-                        return Made(picture, media_type, ms, round((t0 - came) * 1000), _flux_ms(said))
+                        return Made(
+                            picture, media_type, ms, round((t0 - came) * 1000), _flux_ms(said), verdict
+                        )
             except TimeoutError as e:
                 raise FluxDown(note="total timeout") from e
         finally:
@@ -169,21 +183,12 @@ class FluxClient:
     async def _call(
         self, bare: bytes, bare_type: str, ref: bytes, ref_type: str
     ) -> tuple[bytes, str, object]:
-        body = {"data": [_file_data(bare, bare_type), _file_data(ref, ref_type), STEPS, STRENGTH, True, SEED]}
+        body = [_file_data(bare, bare_type), _file_data(ref, ref_type), STEPS, STRENGTH, True, SEED]
         try:
             async with httpx.AsyncClient(
                 base_url=self.url, transport=self._transport, timeout=self._timeout
             ) as c:
-                r = await c.post("/gradio_api/call/predict", json=body)
-                r.raise_for_status()
-                event_id = r.json()["event_id"]
-                r = await c.get(f"/gradio_api/call/predict/{event_id}")
-                r.raise_for_status()
-                kind, data = "", None
-                for m in _SSE.finditer(r.text):
-                    kind, data = m.group(1), (json.loads(m.group(2)) if m.group(2) else None)
-                    if kind in ("complete", "error"):
-                        break
+                kind, data = await _event(c, "predict", body)
                 if kind == "error":
                     if _no_face(data):
                         raise FluxRejected(NO_FACE)
@@ -201,6 +206,46 @@ class FluxClient:
             raise
         except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as e:
             raise FluxDown(note=type(e).__name__) from e
+
+    async def _prep(self, ref: bytes, ref_type: str) -> tuple[bytes, str, str]:
+        """참고 사진 손보기 — GPU 서버의 prep_ref (app_klein.py).
+        가림 판정 · 뒤집어 채우기는 poc/look-tryon/ref-prep. 손봤으면 그 사진, 아니면 받은 그대로 + 판정.
+        손보기가 없거나(옛 GPU 서버) 실패 · 한도 초과면 받은 그대로 + "skip" — 그림 만들기를 막지 않는다"""
+        try:
+            async with (
+                asyncio.timeout(PREP_LIMIT),
+                httpx.AsyncClient(base_url=self.url, transport=self._transport, timeout=self._timeout) as c,
+            ):
+                kind, data = await _event(c, "prep_ref", [_file_data(ref, ref_type)])
+                if kind != "complete" or not isinstance(data, list) or not data:
+                    return ref, ref_type, "skip"
+                verdict = str(data[1]).split(":")[0].strip() if len(data) > 1 else "?"
+                if not isinstance(data[0], dict):
+                    return ref, ref_type, verdict  # 손볼 것이 없었다
+                r = await c.get(f"/gradio_api/file={quote(data[0]['path'], safe='')}")
+                r.raise_for_status()
+                media_type = r.headers.get("content-type", "")
+                if not media_type.startswith("image/") or not r.content:
+                    return ref, ref_type, "skip"
+                return r.content, media_type, verdict
+        except (TimeoutError, httpx.HTTPError, KeyError, IndexError, TypeError, ValueError):
+            return ref, ref_type, "skip"
+
+
+async def _event(c: httpx.AsyncClient, api: str, data: list) -> tuple[str, Any]:
+    """Gradio 부르기 — 요청 → 번호 → 결과 기다리기(SSE).
+    (마지막 사건 이름, 그 데이터) — 이름은 complete · error · 그 밖"""
+    r = await c.post(f"/gradio_api/call/{api}", json={"data": data})
+    r.raise_for_status()
+    event_id = r.json()["event_id"]
+    r = await c.get(f"/gradio_api/call/{api}/{event_id}")
+    r.raise_for_status()
+    kind, said = "", None
+    for m in _SSE.finditer(r.text):
+        kind, said = m.group(1), (json.loads(m.group(2)) if m.group(2) else None)
+        if kind in ("complete", "error"):
+            break
+    return kind, said
 
 
 async def unless_gone(

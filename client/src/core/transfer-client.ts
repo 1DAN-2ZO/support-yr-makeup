@@ -34,6 +34,11 @@ export interface TransferOptions {
   fetchFn?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
   /** 이만큼 지나면 그만 기다린다 */
   timeoutMs?: number;
+  /**
+   * 무엇을 만드나 — answer 정답사진(ref = 참고 사진) · moved 옮긴 그림(ref = 시도사진).
+   * 서버는 answer 의 올린 참고 사진만 손본다(머리카락이 한쪽 눈썹을 가리면 반대쪽을 뒤집어 채움). 안 주면 보내지 않고 서버도 손보지 않는다
+   */
+  kind?: "answer" | "moved";
 }
 
 /**
@@ -64,6 +69,7 @@ export async function requestTransfer(bare: Blob, ref: TransferRef, opt: Transfe
   body.append("bare", bare, "bare");
   if (ref instanceof Blob) body.append("ref", ref, "ref");
   else body.append("template", String(ref.template));
+  if (opt.kind) body.append("kind", opt.kind);
   const stop = new AbortController();
   let timedOut = false;
   const timer = setTimeout(() => { timedOut = true; stop.abort(); }, opt.timeoutMs ?? TRANSFER_TIMEOUT_MS);
