@@ -17,6 +17,10 @@
   "많이 가림" = 눈썹 30% · 눈/볼/입술 40% 초과. 가림 = 얼굴 분할이 머리카락 · 옷 · 기타 · (몸 피부 = 손)로 본 부위 비율. L/R 은 사진 기준 왼쪽/오른쪽.
   왜 이렇게 정했나: 팀 기준이 "원본을 그대로 넣으면 서버 결과가 깨지는가"였다 — 머리카락이 눈썹을 걸치면 검게 번지고, 손은 화장만 빠진다.
 
+■ 2026-10-14 서버에 붙였다 (1단계) — app_klein.py 의 따로 낸 창구 prep_ref 가 prep(frontalize 없이)을 부른다.
+  백엔드가 정답사진의 올린 참고 사진만 보낸다 (옮긴 그림의 시도사진 · 템플릿은 안 보냄). fill 이면 뒤집어 채운 사진으로 그리고,
+  나머지(pass · reject · frontalize)는 원본 그대로 그린다 — 거절 알림 · FLUX 정면화는 아직 안 켰다. 아래는 처음 인수인계 설명 그대로.
+
 ■ 서버(app_klein.py)에 붙이는 방법 (아직 안 붙였다 — 이 폴더는 PoC. 같은 한 줄을 로컬에서 시험한 것이 server_local.py)
   `_run` 안의 `ref = makeup_image.convert("RGB")` 바로 뒤, `rlm = landmarks(ref)` 앞에:
       ref, rep = prep(ref, frontalize=<아래 콜백>)        # rep["verdict"] · rep["why"] 는 로그에 남긴다
@@ -32,7 +36,7 @@
   - 시간: 판별 0.2초 · 채우기 거의 0 · 정면화 약 +9초 (서버 `_run` 약 11~12초 + 9초 ≈ 21초). 백엔드 제한(총 85초 · 클라이언트 95초 · Cloudflare 100초) 안.
 
 ■ 의존성 · 환경
-  - 모델 두 개 (아래 LANDMARKER_PATH · SEG_PATH 주석에 출처). 경로는 이 PC 의 D: 라서 서버에서는 설정 · 환경변수로 바꿀 것.
+  - 모델 두 개 (아래 LANDMARKER_PATH · SEG_PATH 주석에 출처). 서버와 같은 ~/.cache/nudy 에 두고, 없으면 ensure_models() 가 받는다.
   - mediapipe tasks (FaceLandmarker 의 output_facial_transformation_matrixes · ImageSegmenter), opencv, numpy, PIL.
   - 서버 배포 환경의 diffusers · transformers · torch 버전은 *확인 못 했다* — frontalize 는 `Flux2KleinPipeline`(`is_distilled` 인자)이 필요하다.
     로컬 시험 환경: diffusers 0.41.0 · transformers 5.19.0 · torch 2.6.0+cu124.
@@ -55,13 +59,15 @@ from mediapipe.tasks.python import BaseOptions
 from mediapipe.tasks.python.vision import FaceLandmarker, FaceLandmarkerOptions, ImageSegmenter, ImageSegmenterOptions
 from PIL import Image
 
+# 모델 두 개는 서버 app_klein.py 와 같은 곳(~/.cache/nudy)에 두고, 없으면 ensure_models() 가 아래 주소에서 받는다 (2026-10-14 서버 연결).
 # 얼굴 점 478개 · 머리 자세(각도): MediaPipe Face Landmarker — face_landmarker.task (float16, v1). 서버 app_klein.py 가 쓰는 모델과 같다
-#   https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task
-LANDMARKER_PATH = Path(r"D:\flux2-poc\models\face_landmarker.task")
+LANDMARKER_URL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
+LANDMARKER_PATH = Path.home() / ".cache" / "nudy" / "face_landmarker.task"
 # 가림 분할: MediaPipe Image Segmenter — selfie_multiclass_256x256.tflite (float32, latest).
 #   클래스 0 배경 · 1 머리카락 · 2 몸 피부 · 3 얼굴 피부 · 4 옷 · 5 기타
-#   https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite
-SEG_PATH = Path(r"D:\flux2-poc\models\selfie_multiclass_256x256.tflite")
+SEG_URL = ("https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/"
+           "selfie_multiclass_256x256.tflite")
+SEG_PATH = Path.home() / ".cache" / "nudy" / "selfie_multiclass_256x256.tflite"
 OCCLUDER = (1, 2, 4, 5)       # 1 머리카락 · 2 몸 피부(손) · 4 옷 · 5 기타.  (0 배경 · 3 얼굴 피부)
 HAIR_LIKE = (1, 4, 5)         # 머리카락 · 옷 · 기타 — 많이 가리면 다른 사진 요청 (서버 결과에 검은 얼룩이 생긴다)
 HAND = 2                      # 몸 피부(손) — 한쪽만 가리면 통과 (피부색이라 얼룩은 안 생기고 화장만 빠진다), 양쪽이면 다른 사진 요청
@@ -89,6 +95,18 @@ CHEEK_SIZE = (1.0, 0.8)
 
 _seg = None
 _landmarker = None
+
+
+def ensure_models() -> None:
+    """모델 파일이 없으면 받아 둔다 (서버가 켤 때 한 번 — 첫 요청이 기다리지 않게)"""
+    import urllib.request
+
+    for path, url in ((LANDMARKER_PATH, LANDMARKER_URL), (SEG_PATH, SEG_URL)):
+        if not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(path.suffix + ".part")
+            urllib.request.urlretrieve(url, tmp)
+            tmp.replace(path)
 
 
 def detect(rgb: np.ndarray):
@@ -134,7 +152,9 @@ def segment(rgb: np.ndarray) -> np.ndarray:
     if _seg is None:
         _seg = ImageSegmenter.create_from_options(ImageSegmenterOptions(base_options=BaseOptions(model_asset_path=str(SEG_PATH)), output_category_mask=True))
     r = _seg.segment(mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb.copy()))
-    return r.category_mask.numpy_view().astype(np.uint8)
+    m = r.category_mask.numpy_view().astype(np.uint8)
+    # mediapipe 판에 따라 (h, w) 또는 (h, w, 1) 로 온다 — 1.0.1 은 (h, w, 1) 이라 part_masks 가 풀지 못해 늘 '오류 → 통과' 였다
+    return m.reshape(m.shape[:2])
 
 
 def crop_face(rgb: np.ndarray, lm: np.ndarray):
