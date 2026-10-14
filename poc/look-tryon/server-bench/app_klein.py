@@ -13,6 +13,15 @@ klein 4B 는 Apache-2.0 (상업 사용 가능). 9B 는 비상업이라 쓰지 �
     set HF_HUB_OFFLINE=1
     conda run -n flux2 python app_klein.py
 
+화장 옮기기만 따로 가르친 부품(LoRA) nudy_makeup_klein4b_v1.safetensors 를 끼운다 — 이 파일 옆에 있으면 끼우고, 없으면 klein 그대로.
+다른 곳의 파일은 KLEIN_LORA 에 경로를 주고, 옆에 있어도 빼려면 KLEIN_LORA=off.
+    set KLEIN_LORA=D:\\nudy-lora\\lora\\nudy_makeup_klein4b_v1\\nudy_makeup_klein4b_v1.safetensors
+klein base 4B 로 학습(ai-toolkit)해 이 증류판에 그대로 끼운다 — 진한 화장 · 입술 색이 참고에 더 가깝게 옮겨졌다.
+250 ~ 2000 걸음 부품 중 2000 걸음으로 정했다 (2026-10-14) — 어두운 피부에 밝은 참고를 줘도 볼을 가장 덜 밝혔다. 한 장 시간은 그대로.
+부품 파일은 git 에 안 올리고 릴리스 lora-klein-makeup-v1 에 둔다 (.gitignore *.safetensors). GPU 서버는 자동 배포(gpu-deploy.yml)가
+이 파일 옆(D:\\)에 받아 둔다. 끼우려면 diffusers 와 같은 환경에 peft 가 있어야 한다.
+못 끼우면 서버를 멈추지 않고 klein 그대로 켠다 — 켤 때 "[lora] loaded · failed · off" 한 줄을 남기고, 배포가 그 줄을 본다.
+
 지시문은 고정이라 글 해석 부품(7.5GB)은 처음 한 번만 돌려 결과를 ~/.cache/nudy/klein_prompt_embeds.pt 에 두고(지시문 · 모델이
 바뀌면 다시), 서버에는 그리는 부품(7.3GB) + 그림 변환 부품만 그래픽카드에 통째로 올린다 — RTX 3060 12GB 에 들어간다.
 전에는 다 안 들어가 부분씩 올렸는데(enable_model_cpu_offload) 쓸 때마다 PC 메모리 → 그래픽카드로 옮기는 순간 프로그램이
@@ -22,6 +31,7 @@ klein 4B 는 Apache-2.0 (상업 사용 가능). 9B 는 비상업이라 쓰지 �
 Stable-Makeup 서버와 같이 켜면 그래픽카드 메모리(12GB)가 모자라다 — 하나씩 켠다.
 """
 import gc
+import os
 import time
 import urllib.request
 import queue
@@ -46,6 +56,19 @@ MODEL_ID = "black-forest-labs/FLUX.2-klein-4B"
 LANDMARKER_URL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
 LANDMARKER_PATH = Path.home() / ".cache" / "nudy" / "face_landmarker.task"
 EMBEDS_PATH = Path.home() / ".cache" / "nudy" / "klein_prompt_embeds.pt"
+LORA_NAME = "nudy_makeup_klein4b_v1.safetensors"   # 정한 화장 부품 (2000 걸음) — 이 파일 옆에 있으면 끼운다
+
+
+def lora_path():
+    """끼울 부품 파일 — KLEIN_LORA 가 있으면 그것(off 면 안 끼움), 없으면 이 파일 옆의 LORA_NAME (있을 때만). 비면 안 끼운다"""
+    env = os.environ.get("KLEIN_LORA", "").strip()
+    if env:
+        return "" if env.lower() == "off" else env
+    near = Path(__file__).resolve().with_name(LORA_NAME)
+    return str(near) if near.exists() else ""
+
+
+LORA = lora_path()
 SIZE = 768          # 얼굴 정사각형을 이 크기로 그린다
 REF_SIZE = 512      # 참고 사진 크기 (작아도 화장은 옮겨 오고 더 빠르다)
 # 돌려주는 그림은 무손실 webp — Gradio 기본(손실 webp)이 가는 선(라이너 꼬리)을 뭉개서 피드백이 꼬리를 못 읽었다 (#393).
@@ -121,6 +144,19 @@ _t0 = time.perf_counter()
 EMBEDS = prompt_embeds().to("cuda", torch.bfloat16)
 print(f"Loading {MODEL_ID} (bf16, 그리는 부품만 그래픽카드에 통째로) ...")
 pipe = Flux2KleinInpaintPipeline.from_pretrained(MODEL_ID, text_encoder=None, tokenizer=None, torch_dtype=torch.bfloat16).to("cuda")
+if LORA:
+    try:
+        pipe.load_lora_weights(LORA)
+        print(f"[lora] loaded {LORA}", flush=True)
+    except Exception as e:   # 부품을 못 끼워도(peft 없음 · 파일 깨짐 등) 서비스는 klein 그대로 — 배포가 이 줄을 보고 빨갛게 알린다
+        print(f"[lora] failed {type(e).__name__}: {e}", flush=True)
+        try:
+            pipe.unload_lora_weights()
+        except Exception:
+            pass
+        LORA = ""
+else:
+    print("[lora] off", flush=True)
 print(f"Loaded in {time.perf_counter() - _t0:.1f}s · VRAM {torch.cuda.memory_allocated() / 2**30:.1f}GB. Launching Gradio UI...")
 
 
@@ -350,7 +386,7 @@ def _run(id_image, makeup_image, steps, strength, keep_size, seed):
     path = folder / "result.webp"
     result.save(path, format="WEBP", lossless=True, quality=LOSSLESS_EFFORT, method=2)
     status = (f"{dt:.1f}초 (FLUX.2 klein 4B 영역 다시 그리기, steps={int(steps)}, 강도={float(strength):.2f}, 얼굴 {side}px → {SIZE}) · "
-              f"VRAM peak {vram:.1f}GB · 원본 {original.size[0]}×{original.size[1]} 유지")
+              f"VRAM peak {vram:.1f}GB · 원본 {original.size[0]}×{original.size[1]} 유지" + (f" · LoRA {Path(LORA).stem}" if LORA else ""))
     return str(path), status
 
 

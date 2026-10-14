@@ -2,17 +2,28 @@ name: Deploy FLUX (GPU)
 
 # FLUX 화장 입히기 서버 자동 배포.
 # main 의 app_klein.py 가 바뀌면 GPU 서버(nudy-gpu 러너)에서 FLUX 를 재시작한다.
+# 화장 부품(LoRA)도 여기서 받아 app_klein.py 옆에 둔다 — 부품을 바꿀 때는 이 파일의 LORA_* 만 바꾸면 다시 배포된다.
 on:
   push:
     branches:
       - main
     paths:
       - "poc/look-tryon/server-bench/app_klein.py"
+      - ".github/workflows/gpu-deploy.yml"
   workflow_dispatch:
 
 jobs:
   deploy-flux:
     runs-on: [self-hosted, gpu]   # GPU 서버 러너에서만 (nudy-gpu)
+    permissions:
+      contents: read
+    # 화장 부품(LoRA) — 팀원이 학습한 nudy_makeup_klein4b_v1 의 2000 걸음 것을 diffusers 모양(transformer.*)으로 바꿔 둔 파일.
+    # 바꿔 둔 덕에 GPU PC 의 diffusers 에 ai-toolkit 모양을 읽는 기능이 없어도 끼워진다 (결과 그림은 원본 파일과 픽셀까지 같다).
+    # 부품을 바꿀 때는 릴리스에 새 파일을 올리고 이 세 줄을 바꾼다
+    env:
+      LORA_TAG: lora-klein-makeup-v1
+      LORA_NAME: nudy_makeup_klein4b_v1.safetensors
+      LORA_SHA: E9626AAD3EDB32AD182E64612A9D70C2D3FEC4861F93092AC6192570231139B0
 
     defaults:
       run:
@@ -30,6 +41,54 @@ jobs:
         run: |
           Copy-Item "poc/look-tryon/server-bench/app_klein.py" "D:\app_klein.py" -Force
           Write-Host "app_klein.py copied"
+
+      # 화장 부품(LoRA, 2000 걸음) — 공개 릴리스 lora-klein-makeup-v1 에서 app_klein.py 옆(D:\)에 받는다.
+      # 이미 있고 지문(SHA-256)이 같으면 건너뛴다 (처음 한 번 · 부품을 바꿀 때만 받는다). 받은 파일도 지문이 다르면 버린다.
+      # 실패해도 배포는 계속 — FLUX 는 부품 없이 켜지고 마지막 "Check makeup LoRA loaded" 가 빨갛게 알린다.
+      # FLUX 를 끄기 전에 받는다 (받는 동안에도 지금 FLUX 가 계속 답하게)
+      - name: Fetch makeup LoRA (skip if same)
+        continue-on-error: true
+        run: |
+          $ErrorActionPreference = "Stop"
+          $ProgressPreference = "SilentlyContinue"
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          $dst = "D:\$env:LORA_NAME"
+          if ((Test-Path $dst) -and ((Get-FileHash $dst -Algorithm SHA256).Hash -eq $env:LORA_SHA)) { Write-Host "LoRA already in place: $dst"; exit 0 }
+          $url = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:LORA_TAG/$env:LORA_NAME"
+          $tmp = "$dst.part"
+          Invoke-WebRequest $url -OutFile $tmp -UseBasicParsing
+          $got = (Get-FileHash $tmp -Algorithm SHA256).Hash
+          if ($got -ne $env:LORA_SHA) { Remove-Item $tmp -Force; throw "LoRA hash mismatch: $got" }
+          Move-Item $tmp $dst -Force
+          Write-Host "LoRA downloaded: $dst"
+
+      # 부품을 끼우려면 FLUX 파이썬에 peft 가 있어야 한다. 지금 7861 에서 도는 FLUX 의 python.exe(못 찾으면 D:/run-flux.bat 에 적힌 것)에
+      # 없을 때만 깐다. 이미 깔린 패키지는 지금 버전에 묶어 두고(-c) 모자란 것만 더한다 — torch · diffusers 등이 바뀌지 않게.
+      # 그다음 그 파이썬으로 받은 부품을 읽어 본다 (그래픽카드 안 씀). 실패해도 배포는 계속 (위와 같다).
+      # $ErrorActionPreference 를 Stop 으로 두지 않는다 — PowerShell 5.1 은 파이썬이 오류 출력에 쓴 줄을 오류로 바꿔 단계를 끊는다
+      - name: Ensure peft in FLUX python
+        continue-on-error: true
+        run: |
+          $p = (Get-NetTCPConnection -LocalPort 7861 -LocalAddress 127.0.0.1 -State Listen -ErrorAction SilentlyContinue).OwningProcess | Select-Object -First 1
+          $py = $null
+          if ($p) { $py = (Get-CimInstance Win32_Process -Filter "ProcessId=$p").ExecutablePath }
+          if (-not $py -and (Test-Path "D:\run-flux.bat")) {
+            $m = Select-String -Path "D:\run-flux.bat" -Pattern '[A-Za-z]:\\[^"\r\n]*?python\.exe' | Select-Object -First 1
+            if ($m) { $py = $m.Matches[0].Value }
+          }
+          if (-not $py) { throw "FLUX python not found" }
+          Write-Host "FLUX python: $py"
+          & $py -c "import peft; print('peft', peft.__version__)"
+          if ($LASTEXITCODE -ne 0) {
+            $c = Join-Path $env:RUNNER_TEMP "flux-constraints.txt"
+            & $py -m pip list --format=freeze | Out-File -Encoding ascii $c
+            & $py -m pip install "peft==0.21.2" -c $c
+            if ($LASTEXITCODE -ne 0) { throw "pip install peft failed" }
+            & $py -c "import peft; print('peft', peft.__version__)"
+            if ($LASTEXITCODE -ne 0) { throw "peft import failed after install" }
+          }
+          & $py -c "import sys; from diffusers import Flux2KleinInpaintPipeline as P; sd = P.lora_state_dict(sys.argv[1]); print('lora keys', len(sd))" "D:\$env:LORA_NAME"
+          if ($LASTEXITCODE -ne 0) { throw "this python cannot read the LoRA file" }
 
       # 7861 포트를 쓰는 FLUX 만 끈다 — 같은 PC 의 다른 파이썬 실험은 건드리지 않음.
       # 127.0.0.1 로 좁히는 이유: 100.110.57.95:7861 은 portproxy(svchost)가 잡고 있어 같이 끄면 바깥 길이 끊긴다
@@ -61,3 +120,12 @@ jobs:
           }
           if (-not $ok) { throw "FLUX did not come up in 5 minutes - check D:/flux.log" }
           Write-Host "FLUX is up (127.0.0.1:7861 -> 200)"
+
+      # 부품을 끼우고 켜졌는지 — app_klein.py 가 켤 때 D:/flux.log 에 남기는 "[lora] loaded · failed · off" 줄 중 마지막을 본다.
+      # loaded 가 아니면 이 배포를 빨갛게 한다 (FLUX 는 부품 없이 그대로 돈다 — 서비스는 안 멈춘다)
+      - name: Check makeup LoRA loaded
+        run: |
+          $line = Select-String -Path "D:\flux.log" -Pattern '^\[lora\] ' | Select-Object -Last 1
+          if (-not $line) { throw "no [lora] line in D:/flux.log" }
+          Write-Host $line.Line
+          if ($line.Line -notmatch '^\[lora\] loaded ') { throw "makeup LoRA not loaded - see D:/flux.log" }
