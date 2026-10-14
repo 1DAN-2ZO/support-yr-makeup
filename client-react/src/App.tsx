@@ -46,6 +46,7 @@ import { requestTransfer } from "@core/transfer-client";
 import { within } from "@core/wait-limit";
 import { ops } from "./lib/ops";
 import Closed from "./screens/Closed";
+import { armPhoneBack } from "./lib/phone-back";
 import { API_BASE, hasAnswerServer, refReadCount, refToPartColors, templateColors, templateNumber, type PartColors } from "./api";
 import type { PalettePart } from "@core/color-family";
 import type { MakeupTemplate } from "@core/templates";
@@ -443,6 +444,21 @@ function Running() {
    */
   const shown = template && madeUrl ? { ...template, thumb: madeUrl } : template;
 
+  /**
+   * 폰의 뒤로 버튼 — 맨 위 화살표와 같은 곳으로 (`lib/phone-back`, #454 C4). 화살표는 그릴 때마다 새로 계산되니
+   * ref 에 넣어 두고(아래 `backRef.current = …`) 듣는 쪽은 한 번만 건다. 화살표가 없는 화면(동의 · 촬영 · 끝 …)에서는
+   * 막지 않고 사이트를 나간다. 훅은 스플래시의 이른 return 앞에 있어야 한다 (훅 순서 규칙)
+   */
+  const backRef = useRef<{ stage: Stage; onBack: () => void } | null>(null);
+  useEffect(
+    () =>
+      armPhoneBack({
+        back: () => backRef.current,
+        log: (button) => ops().log.log({ name: "button", button }),
+      }),
+    [],
+  );
+
   // 스플래시는 폰 화면을 꽉 채우는 그림이라 로고 줄(.brand) 위에 겹치지 않게 혼자 그린다
   if (stage === "splash") return <Splash onDone={() => setStage("consent")} />;
 
@@ -472,6 +488,8 @@ function Running() {
     if (stage === "save") return { label: "피드백으로 돌아가기", onBack: () => setStage(step("save", -1)) };
     return undefined;
   })();
+
+  backRef.current = back ? { stage, onBack: back.onBack } : null;
 
   return (
     <div className="app">
