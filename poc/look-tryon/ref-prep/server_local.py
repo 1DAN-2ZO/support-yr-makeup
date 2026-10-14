@@ -1,4 +1,5 @@
 """서버(app_klein.py) 방식 그대로 — 실제 `_run` 을 Gradio 없이 불러 쓰고, 참고 사진 앞에 전처리 B 를 끼워 본다 (PoC).
+서버에 붙이는 방법 · 판정 규칙 · 한계는 occlusion_gate.py 머리말에 있다 (이 파일의 make_prep_b 가 서버용 frontalize 콜백의 예시).
 
 app_klein.py 는 복사하지 않는다. 파일을 읽어서 메모리에서만 이렇게 고친 뒤 실행한다:
   - gradio 는 껍데기로 대신한다 (오류 클래스 · 임시 폴더만 쓰인다)
@@ -8,9 +9,9 @@ app_klein.py 는 복사하지 않는다. 파일을 읽어서 메모리에서만 
 전처리 B 는 서버가 올려 둔 그리는 부품 · VAE 를 그대로 나눠 쓰는 Flux2KleinPipeline 이고, 지시문 해석은 미리 구해 둔 저장본을 쓴다
 (글 해석 부품 7.5GB 는 서빙 때 올리지 않는다).
 
-    D:\\envs\\flux2-poc\\python.exe server_local.py cases.json
 cases.json: {"edit": {"prompt": "...", "seed": 1234, "long_side": 768},
-             "cases": [{"bare": "...", "ref": "...", "mode": "raw|b", "out": "...", "expect_prep": "(선택) 같아야 할 사진"}]}
+             "cases": [{"bare": "...", "ref": "...", "mode": "raw|b|gate", "out": "...", "expect_prep": "(선택) 같아야 할 사진"}]}
+mode: raw = 참고 사진 그대로 · b = FLUX 로 사진 전체 고친 뒤 · gate = occlusion_gate.prep (판정 → 필요하면 정면화 · 채우기) 을 거친 뒤
 """
 import gc
 import json

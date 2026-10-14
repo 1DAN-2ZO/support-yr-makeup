@@ -4,8 +4,6 @@
 app_klein 과 같은 방식: 지시문 해석(글 부품 7.5GB)을 먼저 따로 돌려 결과만 두고 내린 뒤, 그리는 부품만 그래픽카드에 올린다.
 (전체를 한 번에 올리면 12GB 에 안 들어가고, 부분씩 올리기는 윈도우에서 프로그램이 죽었다 — app_klein.py 머리말)
 
-    D:\\envs\\flux2-poc\\python.exe -I klein_edit.py jobs.json
-
 jobs.json: [{"image": "in.png", "prompt": "...", "out": "out.png", "seed": 1234, "steps": 4, "mirror": false}, ...]
 mirror 를 켜면 원본과 그 좌우반전을 참고 사진 두 장(1, 2)으로 같이 넣는다.
 image 를 빼면 글만으로 그린다 (환경 확인용). 이 폴더는 PoC 시험용이라 서비스에는 들어가지 않는다.
