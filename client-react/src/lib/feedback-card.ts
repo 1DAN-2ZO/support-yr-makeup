@@ -23,7 +23,7 @@
  *    (AbortError 가 아닌 오류는 내려받기로 넘긴다). 자세한 까닭은 `screens/Save.tsx` 머리글에 적었다.
  */
 
-import type { FeedbackTone, WholeFeedback } from "../core/feedback-whole";
+import type { FeedbackTone, WholeFeedback } from "@core/feedback-whole";
 import { anchorDownload, fitText, saveCard, type SaveOutcome, type ShareEnv } from "./result-card";
 
 export const FEEDBACK_CARD_W = 1080;

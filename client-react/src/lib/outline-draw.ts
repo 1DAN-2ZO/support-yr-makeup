@@ -4,8 +4,8 @@
  * 테두리는 점선, 퍼지는 방향 표시(블러셔·섀도우·쉐딩, core/spread-marks)는 실선 화살표 + 작은 점.
  */
 
-import type { Outline } from "../core/overlay";
-import type { Pt } from "../core/types";
+import type { Outline } from "@core/overlay";
+import type { Pt } from "@core/types";
 
 export const GUIDE_COLOR = "#3FD1C4";
 

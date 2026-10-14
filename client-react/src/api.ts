@@ -13,12 +13,12 @@
  * 템플릿은 위의 `templates.json`).
  */
 
-import { hexToRgb } from "./core/color-family";
-import type { PalettePart } from "./core/color-family";
-import { describeColor } from "./core/color-name";
-import type { RefColors } from "./core/ref-colors";
-import { requestTransfer } from "./core/transfer-client";
-import type { TransferRef } from "./core/transfer-client";
+import { hexToRgb } from "@core/color-family";
+import type { PalettePart } from "@core/color-family";
+import { describeColor } from "@core/color-name";
+import type { RefColors } from "@core/ref-colors";
+import { requestTransfer } from "@core/transfer-client";
+import type { TransferRef } from "@core/transfer-client";
 import type { MakeResult } from "./lib/answer-make";
 import { PART_ORDER } from "./parts";
 

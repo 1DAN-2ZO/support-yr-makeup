@@ -9,9 +9,9 @@
  * 기준은 이 측정을 시작(탭)한 첫 프레임 — 맨얼굴 사진이 아니라서 앉은 자세 차이가 안 섞인다.
  */
 
-import { poseOf, slopeFit } from "../core/gate";
-import { LM, at } from "../core/landmarks";
-import type { Pt } from "../core/types";
+import { poseOf, slopeFit } from "@core/gate";
+import { LM, at } from "@core/landmarks";
+import type { Pt } from "@core/types";
 
 type Cand = { name: string; get: (lm: readonly Pt[], mat: readonly number[] | null) => number | null };
 

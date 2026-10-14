@@ -12,8 +12,8 @@
  * 알맹이(얼마나 줄여서 재는지 · 실패 까닭 셋 · 안내 문구)는 한 글자도 안 바꿨다.
  */
 
-import { refColors } from "../core/ref-colors";
-import type { RefColors } from "../core/ref-colors";
+import { refColors } from "@core/ref-colors";
+import type { RefColors } from "@core/ref-colors";
 import { landmarksFromImage } from "./landmarker";
 
 /** 긴 변이 이보다 크면 줄여서 잰다 — 색은 해상도와 상관없고, 큰 사진은 느리다 */

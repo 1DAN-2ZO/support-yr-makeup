@@ -37,9 +37,9 @@
 import { useEffect, useState } from "react";
 import type { PartColors } from "../api";
 import { PART_NAME } from "../parts";
-import type { PalettePart } from "../core/color-family";
-import type { FeedbackLine } from "../core/feedback-whole";
-import type { MakeupTemplate } from "../core/templates";
+import type { PalettePart } from "@core/color-family";
+import type { FeedbackLine } from "@core/feedback-whole";
+import type { MakeupTemplate } from "@core/templates";
 import type { FeedbackLoad, FeedbackView } from "../lib/feedback-source";
 import "../feedback.css";
 

@@ -16,12 +16,12 @@
  *    여기서는 **그 둘만 본 앱 글자 그대로 옮겨 적었다** — 나중에 피드백이 붙으면 그 파일로 옮기면 된다.
  */
 
-import type { RgbaImage } from "../core/color";
-import { scaleLm } from "../core/crop";
-import type { FeedbackPart } from "../core/guide-feedback";
-import { runGuide, type GuideMissing, type GuidePage } from "../core/guide-run";
-import type { Outline } from "../core/overlay";
-import type { Baseline, PartId, Pt } from "../core/types";
+import type { RgbaImage } from "@core/color";
+import { scaleLm } from "@core/crop";
+import type { FeedbackPart } from "@core/guide-feedback";
+import { runGuide, type GuideMissing, type GuidePage } from "@core/guide-run";
+import type { Outline } from "@core/overlay";
+import type { Baseline, PartId, Pt } from "@core/types";
 import { PART_COLOR, strokeMarks } from "./outline-draw";
 
 /**

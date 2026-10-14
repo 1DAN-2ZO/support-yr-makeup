@@ -3,8 +3,8 @@
  * 얼굴 점은 촬영 크기(shot) 좌표라 캔버스 크기로 맞춘다. 2D 컨텍스트를 못 열면 그대로 둔다
  */
 
-import { smoothSkin } from "../core/skin-smooth";
-import type { Pt } from "../core/types";
+import { smoothSkin } from "@core/skin-smooth";
+import type { Pt } from "@core/types";
 
 export function smoothSkinCanvas(cv: HTMLCanvasElement, lm: readonly Pt[], shot: { w: number; h: number }): void {
   const g = cv.getContext("2d");

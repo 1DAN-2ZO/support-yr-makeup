@@ -5,7 +5,7 @@
  * 순서는 위에서 아래로 — 눈썹부터 그리고 볼터치로 끝내는 것이 실제로 화장하는 차례다.
  */
 
-import type { PalettePart } from "./core/color-family";
+import type { PalettePart } from "@core/color-family";
 
 export const PART_ORDER = ["brow", "liner", "shadow", "lip", "cheek"] as const;
 

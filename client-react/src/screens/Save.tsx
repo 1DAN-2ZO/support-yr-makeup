@@ -53,9 +53,9 @@
 
 import type { PartColors } from "../api";
 import { PART_NAME, PART_ORDER } from "../parts";
-import { pickProducts, pickShadeText } from "../core/product-picks";
+import { pickProducts, pickShadeText } from "@core/product-picks";
 import { useEffect, useRef, useState } from "react";
-import type { MakeupTemplate } from "../core/templates";
+import type { MakeupTemplate } from "@core/templates";
 import { prepareSave, SAVE_TEXT, SHARE_HINT, type SaveKit, type SaveSource } from "../lib/feedback-card";
 import type { FeedbackLoad } from "../lib/feedback-source";
 import { surveyLink } from "../survey-link";

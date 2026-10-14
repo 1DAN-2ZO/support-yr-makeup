@@ -43,9 +43,9 @@ import { isTestClosed } from "@core/test-period";
 import { ops } from "./lib/ops";
 import Closed from "./screens/Closed";
 import { refReadCount, refToPartColors, templateColors, templateNumber, type PartColors } from "./api";
-import type { PalettePart } from "./core/color-family";
-import type { MakeupTemplate } from "./core/templates";
-import type { Baseline } from "./core/types";
+import type { PalettePart } from "@core/color-family";
+import type { MakeupTemplate } from "@core/templates";
+import type { Baseline } from "@core/types";
 import Splash from "./screens/Splash";
 import Intro from "./screens/Intro";
 import Capture from "./screens/Capture";
@@ -62,7 +62,7 @@ import Save from "./screens/Save";
 import Done from "./screens/Done";
 import { createGuideKeeper, liveOutlineOf, type GuideLoad } from "./lib/guide-source";
 import { createFeedbackKeeper, type FeedbackLoad } from "./lib/feedback-source";
-import type { Outline } from "./core/overlay";
+import type { Outline } from "@core/overlay";
 import "./app.css";
 
 /** 흐름 순서 — 위 표 그대로. 앞뒤로 한 칸 움직이는 길이 이 줄에서 나온다 */

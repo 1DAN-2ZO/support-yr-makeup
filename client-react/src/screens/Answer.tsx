@@ -28,7 +28,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { hasAnswerServer, makeAnswerPicture } from "../api";
-import type { TransferRef } from "../core/transfer-client";
+import type { TransferRef } from "@core/transfer-client";
 import { MAKE_WAIT_TEXT, makeFailText, shrinkForUpload } from "../lib/answer-make";
 
 /** 지금 어느 칸인가 — 위 머리글의 네 가지 */

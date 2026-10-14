@@ -5,8 +5,8 @@
  *  - grabFrame: 지금 프레임을 캔버스로 (자동 촬영)
  */
 
-import { foreheadLab, foreheadRawLab, type Lab } from "../core/color";
-import type { Pt } from "../core/types";
+import { foreheadLab, foreheadRawLab, type Lab } from "@core/color";
+import type { Pt } from "@core/types";
 
 type Src = HTMLVideoElement;
 

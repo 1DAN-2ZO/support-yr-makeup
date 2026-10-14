@@ -19,7 +19,7 @@
  */
 
 import { useState } from "react";
-import { TEMPLATES, type MakeupTemplate } from "../core/templates";
+import { TEMPLATES, type MakeupTemplate } from "@core/templates";
 
 /**
  * 받침이 있으면 "을", 없으면 "를" — 본 앱 flow-slots 의 `eul` 그대로.

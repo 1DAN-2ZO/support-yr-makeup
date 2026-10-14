@@ -12,7 +12,7 @@
  * 지키던 규칙(같은 사진으로 두 번 눌러도 한 번만 보낸다)은 `api.ts` 에서 지킨다.
  */
 
-import type { TransferFail } from "../core/transfer-client";
+import type { TransferFail } from "@core/transfer-client";
 import { encodeForStore } from "./image-encode";
 
 /**

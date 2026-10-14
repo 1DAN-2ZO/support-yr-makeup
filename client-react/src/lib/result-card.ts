@@ -9,8 +9,8 @@
  * 열어 주는데, 누른 다음에 캔버스를 그리면 그 사이에 제스처가 끝나 버린다.
  */
 
-import { PART_NAME } from "../core/score";
-import type { PartId, PartResult, SessionSummary } from "../core/types";
+import { PART_NAME } from "@core/score";
+import type { PartId, PartResult, SessionSummary } from "@core/types";
 
 export const CARD_W = 1080;
 export const CARD_H = 1350;

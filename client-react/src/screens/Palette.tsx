@@ -33,7 +33,7 @@
 import type { CSSProperties } from "react";
 import type { PartColors } from "../api";
 import { PART_NAME, PART_ORDER } from "../parts";
-import type { MakeupTemplate } from "../core/templates";
+import type { MakeupTemplate } from "@core/templates";
 
 /** 부위별 질감 틀. 알파만 있는 흑백 PNG — CSS mask 로 모양만 오려 쓴다 (본 앱 `SWATCH`) */
 const SWATCH: Record<(typeof PART_ORDER)[number], string> = {

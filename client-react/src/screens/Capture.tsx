@@ -25,16 +25,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FaceLandmarkerResult } from "@mediapipe/tasks-vision";
-import { cameraFailKind, cameraFailText } from "../core/camera-fail";
-import { createCaptureEvents, type CaptureEvents } from "../core/capture-events";
-import { STEP_TEXT, runStep, startRun, type RunState } from "../core/capture-run";
-import { buildBaseline, retakeFront } from "../core/baseline";
-import { eyeWidthPxOf, eyesClosed, faceCropOf, faceInsetOf, faceRatioOf, yawFromLandmarks } from "../core/capture-measure";
-import { SHOTS, burstShot, burstStep, nextShot, shotGate, startBurst, type BurstState, type ShotId, type ShotMeasure } from "../core/flow";
-import { foreheadStep, startForeheadTrack, type ForeheadTrack } from "../core/occlusion";
-import { createLogger, type Logger } from "../core/log";
-import type { Lab } from "../core/color";
-import type { Baseline, FaceShape, Pt } from "../core/types";
+import { cameraFailKind, cameraFailText } from "@core/camera-fail";
+import { createCaptureEvents, type CaptureEvents } from "@core/capture-events";
+import { STEP_TEXT, runStep, startRun, type RunState } from "@core/capture-run";
+import { buildBaseline, retakeFront } from "@core/baseline";
+import { eyeWidthPxOf, eyesClosed, faceCropOf, faceInsetOf, faceRatioOf, yawFromLandmarks } from "@core/capture-measure";
+import { SHOTS, burstShot, burstStep, nextShot, shotGate, startBurst, type BurstState, type ShotId, type ShotMeasure } from "@core/flow";
+import { foreheadStep, startForeheadTrack, type ForeheadTrack } from "@core/occlusion";
+import { createLogger, type Logger } from "@core/log";
+import type { Lab } from "@core/color";
+import type { Baseline, FaceShape, Pt } from "@core/types";
 import { bindVisibility } from "../lib/camera-locks";
 import { foreheadLabOf, grabFrame, sharpnessOf } from "../lib/frame-measure";
 import { BARE_MAX_SIDE, encodeForStore } from "../lib/image-encode";

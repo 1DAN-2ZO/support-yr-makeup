@@ -21,8 +21,8 @@
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import Live from "./screens/Live";
-import { unitScale } from "./core/baseline";
-import type { Baseline } from "./core/types";
+import { unitScale } from "@core/baseline";
+import type { Baseline } from "@core/types";
 import { createLandmarker } from "./lib/landmarker";
 import { liveFrameLoops } from "./hooks/useFrameLoop";
 import "./app.css";

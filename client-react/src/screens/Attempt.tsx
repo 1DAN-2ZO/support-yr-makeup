@@ -25,13 +25,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FaceLandmarkerResult } from "@mediapipe/tasks-vision";
-import { ATTEMPT_SHOTS, attemptBurstStep, startAttemptBurst, startAttemptRun, type AttemptBurst, type AttemptShotId } from "../core/attempt";
-import { cameraFailKind, cameraFailText } from "../core/camera-fail";
-import { STEP_TEXT, runStep, type RunState } from "../core/capture-run";
-import { eyeWidthPxOf, eyesClosed, faceCropOf, faceInsetOf, faceRatioOf, yawFromLandmarks } from "../core/capture-measure";
-import type { ShotMeasure } from "../core/flow";
-import { createLogger, type Logger } from "../core/log";
-import type { Pt } from "../core/types";
+import { ATTEMPT_SHOTS, attemptBurstStep, startAttemptBurst, startAttemptRun, type AttemptBurst, type AttemptShotId } from "@core/attempt";
+import { cameraFailKind, cameraFailText } from "@core/camera-fail";
+import { STEP_TEXT, runStep, type RunState } from "@core/capture-run";
+import { eyeWidthPxOf, eyesClosed, faceCropOf, faceInsetOf, faceRatioOf, yawFromLandmarks } from "@core/capture-measure";
+import type { ShotMeasure } from "@core/flow";
+import { createLogger, type Logger } from "@core/log";
+import type { Pt } from "@core/types";
 import { foreheadLabOf, grabFrame, sharpnessOf } from "../lib/frame-measure";
 import { BARE_MAX_SIDE, encodeForStore } from "../lib/image-encode";
 import { shutterCue, unlockShutterCue } from "../lib/shutter-cue";

@@ -17,7 +17,7 @@ import { createKeeper, keepAttempt, type Keeper } from "@core/keep-client";
 import { createLogger, type Logger } from "@core/log";
 import { createSidHolder, type SidHolder } from "@core/session-id";
 import { readUtm } from "@core/utm";
-import { getVersions } from "./versions";
+import { getVersions } from "@core/versions";
 
 /**
  * 세션 번호를 폰에 붙들어 두는 시간 — 본 앱 `session-store` 의 `DRAFT_TTL_MS`(2시간)와 같은 값.

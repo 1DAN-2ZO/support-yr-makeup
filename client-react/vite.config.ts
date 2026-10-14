@@ -24,12 +24,14 @@ function appVersion(): string {
  */
 const CORE = fileURLToPath(new URL("../client/src/core", import.meta.url));
 const REPO = fileURLToPath(new URL("..", import.meta.url));
+/** 본 앱 core 가 쓰는 외부 패키지 — ../client 에는 node_modules 가 없으니 이 폴더 것으로 묶는다 */
+const MEDIAPIPE = fileURLToPath(new URL("./node_modules/@mediapipe/tasks-vision", import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
   define: { __APP_VERSION__: JSON.stringify(appVersion()) },
   resolve: {
-    alias: { "@core": CORE },
+    alias: { "@core": CORE, "@mediapipe/tasks-vision": MEDIAPIPE },
   },
   // 5173 은 본 앱(support-yr-makeup/client) 이 쓰는 자리다 — 둘을 같이 띄워 비교해 볼 때
   // 포트가 겹치면 한쪽이 조용히 다른 포트로 밀려나서 어느 쪽을 보고 있는지 헷갈린다

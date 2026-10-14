@@ -13,8 +13,8 @@
  */
 
 import { useEffect, useState } from "react";
-import { SMOOTH } from "../core/smooth-params";
-import type { LandmarkSmoother } from "../core/smoothing";
+import { SMOOTH } from "@core/smooth-params";
+import type { LandmarkSmoother } from "@core/smoothing";
 
 interface Vals {
   minCutoff: number;

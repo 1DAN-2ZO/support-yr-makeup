@@ -17,7 +17,7 @@ import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import Capture from "./screens/Capture";
 import { liveFrameLoops } from "./hooks/useFrameLoop";
-import type { Baseline } from "./core/types";
+import type { Baseline } from "@core/types";
 import "./app.css";
 
 /** 지금까지 `getUserMedia` 가 내준 트랙 전부. 끊긴 것도 버리지 않는다 — 꺼졌는지 세려면 남아 있어야 한다 */

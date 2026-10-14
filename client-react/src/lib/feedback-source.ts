@@ -21,12 +21,12 @@
  *    부위 가이드가 쓰는 보관함(`lib/guide-source` 의 `createGuideKeeper`)과 **같은 짜임**으로 둔다.
  */
 
-import type { RgbaImage } from "../core/color";
-import { scaleLm } from "../core/crop";
-import { runFeedback, type FeedbackMissing, type FeedbackPhoto } from "../core/feedback-run";
-import type { WholeFeedback } from "../core/feedback-whole";
-import type { HairMask } from "../core/sampling";
-import type { Baseline, Pt } from "../core/types";
+import type { RgbaImage } from "@core/color";
+import { scaleLm } from "@core/crop";
+import { runFeedback, type FeedbackMissing, type FeedbackPhoto } from "@core/feedback-run";
+import type { WholeFeedback } from "@core/feedback-whole";
+import type { HairMask } from "@core/sampling";
+import type { Baseline, Pt } from "@core/types";
 import type { AttemptShots } from "../screens/Attempt";
 
 /**

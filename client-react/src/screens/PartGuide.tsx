@@ -46,9 +46,9 @@
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { PartColors } from "../api";
-import type { PalettePart } from "../core/color-family";
+import type { PalettePart } from "@core/color-family";
 import { PART_NAME, PART_ORDER, PART_TIP } from "../parts";
-import { pickProducts, pickShadeText } from "../core/product-picks";
+import { pickProducts, pickShadeText } from "@core/product-picks";
 import { drawGuidePage, type GuideLoad, type GuideView } from "../lib/guide-source";
 
 /** 진짜 가이드 그림이 떴을 때의 말풍선 — 본 앱 flow-slots 의 `GUIDE_COACH` 그대로 */
