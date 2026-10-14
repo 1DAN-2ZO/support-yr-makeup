@@ -44,6 +44,7 @@ import { middleShot } from "@core/attempt";
 import { createPictureMaker, type MakeResult } from "@core/picture-maker";
 import { requestTransfer } from "@core/transfer-client";
 import { within } from "@core/wait-limit";
+import { createHairMasker } from "@screens/hair-segmenter";
 import { ops } from "./lib/ops";
 import Closed from "./screens/Closed";
 import { armPhoneBack } from "./lib/phone-back";
@@ -282,8 +283,7 @@ function Running() {
    * 보관함은 **정답사진과 완성사진 묶음이 그대로면** 재 둔 것을 그대로 주므로, 저장 화면에
    * 다녀오든 개발 모드(StrictMode)에서 효과가 두 번 돌든 한 번만 잰다.
    *
-   * 옮긴 그림(`getMoved`)은 넘긴다 (2026-10-15, 위 `maker`). 머리카락 분할(`getHair`)은 아직 없다 —
-   * 눈썹 꼬리 문장은 본 앱도 꺼 두어서(#446 `BROW_TAIL_READY=false`) 지금은 차이가 없다
+   * 옮긴 그림(`getMoved`)과 머리카락 분할(`getHair`)을 둘 다 넘긴다 (2026-10-15) — 본 앱 `getFeedback` 과 같은 재료다
    */
   /**
    * 옮긴 그림 만들기 — 본 앱 `main.ts` 의 `maker` · `movedJob` · `getMoved` (#454 B1 · B4, 2026-10-15).
@@ -317,12 +317,23 @@ function Running() {
     return r.picture;
   }, []);
 
+  /**
+   * 머리카락 분할 (본 앱 `screens/hair-segmenter`, #454 B2) — 피드백이 맨얼굴 · 시도사진에서 머리카락 자리를 빼고 잰다.
+   * 모델은 처음 부를 때 한 번 받고(`createHairMasker`), 시도사진을 찍을 때 미리 받기 시작한다 (아래 Attempt `onDone`).
+   * 못 받으면 사용 기록에 한 번 남기고 마스크 없이 간다 — 본 앱 `main.ts` 와 같다
+   */
+  const hairMask = useRef<ReturnType<typeof createHairMasker> | null>(null);
+  hairMask.current ??= createHairMasker(undefined, (e) =>
+    ops().log.log({ name: "error", where: "hair", msg: (e instanceof Error ? e.message : String(e)).slice(0, 120) }),
+  );
+
   const feedbacks = useRef<ReturnType<typeof createFeedbackKeeper> | null>(null);
   feedbacks.current ??= createFeedbackKeeper({
     getBaseline: () => bare.current?.baseline ?? null,
     getAttempt: () => attempt.current,
     getAnswer: () => (madeBlob.current ? { image: madeBlob.current } : null),
     getMoved,
+    getHair: hairMask.current,
   });
 
   /** 피드백 화면이 부르는 길. 가이드와 같게 **한 번 만들고 바꾸지 않는다** */
@@ -681,6 +692,8 @@ function Running() {
                 attempt.current = shots;
                 // 테스트 기간 보관 — 눈 뜬 장 다섯까지 (본 앱 main.ts `setAttempt` 의 `keepAttempt`)
                 ops().keepAttempt(shots.front_open.map((s) => s.blob));
+                // 머리카락 분할 모델을 미리 받아 둔다 (#429) — 피드백이 쓸 때 기다리지 않게. 받는 동안 화면은 안 막는다
+                void hairMask.current!({ data: new Uint8ClampedArray(16 * 16 * 4), w: 16, h: 16 });
                 // 옛 시도사진으로 만들던 옮긴 그림은 못 쓴다 — 버리고 새로 시작한다 (본 앱 `setAttempt`). 서버가 없으면 시작하지 않는다
                 maker.current?.cancel("moved");
                 movedJob.current = hasAnswerServer ? maker.current!.makeMoved() : null;

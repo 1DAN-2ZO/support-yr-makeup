@@ -1,7 +1,8 @@
 import { execSync } from "node:child_process";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 
 /**
  * 빌드 판 이름 — 사용 기록의 `ver.app` 에 붙는다 (본 앱 vite.config.ts 와 같은 방식, #454 A4).
@@ -23,15 +24,33 @@ function appVersion(): string {
  * 경로는 이 폴더 기준 `../client/src/core` (도커에서는 FrontDockerfile 이 같은 자리에 복사해 둔다)
  */
 const CORE = fileURLToPath(new URL("../client/src/core", import.meta.url));
+/** 본 앱 `screens/` 중 리액트와 무관한 부품(머리카락 분할 등)도 그대로 읽는다 — 화면 코드는 안 가져온다 */
+const SCREENS = fileURLToPath(new URL("../client/src/screens", import.meta.url));
 const REPO = fileURLToPath(new URL("..", import.meta.url));
 /** 본 앱 core 가 쓰는 외부 패키지 — ../client 에는 node_modules 가 없으니 이 폴더 것으로 묶는다 */
 const MEDIAPIPE = fileURLToPath(new URL("./node_modules/@mediapipe/tasks-vision", import.meta.url));
 
+/**
+ * [빌드 전용] MediaPipe wasm 을 dist/mediapipe/wasm/ 으로 복사한다 — 본 앱 vite.config.ts 의 플러그인 그대로.
+ * 본 앱 `screens/hair-segmenter.ts` 가 빌드본에서 `${BASE_URL}mediapipe/wasm` 을 읽어서다 (#454 B2).
+ * 이 버전의 얼굴 점(`lib/landmarker.ts`)은 jsDelivr 에서 받는데, 그건 그대로 둔다
+ */
+const mediapipeWasm: Plugin = {
+  name: "mediapipe-wasm",
+  apply: "build",
+  generateBundle() {
+    const dir = MEDIAPIPE + "/wasm/";
+    for (const f of readdirSync(dir)) {
+      this.emitFile({ type: "asset", fileName: `mediapipe/wasm/${f}`, source: readFileSync(dir + f) });
+    }
+  },
+};
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), mediapipeWasm],
   define: { __APP_VERSION__: JSON.stringify(appVersion()) },
   resolve: {
-    alias: { "@core": CORE, "@mediapipe/tasks-vision": MEDIAPIPE },
+    alias: { "@core": CORE, "@screens": SCREENS, "@mediapipe/tasks-vision": MEDIAPIPE },
   },
   // 5173 은 본 앱(support-yr-makeup/client) 이 쓰는 자리다 — 둘을 같이 띄워 비교해 볼 때
   // 포트가 겹치면 한쪽이 조용히 다른 포트로 밀려나서 어느 쪽을 보고 있는지 헷갈린다
