@@ -14,7 +14,7 @@
   "frontalize" 거절이 아닌데 얼굴 각도(좌우 · 위아래 · 기울임)가 25° 넘음 → FLUX 로 정면으로 돌림 (frontalize 콜백, 약 +9초, GPU)
   "pass"       그 밖 (잘 보임 · 약간만 가림 · 손이 한쪽만 가림 — 손은 피부색이라 얼룩은 없고 화장만 빠진다) → 원본 그대로
   코드 오류(우리 쪽 예외)는 pass — 전처리 때문에 서비스가 막히면 안 된다. 정면화한 사진은 다시 판정하지 않는다 (얼굴이 아직 보이는지만 확인).
-  "많이 가림" = 눈썹 30% · 눈/볼/입술 40% 초과. 가림 = 얼굴 분할이 머리카락 · 옷 · 기타 · (몸 피부 = 손)로 본 부위 비율. L/R 은 사진 기준 왼쪽/오른쪽.
+  "가림" = 머리카락은 부위의 10% 초과 (2026-10-14 사용자 정답으로 맞춤, 처음엔 눈썹 30% · 나머지 40%), 손은 눈썹 30% · 나머지 40% 초과. 가림 = 얼굴 분할이 머리카락 · 옷 · 기타 · (몸 피부 = 손)로 본 부위 비율. L/R 은 사진 기준 왼쪽/오른쪽.
   왜 이렇게 정했나: 팀 기준이 "원본을 그대로 넣으면 서버 결과가 깨지는가"였다 — 머리카락이 눈썹을 걸치면 검게 번지고, 손은 화장만 빠진다.
 
 ■ 2026-10-14 서버에 붙였다 (1단계) — app_klein.py 의 따로 낸 창구 prep_ref 가 prep(frontalize 없이)을 부른다.
@@ -71,10 +71,18 @@ SEG_PATH = Path.home() / ".cache" / "nudy" / "selfie_multiclass_256x256.tflite"
 OCCLUDER = (1, 2, 4, 5)       # 1 머리카락 · 2 몸 피부(손) · 4 옷 · 5 기타.  (0 배경 · 3 얼굴 피부)
 HAIR_LIKE = (1, 4, 5)         # 머리카락 · 옷 · 기타 — 많이 가리면 다른 사진 요청 (서버 결과에 검은 얼룩이 생긴다)
 HAND = 2                      # 몸 피부(손) — 한쪽만 가리면 통과 (피부색이라 얼룩은 안 생기고 화장만 빠진다), 양쪽이면 다른 사진 요청
-OCC_MIN = 0.15                # (그림 색 구분용) 이 이하 = 잘 보임
-# 한 부위라도 이만큼 넘게 가렸으면 → 다른 사진 요청. OCC_MIN ~ 이 값 사이는 약간 가림 — 통과.
-# 눈썹은 더 엄격하게: 머리카락이 눈썹을 30~40% 만 걸쳐도 서버 결과의 눈썹이 검게 번졌다 (AI 생성 시험 ④, 2026-10-14)
-OCC_HEAVY = {"brow": 0.30, "eye": 0.40, "cheek": 0.40, "lip": 0.40}
+OCC_MIN = 0.10                # 이 이하 = 잘 보임 (채울 원본인 반대쪽은 모든 부위가 이 이하여야 한다)
+# 한 부위라도 이만큼 넘게 가렸으면 '가림' — 한쪽만이면 반대쪽으로 채움, 양쪽이면 다른 사진 요청.
+# 처음(#451)엔 눈썹 0.30 · 나머지 0.40 이었다 (AI 생성 시험 ④: 눈썹을 30~40% 만 걸쳐도 결과 눈썹이 검게 번짐).
+# 2026-10-14 사용자가 실제 사진 10장에 "머리카락이 어느 정도라도 가린 부위" 를 표시한 정답과 견줘 0.10 으로 —
+# 판정(그대로 · 채움 · 다른 사진)이 0.30/0.40 은 10장 중 4장, 0.10 + 한쪽씩 크게 보기(ZOOM_SIDE)는 9장 맞았다.
+# 틀린 1장은 긴 머리가 양 볼 가장자리에 걸쳐 '양쪽 가림' 으로 본 것 (지금은 거절을 안 알려 원본 그대로 — 해 없음)
+OCC_HEAVY = {"brow": 0.10, "eye": 0.10, "cheek": 0.10, "lip": 0.10}
+# 손은 처음 값 그대로 — 손이 가린 사진은 정답 표시에 없어서 견주지 못했다
+HAND_HEAVY = {"brow": 0.30, "eye": 0.40, "cheek": 0.40, "lip": 0.40}
+# 한쪽(눈썹 · 눈 · 볼)씩 크게 잘라 분할을 한 번 더 — 얼굴 전체를 256 으로 줄여 보면 가는 머리카락이 사라진다.
+# 머리카락 전용 모델(hair_segmenter)을 크게 잘라 돌리면 진한 눈썹을 머리카락으로 봐서(안 가린 눈썹 0.5) 쓰지 않는다
+ZOOM_SIDE = 512
 # 얼굴 각도(도) — 이만큼 넘게 돌아가면 다른 사진 요청 (MediaPipe 머리 자세). 임시값: 정면 사진 26장은 좌우 ±7 · 위아래 ±10 · 기울임 ±3 이내,
 # 3/4 샘플(half.jpg)은 좌우 -38 · 기울임 -32. 샘플이 모자란다 (2026-10-14)
 ANGLE_MAX = {"yaw": 25.0, "pitch": 25.0, "roll": 25.0}
@@ -212,6 +220,29 @@ def part_masks(lm: np.ndarray, shape: tuple[int, int]) -> dict:
     return out
 
 
+def zoom_hair(crop: np.ndarray, parts: dict) -> np.ndarray:
+    """한쪽씩(눈썹 · 눈 · 볼을 덮는 상자, 둘레 25% 더) 긴 변 ZOOM_SIDE 로 키워 다시 분할한 머리카락 — crop 크기 마스크"""
+    h, w = crop.shape[:2]
+    out = np.zeros((h, w), bool)
+    for s in ("L", "R"):
+        m = np.zeros((h, w), bool)
+        for p in ("brow", "eye", "cheek"):
+            if p in parts[s]:
+                m |= parts[s][p]
+        ys, xs = np.nonzero(m)
+        if not len(xs):
+            continue
+        x0, x1, y0, y1 = xs.min(), xs.max(), ys.min(), ys.max()
+        pad = int(0.25 * max(x1 - x0, y1 - y0))
+        x0, y0, x1, y1 = max(0, x0 - pad), max(0, y0 - pad), min(w, x1 + pad + 1), min(h, y1 + pad + 1)
+        sub = crop[y0:y1, x0:x1]
+        k = ZOOM_SIDE / max(sub.shape[:2])
+        big = cv2.resize(sub, (max(1, round(sub.shape[1] * k)), max(1, round(sub.shape[0] * k))), interpolation=cv2.INTER_CUBIC)
+        z = np.isin(segment(np.ascontiguousarray(big)), HAIR_LIKE).astype(np.uint8)
+        out[y0:y1, x0:x1] |= cv2.resize(z, (x1 - x0, y1 - y0), interpolation=cv2.INTER_NEAREST) > 0
+    return out
+
+
 def analyze(rgb: np.ndarray) -> dict:
     """판정 + 근거. 얼굴을 못 찾거나 오류가 나면 pass (원본 그대로)"""
     rep: dict = {"verdict": "pass", "why": ""}
@@ -225,19 +256,19 @@ def analyze(rgb: np.ndarray) -> dict:
         lmc = (lm - np.array([left, top])) * scale
         seg = segment(crop)
         parts = part_masks(lmc, seg.shape)
-        occ = np.isin(seg, OCCLUDER)
-        hair = np.isin(seg, HAIR_LIKE)                   # 머리카락 · 옷 · 기타
+        hair = np.isin(seg, HAIR_LIKE) | zoom_hair(crop, parts)   # 머리카락 · 옷 · 기타 — 한쪽씩 크게 본 것도 더한다
         hand = seg == HAND
+        occ = hair | hand
         frac = lambda mask: {s: {p: float(mask[m].mean()) if m.any() else 0.0 for p, m in parts[s].items()} for s in ("L", "R")}  # noqa: E731
         rep["scores"], rep["hair"], rep["hand"] = frac(occ), frac(hair), frac(hand)
         hair_bad = [f"{s}:{p}" for s in ("L", "R") for p, v in rep["hair"][s].items() if v > OCC_HEAVY[p]]
-        hand_sides = [s for s in ("L", "R") if any(v > OCC_HEAVY[p] for p, v in rep["hand"][s].items())]
+        hand_sides = [s for s in ("L", "R") if any(v > HAND_HEAVY[p] for p, v in rep["hand"][s].items())]
         rep["occluded"] = {"hair": hair_bad, "hand_sides": hand_sides}
         hair_sides = sorted({b[0] for b in hair_bad})
         turned = [f"{ANGLE_NAMES[k]} {v:+.0f}°" for k, v in (pose or {}).items() if abs(v) > ANGLE_MAX[k]]
         rep["turned"] = turned                              # 각도가 크면 거절이 아니라 FLUX 정면화 대상 (prep 에서) — 판별은 원본으로 먼저 한다
         if len(hair_sides) == 2:
-            rep["verdict"], rep["why"] = "reject", f"머리카락 · 옷이 양쪽 다 많이 가림 ({', '.join(hair_bad)}) → 다른 사진 요청"
+            rep["verdict"], rep["why"] = "reject", f"머리카락 · 옷이 양쪽 다 가림 ({', '.join(hair_bad)}) → 다른 사진 요청"
         elif len(hair_sides) == 1:
             occluded = hair_sides[0]
             keep = "R" if occluded == "L" else "L"
@@ -249,7 +280,7 @@ def analyze(rgb: np.ndarray) -> dict:
                 rep["verdict"], rep["why"] = "reject", f"{occluded} 쪽이 가렸고 {keep} 쪽도 깨끗하지 않음 (최대 {keep_worst:.0%}) → 다른 사진 요청"
             else:
                 rep.update(verdict="fill", occluded_side=occluded, keep=keep,
-                           why=f"머리카락 · 옷이 {occluded} 쪽만 많이 가림 ({', '.join(hair_bad)}) → {keep} 쪽을 뒤집어 채움")
+                           why=f"머리카락 · 옷이 {occluded} 쪽만 가림 ({', '.join(hair_bad)}) → {keep} 쪽을 뒤집어 채움")
         elif len(hand_sides) == 2:
             rep["verdict"], rep["why"] = "reject", "손이 양쪽 다 많이 가림 → 다른 사진 요청"
         elif hand_sides:
