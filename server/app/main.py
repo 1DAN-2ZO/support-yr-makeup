@@ -183,9 +183,14 @@ async def transfer(request: Request) -> Response:
         raise _fail(422, "missing") from e
     b, bt = await _photo(form.get("bare"))
     r, rt = await _ref(form)
+    # 정답사진의 올린 참고 사진만 그리기 전에 손본다 (flux.py _prep) —
+    # 머리카락이 한쪽 눈썹을 가리면 반대쪽을 뒤집어 채운다.
+    # 옮긴 그림(kind=moved)의 시도사진은 사용자가 그린 그대로 견줘야 해서 안 손본다.
+    # 템플릿은 이미 깨끗하다. 표시가 없는 옛 앱도 그대로
+    prep = form.get("kind") == "answer" and form.get("template") is None
     try:
         # 앱이 끊으면(화면을 떠남 · 시간 초과) 그만둔다 — 받을 사람이 없는 요청이 줄을 차지하지 않게
-        made = await unless_gone(flux.transfer(b, bt, r, rt), request.is_disconnected)
+        made = await unless_gone(flux.transfer(b, bt, r, rt, prep=prep), request.is_disconnected)
     except Gone:
         log.info("transfer gone (bare %d · ref %d bytes)", len(b), len(r))
         return Response(status_code=499)
@@ -195,13 +200,14 @@ async def transfer(request: Request) -> Response:
         log.warning("transfer %s %s (bare %d · ref %d bytes)", e.code, e.note[:120], len(b), len(r))
         raise _fail(e.status, e.code, e.message, {"Retry-After": "10"} if e.code == "busy" else None) from e
     log.info(
-        "transfer ok %dms · 줄 %dms · flux %s (bare %d · ref %d → %d bytes)",
+        "transfer ok %dms · 줄 %dms · flux %s (bare %d · ref %d → %d bytes)%s",
         made.ms,
         made.queue_ms,
         f"{made.flux_ms}ms" if made.flux_ms is not None else "?",
         len(b),
         len(r),
         len(made.picture),
+        f" · 참고 사진 손보기 {made.prep}" if made.prep else "",
     )
     # 시간을 나눠 알린다 — 앱이 사용 기록(task answer_make)에 남긴다.
     # x-gen-ms 부르고 받기까지 · x-queue-ms 줄 선 시간 ·

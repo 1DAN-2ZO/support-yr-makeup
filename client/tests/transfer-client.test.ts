@@ -51,6 +51,16 @@ describe("그림 만들기 부르기 (requestTransfer)", () => {
     expect(fd2.has("template")).toBe(false);
   });
 
+  it("TC1c 무엇을 만드는지(정답사진 · 옮긴 그림)를 같이 보낸다 — 서버는 정답사진의 참고 사진만 손본다 (가림 채우기)", async () => {
+    const fetchFn = vi.fn(async (_u: RequestInfo | URL, _i?: RequestInit) => ok());
+    await requestTransfer(bare, ref, { fetchFn, kind: "answer" });
+    await requestTransfer(bare, ref, { fetchFn, kind: "moved" });
+    await requestTransfer(bare, ref, { fetchFn });
+    const kinds = fetchFn.mock.calls.map((c) => (c[1]!.body as FormData).get("kind"));
+    // 안 주면 보내지 않는다 — 서버는 표시가 없으면 손보지 않는다 (옛 앱과 같다)
+    expect(kinds).toEqual(["answer", "moved", null]);
+  });
+
   it("TC2 서버 주소를 따로 주면 그 주소로 (끝의 / 는 있어도 없어도)", async () => {
     const fetchFn = vi.fn(async (_u: RequestInfo | URL, _i?: RequestInit) => ok());
     await requestTransfer(bare, ref, { fetchFn, base: "https://api.example/" });
@@ -101,7 +111,7 @@ describe("그림 만들어 보관하기 (createPictureMaker)", () => {
   const made = (text: string): TransferResult => ({ ok: true, picture: new Blob([text], { type: "image/png" }), ms: 1 });
   const setup = (over: Partial<Parameters<typeof createPictureMaker>[0]> = {}) => {
     const put = vi.fn(async (_k: "answer" | "moved", _b: Blob) => {});
-    const request = vi.fn(async (_b: Blob, _r: Blob | { template: number }) => made("A"));
+    const request = vi.fn(async (_b: Blob, _r: Blob | { template: number }, _k: "answer" | "moved") => made("A"));
     const maker = createPictureMaker({ getBare: async () => bare, getAttempt: () => ref, put, request, ...over });
     return { put, request, maker };
   };
@@ -111,7 +121,7 @@ describe("그림 만들어 보관하기 (createPictureMaker)", () => {
     const given = new Blob(["look"], { type: "image/jpeg" });
     const r = await maker.makeAnswer(given);
     expect(r.ok).toBe(true);
-    expect(request).toHaveBeenCalledWith(bare, given);
+    expect(request).toHaveBeenCalledWith(bare, given, "answer");
     expect(put.mock.calls[0]![0]).toBe("answer");
     expect(await put.mock.calls[0]![1].text()).toBe("A");
   });
@@ -120,7 +130,7 @@ describe("그림 만들어 보관하기 (createPictureMaker)", () => {
     const { put, request, maker } = setup();
     const r = await maker.makeAnswer({ template: 5 });
     expect(r.ok).toBe(true);
-    expect(request).toHaveBeenCalledWith(bare, { template: 5 });
+    expect(request).toHaveBeenCalledWith(bare, { template: 5 }, "answer");
     expect(put.mock.calls[0]![0]).toBe("answer");
   });
 
@@ -141,7 +151,8 @@ describe("그림 만들어 보관하기 (createPictureMaker)", () => {
   it("PM2 옮긴 그림: 맨얼굴 + 시도사진 눈 뜬 장을 보내고 moved 칸에 넣는다", async () => {
     const { put, request, maker } = setup();
     expect((await maker.makeMoved()).ok).toBe(true);
-    expect(request).toHaveBeenCalledWith(bare, ref);
+    // 무엇을 만드는지도 알린다 — 서버는 옮긴 그림의 시도사진은 손보지 않는다 (사용자가 그린 그대로 견줘야 한다)
+    expect(request).toHaveBeenCalledWith(bare, ref, "moved");
     expect(put.mock.calls[0]![0]).toBe("moved");
   });
 

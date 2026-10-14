@@ -18,24 +18,48 @@ WEBP = b"RIFF\x00\x00\x00\x00WEBPVP8 " + b"bare-bytes"
 JPEG = b"\xff\xd8\xff\xe0" + b"ref-bytes"
 BARE = ("bare.webp", WEBP, "image/webp")
 REF = ("ref.jpg", JPEG, "image/jpeg")
+# 서버가 손본 참고 사진 (머리카락이 가린 쪽을 뒤집어 채운 것)
+PREP = b"\x89PNG\r\n\x1a\n" + b"filled-ref"
 
 
 class FakeFlux:
     """Gradio 의 세 단계: 요청 → 번호, 번호로 결과 기다리기(SSE), 파일 받기"""
 
-    def __init__(self, *, sse=None, call_status=200, file_status=200, boom=None):
+    def __init__(self, *, sse=None, call_status=200, file_status=200, boom=None, prep=None):
         self.calls: list[dict] = []
+        self.prep_calls: list[dict] = []
         self.paths: list[str] = []
         self.sse = sse
         self.call_status = call_status
         self.file_status = file_status
         self.boom = boom
+        # 참고 사진 손보기(prep_ref): None 없음(옛 서버 — 404) · same 그대로 · changed 손봄
+        # · error 오류 · not_image 그림 아닌 것
+        self.prep = prep
 
     def __call__(self, req: httpx.Request) -> httpx.Response:
         self.paths.append(f"{req.method} {req.url.path}")
         if self.boom:
             raise self.boom
         p = req.url.path
+        if req.method == "POST" and p == "/gradio_api/call/prep_ref":
+            if self.prep is None:
+                return httpx.Response(404)
+            self.prep_calls.append(json.loads(req.content))
+            return httpx.Response(200, json={"event_id": "pv1"})
+        if req.method == "GET" and p == "/gradio_api/call/prep_ref/pv1":
+            said = {
+                "same": 'event: complete\ndata: [null, "pass"]\n\n',
+                "error": "event: error\ndata: null\n\n",
+            }.get(
+                self.prep,
+                'event: complete\ndata: [{"path": "C:\\\\tmp\\\\prep.png", "url": null}, "fill"]\n\n',
+            )
+            return httpx.Response(200, text=said)
+        if req.method == "GET" and p.startswith("/gradio_api/file=") and "prep.png" in p:
+            if self.prep == "not_image":
+                return httpx.Response(200, text="<html>", headers={"content-type": "text/html"})
+            return httpx.Response(200, content=PREP, headers={"content-type": "image/png"})
         if req.method == "POST" and p == "/gradio_api/call/predict":
             self.calls.append(json.loads(req.content))
             return httpx.Response(self.call_status, json={"event_id": "ev1"})
@@ -452,3 +476,65 @@ def test_tr27_missing_server_photo_is_a_server_fault(monkeypatch):
 def test_tr28_template_still_needs_the_bare_photo(monkeypatch):
     r = client_with(FakeFlux(), monkeypatch).post("/transfer", data={"template": "2"})
     assert r.status_code == 422
+
+
+# ── 참고 사진 손보기 (#451 이어받음) — 정답사진의 올린 참고 사진만, 그리기 전에 GPU 서버 prep_ref 에 ──
+
+
+def url_of(photo: bytes, kind: str) -> str:
+    return f"data:{kind};base64," + base64.b64encode(photo).decode()
+
+
+def post_kind(c: TestClient, kind, ref=REF):
+    return c.post("/transfer", files={"bare": BARE, "ref": ref}, data={} if kind is None else {"kind": kind})
+
+
+def test_tr29_answer_ref_is_touched_up_before_drawing(monkeypatch):
+    fake = FakeFlux(prep="changed")
+    r = post_kind(client_with(fake, monkeypatch), "answer")
+    assert r.status_code == 200
+    assert r.content == PNG
+    # 참고 사진 한 장만 손보기에 보낸다 (맨얼굴은 안 보낸다) — 그리기보다 먼저
+    assert fake.prep_calls == [{"data": [flux._file_data(JPEG, "image/jpeg")]}]
+    assert fake.paths.index("POST /gradio_api/call/prep_ref") < fake.paths.index(
+        "POST /gradio_api/call/predict"
+    )
+    # 손본 사진으로 그린다. 맨얼굴 · 설정은 그대로
+    data = fake.calls[0]["data"]
+    assert data[0]["url"] == url_of(WEBP, "image/webp")
+    assert data[1]["url"] == url_of(PREP, "image/png")
+    assert data[2:] == [flux.STEPS, flux.STRENGTH, True, flux.SEED]
+
+
+def test_tr30_ref_that_needs_nothing_is_drawn_as_sent(monkeypatch):
+    fake = FakeFlux(prep="same")
+    assert post_kind(client_with(fake, monkeypatch), "answer").status_code == 200
+    assert len(fake.prep_calls) == 1
+    assert fake.calls[0]["data"][1]["url"] == url_of(JPEG, "image/jpeg")
+
+
+@pytest.mark.parametrize("kind", [None, "moved", "", "ANSWER", "answer "])
+def test_tr31_only_the_answer_is_touched_up(monkeypatch, kind):
+    # 옮긴 그림의 시도사진은 사용자가 그린 그대로 견줘야 한다 — 뒤집어 채우면 안 그린 눈썹이 생긴다.
+    # 표시가 없으면(옛 앱) 손보지 않는다
+    fake = FakeFlux(prep="changed")
+    assert post_kind(client_with(fake, monkeypatch), kind).status_code == 200
+    assert fake.prep_calls == []
+    assert fake.calls[0]["data"][1]["url"] == url_of(JPEG, "image/jpeg")
+
+
+def test_tr32_templates_are_never_touched_up(monkeypatch):
+    # 우리가 준비한 템플릿은 이미 깨끗하다
+    fake = FakeFlux(prep="changed")
+    assert post_template(client_with(fake, monkeypatch), "3", kind="answer").status_code == 200
+    assert fake.prep_calls == []
+
+
+@pytest.mark.parametrize("prep", [None, "error", "not_image"])
+def test_tr33_failed_touch_up_falls_back_to_the_sent_ref(monkeypatch, prep):
+    # 손보기가 없거나(옛 GPU 서버) 실패해도 그림은 만든다 — 올린 사진 그대로
+    fake = FakeFlux(prep=prep)
+    r = post_kind(client_with(fake, monkeypatch), "answer")
+    assert r.status_code == 200
+    assert r.content == PNG
+    assert fake.calls[0]["data"][1]["url"] == url_of(JPEG, "image/jpeg")

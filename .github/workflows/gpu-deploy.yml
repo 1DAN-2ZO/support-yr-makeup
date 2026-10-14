@@ -3,12 +3,15 @@ name: Deploy FLUX (GPU)
 # FLUX 화장 입히기 서버 자동 배포.
 # main 의 app_klein.py 가 바뀌면 GPU 서버(nudy-gpu 러너)에서 FLUX 를 재시작한다.
 # 화장 부품(LoRA)도 여기서 받아 app_klein.py 옆에 둔다 — 부품을 바꿀 때는 이 파일의 LORA_* 만 바꾸면 다시 배포된다.
+# 참고 사진 손보기(가림 판정 · 뒤집어 채우기, poc/look-tryon/ref-prep 의 두 파일)도 app_klein.py 옆에 둔다 — 바뀌면 다시 배포된다.
 on:
   push:
     branches:
       - main
     paths:
       - "poc/look-tryon/server-bench/app_klein.py"
+      - "poc/look-tryon/ref-prep/occlusion_gate.py"
+      - "poc/look-tryon/ref-prep/mirror_half.py"
       - ".github/workflows/gpu-deploy.yml"
   workflow_dispatch:
 
@@ -37,10 +40,13 @@ jobs:
       # 아래 run 의 스크립트에는 한글을 쓰지 않는다 — GPU PC 의 PowerShell 5.1 이 스크립트 파일(BOM 없는 UTF-8)을
       # 시스템 글자 코드로 읽어서, 한글이 깨지며 따옴표가 안 닫힌 것으로 읽힌다. 그러면 그 단계의 스크립트가 통째로 실행되지 않는다
       # (2026-10-08: "Start FLUX" 가 이 오류로 죽어 FLUX 가 꺼진 채 남았다). 설명은 이렇게 스크립트 밖 주석으로 적는다.
+      # 참고 사진 손보기 두 파일도 같은 곳에 — app_klein.py 가 옆에서 불러온다 (없으면 손보기만 꺼지고 그리기는 된다)
       - name: Copy app_klein.py to run location
         run: |
           Copy-Item "poc/look-tryon/server-bench/app_klein.py" "D:\app_klein.py" -Force
-          Write-Host "app_klein.py copied"
+          Copy-Item "poc/look-tryon/ref-prep/occlusion_gate.py" "D:\occlusion_gate.py" -Force
+          Copy-Item "poc/look-tryon/ref-prep/mirror_half.py" "D:\mirror_half.py" -Force
+          Write-Host "app_klein.py, occlusion_gate.py, mirror_half.py copied"
 
       # 화장 부품(LoRA, 2000 걸음) — 공개 릴리스 lora-klein-makeup-v1 에서 app_klein.py 옆(D:\)에 받는다.
       # 이미 있고 지문(SHA-256)이 같으면 건너뛴다 (처음 한 번 · 부품을 바꿀 때만 받는다). 받은 파일도 지문이 다르면 버린다.
@@ -129,3 +135,12 @@ jobs:
           if (-not $line) { throw "no [lora] line in D:/flux.log" }
           Write-Host $line.Line
           if ($line.Line -notmatch '^\[lora\] loaded ') { throw "makeup LoRA not loaded - see D:/flux.log" }
+
+      # 참고 사진 손보기가 켜졌는지 — 켤 때 남기는 "[ref-prep] on · off" 줄 중 마지막을 본다 (요청마다 남는 판정 줄은 안 본다).
+      # on 이 아니면 빨갛게 한다 (손보기 없이도 그림은 그대로 만든다 — 서비스는 안 멈춘다). 판정 모델은 켤 때 ~/.cache/nudy 에 받는다
+      - name: Check reference touch-up ready
+        run: |
+          $line = Select-String -Path "D:\flux.log" -Pattern '^\[ref-prep\] (on|off)' | Select-Object -Last 1
+          if (-not $line) { throw "no [ref-prep] line in D:/flux.log" }
+          Write-Host $line.Line
+          if ($line.Line -notmatch '^\[ref-prep\] on') { throw "reference touch-up is off - see D:/flux.log" }

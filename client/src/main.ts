@@ -418,7 +418,7 @@ async function boot(): Promise<void> {
       keeper.keep(key, picture);
       return putMade(key, picture);
     },
-    request: (bare, ref) => requestTransfer(bare, ref, { base: (import.meta.env.VITE_TRANSFER_BASE as string | undefined) ?? "" }),
+    request: (bare, ref, kind) => requestTransfer(bare, ref, { base: (import.meta.env.VITE_TRANSFER_BASE as string | undefined) ?? "", kind }),
   });
   // 누른 뒤 받을 때까지 걸린 시간을 사용 기록에 남긴다 (task answer_make · moved_make) — 서버가 나눠 알려 준 시간(줄 · FLUX)도 같이
   const makeAnswer = (ref: TransferRef): Promise<MakeResult> => timeTask(log, "answer_make", () => maker.makeAnswer(ref), noteOfMake);
