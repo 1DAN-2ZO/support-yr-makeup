@@ -13,6 +13,9 @@ RUN npm ci
 # client-react 는 vite alias(@core) 로 ../client/src/core 를 그대로 읽고, 그 core 가 ../../../rules/*.json 을 읽는다.
 # WORKDIR 이 /app 이라 ../client = /client, /client/src/core 의 ../../../rules = /rules
 COPY client/src/core /client/src/core
+# 본 앱 screens/ 중 리액트가 그대로 쓰는 부품(머리카락 분할 — vite alias @screens). 화면 코드는 안 가져온다.
+# 2026-10-15 이 줄이 없어 빌드가 실패했고 compose down 뒤라 서비스가 10분 내려갔다 — @screens 로 파일을 더 쓰면 여기도 더한다
+COPY client/src/screens/hair-segmenter.ts /client/src/screens/hair-segmenter.ts
 COPY rules/ /rules/
 
 COPY ./client-react .
