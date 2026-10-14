@@ -48,6 +48,7 @@ import { createHairMasker } from "@screens/hair-segmenter";
 import { ops } from "./lib/ops";
 import Closed from "./screens/Closed";
 import { armPhoneBack } from "./lib/phone-back";
+import RestartModal from "./screens/RestartModal";
 import { API_BASE, hasAnswerServer, refReadCount, refToPartColors, templateColors, templateNumber, type PartColors } from "./api";
 import type { PalettePart } from "@core/color-family";
 import type { MakeupTemplate } from "@core/templates";
@@ -118,7 +119,15 @@ const NOT_READY: readonly Stage[] = [];
  *
  * 화살표에는 글자가 없다 — 어디로 가는지는 `aria-label` 로만 알 수 있어서, 본 앱처럼 **갈 곳을 적는다**.
  */
-function LogoRow({ back }: { back?: { label: string; onBack: () => void } }) {
+function LogoRow({ back, onHome }: { back?: { label: string; onBack: () => void }; onHome?: () => void }) {
+  const brand = (
+    <span className="brand" aria-label="nudy">
+      nudy
+      <span className="heart" aria-hidden="true">
+        ♥
+      </span>
+    </span>
+  );
   return (
     <header className="slot-logo-row">
       {back && (
@@ -128,12 +137,17 @@ function LogoRow({ back }: { back?: { label: string; onBack: () => void } }) {
           </svg>
         </button>
       )}
-      <span className="brand" aria-label="nudy">
-        nudy
-        <span className="heart" aria-hidden="true">
-          ♥
-        </span>
-      </span>
+      {/*
+        로고를 누르면 "처음부터 다시 할까요?" 를 묻고 지운 뒤 안내 화면으로 (본 앱 `.slot-home` + restart-modal, #404 · #454 C3).
+        어느 화면에서든 처음으로 돌아갈 길이 하나는 있어야 한다 (#369). 지울 것이 없는 화면(동의 · 끝)은 로고만 그린다
+      */}
+      {onHome ? (
+        <button type="button" className="slot-home" aria-label="처음 안내 화면으로" onClick={onHome}>
+          {brand}
+        </button>
+      ) : (
+        brand
+      )}
     </header>
   );
 }
@@ -161,6 +175,8 @@ export default function App() {
 
 function Running() {
   const [stage, setStage] = useState<Stage>("splash");
+  /** 로고를 눌러 "처음부터 다시 할까요?" 를 묻는 중 */
+  const [askingRestart, setAskingRestart] = useState(false);
   const [template, setTemplate] = useState<MakeupTemplate | null>(null);
   const [colors, setColors] = useState<PartColors | null>(null);
   const [loading, setLoading] = useState(false);
@@ -502,9 +518,33 @@ function Running() {
 
   backRef.current = back ? { stage, onBack: back.onBack } : null;
 
+  /**
+   * 로고의 "처음으로" — 지울 것이 생긴 뒤(촬영부터)에만 묻는다. 동의 · 거절 · 끝 화면은 지울 것이 없어 로고만.
+   * 묻는 창에서 "지우고 다시 시작" 을 누르면 `restart()`(사진 · 그림 · 세션 번호 전부 새로) 뒤 동의 화면으로
+   */
+  const onHome = ["consent", "denied", "done"].includes(stage)
+    ? undefined
+    : () => {
+        ops().log.log({ name: "button", button: "home:ask" });
+        setAskingRestart(true);
+      };
+
   return (
     <div className="app">
-      <LogoRow back={back} />
+      <LogoRow back={back} onHome={onHome} />
+      {askingRestart && (
+        <RestartModal
+          onRestart={() => {
+            ops().log.log({ name: "button", button: "restart_yes" });
+            setAskingRestart(false);
+            restart();
+          }}
+          onCancel={() => {
+            ops().log.log({ name: "button", button: "restart_no" });
+            setAskingRestart(false);
+          }}
+        />
+      )}
 
       {loading && (
         <p className="notice" role="status">

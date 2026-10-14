@@ -103,8 +103,23 @@ img {
  * 줄 높이는 본 앱과 같은 44px 이 된다. 다만 44 가 나오는 까닭이 다르다:
  * 본 앱은 로고가 「누르면 처음으로」 버튼(`.slot-home`, min-height 44px)이라 그렇고,
  * 이 버전은 **화살표를 44px 로 키워서** 그렇다 (본 앱 화살표는 40px — 손가락으로 누르는
- * 자리는 44px 이상으로 둔다는 이 파일 머리글의 규칙을 따랐다). 로고를 누르는 길은 안 넣었다.
+ * 자리는 44px 이상으로 둔다는 이 파일 머리글의 규칙을 따랐다).
+ * 로고를 누르는 길(`.slot-home` — "처음부터 다시 할까요?")은 2026-10-15 에 넣었다 (#454 C3, 본 앱 #404)
  */
+/* 로고 = 「처음으로」 버튼 — 본 앱 `.slot-home` 그대로. 손가락으로 누르는 자리는 44px 이상, 보이는 모양은 로고 그대로(배경 없음) */
+.slot-home {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.slot-home:active {
+  opacity: 0.7;
+}
+
 .slot-logo-row {
   display: flex;
   align-self: stretch;

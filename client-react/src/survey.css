@@ -51,7 +51,13 @@
   color: #7b7b7b;
 }
 
-.done-modal a.primary {
+/* 링크(후기 남기기)와 버튼(지우고 다시 시작) 둘 다 같은 분홍 알약 — 본 앱 `.primary` */
+.done-modal a.primary,
+.done-modal button.primary {
+  width: 100%;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
   display: block;
   padding: 13px;
   border-radius: 999px;
