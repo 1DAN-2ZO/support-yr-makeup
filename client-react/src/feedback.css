@@ -1,0 +1,68 @@
+/*
+ * 피드백 화면 모양 — `src/screens/Feedback.tsx` 만 쓴다.
+ *
+ * 사진 두 장(.fb-photos) · 요약(.fb-summary) · 부위별 줄(.fb-line · .fb-head · .fb-say) ·
+ * 안내 한 줄(.fb-note) 은 이미 `app.css` 에 있다. **여기에는 진짜 채점이 붙으면서 새로 생긴 것만**
+ * 적는다 — `app.css` 는 다른 사람이 고치는 중이라 손대지 않았다 (`attempt.css` · `live.css` 와 같은 방식).
+ *
+ * 색 · 둥근 모서리 · 글자 굵기는 app.css 의 `:root` 값을 그대로 쓴다. 다만 아래 딱지 색 셋
+ * (초록 · 분홍 · 회색)은 **본 앱 `client/src/app.css` 에 박혀 있는 값 그대로** 옮겼다 —
+ * app.css 의 `.fb-line.is-ok` · `.is-fix` 도 같은 값을 쓰고 있어서, 여기서만 다른 색을 쓰면
+ * 같은 줄에 두 가지 초록이 생긴다.
+ */
+
+/*
+ * 「알림」 줄 — 견줄 것이 없거나(예상 메이크업에서 변화를 못 찾음) 볼 수 없었던(재료가 없음) 부위.
+ * app.css 에는 ok · fix 두 가지뿐이었다. 전에는 이 화면이 두 묶음만 그려서 필요가 없었는데,
+ * 진짜 채점은 **"모른다" 를 모른다고 말하는 줄**을 낸다 — 잘됐다고도 아쉽다고도 하지 않는다.
+ * 그래서 초록도 분홍도 아닌 **회색**이다 (본 앱 `.fb-line.is-info .fb-head em`)
+ */
+.fb-line.is-info .fb-head em {
+  background: #f1efe8;
+  color: #5f5e5a;
+}
+
+/*
+ * 덧붙이는 말 — 부위마다 가장 중요한 말 하나 **다음**에 오는 두 번째 줄 (core/feedback-whole 의 `more`).
+ * 본문(.fb-say)보다 작고 흐리게 둬서 어느 것이 먼저 읽을 말인지가 보이게 한다
+ */
+.fb-more {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #5f5e5a;
+}
+
+/*
+ * 고치는 방법 — "무엇을 해 보라" 한 줄 (core/feedback-whole 의 `fix`). 「다시 볼 곳」 줄에만 붙는다.
+ * 왼쪽에 분홍 세로줄을 둔다: 판정(무엇이 다른가)과 할 일(무엇을 하면 되는가)은 성격이 달라서,
+ * 글자 크기만 줄이면 덧붙임(.fb-more)과 구분이 안 간다
+ */
+.fb-fix {
+  margin: 8px 0 0;
+  padding-left: 13px;
+  border-left: 2px solid #ffc3cd;
+  border-radius: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #c2415c;
+}
+
+/*
+ * 못 잰 것을 밝히는 한 줄 — 견준 결과(.fb-note 의 분홍 칸)와 **같은 칸처럼 보이면 안 된다.**
+ * .fb-note 는 "지금 흐름이 막혔다" 는 안내라 분홍이고, 이것은 "이 줄은 견준 결과가 아니다" 라는
+ * 곁말이라 바탕 없이 작고 흐리게 둔다. 둘이 같은 모양이면 어느 쪽이 고쳐야 할 일인지 흐려진다
+ */
+.fb-side {
+  margin: 14px 0 0;
+  color: var(--ink-weak);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/*
+ * 판정이 막혔을 때의 「완성사진 다시 찍기」 — 아래 「다음」과 붙어 있어서 잘못 눌리기 쉽다.
+ * 본 앱도 되돌릴 수 없는 버튼(다시 찍기) 위쪽을 더 비운다 (`.attempt > button.ghost`)
+ */
+.fb-photos + .fb-note + .go.ghost {
+  margin-top: 18px;
+}

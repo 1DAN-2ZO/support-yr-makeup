@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- 폰으로 쓰는 화면이라 확대를 막지 않는다 — 글자를 키워 읽는 사람이 있다 -->
+    <!-- viewport-fit=cover: 노치·홈 바 밑까지 화면으로 쓴다. 안 적으면 safe-area 값이 0 이라
+         .app 의 env(safe-area-inset-*) 여백이 안 먹는다 (본 앱 index.html 과 같은 값) -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>nudy</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
