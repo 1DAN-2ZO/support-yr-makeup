@@ -2,7 +2,9 @@ import { execSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
-import { defineConfig, type Plugin } from "vite";
+import type { Plugin } from "vite";
+// vitest/config 의 defineConfig — vite 것과 같고 `test` 칸의 타입만 더 안다
+import { defineConfig } from "vitest/config";
 
 /**
  * 빌드 판 이름 — 사용 기록의 `ver.app` 에 붙는다 (본 앱 vite.config.ts 와 같은 방식, #454 A4).
@@ -48,6 +50,12 @@ const mediapipeWasm: Plugin = {
 
 export default defineConfig({
   plugins: [react(), mediapipeWasm],
+  /** 시험 (#454 D7) — `npm test`. 브라우저 흉내(jsdom)에서 돈다. 시험 파일은 tests/ 에 둔다 (본 앱과 같다) */
+  test: {
+    environment: "jsdom",
+    include: ["tests/**/*.test.{ts,tsx}"],
+    setupFiles: ["tests/setup.ts"],
+  },
   define: { __APP_VERSION__: JSON.stringify(appVersion()) },
   resolve: {
     alias: { "@core": CORE, "@screens": SCREENS, "@mediapipe/tasks-vision": MEDIAPIPE },
