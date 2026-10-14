@@ -7,6 +7,9 @@
     "types": ["vite/client"],
     "allowArbitraryExtensions": true,
     "skipLibCheck": true,
+    "resolveJsonModule": true,
+    /* 본 앱 core 를 그대로 읽는다 (#454 D4) — vite.config.ts 의 alias 와 짝 */
+    "paths": { "@core/*": ["../client/src/core/*"] },
 
     /* Bundler mode */
     "moduleResolution": "bundler",

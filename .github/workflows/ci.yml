@@ -44,3 +44,20 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run lint
+
+  # 리액트판 (client-react/, #453) — 빌드(tsc 포함) · 린트. 시험은 아직 없다 (#454 D7)
+  client-react:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client-react
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client-react/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm run lint

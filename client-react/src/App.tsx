@@ -38,7 +38,10 @@
  * (본 앱과 같은 자리 — 아래 `LogoRow`). 전에는 화면마다 아래에 「이전」 버튼이 있었다.
  */
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { isTestClosed } from "@core/test-period";
+import { ops } from "./lib/ops";
+import Closed from "./screens/Closed";
 import { refReadCount, refToPartColors, templateColors, templateNumber, type PartColors } from "./api";
 import type { PalettePart } from "./core/color-family";
 import type { MakeupTemplate } from "./core/templates";
@@ -139,7 +142,18 @@ function step(from: Stage, by: 1 | -1): Stage {
   return FLOW[i] ?? from;
 }
 
+/**
+ * 테스트 기간이 끝났으면 앱을 켜지 않는다 (10월 19일 오후 3시부터, 본 앱 `boot()` 맨 앞 — #454 A1).
+ * 주소에 `?team` 을 붙이면 연다. 모듈을 읽을 때 한 번만 본다 — 쓰는 도중에 시각이 지나도 하던 것은 끝낼 수 있게
+ */
+const CLOSED = isTestClosed(Date.now(), location.search);
+
 export default function App() {
+  if (CLOSED) return <Closed />;
+  return <Running />;
+}
+
+function Running() {
   const [stage, setStage] = useState<Stage>("splash");
   const [template, setTemplate] = useState<MakeupTemplate | null>(null);
   const [colors, setColors] = useState<PartColors | null>(null);
@@ -198,6 +212,14 @@ export default function App() {
     read: number;
     bareImage: Blob | null;
   } | null>(null);
+
+  /**
+   * 화면에 들어올 때마다 사용 기록에 적는다 (본 앱 shell.ts 의 `screen_enter`, #454 A3 · A4).
+   * 어느 화면으로 적을지는 `lib/ops` 의 표가 정한다 — 이 버전이 펼쳐 놓은 화면도 본 앱 이름으로 적힌다
+   */
+  useEffect(() => {
+    ops().enter(stage);
+  }, [stage]);
 
   /** 맨얼굴 사진 한 장 — 촬영이 인코딩까지 끝낸 뒤 기준에 붙여 둔 것. 아직 없으면 null */
   const bareImage = (): Blob | null => {
@@ -270,6 +292,20 @@ export default function App() {
   const getFeedback = useCallback((): Promise<FeedbackLoad> => feedbacks.current!.get(), []);
 
   /**
+   * 테스트 기간 보관 — 판정 결과(글)도 같이 둔다 (본 앱 main.ts `keeper.keepFeedback`, #454 A2).
+   * 보관함은 같은 재료면 같은 결과를 다시 주므로, **결과 묶음마다 한 번만** 보낸다 (WeakSet 으로 가린다)
+   */
+  const keptFeedback = useRef(new WeakSet<object>());
+  const getFeedbackKept = useCallback(async (): Promise<FeedbackLoad> => {
+    const r = await getFeedback();
+    if (r.ok && !keptFeedback.current.has(r.view)) {
+      keptFeedback.current.add(r.view);
+      ops().keeper.keepFeedback(r.view.feedback);
+    }
+    return r;
+  }, [getFeedback]);
+
+  /**
    * 템플릿을 고르면 색을 받아온다. 처음 고를 때와 "다시 시도" 가 **같은 길**을 지난다 —
    * 실패한 뒤 다시 눌렀을 때 화면과 색이 어긋나지 않게.
    *
@@ -317,6 +353,8 @@ export default function App() {
     // 원본도 같이 들고 있는다 — 부위 가이드가 이것을 풀어 테두리를 만든다.
     // 앞의 사진으로 만들어 둔 가이드는 보관함이 다음에 부를 때 스스로 놓는다 (사진이 달라졌으니까)
     madeBlob.current = picture;
+    // 테스트 기간 보관 — 정답사진 (본 앱 main.ts `put` 의 `keeper.keep(key, picture)`, #454 A2). 참고 사진은 보내지 않는다
+    ops().keeper.keep("answer", picture);
     setMadeUrl((old) => {
       if (old) URL.revokeObjectURL(old);
       return URL.createObjectURL(picture);
@@ -353,6 +391,8 @@ export default function App() {
     bare.current = null;
     attempt.current = null;
     setLive(null);
+    // 새 세션 — 앞 세션의 보내기를 멈추고 세션 번호를 새로 (본 앱 `clearAll` + `restartSession` 의 이 버전 몫, #454 A6)
+    ops().restart();
     clear("consent");
   };
 
@@ -427,7 +467,13 @@ export default function App() {
             창을 여닫는 일은 Intro 안에서 끝나고, 여기로는 "동의했다 · 거절했다" 만 올라온다
           */}
           {stage === "consent" && (
-            <Intro onAgree={() => setStage(step("consent", 1))} />
+            <Intro
+              onAgree={() => {
+                // 이때부터 사용 기록과 사진이 서버로 간다 (본 앱 `setConsent` + `events.consent`, #454 A3)
+                ops().consent(true);
+                setStage(step("consent", 1));
+              }}
+            />
           )}
 
           {/* 거절하면 여기서 멈춘다. "다시 생각해 볼게요" 로 동의 화면으로 돌아간다 (본 앱 denied) */}
@@ -435,14 +481,15 @@ export default function App() {
 
           {/*
             촬영 — 맨얼굴 한 장. 다 찍으면 기준과 얼굴형 프레임을 받아 들고 템플릿 고르기로 넘어간다.
-            `saveBare` 는 **넘기지 않는다** — 이 버전에는 사진을 둘 저장소가 아직 없다
-            (IndexedDB·localStorage 를 쓰는 코드가 한 줄도 없다). 넘길 것이 없으니 Capture 는
-            사진을 메모리에만 두고, 그래서 동의문의 "폰에 저장하는 것이 없어요" 가 사실로 남는다.
-            저장소가 생기면 여기 한 줄을 더하고 **동의문도 같이 고쳐야 한다**.
-            `logger`·`events` 도 안 넘긴다 — App 이 들고 있는 로그가 없어서 Capture 가 혼자 만든다
+            `logger` · `events` 는 운영 연결(`lib/ops`)의 것 — 모든 화면이 같은 세션 번호로 적는다 (#454 A4).
+            `saveBare` 는 폰 저장이 아니라 **서버 보관**(테스트 기간, `/keep`)으로 간다 — 폰에는 여전히 사진을 두지 않는다
           */}
           {stage === "capture" && (
             <Capture
+              logger={ops().log}
+              events={ops().events}
+              // 테스트 기간 보관 — 맨얼굴 (본 앱 main.ts `saveBare` 의 `keeper.keep("bare", b)`). 폰에는 두지 않는다
+              saveBare={(blob) => blob.then((b) => ops().keeper.keep("bare", b))}
               onDone={(baseline, faceShapeFrames) => {
                 bare.current = { baseline, faceShapeFrames };
                 setStage(step("capture", 1));
@@ -554,6 +601,7 @@ export default function App() {
           */}
           {stage === "live" && live && (
             <Live
+              logger={ops().log}
               part={live.part}
               baseline={live.baseline}
               outline={live.outline}
@@ -565,12 +613,15 @@ export default function App() {
           {/*
             완성사진 — 화장을 다 한 뒤 한 장. 다 찍으면 묶음을 받아 들고 피드백으로 넘어간다.
             맨얼굴(`bare`)은 **안 넘긴다** — 맨얼굴 대비 밝기·색을 일부러 안 보는 장이라 쓸 데가 없다
-            (Attempt.tsx 머리글 1번). `logger` 도 안 넘긴다 — 촬영과 같게 Attempt 가 혼자 만든다
+            (Attempt.tsx 머리글 1번). `logger` 는 운영 연결의 것 (촬영과 같다)
           */}
           {stage === "attempt" && (
             <Attempt
+              logger={ops().log}
               onDone={(shots) => {
                 attempt.current = shots;
+                // 테스트 기간 보관 — 눈 뜬 장 다섯까지 (본 앱 main.ts `setAttempt` 의 `keepAttempt`)
+                ops().keepAttempt(shots.front_open.map((s) => s.blob));
                 setStage(step("attempt", 1));
               }}
               onBack={() => setStage(step("attempt", -1))}
@@ -588,7 +639,7 @@ export default function App() {
             <Feedback
               template={shown}
               colors={colors}
-              getFeedback={getFeedback}
+              getFeedback={getFeedbackKept}
               onNext={() => setStage(step("feedback", 1))}
               onRetake={() => setStage(step("feedback", -1))}
             />
@@ -605,8 +656,12 @@ export default function App() {
             <Save
               template={shown}
               colors={colors}
-              getFeedback={getFeedback}
-              onDone={() => setStage(step("save", 1))}
+              getFeedback={getFeedbackKept}
+              onDone={() => {
+                // 「끝내기」 — 세션이 끝났다고 적고 남은 기록을 보낸다 (본 앱 `session_end`)
+                ops().end("save");
+                setStage(step("save", 1));
+              }}
             />
           )}
         </>

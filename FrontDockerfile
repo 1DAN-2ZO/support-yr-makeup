@@ -11,6 +11,12 @@ RUN npm ci
 # 옛 화면이 받던 `rules/` · `poc/` · `eval/` 은 안 받는다.
 # client-react 는 제 폴더 안의 `rules/` 를 읽고(src/core/score.ts 의 `../../rules/score.json`),
 # 테스트가 없어 `eval/` 도 필요 없다 — 받을 것이 client-react 하나뿐이다
+# 본 앱 core 와 저장소의 rules 를 **같은 상대 자리**에 둔다 (#454 D4) —
+# client-react 는 vite alias(@core) 로 ../client/src/core 를 그대로 읽고, 그 core 가 ../../../rules/*.json 을 읽는다.
+# WORKDIR 이 /app 이라 ../client = /client, /client/src/core 의 ../../../rules = /rules
+COPY client/src/core /client/src/core
+COPY rules/ /rules/
+
 COPY ./client-react .
 
 # 정답사진을 만드는 서버 주소. **비워 두면 "서버가 아직 안 붙었어요" 로 다룬다**
