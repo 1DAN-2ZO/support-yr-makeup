@@ -40,9 +40,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isTestClosed } from "@core/test-period";
+import { middleShot } from "@core/attempt";
+import { createPictureMaker, type MakeResult } from "@core/picture-maker";
+import { requestTransfer } from "@core/transfer-client";
+import { within } from "@core/wait-limit";
 import { ops } from "./lib/ops";
 import Closed from "./screens/Closed";
-import { refReadCount, refToPartColors, templateColors, templateNumber, type PartColors } from "./api";
+import { API_BASE, hasAnswerServer, refReadCount, refToPartColors, templateColors, templateNumber, type PartColors } from "./api";
 import type { PalettePart } from "@core/color-family";
 import type { MakeupTemplate } from "@core/templates";
 import type { Baseline } from "@core/types";
@@ -277,15 +281,47 @@ function Running() {
    * 보관함은 **정답사진과 완성사진 묶음이 그대로면** 재 둔 것을 그대로 주므로, 저장 화면에
    * 다녀오든 개발 모드(StrictMode)에서 효과가 두 번 돌든 한 번만 잰다.
    *
-   * 머리카락 분할(`getHair`)과 옮긴 그림(`getMoved`)은 **안 넘긴다** — 이 버전에 둘 다 없다.
-   * 그러면 라이너 꼬리 · 눈썹 꼬리만 「이번에는 볼 수 없었어요」가 되고 나머지 부위는 그대로 잰다
-   * (본 앱 `lib/feedback-source` 가 정해 둔 길). 왜 그런지는 피드백 화면이 글로 밝힌다
+   * 옮긴 그림(`getMoved`)은 넘긴다 (2026-10-15, 위 `maker`). 머리카락 분할(`getHair`)은 아직 없다 —
+   * 눈썹 꼬리 문장은 본 앱도 꺼 두어서(#446 `BROW_TAIL_READY=false`) 지금은 차이가 없다
    */
+  /**
+   * 옮긴 그림 만들기 — 본 앱 `main.ts` 의 `maker` · `movedJob` · `getMoved` (#454 B1 · B4, 2026-10-15).
+   *
+   * 시도사진을 찍으면 **가운데 장**(`middleShot`)과 맨얼굴을 서버로 보내 「옮긴 그림」을 만들어 둔다 (`kind: "moved"`).
+   * 화면에는 안 보여 주고 피드백이 계산에만 쓴다 — 라이너 줄이 이것으로 나온다 (③ #392 · #394 · #376).
+   * 부품은 본 앱 `core/picture-maker` 그대로: 같은 사진이면 한 번만 보내고, `cancel()` 뒤에 온 그림은 버린다.
+   * 정답사진은 전처럼 `api.makeAnswerPicture` 가 만든다 — 이 maker 는 옮긴 그림만 맡는다
+   */
+  const maker = useRef<ReturnType<typeof createPictureMaker> | null>(null);
+  maker.current ??= createPictureMaker({
+    getBare: async () => bareImage(),
+    getAttempt: () => middleShot(attempt.current?.front_open)?.blob ?? null,
+    // 테스트 기간 보관 — 옮긴 그림 (본 앱 `put` 의 `keeper.keep(key, picture)`). 폰에는 두지 않는다
+    put: async (key, picture) => {
+      ops().keeper.keep(key, picture);
+    },
+    request: (b, ref, kind) => requestTransfer(b, ref, { base: API_BASE, kind }),
+  });
+  /** 시도사진을 찍을 때 시작해 둔 옮긴 그림 작업. 없으면 아직 안 찍었거나 서버가 없는 것 */
+  const movedJob = useRef<Promise<MakeResult> | null>(null);
+  /**
+   * 피드백이 옮긴 그림을 기다리는 한도 — 본 앱 `MOVED_WAIT_MS` 와 같다 (#415: 줄을 서면 60초까지 걸렸다).
+   * 넘기거나 실패하면 던진다 → `loadFeedback` 이 라이너만 「이번에는 볼 수 없었어요」로 두고 나머지는 그대로 보여 준다
+   */
+  const MOVED_WAIT_MS = 60_000;
+  const getMoved = useCallback(async (): Promise<Blob | null> => {
+    if (!movedJob.current) throw new Error("moved: not started");
+    const r = await within(movedJob.current, MOVED_WAIT_MS, null);
+    if (!r?.ok) throw new Error(`moved: ${r ? r.why : "late"}`);
+    return r.picture;
+  }, []);
+
   const feedbacks = useRef<ReturnType<typeof createFeedbackKeeper> | null>(null);
   feedbacks.current ??= createFeedbackKeeper({
     getBaseline: () => bare.current?.baseline ?? null,
     getAttempt: () => attempt.current,
     getAnswer: () => (madeBlob.current ? { image: madeBlob.current } : null),
+    getMoved,
   });
 
   /** 피드백 화면이 부르는 길. 가이드와 같게 **한 번 만들고 바꾸지 않는다** */
@@ -390,6 +426,8 @@ function Running() {
     // 메모리에만 들고 있던 것이라 비우면 그대로 사라진다 (어디에도 저장하지 않는다)
     bare.current = null;
     attempt.current = null;
+    maker.current?.cancel();
+    movedJob.current = null;
     setLive(null);
     // 새 세션 — 앞 세션의 보내기를 멈추고 세션 번호를 새로 (본 앱 `clearAll` + `restartSession` 의 이 버전 몫, #454 A6)
     ops().restart();
@@ -492,6 +530,9 @@ function Running() {
               saveBare={(blob) => blob.then((b) => ops().keeper.keep("bare", b))}
               onDone={(baseline, faceShapeFrames) => {
                 bare.current = { baseline, faceShapeFrames };
+                // 맨얼굴이 바뀌면 옛 맨얼굴로 만들던 옮긴 그림은 버린다 (본 앱 `setBaseline` → `maker.cancel`)
+                maker.current?.cancel();
+                movedJob.current = null;
                 setStage(step("capture", 1));
               }}
               onBack={() => setStage(step("capture", -1))}
@@ -622,6 +663,10 @@ function Running() {
                 attempt.current = shots;
                 // 테스트 기간 보관 — 눈 뜬 장 다섯까지 (본 앱 main.ts `setAttempt` 의 `keepAttempt`)
                 ops().keepAttempt(shots.front_open.map((s) => s.blob));
+                // 옛 시도사진으로 만들던 옮긴 그림은 못 쓴다 — 버리고 새로 시작한다 (본 앱 `setAttempt`). 서버가 없으면 시작하지 않는다
+                maker.current?.cancel("moved");
+                movedJob.current = hasAnswerServer ? maker.current!.makeMoved() : null;
+                movedJob.current?.catch(() => {}); // 실패는 getMoved 가 받는다 — 피드백 전에 끝난 실패가 경고로 새지 않게
                 setStage(step("attempt", 1));
               }}
               onBack={() => setStage(step("attempt", -1))}
