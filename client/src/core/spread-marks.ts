@@ -97,3 +97,20 @@ export function spreadMarks(partId: PartId, polys: readonly (readonly Pt[])[]): 
   if (partId === "shadow") return each((p) => shadowRise(p, LM.eyeA.upper.length));
   return { dots: [], arrows: [] };
 }
+
+/**
+ * 같은 길이 화살표 (사용자 2026-10-14: 화살표는 영역에 맞춰 길고 짧게 하지 말고 같은 길이로, 점 → 테두리 거리의 절반쯤).
+ * 가운데 점(넓이 무게중심)에서 긴 축 · 짧은 축 네 방향, 길이는 모두 가운데에서 테두리까지 거리(16 방향)의 중간값 × ratio.
+ * 테두리에 가까운 방향이라도 테두리 밖으로는 안 나간다
+ */
+export function evenRadial(poly: readonly Pt[], ratio = 0.5): SpreadMarks {
+  const c = centroid(poly), u = majorAxis(poly, c), v = { x: -u.y, y: u.x };
+  const r = Array.from({ length: 16 }, (_, k) => { const a = (2 * Math.PI * k) / 16; return rayToEdge(poly, c, { x: Math.cos(a), y: Math.sin(a) }); }).sort((a, b) => a - b);
+  const L = ratio * ((r[7]! + r[8]!) / 2);
+  if (!(L > 0)) return NONE;
+  const arrows = [u, { x: -u.x, y: -u.y }, v, { x: -v.x, y: -v.y }].map((w) => {
+    const len = Math.min(L, 0.92 * rayToEdge(poly, c, w));
+    return [along(c, w, SPREAD.start * len), along(c, w, len)];
+  });
+  return { dots: [c], arrows };
+}

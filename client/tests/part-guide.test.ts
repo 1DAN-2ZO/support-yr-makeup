@@ -448,7 +448,7 @@ describe("부위 가이드 — 섀도가 라이너 꼬리 끝 바깥까지 번�
   const lid = eyeOf("R").upper.map(P);
   const lidY = (x: number) => { for (let i = 1; i < lid.length; i++) { const a = lid[i - 1]!, b = lid[i]!; if ((x - a.x) * (x - b.x) <= 0 && a.x !== b.x) return a.y + ((b.y - a.y) * (x - a.x)) / (b.x - a.x); } return NaN; };
   const seg = (x: number, y: number, a: Pt, b: Pt) => { const dx = b.x - a.x, dy = b.y - a.y, t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy))); return Math.hypot(x - a.x - t * dx, y - a.y - t * dy); };
-  it("SH3 섀도가 테두리 밖까지 번져도 테두리는 정한 모양 그대로(최대 범위 고정, 사용자 2026-10-14) — 대신 눈꼬리 쪽 화살표가 테두리 끝까지 길어진다", () => {
+  it("SH3 섀도가 테두리 밖까지 번져도 테두리 · 화살표는 정한 모양 그대로 (최대 범위 고정 · 화살표는 같은 길이, 사용자 2026-10-14)", () => {
     const o = P(LM.eyeA.outer), tip = { x: o.x - 24, y: o.y - 12 };
     const liner = mask((x, y) => (x >= 172 && x <= 258 && y <= lidY(x) && y >= lidY(x) - 4) || (x <= o.x + 2 && seg(x, y, { x: o.x, y: o.y - 3 }, tip) <= 2.5));
     const out = [{ x: o.x, y: o.y - 6 }, { x: tip.x, y: tip.y - 3 }, { x: o.x - 48, y: o.y - 34 }, { x: o.x - 6, y: o.y - 30 }];
@@ -458,7 +458,7 @@ describe("부위 가이드 — 섀도가 라이너 꼬리 끝 바깥까지 번�
     const far = (g: typeof spread) => Math.min(...g.polys[0]!.map((p) => p.x));
     expect(Math.abs(far(spread) - far(plain)), `바깥 끝 ${far(plain).toFixed(1)} → ${far(spread).toFixed(1)} — 번져도 그대로`).toBeLessThan(0.5);
     const len = (g: typeof spread) => near(g.marks!.dots[2]!, g.marks!.arrows[2]![1]!);
-    expect(len(spread) - len(plain), `눈꼬리 쪽 화살표 ${len(plain).toFixed(1)} → ${len(spread).toFixed(1)}px`).toBeGreaterThan(6);
+    expect(Math.abs(len(spread) - len(plain)), `눈꼬리 쪽 화살표 ${len(plain).toFixed(1)} → ${len(spread).toFixed(1)}px — 그대로`).toBeLessThan(0.5);
   });
 });
 
@@ -738,17 +738,23 @@ describe("부위 가이드 — 섀도는 둥근 돔(최대 범위) + 퍼지는 �
     expect(angs[2], "눈꼬리 쪽은 바깥으로").toBeLessThan(30);
   });
 
-  it("SD4 화살표 길이는 그쪽으로 섀도가 퍼진 만큼 — 높게 칠한 섀도(24px)가 낮은 띠(8px)보다 위쪽 화살표가 길고, 화살표 끝은 테두리 안", () => {
+  it("SD4 화살표 셋은 같은 길이 — 점에서 제 방향으로 테두리까지 거리(셋)의 중간값의 절반, 섀도를 얼마나 칠했든 같다 (사용자 2026-10-14)", () => {
+    for (const g of [shadowOf(band(8)), shadowOf(band(24))]) {
+      const poly = g.polys[0]!, dots = g.marks!.dots, arrows = g.marks!.arrows;
+      const edge = dots.map((d, k) => {
+        const e = arrows[k]![1]!, L = near(d, e), u = { x: (e.x - d.x) / L, y: (e.y - d.y) / L };
+        let t = 0;
+        while (t < 400 && inPoly(d.x + u.x * (t + 0.25), d.y + u.y * (t + 0.25), poly)) t += 0.25;
+        return t;
+      });
+      const want = 0.5 * [...edge].sort((a, c) => a - c)[1]!, lens = dots.map((d, k) => near(d, arrows[k]![1]!));
+      lens.forEach((L, k) => expect(Math.abs(L - want), `화살표 ${k} 길이 ${L.toFixed(1)} · 테두리까지 ${edge.map((v) => v.toFixed(1)).join(" ")} → 중간값의 절반 ${want.toFixed(1)}`).toBeLessThan(1));
+      for (const a of arrows) expect(inPoly(a[1]!.x, a[1]!.y, poly), "화살표 끝이 테두리 안").toBe(true);
+    }
     const lo = shadowOf(band(8)), hi = shadowOf(band(24));
-    expect(len(hi, 0) - len(lo, 0), `눈머리 쪽 화살표 ${len(lo, 0).toFixed(1)} → ${len(hi, 0).toFixed(1)}px`).toBeGreaterThan(8);
-    for (const g of [lo, hi]) for (const a of g.marks!.arrows) expect(inPoly(a[1]!.x, a[1]!.y, g.polys[0]!), "화살표 끝이 테두리 안").toBe(true);
+    expect(Math.abs(near(lo.marks!.dots[0]!, lo.marks!.arrows[0]![1]!) - near(hi.marks!.dots[0]!, hi.marks!.arrows[0]![1]!)), "칠한 양과 상관없다").toBeLessThan(0.5);
   });
 
-  it("SD5 눈꼬리 바깥으로 뺀 섀도가 있으면 바깥 화살표가 길어진다", () => {
-    const flat = shadowOf(band(10));
-    const wing = shadowOf(mask((x, y) => (x >= 172 && x <= 258 && y <= lidY(x) - 1 && y >= lidY(x) - 10) || (x >= o.x - 30 && x < 172 && y >= o.y - 25 && y <= o.y - 2)));
-    expect(len(wing, 2) - len(flat, 2), `눈꼬리 쪽 화살표 ${len(flat, 2).toFixed(1)} → ${len(wing, 2).toFixed(1)}px`).toBeGreaterThan(8);
-  });
 });
 
 describe("부위 가이드 — 블러셔는 사용자가 잡은 범위 (사용자 2026-10-14 블러셔 모양 잡기: 그러데이션이라 영역을 따지 않는다)", () => {
@@ -807,6 +813,17 @@ describe("부위 가이드 — 블러셔는 사용자가 잡은 범위 (사용�
       return Math.abs(((v - u + 3 * Math.PI) % (2 * Math.PI)) - Math.PI) * (180 / Math.PI);
     });
     expect(Math.max(...turn), "가장 크게 꺾인 각도").toBeLessThan(25);
+  });
+
+  it("BC7 블러셔 화살표 넷은 같은 길이 — 가운데 점에서 테두리까지 거리(16 방향)의 중간값의 절반 (사용자 2026-10-14)", () => {
+    const g = cheekOf(blob(190, 340, 40, 28)), poly = g.polys[0]!, c = g.marks!.dots[0]!;
+    const ray = (a: number) => { let t = 0; while (t < 400 && inPoly(c.x + Math.cos(a) * (t + 0.25), c.y + Math.sin(a) * (t + 0.25), poly)) t += 0.25; return t; };
+    const r = Array.from({ length: 16 }, (_, k) => ray((2 * Math.PI * k) / 16)).sort((a, b) => a - b), want = 0.5 * (r[7]! + r[8]!) / 2;
+    expect(g.marks!.arrows, "화살표 넷").toHaveLength(4);
+    for (const [, e] of g.marks!.arrows) {
+      expect(Math.abs(near(c, e!) - want), `화살표 길이 ${near(c, e!).toFixed(1)} · 중간값의 절반 ${want.toFixed(1)}`).toBeLessThan(1.5);
+      expect(inPoly(e!.x, e!.y, poly), "화살표 끝이 테두리 안").toBe(true);
+    }
   });
 
   it("BC6 볼에 화장이 없으면 블러셔 가이드도 없다", () => {

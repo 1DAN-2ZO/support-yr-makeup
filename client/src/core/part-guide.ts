@@ -19,7 +19,7 @@
 
 import { pointInPoly, type RgbaImage } from "./color";
 import { LM } from "./landmarks";
-import { spreadMarks, type SpreadMarks } from "./spread-marks";
+import { evenRadial, type SpreadMarks } from "./spread-marks";
 import type { ExtractPart, PartMask } from "./makeup-extract";
 import { maskOutlines } from "./region-outline";
 import type { Side } from "./score";
@@ -72,7 +72,7 @@ export const PART_GUIDE = {
   // s = 눈꼬리에서 바깥으로 눈 폭 몇 배, k = 아래 눈꺼풀(0) ~ 입꼬리 높이(1)
   cheekShape: [[0.517, 0.4409], [0.2879, 0.5524], [0.0293, 0.6213], [-0.2582, 0.6029], [-0.4853, 0.5363], [-0.5757, 0.4455], [-0.5869, 0.3327],
     [-0.4787, 0.2307], [-0.2355, 0.1628], [0.0903, 0.1699], [0.4406, 0.152], [0.6244, 0.2459]],
-  shadowDotAt: [0.2, 0.5, 0.82], shadowArrowDeg: [75, 45, 15], shadowArrowMin: 0.08, shadowArrowGap: 0.02, shadowArrowStart: 0.25, shadowArrowSkip: 0.1,
+  shadowDotAt: [0.2, 0.5, 0.82], shadowArrowDeg: [75, 45, 15], shadowArrowGap: 0.02, shadowArrowRatio: 0.5,
 } as const;
 
 type SV = { s: number; v: number };
@@ -308,14 +308,10 @@ export function partGuides(parts: readonly PartMask[], lm: readonly Pt[], w: num
     // 칸 높이는 라이너 윗선 쪽에서 이어진 섀도 끝까지 — 가장 먼 픽셀까지 재니 살을 두고 떨어진 위쪽 띠(다시 그린 눈썹 자리 · 얼룩)까지 올라가
     // 섀도가 눈썹 밑까지 꽉 찼다 (실사진 2026-10-09, 시험 SH6). 지금은 섀도가 있는지만 본다
     const run = (p: Pt, d: Pt) => runReach(inside, p, d, PART_GUIDE.shadowStart * f.ew, PART_GUIDE.shadowGap * f.ew, PART_GUIDE.shadowMax * f.ew);
-    // 화살표 길이 — 점에서 그 방향으로 이어진 섀도 끝까지. 라이너 바로 위 띠는 라이너로 떼어 가서 섀도는 점에서 조금 떨어져 시작하고
-    // (shadowArrowStart 안), 펴 바른 섀도는 군데군데 비어 shadowArrowSkip 까지는 끊겨도 잇는다 — 처음 값(0.08 · 0.05)으론 실사진 화살표가 거의 다 가장 짧았다
-    const spread = shadowDots(s).map((d, k) => runReach(inside, d, shadowDir(f, k), PART_GUIDE.shadowArrowStart * f.ew, PART_GUIDE.shadowArrowSkip * f.ew, PART_GUIDE.shadowMax * f.ew) / f.ew);
-    return { prof: base.map((p, i) => run(p, nrm[i]!) / f.ew), ext: shadowExt(inside, f, base[base.length - 1]!), spread };
+    return { prof: base.map((p, i) => run(p, nrm[i]!) / f.ew), ext: shadowExt(inside, f, base[base.length - 1]!) };
   }, (a, b) => ({
     prof: a.prof.map((x, i) => (x + b.prof[i]!) / 2), ext: a.ext && b.ext ? avgExt(a.ext, b.ext) : a.ext ?? b.ext,
-    spread: a.spread.map((x, i) => (x + (b.spread[i] ?? x)) / 2),
-  }), ({ prof, ext, spread }, f, s) => {
+  }), ({ prof, ext }, f, s) => {
     // 눈머리부터 라이너 꼬리 끝까지(라이너가 없으면 눈꼬리까지) 부채꼴 — 높이는 칸마다 보이는 대로 재서 이웃 칸끼리 다듬고
     // (5칸 중앙값 → 3칸 평균), 윗선은 그중 가장 높은 점들만 잇는다(아래). 눈머리 끝은 아랫선으로 내려와 닫힌다 (사용자 2026-10-07, 시험 SH1 · SH2).
     // 그 바깥으로 섀도가 더 번졌으면 칸마다 아래 · 위 끝을 따라 거기까지 (사용자: 뗀 섀도보다 범위가 모자라다, 시험 SH3)
@@ -347,14 +343,15 @@ export function partGuides(parts: readonly PartMask[], lm: readonly Pt[], w: num
       return q;
     };
     const poly = [...base, ...chain.slice(1, -1).map(clear)];
-    // 화살표 — 점에서 그 방향으로 섀도가 퍼진 만큼 (짧아도 shadowArrowMin 은 보이게), 테두리 밖으로는 안 나간다
+    // 화살표 — 셋 다 같은 길이: 점에서 제 방향으로 테두리까지 거리(셋)의 중간값의 절반 (사용자 2026-10-14: 영역에 맞춰 길고 짧게 하지 말고
+    // 같은 길이로, 점 → 테두리 거리의 절반쯤). 처음엔 섀도가 실제로 퍼진 만큼이었다. 테두리 밖으로는 안 나간다
     const inPoly = (q: Pt) => pointInPoly(q.x, q.y, poly);
-    const dots = shadowDots(s), arrows = dots.map((d, k) => {
-      const dir = shadowDir(f, k);
-      let edge = 0;
-      while (edge < 3 * f.ew && inPoly(add(d, dir, edge + 0.5))) edge += 0.5;
-      const L = Math.min(Math.max(PART_GUIDE.shadowArrowMin, spread[k] ?? 0) * f.ew, 0.92 * edge);
-      return [add(d, dir, Math.min(L, PART_GUIDE.shadowArrowGap * f.ew)), add(d, dir, L)];
+    const dots = shadowDots(s), dirs = dots.map((_, k) => shadowDir(f, k));
+    const edge = dots.map((d, k) => { let e = 0; while (e < 3 * f.ew && inPoly(add(d, dirs[k]!, e + 0.5))) e += 0.5; return e; });
+    const half = PART_GUIDE.shadowArrowRatio * ([...edge].sort((a, b) => a - b)[Math.floor(edge.length / 2)] ?? 0);
+    const arrows = dots.map((d, k) => {
+      const L = Math.min(half, 0.92 * edge[k]!);
+      return [add(d, dirs[k]!, Math.min(L, PART_GUIDE.shadowArrowGap * f.ew)), add(d, dirs[k]!, L)];
     });
     shadowMarks[s] = { dots, arrows };
     return poly;
@@ -385,8 +382,9 @@ export function partGuides(parts: readonly PartMask[], lm: readonly Pt[], w: num
       return c;
     });
   }, "landmark");
-  // 블러셔 안에 퍼지는 방향 — 가운데 점 + 사방 화살표 (사용자 2026-10-09, 시험 BL2). 그러데이션은 가운데에서 바깥으로
-  for (const g of out) if (g.part === "cheek") g.marks = spreadMarks("cheek", g.polys);
+  // 블러셔 안에 퍼지는 방향 — 가운데 점 + 사방 화살표 (사용자 2026-10-09, 시험 BL2). 그러데이션은 가운데에서 바깥으로.
+  // 네 화살표는 같은 길이 — 가운데에서 테두리까지 거리 중간값의 절반 (사용자 2026-10-14, 시험 BC7)
+  for (const g of out) if (g.part === "cheek" && g.polys[0]) g.marks = evenRadial(g.polys[0]);
 
   // 그 밖 부위 (있다면) — 화장 영역 테두리 그대로
   for (const [k, e] of masks) {
