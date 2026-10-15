@@ -15,7 +15,12 @@ DB → 앱이 읽을 파일 둘.  python3 export.py
 
 그래서 **모으는 곳은 DB, 쓰는 곳은 JSON** 이고 이 파일이 둘을 잇는다.
 """
-import sqlite3, json, pathlib, re, sys
+
+import json
+import pathlib
+import re
+import sqlite3
+import sys
 
 HERE = pathlib.Path(__file__).parent
 OUT = HERE / "out"
@@ -66,8 +71,9 @@ def write_data_ts(fam: dict, by_part: dict) -> None:
     for part in PARTS:
         out.append(f"  {part}: [\n")
         # 직접 확인한 것 먼저 · 색을 잰 호수가 많은 것 먼저 · 그다음 이름 차례
-        rows = sorted(by_part.get(part, []),
-                      key=lambda p: (not p["checked"], -len(p["shades"]), p["brand"], p["name"]))
+        rows = sorted(
+            by_part.get(part, []), key=lambda p: (not p["checked"], -len(p["shades"]), p["brand"], p["name"])
+        )
         for p in rows:
             if not p["families"]:
                 skipped += 1
@@ -139,7 +145,9 @@ def main() -> int:
 
     # ① 계열 + 기준색 — 이름과 기준색이 한곳에 있어야 어긋나지 않는다
     fam = {}
-    for r in con.execute("SELECT part, name, ref_hex FROM family WHERE name NOT LIKE '%※%' ORDER BY part, name"):
+    for r in con.execute(
+        "SELECT part, name, ref_hex FROM family WHERE name NOT LIKE '%※%' ORDER BY part, name"
+    ):
         fam.setdefault(r["part"], {})[r["name"]] = r["ref_hex"]
 
     # ② 제품 — 한 제품이 여러 계열에 걸치면 계열 목록으로 묶는다.
@@ -154,17 +162,32 @@ def main() -> int:
         ORDER BY p.part, b.name, p.name, s.code
     """):
         k = r["id"]
-        p = prods.setdefault(k, dict(part=r["part"], brand=r["brand"], name=r["name"],
-                                     kind=r["kind"], photo=r["photo"], source=r["source_url"],
-                                     checked=bool(r["checked"]), group=r["group_name"],
-                                     families=[], hinted=[], shades=[]))
+        p = prods.setdefault(
+            k,
+            dict(
+                part=r["part"],
+                brand=r["brand"],
+                name=r["name"],
+                kind=r["kind"],
+                photo=r["photo"],
+                source=r["source_url"],
+                checked=bool(r["checked"]),
+                group=r["group_name"],
+                families=[],
+                hinted=[],
+                shades=[],
+            ),
+        )
         if r["family"] and r["family"] not in p["families"]:
             p["families"].append(r["family"])
         if r["shade"]:
             sh = {"name": r["shade"]}
-            if r["code"]: sh["code"] = r["code"]
-            if r["hex"]: sh["hex"] = r["hex"]
-            if r["family"]: sh["family"] = r["family"]
+            if r["code"]:
+                sh["code"] = r["code"]
+            if r["hex"]:
+                sh["hex"] = r["hex"]
+            if r["family"]:
+                sh["family"] = r["family"]
             p["shades"].append(sh)
 
     # ②-2 제품 단위로만 아는 계열 (product_family) 을 뒤에 붙인다.
@@ -182,24 +205,25 @@ def main() -> int:
         by_part.setdefault(p.pop("part"), []).append(p)
 
     data = {"version": "db-v1", "families": fam, "products": by_part}
-    (OUT / "products.json").write_text(
-        json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    (OUT / "products.json").write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
 
     write_data_ts(fam, by_part)
 
     n_sh = sum(len(p["shades"]) for v in by_part.values() for p in v)
     n_hex = sum(1 for v in by_part.values() for p in v for s in p["shades"] if "hex" in s)
     size = (OUT / "products.json").stat().st_size
-    print(f"out/products.json  {size/1024:.1f}KB")
+    print(f"out/products.json  {size / 1024:.1f}KB")
     print(f"  제품 {len(prods)} · 호수 {n_sh} (색 있음 {n_hex}) · 계열 {sum(len(v) for v in fam.values())}")
 
     # 빈칸을 숨기지 않는다 — 뽑아낸 것이 지금 코드보다 적으면 갈아끼우면 안 된다
     blank = [(part, f) for part, d in fam.items() for f, h in d.items() if not h]
     if blank:
         print(f"\n⚠️  기준색 없는 계열 {len(blank)}개 — 이 계열은 '가까운 색 채우기' 가 안 돈다")
-        for part, f in blank[:30]: print(f"     {part} {f}")
+        for part, f in blank[:30]:
+            print(f"     {part} {f}")
     con.close()
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())
