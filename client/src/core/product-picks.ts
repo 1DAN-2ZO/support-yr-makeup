@@ -39,6 +39,14 @@ export interface ProductPick {
   /** 제형·도구. "왜 이것인지" 를 한눈에 — 펜슬인지 팔레트인지 틴트인지 */
   kind: string;
   /** 호수(색상 이름). 확인되면 채운다. 비어 있으면 계열 이름만 안내한다 */
+  /**
+   * 한 제품을 통(팟·호수 묶음)마다 쪼개 넣었을 때, 그 묶음의 이름. 안 쪼갠 제품은 없다.
+   *
+   * 화면은 **한 묶음에서 하나만** 보여 준다 — 팔레트는 사람이 사는 단위가 통이라 통마다
+   * 한 줄로 두는데, 그러면 같은 팔레트가 여러 번 떠서 "왜 같은 게 두 개지" 가 된다.
+   * 어느 통인지는 `name` 으로 그대로 보여 준다 (통까지 알려 주는 편이 쓸모 있다).
+   */
+  group?: string;
   shade?: string;
   /**
    * 이 호수의 색 (소문자 #rrggbb, sRGB). **호수 하나당 한 줄**로 적는다 — 나중에 피부색·참고 사진 색과
@@ -114,11 +122,15 @@ export function pickProducts(part: PalettePart, families: readonly string[], max
   const out: Picked[] = [];
   const seen = new Set<ProductPick>();
   // 같은 제품은 한 번만. 호수 묶음별로 나눠 넣은 제품(투에이엔·모렛)은 여러 줄이지만
-  // 화면에는 같은 이름으로 보이므로, 두 번 뜨면 "왜 같은 게 두 개지" 가 된다
+  // 화면에는 같은 이름으로 보이므로, 두 번 뜨면 "왜 같은 게 두 개지" 가 된다.
+  //
+  // 2026-10-15: 이름이 아니라 **묶음 이름(group)** 으로 거른다. 제품 목록을 디비에서
+  // 뽑게 되면서 팔레트가 통마다 다른 이름을 갖게 됐고(「2 로즈 커넥트」·「4 핑크 페어링」),
+  // 이름으로 걸러서는 같은 팔레트가 나란히 떴다 — 전지원이 폰에서 보고 알렸다
   const shown = new Set<string>();
 
   const add = (pick: ProductPick, family: string): void => {
-    const key = `${pick.brand} ${pick.name}`;
+    const key = `${pick.brand} ${pick.group ?? pick.name}`;
     if (seen.has(pick) || shown.has(key) || out.length >= max) return;
     seen.add(pick);
     shown.add(key);
