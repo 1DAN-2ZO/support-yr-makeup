@@ -240,9 +240,10 @@ img {
 .title {
   margin: 0 0 6px;
   color: var(--ink-strong);
+  /* 2026-10-15: 두께·행간을 조금 가볍게 — 760 → 700, 1.14 → 1.25 (전지원 지시) */
   font-size: 25px;
-  font-weight: 760;
-  line-height: 1.14;
+  font-weight: 700;
+  line-height: 1.25;
 }
 
 .title em {
@@ -257,7 +258,7 @@ img {
   color: var(--ink-weak);
   font-size: 14px;
   font-weight: var(--weight-regular);
-  line-height: 1.35;
+  line-height: 1.5;
 }
 
 /*
@@ -687,19 +688,35 @@ img {
   right: 0;
   bottom: 0;
   z-index: 5;
-  min-height: 30%;
-  padding: 6.5% 7% 4%;
-  border-radius: 34px 34px 0 0;
-  background: rgb(255 255 255 / 78%);
-  box-shadow: 0 -18px 38px rgb(38 39 43 / 8%);
+  /*
+   * 2026-10-15: 앱다운 바텀 시트로 다시 잡았다 (전지원 지시).
+   * 높이를 30% → 24% 로 줄여 사진이 더 보이고, 맨 위에 **끌어올리는 손잡이**를 둔다 —
+   * 바텀 시트라는 것이 한눈에 읽힌다. 바탕도 더 불투명하게 해 카드와 글이 또렷해진다
+   */
+  min-height: 24%;
+  padding: 18px 18px 16px;
+  border-radius: 24px 24px 0 0;
+  background: rgb(255 255 255 / 92%);
+  box-shadow: 0 -14px 34px rgb(38 39 43 / 10%);
   backdrop-filter: blur(18px);
+}
+
+/* 시트 맨 위의 손잡이 — 끌어올릴 수 있어 보이게 하는 표시다 (실제로 끌지는 않는다) */
+.intro-bottom-sheet::before {
+  content: "";
+  display: block;
+  width: 38px;
+  height: 4px;
+  margin: 0 auto 14px;
+  border-radius: 999px;
+  background: rgb(38 39 43 / 14%);
 }
 
 /* 확인할 것 셋 — 본 앱처럼 한 줄에 셋 */
 .intro-checks {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
+  gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -711,9 +728,10 @@ img {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  min-height: 70px;
-  border-radius: 22px;
+  /* 2026-10-15: 카드를 작고 균일하게 — 70 → 60px, 모서리도 22 → 14px (전지원 지시) */
+  gap: 4px;
+  min-height: 60px;
+  border-radius: 14px;
   background: rgb(255 255 255 / 72%);
   color: var(--ink);
   font-family: var(--font-ui);
@@ -727,10 +745,10 @@ img {
 /* 초록 동그라미 + 흰 체크 — 누르는 것이 아니라 "이것만 보면 된다" 는 표시다 */
 .intro-check i {
   position: absolute;
-  right: 12px;
-  top: 12px;
-  width: 19px;
-  height: 19px;
+  right: 8px;
+  top: 8px;
+  width: 15px;
+  height: 15px;
   border-radius: 50%;
   background: #78dec4;
 }
@@ -750,8 +768,9 @@ img {
 /* 그림 파일(SVG)이라 CSS 로 색을 바꾸지 못한다 — 색은 파일 안에 있다 (본 앱 2026-10-12 주석) */
 .check-icon {
   display: block;
-  width: 42px;
-  height: 42px;
+  /* 2026-10-15: 42 → 32px (전지원 지시). 카드가 작아져 그림도 같이 줄인다 */
+  width: 32px;
+  height: 32px;
   object-fit: contain;
 }
 
@@ -768,12 +787,17 @@ img {
   align-items: center;
   justify-content: center;
   gap: 12px;
-  width: min(76%, 320px);
-  min-height: 58px;
-  margin: 18px auto 0;
+  /*
+   * 2026-10-15: **패널 폭을 꽉 채우는 핑크 CTA** 로 (전지원 지시).
+   * 전에는 76% 라 양옆이 떠 보였고, 둥근 알약이라 아래 카드들과 모양이 따로 놀았다.
+   * 폭을 100% 로, 모서리를 14px 로 맞춰 확인 카드 셋과 한 묶음으로 읽히게 한다
+   */
+  width: 100%;
+  min-height: 52px;
+  margin: 14px 0 0;
   padding: 0 22px;
-  border: 1px solid rgb(255 255 255 / 90%);
-  border-radius: 999px;
+  border: 0;
+  border-radius: 14px;
   background: var(--pink);
   color: #fff;
   font: inherit;
@@ -931,7 +955,8 @@ img {
   /* 거절 쪽 버튼의 모양은 본 앱 `.row button:not(.primary)` 그대로 — 테두리 선 하나, 바탕 없음.
      전에는 흰 바탕 + 분홍 글씨였는데, 본 앱과 나란히 놓으면 둘 다 "다음 걸음" 처럼 보였다 */
   border: 1px solid var(--line-ui);
-  border-radius: 999px;
+  /* 2026-10-15: 알약 → 14px (전지원 지시). 화면의 다른 버튼·카드와 모양을 맞춘다 */
+  border-radius: 14px;
   background: transparent;
   color: #2b2b2b;
   font: inherit;
@@ -1747,7 +1772,8 @@ img {
   margin: 12px auto 0;
   padding: 0 22px;
   border: 0;
-  border-radius: 999px;
+  /* 2026-10-15: 알약(999px) → 14px 라운드 카드형 (전지원 지시). 화면 곳곳의 카드와 모양을 맞춘다 */
+  border-radius: 14px;
   background: var(--pink);
   color: #fff;
   font: inherit;
@@ -1760,8 +1786,12 @@ img {
 
 /* 덜 중요한 것 — 본 앱 `.slot-live` (테두리만, 52px · 안쪽 여백 18px) */
 .go.ghost {
-  width: 100%;
-  min-height: 52px;
+  /*
+   * 2026-10-15: 크기를 `.go` 와 **똑같이** 맞춘다 (전지원 지시).
+   * 전에는 폭 100%·높이 52px 이라, 위의 핑크 버튼(320px·56px)과 나란히 놓이면
+   * 「이전」이 더 넓고 더 납작해 보여 두 버튼이 짝으로 안 읽혔다.
+   * 폭·높이는 `.go` 에서 그대로 물려받고 여기서는 색만 바꾼다
+   */
   padding: 0 18px;
   border: 1.5px solid #ffc3cd;
   background: var(--card);
