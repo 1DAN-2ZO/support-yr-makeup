@@ -6,6 +6,9 @@
   POST /transfer 그림 만들기 (맨얼굴 + 화장 사진 또는 템플릿 번호 → GPU 의 FLUX 서버 → 그림 한 장).
                  저장하지 않는다. flux.py · 템플릿 사진은 templates.py
   POST /keep     테스트 기간 사진 보관 (참고 사진 빼고) — 기본은 꺼짐, DHE_KEEP_UNTIL 을 줘야 받는다. keep.py
+  GET  /products 화장품 추천 데이터 (제품·호수·계열). 읽기만 한다. products.py
+                 **앱은 아직 안 쓴다** — 지금은 디비에서 뽑은 파일을 앱에 실어 보낸다
+                 (client/src/core/product-picks.data.ts). 옮길지는 따로 정한다
 
 실행:  uv run uvicorn server.app.main:app --reload --port 8000
 
@@ -26,7 +29,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.datastructures import UploadFile
 
-from . import events, keep, templates
+from . import events, keep, products, templates
 from .config import settings
 from .flux import FluxError, Gone, get_flux, unless_gone
 from .schemas import Health
@@ -81,6 +84,26 @@ app.add_middleware(
 @app.get("/health", response_model=Health)
 def health() -> Health:
     return Health(ok=True, ver=settings.versions.as_dict())
+
+
+@app.get("/products")
+def get_products() -> dict:
+    """화장품 추천 데이터 전부. 디비가 없으면 503 — 서버는 그래도 뜬다.
+
+    읽기만 하고 들고 있는다 (products.snapshot 이 lru_cache). 디비를 바꾸려면
+    cosmetics-db/seed/ 에 적고 다시 만든 뒤 server/data/cosmetics.db 로 복사한다.
+    """
+    if not products.available():
+        raise HTTPException(503, "products db off (server/data/cosmetics.db)")
+    return products.snapshot()
+
+
+@app.get("/products/counts")
+def get_products_counts() -> dict:
+    """몇 개나 들었나 — 배포 뒤 눈으로 확인할 때"""
+    if not products.available():
+        raise HTTPException(503, "products db off (server/data/cosmetics.db)")
+    return products.counts()
 
 
 @app.post("/events", status_code=204)
