@@ -22,7 +22,8 @@ from functools import lru_cache
 from pathlib import Path
 
 # 디비 자리. 환경 변수로 덮어쓸 수 있다 (다른 자리에 두고 싶을 때)
-DB_PATH = Path(os.environ.get("DHE_PRODUCTS_DB", str(Path(__file__).resolve().parent.parent / "data" / "cosmetics.db")))
+_DEFAULT_DB = Path(__file__).resolve().parent.parent / "data" / "cosmetics.db"
+DB_PATH = Path(os.environ.get("DHE_PRODUCTS_DB", str(_DEFAULT_DB)))
 
 # 부위 이름 — 앱이 쓰는 것과 같은 말이어야 한다 (client/src/core/color-family.ts 의 PalettePart)
 PARTS = ("brow", "liner", "shadow", "lip", "cheek")
@@ -50,7 +51,8 @@ def snapshot() -> dict:
     con = _open()
     try:
         fam: dict[str, dict[str, str | None]] = {}
-        for r in con.execute("SELECT part, name, ref_hex FROM family WHERE name NOT LIKE '%※%' ORDER BY part, name"):
+        fam_q = "SELECT part, name, ref_hex FROM family WHERE name NOT LIKE '%※%' ORDER BY part, name"
+        for r in con.execute(fam_q):
             fam.setdefault(r["part"], {})[r["name"]] = r["ref_hex"]
 
         prods: dict[int, dict] = {}
@@ -67,9 +69,18 @@ def snapshot() -> dict:
         for r in rows:
             p = prods.setdefault(
                 r["id"],
-                dict(part=r["part"], brand=r["brand"], name=r["name"], kind=r["kind"],
-                     photo=r["photo"], source=r["source_url"], checked=bool(r["checked"]),
-                     group=r["group_name"], families=[], shades=[]),
+                dict(
+                    part=r["part"],
+                    brand=r["brand"],
+                    name=r["name"],
+                    kind=r["kind"],
+                    photo=r["photo"],
+                    source=r["source_url"],
+                    checked=bool(r["checked"]),
+                    group=r["group_name"],
+                    families=[],
+                    shades=[],
+                ),
             )
             if r["family"] and r["family"] not in p["families"]:
                 p["families"].append(r["family"])
