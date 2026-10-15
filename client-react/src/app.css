@@ -391,8 +391,18 @@ img {
   z-index: 100;
   display: grid;
   place-items: center;
-  /* 다른 화면과 같은 폰 폭 안에 가두고, 그 안에서 그림을 꽉 채운다 */
-  width: min(100vw, calc(100dvh * 0.554), 430px);
+  /*
+   * **가로를 꽉 채운다.** 높이로 폭을 막던 `100dvh × 0.554` 를 뺐다 (2026-10-15).
+   *
+   * 그 항이 있으면 세로가 짧은 화면(카카오톡 안 브라우저처럼 위아래 띠가 큰 곳)에서
+   * 폭이 화면보다 좁아져 **좌우에 흰 띠**가 생긴다. 전지원이 아이폰에서 보고 알렸다.
+   *
+   * 뺀 뒤에는 그림이 폭에 맞춰 커지고, 화면보다 길어진 만큼 위아래가 조금 잘린다.
+   * 그림 위아래는 거의 흰 바탕이라 잘려도 티가 안 난다 — 좌우가 잘리는 것(분홍 결이
+   * 통째로 사라진다)보다 훨씬 낫다. 잘라 내는 것은 아래 `overflow: hidden` 이 한다
+   */
+  width: min(100vw, 430px);
+  overflow: hidden;
   margin: 0 auto;
   padding: 0;
   border: 0;
@@ -422,7 +432,7 @@ img {
 .splash-frame {
   position: relative;   /* 아래 .splash-tag 가 이 안에서 자리를 잡는다 */
   display: block;
-  width: min(100%, calc(100dvh * 1125 / 2030));
+  width: 100%;
   height: auto;
   aspect-ratio: 1125 / 2030;
   overflow: hidden;
