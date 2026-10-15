@@ -26,7 +26,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FaceLandmarkerResult } from "@mediapipe/tasks-vision";
 import { ATTEMPT_SHOTS, attemptBurstStep, startAttemptBurst, startAttemptRun, type AttemptBurst, type AttemptShotId } from "@core/attempt";
-import { cameraFailKind, cameraFailText } from "@core/camera-fail";
+import { cameraFailKind, type CameraFailKind } from "@core/camera-fail";
 import { STEP_TEXT, runStep, type RunState } from "@core/capture-run";
 import { eyeWidthPxOf, eyesClosed, faceCropOf, faceInsetOf, faceRatioOf, yawFromLandmarks } from "@core/capture-measure";
 import type { ShotMeasure } from "@core/flow";
@@ -41,6 +41,9 @@ import { useFrameLoop } from "../hooks/useFrameLoop";
 import { useLandmarker } from "../hooks/useLandmarker";
 import "../camera.css";
 import "../attempt.css";
+import { useLang } from "../i18n/useLang";
+import { shotText } from "../lib/core-text";
+import type { Key } from "../i18n";
 
 /** 한 장 — 사진(원본 크기) · 얼굴 점(사진 px) · 사진 크기. 피드백(③)이 맨얼굴 · 정답사진과 맞춰 비교한다 */
 export interface AttemptShot {
@@ -61,27 +64,10 @@ interface Taken {
   h: number;
 }
 
-export const ATTEMPT_TEXT = {
-  title: "화장을 다 했으면 사진을 찍어요",
-  intro: "처음에 맨얼굴을 찍을 때처럼 정면을 보고 눈을 떠 주세요. 자동으로 찍혀요",
-  coach: "화장이 끝났으면 같은 자리에서 한 번 더 찍어 주세요",
-  start: "사진 촬영",
-  /** 카메라 칸 꼬리표 — 맨얼굴 촬영의 「사진 촬영」 자리. 어느 사진을 찍는 중인지 늘 보이게 */
-  cameraTitle: "완성사진 촬영",
-  loading: "카메라를 켜고 있어요…",
-  saving: "사진을 정리하고 있어요…",
-  /** 카메라를 못 열었을 때 누르는 버튼 — 안내 문장은 까닭마다 다르다 (core/camera-fail) */
-  retry: "다시 시도",
-  /** 인코딩이 틀어졌을 때 — 본 앱은 카메라 오류 문장을 돌려 썼지만, 까닭이 다르니 말도 다르게 한다 */
-  saveFail: "사진을 정리하지 못했어요. 다시 찍어 주세요",
-  previewTitle: "이렇게 찍혔어요",
-  previewSub: "괜찮으면 피드백으로 넘어가요",
-  openLabel: "화장한 사진",
-  retake: "다시 찍기",
-  confirm: "이대로 피드백 받기",
-  /** 얼굴을 못 찾았을 때 남겨 두는 말 — 빈 칸이면 왜 안 찍히는지 알 수 없다 */
-  aim: "원 안에 얼굴을 맞춰 줘!",
-} as const;
+/*
+ * 화면 글은 `i18n/ko.ts` · `en.ts` 로 옮겼다 (2026-10-16) — 열쇠는 `att.*` 다.
+ * `att.aim` 은 코어가 주는 안내(`r.hint` · `r.gate?.text`)가 없을 때만 쓰는 뒷받침이다.
+ */
 
 export interface AttemptProps {
   /**
@@ -98,7 +84,19 @@ export interface AttemptProps {
 /** 지금 어느 칸에 있나. saving 은 카메라를 끈 뒤 사진을 줄이는 동안 (그 사이 카메라가 켜져 있으면 안 된다) */
 type Phase = "intro" | "camera" | "saving" | "preview";
 
+/**
+ * 카메라를 못 열었을 때의 글 — **코어를 고치지 않고** 까닭만 받아 와 우리 말로 바꾼다.
+ * `@core/camera-fail` 은 본 앱(`client/`)과 함께 쓰는 파일이라 건드리지 않는다.
+ */
+const CAMERA_FAIL_KEY: Record<CameraFailKind, Key> = {
+  denied: "cam.fail.denied",
+  busy: "cam.fail.busy",
+  none: "cam.fail.none",
+  other: "cam.fail.other",
+};
+
 export default function Attempt({ onDone, onBack, logger }: AttemptProps) {
+  const { t } = useLang();
   const [phase, setPhase] = useState<Phase>("intro");
   /**
    * 찍은 사진과 그 미리보기 주소를 **한 덩어리로** 들고 있다. 주소를 따로 만들면(효과 안에서)
@@ -109,7 +107,7 @@ export default function Attempt({ onDone, onBack, logger }: AttemptProps) {
 
   // ---------- 화면에 보이는 글 ----------
   const [step, setStep] = useState("");
-  // 글자 하나로 굳지 않게 string 으로 적어 둔다 (ATTEMPT_TEXT 가 as const 라서)
+  // 글자 하나로 굳지 않게 string 으로 적어 둔다 — 코어가 주는 안내도 여기 들어온다
   const [line, setLine] = useState<string>("");
   const [ready, setReady] = useState(false);
 
@@ -156,7 +154,7 @@ export default function Attempt({ onDone, onBack, logger }: AttemptProps) {
     framesRef.current = [];
     burstRef.current = null;
     runRef.current = startAttemptRun({}, performance.now());
-    setStep(runRef.current.shot ? STEP_TEXT[runRef.current.shot] : "");
+    setStep(runRef.current.shot ? shotText(t, STEP_TEXT[runRef.current.shot]) : "");
     setLine("");
     setReady(false);
   }, [loopOn]);
@@ -170,14 +168,14 @@ export default function Attempt({ onDone, onBack, logger }: AttemptProps) {
     log.log({ name: "button", button: `attempt_shot:${shot}` });
     runRef.current = startAttemptRun(takenRef.current, now);
     if (runRef.current.shot) {
-      setStep(STEP_TEXT[runRef.current.shot]);
+      setStep(shotText(t, STEP_TEXT[runRef.current.shot]));
       return;
     }
     // 다 찍었다 — 카메라를 끄고(phase 가 바뀌면 useCamera 가 트랙을 놓는다) 사진을 줄인다
     const taken = takenRef.current;
     setPhase("saving");
     setStep("");
-    setLine(ATTEMPT_TEXT.saving);
+    setLine(t("att.saving"));
     // 줄이지 않는다 — 얼굴 점이 촬영 크기 기준이고, 줄이면 라이너 꼬리가 사라진다 (#328 · #240)
     void Promise.all(ATTEMPT_SHOTS.map(async (id) => {
       const list = taken[id] ?? [];
@@ -243,7 +241,7 @@ export default function Attempt({ onDone, onBack, logger }: AttemptProps) {
     runRef.current = r.state;
     // 같은 글자를 다시 넣어도 React 가 알아서 넘긴다 — 프레임마다 불러도 다시 그리지 않는다.
     // 15초 넘게 못 찍었을 때의 힌트가 조건 한 줄을 덮는다 (본 앱과 같은 자리)
-    setLine(r.hint ?? r.gate?.text ?? ATTEMPT_TEXT.aim);
+    setLine(shotText(t, r.hint ?? r.gate?.text ?? "") || t("att.aim"));
     setReady(!!r.gate?.ok);
     if (!r.take || !lm) return;
     // 셔터 — 이 장이 묶음의 첫 장. 찍혔다는 소리는 묶음을 다 모은 뒤에 낸다
@@ -289,7 +287,7 @@ export default function Attempt({ onDone, onBack, logger }: AttemptProps) {
       log.log({ name: "button", button: "back:partguide" });
       onBack();
     }}>
-      이전
+      {t("att.back")}
     </button>
   );
 
@@ -299,10 +297,10 @@ export default function Attempt({ onDone, onBack, logger }: AttemptProps) {
       <section className="screen attempt">
         <div className="attempt-coach">
           <img src="/ui/nudy-coach-simple.svg" alt="" aria-hidden="true" />
-          <span>{ATTEMPT_TEXT.coach}</span>
+          <span>{t("att.coach")}</span>
         </div>
-        <h1 className="title">{ATTEMPT_TEXT.title}</h1>
-        <p className="sub">{ATTEMPT_TEXT.intro}</p>
+        <h1 className="title">{t("att.title")}</h1>
+        <p className="sub">{t("att.intro")}</p>
         <div className="row">
           {back}
           <button
@@ -315,7 +313,7 @@ export default function Attempt({ onDone, onBack, logger }: AttemptProps) {
               setPhase("camera");
             }}
           >
-            {ATTEMPT_TEXT.start}
+            {t("att.start")}
           </button>
         </div>
       </section>
@@ -326,22 +324,22 @@ export default function Attempt({ onDone, onBack, logger }: AttemptProps) {
   if (phase === "preview") {
     return (
       <section className="screen attempt attempt-done">
-        <h1 className="title">{ATTEMPT_TEXT.previewTitle}</h1>
-        <p className="sub">{saveFailed ? ATTEMPT_TEXT.saveFail : ATTEMPT_TEXT.previewSub}</p>
+        <h1 className="title">{t("att.previewTitle")}</h1>
+        <p className="sub">{saveFailed ? t("att.saveFail") : t("att.previewSub")}</p>
         {/* 사진은 원본 크기라(#330) 칸 크기를 잡아 주지 않으면 구석만 보이고 버튼이 화면 밖으로 밀린다 (#344 ③) */}
         {done?.url && (
           <figure className="attempt-preview">
-            <img src={done.url} alt={ATTEMPT_TEXT.openLabel} />
-            <figcaption>{ATTEMPT_TEXT.openLabel}</figcaption>
+            <img src={done.url} alt={t("att.openLabel")} />
+            <figcaption>{t("att.openLabel")}</figcaption>
           </figure>
         )}
         <div className="row">
           <button type="button" className="go ghost" onClick={retake}>
-            {ATTEMPT_TEXT.retake}
+            {t("att.retake")}
           </button>
           {!saveFailed && (
             <button type="button" className="go" onClick={confirm}>
-              {ATTEMPT_TEXT.confirm}
+              {t("att.confirm")}
             </button>
           )}
         </div>
@@ -354,11 +352,11 @@ export default function Attempt({ onDone, onBack, logger }: AttemptProps) {
   // 까닭에 맞는 말 + 다시 시도 (#422) — 무슨 오류든 "허용해 주세요" 뿐이던 때는 다시 해 볼 길이 없었다.
   // 흐름을 막지 않는다: 안내와 "다시 시도" 를 띄우고 "이전" 도 그대로 둔다
   const failed = camera.error !== null;
-  const text = failed ? cameraFailText(camera.error) : phase === "saving" ? ATTEMPT_TEXT.saving : loopOn ? line : ATTEMPT_TEXT.loading;
+  const text = failed ? t(CAMERA_FAIL_KEY[cameraFailKind(camera.error)]) : phase === "saving" ? t("att.saving") : loopOn ? line : t("att.loading");
 
   return (
     <section className="screen attempt">
-      <p className="capture-title">{ATTEMPT_TEXT.cameraTitle}</p>
+      <p className="capture-title">{t("att.cameraTitle")}</p>
 
       {/* 단계 안내 — 본 앱 app.css 에서는 숨어 있던 줄이다 (#344 ②). 어떤 자세로 찍는지 여기서만 알 수 있다 */}
       <p className="cam-step">{step}</p>
@@ -384,7 +382,7 @@ export default function Attempt({ onDone, onBack, logger }: AttemptProps) {
             camera.retry();
           }}
         >
-          {ATTEMPT_TEXT.retry}
+          {t("att.retry")}
         </button>
       )}
 

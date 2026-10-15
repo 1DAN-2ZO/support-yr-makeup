@@ -13,6 +13,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { useLang } from "../i18n/useLang";
 
 /** 가만히 둘 때 머무는 시간 */
 const STAY_MS = 2000;
@@ -20,6 +21,7 @@ const STAY_MS = 2000;
 const LEAVE_MS = 280;
 
 export default function Splash({ onDone }: { onDone: () => void }) {
+  const { t } = useLang();
   const [leaving, setLeaving] = useState(false);
   // App 이 다시 그릴 때마다 `onDone` 은 새 함수가 된다 — 그대로 효과에 넣으면 타이머가 처음부터 다시 돈다
   const done = useRef(onDone);
@@ -44,7 +46,7 @@ export default function Splash({ onDone }: { onDone: () => void }) {
     <button
       type="button"
       className={leaving ? "splash leaving" : "splash"}
-      aria-label="nudy · 템플릿으로 해보는 메이크업 가이드 — 눌러서 넘어가기"
+      aria-label={t("splash.aria")}
       onClick={() => setLeaving(true)}
     >
       <span className="splash-frame">
@@ -53,7 +55,7 @@ export default function Splash({ onDone }: { onDone: () => void }) {
             보지 않아 사실이 아니었다. 그림에서 그 글씨를 지우고 여기에 글자로 넣었다 —
             글자로 두면 문구를 고칠 때 그림을 다시 만들지 않아도 되고, 화면 읽어 주는 기능에도 읽힌다 */}
         <img src="/ui/nudy-splash.webp" alt="" aria-hidden="true" />
-        <span className="splash-tag">템플릿으로 해보는 메이크업 가이드</span>
+        <span className="splash-tag">{t("splash.tagline")}</span>
       </span>
     </button>
   );

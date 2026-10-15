@@ -21,30 +21,29 @@
 
 import { surveyLink } from "../survey-link";
 import "../survey.css";
+import { useLang } from "../i18n/useLang";
 
 export default function Done({ onRestart }: { onRestart: () => void }) {
+  const { t } = useLang();
   const survey = surveyLink();
 
   return (
     <section className="screen done">
-      <h1>끝났어요</h1>
-      <p className="muted">
-        이 기기의 사진과 기록은 모두 지웠어요. 테스트 기간이라 서버에 보관한 사진은 10월 19일 오후
-        5시에 지워요.
-      </p>
+      <h1>{t("done.title")}</h1>
+      <p className="muted">{t("done.body")}</p>
 
       {survey && (
         <div className="done-survey">
-          <p>써 보니 어땠는지 알려 주시면 서비스를 고치는 데 쓸게요.</p>
+          <p>{t("done.surveyAsk")}</p>
           <a className="primary" href={survey} target="_blank" rel="noopener noreferrer">
-            후기 남기기 (1분)
+            {t("done.surveyGo")}
           </a>
         </div>
       )}
 
       <div className="row">
         <button type="button" className="primary" onClick={onRestart}>
-          다시 하기
+          {t("done.restart")}
         </button>
       </div>
     </section>

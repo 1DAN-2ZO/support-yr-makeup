@@ -13,6 +13,7 @@
  */
 
 import { refColors } from "@core/ref-colors";
+import type { Key } from "../i18n";
 import type { RefColors } from "@core/ref-colors";
 import { landmarksFromImage } from "./landmarker";
 
@@ -56,8 +57,12 @@ export async function analyzeRefPhoto(blob: Blob): Promise<RefAnalysis | RefFail
   }
 }
 
-export const REF_FAIL_TEXT: Record<RefFailure, string> = {
-  noFace: "사진에서 얼굴을 못 찾았어요. 얼굴이 크게 나온 정면 사진으로 올려 주세요.",
-  noCanvas: "사진을 읽지 못했어요. 다시 시도해 주세요.",
-  noColor: "화장 색을 읽기에 사진이 너무 작아요. 더 크게 나온 사진으로 올려 주세요.",
+/*
+ * 까닭마다 다른 안내 — 글은 `i18n/ko.ts` · `en.ts` 에 있고 여기엔 **열쇠**만 둔다 (2026-10-16).
+ * 부르는 쪽(`screens/Upload.tsx`)이 `t(REF_FAIL_TEXT[까닭])` 으로 글자를 꺼낸다.
+ */
+export const REF_FAIL_TEXT: Record<RefFailure, Key> = {
+  noFace: "up.fail.noFace",
+  noCanvas: "up.fail.noCanvas",
+  noColor: "up.fail.noColor",
 };

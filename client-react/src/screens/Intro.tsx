@@ -30,29 +30,28 @@
 
 import { useEffect, useRef, useState } from "react";
 import Consent from "./Consent";
+import LangPick from "../i18n/LangPick";
+import { useLang } from "../i18n/useLang";
 import "../intro.css";
 
 /** 확인할 것 셋 — 이름과 아이콘 모두 본 앱(public/ui/icon-*.svg) 것이다 */
-const CHECKS: readonly { name: string; icon: string }[] = [
-  { name: "앞머리", icon: "/ui/icon-bangs.svg" },
-  { name: "안경", icon: "/ui/icon-glasses.svg" },
-  { name: "밝기", icon: "/ui/icon-brightness.svg" },
+const CHECKS: readonly { key: "intro.check.bangs" | "intro.check.glasses" | "intro.check.light"; icon: string }[] = [
+  { key: "intro.check.bangs", icon: "/ui/icon-bangs.svg" },
+  { key: "intro.check.glasses", icon: "/ui/icon-glasses.svg" },
+  { key: "intro.check.light", icon: "/ui/icon-brightness.svg" },
 ];
 
-/** 본 앱 `CONSENT_TEXT` 와 같은 자리의 글 — 한곳에 모아 둬야 화면과 어긋나지 않는다 */
-const INTRO_TEXT = {
-  start: "촬영 시작",
-  /*
-   * 2026-10-15 (#469): 「찍기전에 확인해주세요」 → 반말체.
-   *
-   * 이슈는 이 글의 자리를 `core/flow.ts` 의 `CAPTURE_GUIDE.title` 로 짚었는데,
-   * **리액트판은 그것을 쓰지 않는다** (옛 화면의 `capture-probe.ts` 만 쓴다).
-   * 화면에 실제로 나오는 것은 여기다 — 배포본 번들에서 확인하고 찾았다
-   */
-  coachMessage: "촬영 전에 확인해줘!",
-} as const;
+/*
+ * 화면 글은 `i18n/ko.ts` · `en.ts` 로 옮겼다 (2026-10-16) — 열쇠는 `intro.*` 다.
+ * 전에는 여기 `INTRO_TEXT` 에 한국어가 직접 박혀 있었다.
+ *
+ * 말풍선 글의 자리를 찾느라 한 번 헤맸던 기록을 남겨 둔다: 이슈 #469 는 그 글을
+ * `core/flow.ts` 의 `CAPTURE_GUIDE.title` 로 짚었는데 **리액트판은 그것을 쓰지 않는다**
+ * (옛 화면의 `capture-probe.ts` 만 쓴다). 화면에 실제로 나오는 것은 이 화면이다.
+ */
 
 export default function Intro({ onAgree }: { onAgree: () => void }) {
+  const { t } = useLang();
   const [sheet, setSheet] = useState(false);
   const start = useRef<HTMLButtonElement>(null);
   /** 그냥 닫은 참인가 — 처음 그릴 때까지 포커스를 옮기지 않으려고 둔다 */
@@ -88,7 +87,7 @@ export default function Intro({ onAgree }: { onAgree: () => void }) {
         <img
           className="intro-photo"
           src="/ui/intro-face-guides.webp"
-          alt="눈썹·아이라인·블러셔 자리를 짚어 둔 화장 예시 사진"
+          alt={t("intro.photoAlt")}
         />
         {/*
           「쉐딩」만 사진에 안 그려져 있어서 여기서 얹는다 — 배포본도 같은 방식이다.
@@ -100,7 +99,8 @@ export default function Intro({ onAgree }: { onAgree: () => void }) {
           <circle cx="486" cy="862" r="8" />
           <line x1="493" y1="861" x2="540" y2="882" />
         </svg>
-        <div className="makeup-label label-shading">쉐딩</div>
+        {/* 나머지 꼬리표 셋(눈썹·아이라인·볼터치)은 사진에 그려져 있다 — 그림을 고쳐야 바뀐다 */}
+        <div className="makeup-label label-shading">{t("intro.label.shading")}</div>
 
         {/* 로고 — 본 앱도 이 사진 위 왼쪽 위에 얹는다 (`.intro-overlay-logo`) */}
         <div className="brand intro-overlay-logo" aria-label="nudy">
@@ -108,13 +108,16 @@ export default function Intro({ onAgree }: { onAgree: () => void }) {
           <i className="heart" aria-hidden="true" />
         </div>
 
+        {/* 말 고르기 — 로고 맞은편(오른쪽 위). 시작하기 전에 한 번 고르는 자리다 */}
+        <LangPick />
+
         <img className="nudy-coach-face" src="/ui/nudy-coach-simple.svg" alt="" aria-hidden="true" />
         {/*
           말풍선이 이 화면의 제목이다 — 다른 화면처럼 `h1` 로 둔다. 화면을 읽어 주는 기기에는
           화면마다 제목이 하나씩 있어야 "어디로 넘어왔는지" 가 들린다. 보이는 모양은 말풍선 그대로다
         */}
         <h1 className="nudy-coach-bubble">
-          {INTRO_TEXT.coachMessage}
+          {t("intro.coach")}
           {/* 말풍선 오른쪽 위의 작은 하트 — 본 앱 `.nudy-coach-bubble i` */}
           <i aria-hidden="true" />
         </h1>
@@ -123,10 +126,10 @@ export default function Intro({ onAgree }: { onAgree: () => void }) {
         <div className="intro-bottom-sheet">
           <ul className="intro-checks">
             {CHECKS.map((c) => (
-              <li key={c.name} className="intro-check">
+              <li key={c.key} className="intro-check">
                 {/* 그림 파일(SVG)이라 색을 CSS 로 못 바꾼다 — 색은 파일 안에 있다 (본 앱 주석 그대로) */}
                 <img className="check-icon" src={c.icon} alt="" aria-hidden="true" />
-                <span>{c.name}</span>
+                <span>{t(c.key)}</span>
                 {/* 초록 체크 동그라미는 장식이다 — 눌러서 켜고 끄는 것이 아니라 "이것만 보면 된다" 는 표시 */}
                 <i aria-hidden="true" />
               </li>
@@ -141,7 +144,7 @@ export default function Intro({ onAgree }: { onAgree: () => void }) {
           >
             {/* 아이콘은 꾸밈이다 — 글자가 이미 무엇을 하는지 말한다 */}
             <img src="/ui/icon-camera-start.svg" alt="" aria-hidden="true" />
-            <span>{INTRO_TEXT.start}</span>
+            <span>{t("intro.start")}</span>
           </button>
         </div>
       </div>
