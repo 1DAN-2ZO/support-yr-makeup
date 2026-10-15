@@ -40,7 +40,7 @@ export default function Templates({ onPick }: { onPick: (t: MakeupTemplate) => v
       <div className="coach">
         <img src="/ui/nudy-coach-simple.svg" alt="" aria-hidden="true" />
         <p>
-          따라 하고 싶은 화장을 골라 주세요
+          따라 하고 싶은 화장을 골라줘!
           <i aria-hidden="true" />
         </p>
       </div>

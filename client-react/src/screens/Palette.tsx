@@ -58,7 +58,7 @@ export default function Palette({
       <div className="coach">
         <img src="/ui/nudy-coach-simple.svg" alt="" aria-hidden="true" />
         <p>
-          고른 화장의 색이에요. 이제 부위별로 따라 해볼게요
+          시작하기 전에 이런 색의 화장품들이 있으면 좋아!
           <i aria-hidden="true" />
         </p>
       </div>

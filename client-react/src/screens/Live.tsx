@@ -64,7 +64,7 @@ import "../camera.css";
 import "../live.css";
 
 export const LIVE_TEXT = {
-  loading: "카메라를 준비하고 있어요…",
+  loading: "카메라 준비 중…",
   cameraFail: "카메라를 열 수 없어요. 브라우저 설정에서 카메라를 허용해 주세요",
   noPart: "부위가 정해지지 않았어요",
   noBaseline: "맨얼굴 사진이 없어요. 처음 촬영부터 다시 해 주세요",

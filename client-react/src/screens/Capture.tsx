@@ -61,17 +61,17 @@ export interface ShotData {
 export const PENDING_FACE_SHAPE: FaceShape = { label: "oval", confidence: 0, method: "rule", version: "faceshape-pending" };
 
 export const CAPTURE_TEXT = {
-  loading: "카메라를 준비하고 있어요…",
+  loading: "카메라 준비 중…",
   /** 카메라를 못 열었을 때 누르는 버튼 — 안내 문장은 까닭마다 다르다 (core/camera-fail) */
   cameraRetry: "다시 시도",
   title: "사진 촬영",
   doneTitle: "사진 확인",
   doneSub: "찍힌 사진을 확인해 주세요",
-  doneCoach: "이상한 사진이 있으면 그 사진만 다시 찍을 수 있어요",
+  doneCoach: "이대로 화장해볼까?",
   retake: "다시 찍기",
   go: "화장 고르러 가기",
   /** 얼굴을 못 찾았을 때 말풍선에 남겨 두는 말 — 빈 칸이면 왜 안 찍히는지 알 수 없다 */
-  aim: "얼굴을 맞춰 주세요",
+  aim: "원 안에 얼굴을 맞춰 줘!",
 } as const;
 
 export interface CaptureProps {

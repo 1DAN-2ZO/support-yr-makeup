@@ -158,7 +158,7 @@ export default function Feedback({
         <div className="coach">
           <img src="/ui/nudy-coach-simple.svg" alt="" aria-hidden="true" />
           <p>
-            예상 메이크업과 견줘서 어디를 다시 보면 좋을지 알려드릴게요
+            어디가 잘 됐는지, 어디를 수정하면 좋을지 알려줄게!
             <i aria-hidden="true" />
           </p>
         </div>
@@ -241,7 +241,7 @@ export default function Feedback({
         <div className="coach">
           <img src="/ui/nudy-coach-simple.svg" alt="" aria-hidden="true" />
           <p>
-            사진을 한 번만 다시 찍어 주세요
+            같은 자리에서 사진을 다시 찍어줘!
             <i aria-hidden="true" />
           </p>
         </div>
@@ -271,7 +271,7 @@ export default function Feedback({
       <div className="coach">
         <img src="/ui/nudy-coach-simple.svg" alt="" aria-hidden="true" />
         <p>
-          예상 메이크업과 견줘서 어디를 다시 보면 좋을지 알려드릴게요
+          어디가 잘 됐는지, 어디를 수정하면 좋을지 알려줄게!
           <i aria-hidden="true" />
         </p>
       </div>

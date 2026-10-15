@@ -62,35 +62,35 @@ describe("S 촬영 2장 게이트", () => {
     expect(SHOTS.map((s) => s.id)).toEqual(["front_open"]);
   });
 
-  it("S2 정면 눈 뜸: 전부 맞으면 '찍을게요'", () => {
+  it("S2 정면 눈 뜸: 전부 맞으면 '그대로 Stop!'", () => {
     const g = shotGate("front_open", OK);
     expect(g.ok).toBe(true);
     expect(g.firstFail).toBeNull();
-    expect(g.text).toBe("찍을게요");
+    expect(g.text).toBe("그대로 Stop!");
   });
 
   it("S3 촬영 조건 순서: 얼굴(문구 없음) → 각도 → 눈 → 크기 → 선명 → 밝기 → 안정, 하나만", () => {
     expect(shotGate("front_open", { ...OK, faceDetected: false })).toMatchObject({ ok: false, firstFail: "face", text: "" });
-    expect(shotGate("front_open", { ...OK, faceInset: -0.02, yaw: 20 })).toMatchObject({ firstFail: "visible", text: "얼굴이 잘려요. 얼굴 전체가 보이게 해 주세요" });
+    expect(shotGate("front_open", { ...OK, faceInset: -0.02, yaw: 20 })).toMatchObject({ firstFail: "visible", text: "잘 안 보여… 좀 더 원 안으로!" });
     expect(shotGate("front_open", { ...OK, faceInset: 0.01 })).toMatchObject({ firstFail: "visible" });
     expect(shotGate("front_open", { ...OK, faceInset: 0.05 }).ok).toBe(true);
-    expect(shotGate("front_open", { ...OK, yaw: 20, closedA: true, closedB: true, faceRatio: 0.1 })).toMatchObject({ firstFail: "angle", text: "조금만 정면으로" });
+    expect(shotGate("front_open", { ...OK, yaw: 20, closedA: true, closedB: true, faceRatio: 0.1 })).toMatchObject({ firstFail: "angle", text: "고개를 조금만 돌려줘!" });
     expect(shotGate("front_open", { ...OK, closedA: true, closedB: true, faceRatio: 0.1 })).toMatchObject({ firstFail: "eyes", text: "눈을 떠 주세요" });
     expect(shotGate("front_open", { ...OK, faceRatio: 0.1, sharpness: 1 })).toMatchObject({ firstFail: "size", text: "조금 더 가까이" });
     expect(shotGate("front_open", { ...OK, faceRatio: 0.9 })).toMatchObject({ firstFail: "size", text: "조금 멀리" });
     expect(shotGate("front_open", { ...OK, sharpness: 1, foreheadL: 20 })).toMatchObject({ firstFail: "sharp", text: "흔들려요. 잠시 멈춰 주세요" });
     expect(shotGate("front_open", { ...OK, foreheadL: 40 })).toMatchObject({ firstFail: "bright", text: "조금 더 밝은 곳으로" });
     expect(shotGate("front_open", { ...OK, foreheadL: 100 })).toMatchObject({ firstFail: "bright", text: "너무 밝아요. 조금 어두운 곳으로" });
-    expect(shotGate("front_open", { ...OK, stableCount: 1 })).toMatchObject({ firstFail: "stable", text: "잠시만 그대로", stableCount: 1 });
+    expect(shotGate("front_open", { ...OK, stableCount: 1 })).toMatchObject({ firstFail: "stable", text: "그대로 Stop!", stableCount: 1 });
   });
 
   it("S3b 고개를 위아래로 너무 들면 각도 조건", () => {
-    expect(shotGate("front_open", { ...OK, pitch: 20 })).toMatchObject({ firstFail: "angle", text: "조금만 정면으로" });
+    expect(shotGate("front_open", { ...OK, pitch: 20 })).toMatchObject({ firstFail: "angle", text: "고개를 조금만 돌려줘!" });
   });
 
-  it("S4 정면 장: 어느 쪽으로 돌렸든 '조금만 정면으로' 한 가지", () => {
+  it("S4 정면 장: 어느 쪽으로 돌렸든 '고개를 조금만 돌려줘!' 한 가지", () => {
     for (const yaw of [-40, -11, 11, 40]) {
-      expect(shotGate("front_open", { ...OK, yaw })).toMatchObject({ firstFail: "angle", text: "조금만 정면으로" });
+      expect(shotGate("front_open", { ...OK, yaw })).toMatchObject({ firstFail: "angle", text: "고개를 조금만 돌려줘!" });
     }
   });
 

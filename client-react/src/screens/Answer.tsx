@@ -179,7 +179,7 @@ export default function Answer({ source, preview, read, bare, made, onMade, onNe
         <img src="/ui/nudy-coach-simple.svg" alt="" aria-hidden="true" />
         <p>
           {made
-            ? "예상 메이크업이 완성됐어요. 이제 부위별로 따라 해볼게요"
+            ? "이렇게 화장할 수 있어! 이대로 알려줄까?"
             : "사진에서 색을 읽었어요. 이제 부위별로 따라 해볼게요"}
           <i aria-hidden="true" />
         </p>
