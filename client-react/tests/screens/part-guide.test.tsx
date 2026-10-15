@@ -115,6 +115,13 @@ describe("부위 가이드 — 정답사진을 잘라 보여 주기", () => {
     expect(container.textContent).toContain("찾지 못했어요");
   });
 
+  // flow-slots.test.ts FS5e — 못 찾은 부위에서는 「실시간 가이드로 보기」도 뺀다 (2026-10-15 본 앱과 같게)
+  it("그 부위의 화장을 못 찾았으면 「실시간 가이드로 보기」를 안 그린다", async () => {
+    render(<PartGuide colors={fakeColors()} startPart="cheek" getGuide={async () => ({ ok: true, view })} onDone={() => {}} onLive={() => {}} />);
+    await waitFor(() => expect(paint).toHaveBeenCalledWith(expect.anything(), view, "cheek"));
+    expect(screen.queryByRole("button", { name: "실시간 가이드로 보기" })).toBeNull();
+  });
+
   // flow-slots.test.ts FS5d · FS5e(실패) · FS5i — 견본으로 돌아갈 때는 「예시」 딱지와 말풍선
   it.each([
     ["재료를 안 받음", undefined],

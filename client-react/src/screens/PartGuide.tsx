@@ -209,8 +209,8 @@ export default function PartGuide({
 
         {/*
           그 부위의 화장만 못 찾았을 때 — 자른 그림은 그대로 두고 **글자로** 밝힌다.
-          본 앱은 이때 「실시간 가이드로 보기」까지 빼지만 여기서는 두었다 (이 작업의 범위 밖) —
-          실시간 가이드는 테두리가 없으면 옛 표준 틀을 「예시」 딱지와 함께 그리니 흐름은 막히지 않는다
+          이때는 「실시간 가이드로 보기」도 뺀다 (2026-10-15, 본 앱 FS5e 와 같게) — 겹쳐 볼 테두리가 없는데
+          카메라로 보내면 옛 표준 틀이 「예시」 딱지로 나와 "내 정답사진" 인 줄 안다
         */}
         {missing && <p className="slot-guide-none">{NOT_FOUND_TEXT}</p>}
 
@@ -219,7 +219,7 @@ export default function PartGuide({
           흐름의 한 칸이 아니라 지금 부위를 카메라로 겹쳐 보는 딴 길이라, 아래 「이전 / 다음」 줄과
           나란히 놓으면 흐름의 한 칸으로 읽힌다
         */}
-        {onLive && (
+        {onLive && !missing && (
           <button type="button" className="go ghost" onClick={() => onLive(part)}>
             실시간 가이드로 보기
           </button>
