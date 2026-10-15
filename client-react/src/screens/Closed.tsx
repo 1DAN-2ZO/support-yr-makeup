@@ -5,10 +5,15 @@
  */
 import { useEffect } from "react";
 import { SID_KEY } from "@core/session-id";
-import { CLOSED_TEXT } from "@core/test-period";
 import { SURVEY_BASE } from "../survey-link";
+import { useLang } from "../i18n/useLang";
 
+/*
+ * 글은 코어 `test-period.ts` 의 `CLOSED_TEXT` 와 같은 말이다 — 영어도 써야 해서
+ * `i18n` 쪽(`closed.*`)으로 옮겨 두었다. 코어는 본 앱이 같이 쓰므로 고치지 않았다.
+ */
 export default function Closed() {
+  const { t } = useLang();
   useEffect(() => {
     try {
       window.localStorage.removeItem(SID_KEY);
@@ -18,11 +23,11 @@ export default function Closed() {
   }, []);
   return (
     <section className="screen done">
-      <h1>{CLOSED_TEXT.title}</h1>
-      <p className="muted">{CLOSED_TEXT.body}</p>
+      <h1>{t("closed.title")}</h1>
+      <p className="muted">{t("closed.body")}</p>
       <p className="slot-survey">
         <a href={SURVEY_BASE} target="_blank" rel="noopener noreferrer">
-          {CLOSED_TEXT.survey}
+          {t("closed.survey")}
         </a>
       </p>
     </section>

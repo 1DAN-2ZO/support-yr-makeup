@@ -24,6 +24,7 @@
  */
 
 import type { FeedbackTone, WholeFeedback } from "@core/feedback-whole";
+import type { Key } from "../i18n";
 import { anchorDownload, fitText, saveCard, type SaveOutcome, type ShareEnv } from "./result-card";
 
 export const FEEDBACK_CARD_W = 1080;
@@ -38,15 +39,19 @@ export const CARD_TEXT = {
   fixMark: "→",
 } as const;
 
-/** 저장 결과를 사용자에게 말할 때 쓰는 문장 — 화면이 가져다 쓴다 */
-export const SAVE_TEXT: Record<SaveOutcome, string> = {
-  shared: "공유 창에서 저장을 눌러 주세요",
-  downloaded: "받은 파일에 저장했어요",
-  cancelled: "저장을 취소했어요",
-  unavailable: "이 브라우저에서는 저장할 수 없어요. 화면을 캡처해 주세요",
+/*
+ * 저장 결과를 사용자에게 말할 때 쓰는 **열쇠** — 화면이 `t()` 로 글자를 꺼낸다 (2026-10-16).
+ * 위 `CARD_TEXT` 와는 자리가 다르다: 저쪽은 **그림 안에 그려지는** 글이라 한국어 그대로 둔다
+ * (같은 그림에 들어가는 피드백 문장이 코어에서 한국어로 오기 때문이다 — 섞어 두면 더 어색하다).
+ */
+export const SAVE_TEXT: Record<SaveOutcome, Key> = {
+  shared: "save.out.shared",
+  downloaded: "save.out.downloaded",
+  cancelled: "save.out.cancelled",
+  unavailable: "save.out.unavailable",
 };
 /** 공유 창을 쓰는 기기(특히 iPhone)에서 누르기 전에 보여 줄 한 줄 — 거기서 "이미지 저장" 을 눌러야 사진에 들어간다 */
-export const SHARE_HINT = "공유 창이 뜨면 '이미지 저장'을 눌러 주세요";
+export const SHARE_HINT: Key = "save.shareHint";
 
 export type FeedbackCardOp =
   | { op: "bg"; color: string; h: number }

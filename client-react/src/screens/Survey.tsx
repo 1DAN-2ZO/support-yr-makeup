@@ -13,8 +13,10 @@
 
 import { useEffect, useRef } from "react";
 import "../survey.css";
+import { useLang } from "../i18n/useLang";
 
 export default function Survey({ url, onClose }: { url: string; onClose: () => void }) {
+  const { t } = useLang();
   const go = useRef<HTMLAnchorElement>(null);
 
   // 뜨면 바로 「후기 남기기」로 포커스 — 본 앱도 같다 (`queueMicrotask(() => go.focus())`).
@@ -36,13 +38,13 @@ export default function Survey({ url, onClose }: { url: string; onClose: () => v
       }}
     >
       <div className="done-modal" role="dialog" aria-modal="true" aria-labelledby="survey-modal-title">
-        <h2 id="survey-modal-title">사용자 의견을 들려주세요</h2>
-        <p>써 보니 어땠는지 알려 주시면 서비스를 고치는 데 쓸게요. 1분이면 끝나요.</p>
+        <h2 id="survey-modal-title">{t("survey.title")}</h2>
+        <p>{t("survey.body")}</p>
         <a className="primary" href={url} target="_blank" rel="noopener noreferrer" ref={go} onClick={onClose}>
-          후기 남기기
+          {t("survey.go")}
         </a>
         <button type="button" className="done-modal-later" onClick={onClose}>
-          다음에 할게요
+          {t("survey.later")}
         </button>
       </div>
     </div>

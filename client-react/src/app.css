@@ -712,6 +712,41 @@ img {
   background: rgb(38 39 43 / 14%);
 }
 
+/*
+ * 말 고르기 (한국어 / English) — 사진 위 **오른쪽 위**, 로고 맞은편 (2026-10-16, 전지원이 자리를 정했다).
+ * 로고(`.intro-overlay-logo`)와 같은 높이에 둬서 한 줄로 읽히게 한다.
+ * 사진 위에 얹히니 바탕을 반쯤 깔아 준다 — 밝은 사진에서는 글자만으로 안 읽힌다.
+ */
+.lang-pick {
+  position: absolute;
+  right: 5.8%;
+  top: 1.8%;
+  z-index: 3;
+  display: flex;
+  gap: 4px;
+}
+
+.lang-btn {
+  min-height: 28px;
+  padding: 0 11px;
+  border: 1px solid rgb(255 255 255 / 60%);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 62%);
+  color: rgb(38 39 43 / 62%);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+}
+
+/* 지금 고른 쪽 — 글자만 진하게 하면 어느 쪽인지 안 읽힌다. 바탕까지 바꾼다 */
+.lang-btn.is-on {
+  border-color: #ffc3cd;
+  background: #fff;
+  color: var(--ink);
+}
+
 /* 확인할 것 셋 — 본 앱처럼 한 줄에 셋 */
 .intro-checks {
   display: grid;

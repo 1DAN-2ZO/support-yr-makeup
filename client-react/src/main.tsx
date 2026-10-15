@@ -2,6 +2,7 @@ import { Component, StrictMode, type ErrorInfo, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import BootError from "./screens/BootError";
+import { LangProvider } from "./i18n/useLang";
 
 /**
  * 그리다 터지면 빈 화면 대신 "다시 열어 주세요" 를 보여 준다 (본 앱 `showBootError`, #454 C6).
@@ -27,7 +28,10 @@ window.addEventListener("unhandledrejection", (e) => console.error("unhandled:",
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ErrorBoundary>
-      <App />
+      {/* 말(한국어·영어)을 앱 전체가 같이 본다 — 처음 값은 폰 설정을 따른다 (i18n/useLang) */}
+      <LangProvider>
+        <App />
+      </LangProvider>
     </ErrorBoundary>
   </StrictMode>,
 );

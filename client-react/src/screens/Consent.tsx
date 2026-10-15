@@ -27,46 +27,20 @@
 
 import { Fragment, useEffect, useRef, type KeyboardEvent } from "react";
 import { unlockShutterCue } from "../lib/shutter-cue";
+import { useLang } from "../i18n/useLang";
 
 /**
- * `**…**` 로 감싼 곳은 화면에서 굵게 보인다 — 본 앱과 같은 적는 방식.
+ * 화면 글은 `i18n/ko.ts` · `en.ts` 로 옮겼다 (2026-10-16) — 열쇠는 `consent.*` 다.
+ * 여기 남는 것은 **묶음 넷의 순서**뿐이다. 글 자체는 저쪽에 있다.
  *
- * 글은 **본 앱 `screens/consent.ts` 의 `CONSENT_SECTIONS` 와 같다** (2026-10-14, #454 A7) — 사용 기록 보내기(`/events`)와
- * 사진 보관(`/keep`)이 붙었으니(`lib/ops`) 글도 그 동작 그대로여야 한다. 다른 곳은 "폰에 남는 것" 한 줄뿐이다:
- * 이 버전은 폰에 사진을 저장하지 않아서(session-store 없음) "2시간 뒤 지운다" 대신 "창을 닫으면 사라진다" 로 적는다.
- * 본 앱이 글을 바꾸면 여기도 같이 바꾼다
+ * `**…**` 로 감싼 곳은 화면에서 굵게 보인다 — 본 앱과 같은 적는 방식이고, 영어 글도 같다.
  */
-const CONSENT_SECTIONS: readonly { head: string; text: string }[] = [
-  {
-    head: "서버로 보내는 사진",
-    text: "맨얼굴 사진을 한 장 찍어요. 그 사진과 올려 주신 참고 사진을 **서버로 보내** 예상 메이크업을 만들어요. 화장을 다 한 뒤에 찍는 사진도 **서버로 보내** 피드백에 써요.",
-  },
-  {
-    head: "테스트 기간 보관",
-    text: "지금은 테스트 기간이에요 (10월 19일 오후 3시까지). 맨얼굴, 예상 메이크업, 화장한 뒤 찍은 사진과 피드백 결과를 **서버에 10월 19일 오후 5시까지 보관해요.** 피드백이 맞는지 사람이 확인하고 기준을 다듬는 데만 써요. **10월 19일 오후 5시에 모두 지우고**, 그 전에도 지워 달라고 하시면 바로 지워요 — **끝낼 때 나오는 후기 설문에 적어 주세요.** 올려 주신 **참고 사진은 보관하지 않고**, 예상 메이크업을 만든 뒤 바로 지워요.",
-  },
-  {
-    head: "폰에 남는 것",
-    text: "폰에 있는 사진과 결과는 **끝내기를 누르면 바로 지워져요.** 누르지 않고 닫아도 창을 닫는 순간 사라져요 — 이 버전은 폰에 사진을 따로 저장하지 않아요.",
-  },
-  {
-    head: "사용 기록",
-    text: "서비스를 고치는 데 쓰려고 사용 기록도 함께 보내요. 어느 링크로 들어왔는지, 어느 화면까지 갔는지, 버튼을 눌렀는지 같은 것만이고 — **사진과 얼굴 위치는 보내지 않아요.** 사용 기록도 **10월 19일 오후 5시에 모두 지워요.**",
-  },
-];
-/** 본 앱 `CONSENT_TEXT` 와 같은 자리의 글 — 한곳에 모아 둬야 화면과 어긋나지 않는다 */
-const CONSENT_TEXT = {
-  title: "사진 처리 안내",
-  agree: "동의하고 시작",
-  /**
-   * 배포본과 같은 「닫기」다 — 누르면 **시트만 닫히고** 인트로로 돌아간다 (배포본 consent.ts
-   * 의 `button(CONSENT_TEXT.deny, "", closeSheet)`). 전에는 이 버튼이 거절로 걸려 있어서
-   * 글을 「동의하지 않을래요」로 바꿔 뒀는데, 배포본과 글도 하는 일도 달라져서 되돌렸다.
-   */
-  deny: "닫기",
-  denied: "서버 처리에 동의해야 사용할 수 있어요",
-  back: "다시 생각해 볼게요",
-} as const;
+const SECTIONS = [
+  { head: "consent.s1.head", body: "consent.s1.body" },
+  { head: "consent.s2.head", body: "consent.s2.body" },
+  { head: "consent.s3.head", body: "consent.s3.body" },
+  { head: "consent.s4.head", body: "consent.s4.body" },
+] as const;
 
 /** `**…**` 사이만 굵게. 글자를 그대로 넣는다 — 본 앱도 `innerHTML` 을 쓰지 않는다 */
 function bolded(text: string) {
@@ -85,6 +59,7 @@ export default function Consent({
    */
   onClose: () => void;
 }) {
+  const { t } = useLang();
   const box = useRef<HTMLDivElement>(null);
 
   // 뜨면 바로 키보드를 창 안으로. 버튼이 아니라 **창 자체**에 둔다 —
@@ -136,14 +111,14 @@ export default function Consent({
         tabIndex={-1}
         ref={box}
       >
-        <h2 id="consent-sheet-title">{CONSENT_TEXT.title}</h2>
+        <h2 id="consent-sheet-title">{t("consent.title")}</h2>
 
         {/* 글이 길어서 글만 따로 굴린다 — 아래 버튼은 늘 보인다 (본 앱 `.consent-body`) */}
         <div className="consent-body">
-          {CONSENT_SECTIONS.map((s) => (
-            <Fragment key={s.head}>
-              <h3>{s.head}</h3>
-              <p>{bolded(s.text)}</p>
+          {SECTIONS.map((sec) => (
+            <Fragment key={sec.head}>
+              <h3>{t(sec.head)}</h3>
+              <p>{bolded(t(sec.body))}</p>
             </Fragment>
           ))}
         </div>
@@ -162,11 +137,11 @@ export default function Consent({
               onAgree();
             }}
           >
-            {CONSENT_TEXT.agree}
+            {t("consent.agree")}
           </button>
           {/* 배포본처럼 시트만 닫는다 — 거절은 뒷배경·Esc 와 같은 길이다 */}
           <button type="button" onClick={onClose}>
-            {CONSENT_TEXT.deny}
+            {t("consent.close")}
           </button>
         </div>
       </div>
@@ -184,12 +159,13 @@ export default function Consent({
  * 쓰지 않는다. 본 앱은 작은 제목(`.screen h1`) 하나와 테두리 버튼 한 줄(`.row`)뿐이다.
  */
 export function Denied({ onBack }: { onBack: () => void }) {
+  const { t } = useLang();
   return (
     <section className="screen consent">
-      <h1>{CONSENT_TEXT.denied}</h1>
+      <h1>{t("consent.denied")}</h1>
       <div className="row">
         <button type="button" onClick={onBack}>
-          {CONSENT_TEXT.back}
+          {t("consent.back")}
         </button>
       </div>
     </section>
