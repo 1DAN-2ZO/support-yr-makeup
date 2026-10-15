@@ -63,7 +63,6 @@ export const SCREEN_OWNER: Record<ScreenId, "capture" | "guide" | "score" | "app
   review: "app",
   done: "app",
   answer: "prep",
-  templates: "prep",
   partguide: "guide",
   attempt: "app",
   feedback: "score",
@@ -183,6 +182,5 @@ export function backTarget(screen: ScreenId, part: PartId | null): { screen: Scr
   if (screen === "live" || screen === "attempt") return { screen: "partguide" };
   if (screen === "feedback") return { screen: "attempt" };
   if (screen === "save") return { screen: "feedback" };
-  if (screen === "templates") return { screen: "answer" };
   return null;
 }

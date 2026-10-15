@@ -69,7 +69,7 @@ import { shrinkForUpload } from "./screens/answer-make";
 import { noteOfFeedback, noteOfGuide, noteOfMake, noteOfRef, noteOfSave, noteOfShrink } from "./screens/task-notes";
 import { timeTask } from "./core/task-timer";
 import { createKeeper, keepAttempt } from "./core/keep-client";
-import { feedbackSlot, partGuideSlot, templatesSlot, saveSlot, slotScreen, type PartGuideSlotDeps, type SaveSlotDeps, type SlotDeps } from "./screens/flow-slots";
+import { feedbackSlot, partGuideSlot, saveSlot, slotScreen, type PartGuideSlotDeps, type SaveSlotDeps, type SlotDeps } from "./screens/flow-slots";
 import { inNewFlow } from "./core/screens";
 
 /** 후기 설문 (구글 폼). 끝내기를 누르면 모달로 묻고, 끝 화면에도 한 번 더 둔다 */
@@ -162,7 +162,7 @@ function showSplash(): () => Promise<void> {
   splash.setAttribute("aria-label", "nudy");
   splash.innerHTML = `
     <div class="splash-frame">
-      <img src="/ui/nudy-splash.png" alt="" aria-hidden="true" />
+      <img src="/ui/nudy-splash.webp" alt="" aria-hidden="true" />
     </div>
   `;
   document.body.append(splash);
@@ -674,7 +674,6 @@ function registerFlowSlots(shell: ReturnType<typeof createShell<Session>>, deps:
     next: "partguide",
   }, { makeAnswer: deps.makeAnswer, analyze: deps.analyzeRef, shrink: deps.shrinkRef }));
   // 화장 템플릿 고르기 (#420) — 지금은 화면만. 고른 뒤 예상 메이크업을 만드는 연결은 나중에
-  shell.register("templates", templatesSlot<Session>(deps));
   shell.register("partguide", partGuideSlot<Session>(deps));
   // 화면 6 피드백 — 임시 자리를 치우고 진짜 화면으로 (#318 모양 · #332 연결).
   // 재료는 getFeedback() 이 다 모아서 준다 — 화면은 그리기만 한다
