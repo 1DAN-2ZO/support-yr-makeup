@@ -1,0 +1,2013 @@
+/*
+ * 화면 모양 — 본 앱(support-yr-makeup/client/src/app.css)의 값을 그대로 옮긴다.
+ *
+ * 2026-10-14 에 **본 앱과 눈으로 맞추는 작업**을 했다. 전에는 포트폴리오로 시작하던 때의
+ * 모양(둥근 카드 · 연분홍 바탕 · 왼쪽 정렬 목록)이 남아 있어서, 같은 서비스로 안 보였다.
+ * 지금은 본 앱의 `.slot` 틀을 따른다 — **흰 바탕 · 로고 · 코치 말풍선 · 제목 · 내용 · 알약 버튼**.
+ *
+ * 색·크기는 눈으로 고르지 않았다. 아래 값은 전부 본 앱 app.css 에서 복사한 것이고,
+ * 어느 규칙에서 가져왔는지 주석에 적어 둔다 — 본 앱이 바뀌면 같은 자리를 찾아 고치면 된다.
+ *
+ * 폰에서 손가락으로 쓰는 화면이라 **누르는 것은 44px 이상**으로 둔다. 본 앱이 그보다 작게
+ * 잡아 둔 자리(예: 썸네일의 「다시 찍기」 34px)는 44px 로 키웠다 — 거기만 일부러 다르다.
+ *
+ * 다크 모드는 넣지 않았다. 본 앱은 `prefers-color-scheme` 로 바탕을 어둡게 바꾸는데, 색조
+ * 화장 색을 보여 주는 화면이라 바탕이 어두워지면 같은 색이 다르게 보인다 — 흰 쪽으로 고정한다.
+ */
+
+/* 본 앱과 같은 글꼴 (본 앱 app.css 첫 줄). 굵기 650·760 은 이 가변 글꼴이라야 제 값이 나온다 */
+@import url("https://cdn.jsdelivr.net/gh/sunn-us/SUIT/fonts/variable/woff2/SUIT-Variable.css");
+
+:root {
+  /* 본 앱 --beauty-pink · 버튼과 강조 (본 앱은 화면마다 다르지 않게 한곳에서 정한다) */
+  --pink: #ff8095;
+  /* 글자 강조 · 테두리 버튼 글자 (본 앱 .slot-live 의 color) */
+  --pink-ink: #ef6b85;
+  /* 로고 분홍 (본 앱 .nudy-logo) */
+  --pink-logo: #ff9bac;
+  /* 폰 틀 바깥 바탕 (본 앱 --bg) */
+  --bg: #f7f5f1;
+  --card: #fff;
+  /* 제목 글자 (본 앱 --beauty-ink) */
+  --ink-strong: #26272b;
+  /* 본문 글자 (본 앱 --beauty-text) */
+  --ink: #3b3c40;
+  /* 거드는 글자 (본 앱 --beauty-muted) */
+  --ink-weak: #83858c;
+  /* 카드 테두리 (본 앱의 카드들이 모두 쓰는 값) */
+  --line: #ebe6e8;
+  /*
+   * 본 앱 `--line`(#e6e2da) — **위의 카드 테두리와 다른 색이다.** 본 앱은 둘을 따로 쓴다:
+   * 흰 카드의 테두리는 #ebe6e8, 네모 버튼(`.row button:not(.primary)`)의 테두리는 #e6e2da.
+   * 전에는 이 버전이 둘을 하나로 합쳐 둬서 동의 창·이용 불가 화면의 버튼 테두리가 본 앱보다 밝았다
+   */
+  --line-ui: #e6e2da;
+  /* 본 앱 --muted · 거드는 글 중에서도 **흰 카드 밖**에 놓이는 것 (사진 설명 · 출처 · 알림 한 줄) */
+  --ink-dim: #6b6b6b;
+  /* 본 앱 카드 모서리는 4px 다 — 둥근 카드는 쓰지 않는다 */
+  --radius: 4px;
+  --font-ui: "SUIT Variable", SUIT, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  /* 본 앱 --weight-* 와 같은 이름·값 */
+  --weight-title: 650;
+  --weight-strong: 600;
+  --weight-regular: 400;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.5 var(--font-ui);
+  font-weight: var(--weight-regular);
+  /* 가로 스크롤이 생기면 폰에서는 화면이 어긋난 것처럼 보인다 — 애초에 생기지 않게 막는다 */
+  overflow-x: hidden;
+}
+
+img {
+  max-width: 100%;
+}
+
+/*
+ * 폰 폭으로 묶어 가운데 — 본 앱 `#app` 과 같은 폭(430px)이고, 안쪽 여백은 본 앱 `.slot` 의
+ * 24px / 26px / 64px 다. 아래를 넉넉히 비우는 까닭도 본 앱과 같다: 스크롤이 멈추는 자리에
+ * 버튼이 걸리면 잘못 눌린다 (본 앱 #369 실사용 피드백).
+ */
+.app {
+  display: flex;
+  flex-direction: column;
+  /*
+   * 폭을 **화면 높이에도 맞춘다** — 본 앱 `#app` 과 같은 식이다.
+   *   min(100vw, 100dvh × 941/1672, 430px)
+   *
+   * 941:1672 은 안내 화면 바탕 사진의 비율이다. 세로로 긴 폰에서 폭만 꽉 채우면
+   * 그 사진이 잘리고, 글자·로고가 화면에 견줘 작아 보인다. 실제로 폰에서 보니
+   * 본 앱보다 전체가 작게 보였다 (2026-10-14).
+   *
+   * `max-width: 430px` 만 두었던 것이 원인이었다 — 높이를 안 봤다.
+   */
+  width: min(100vw, calc(100dvh * 941 / 1672), 430px);
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: calc(24px + env(safe-area-inset-top)) 26px calc(64px + env(safe-area-inset-bottom));
+  background: var(--card);
+}
+
+/*
+ * 로고 줄 — 본 앱 `.slot-logo-row` 그대로 (뒤로 화살표 + 로고). 본 앱은 화면마다 직접 넣는데
+ * 이 버전은 App.tsx 가 맨 위에 한 번 그린다 — 자리와 값은 같다.
+ *
+ * 줄 높이는 본 앱과 같은 44px 이 된다. 다만 44 가 나오는 까닭이 다르다:
+ * 본 앱은 로고가 「누르면 처음으로」 버튼(`.slot-home`, min-height 44px)이라 그렇고,
+ * 이 버전은 **화살표를 44px 로 키워서** 그렇다 (본 앱 화살표는 40px — 손가락으로 누르는
+ * 자리는 44px 이상으로 둔다는 이 파일 머리글의 규칙을 따랐다).
+ * 로고를 누르는 길(`.slot-home` — "처음부터 다시 할까요?")은 2026-10-15 에 넣었다 (#454 C3, 본 앱 #404)
+ */
+/* 로고 = 「처음으로」 버튼 — 본 앱 `.slot-home` 그대로. 손가락으로 누르는 자리는 44px 이상, 보이는 모양은 로고 그대로(배경 없음) */
+.slot-home {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.slot-home:active {
+  opacity: 0.7;
+}
+
+.slot-logo-row {
+  display: flex;
+  align-self: stretch;
+  align-items: center;
+  gap: 10px;
+}
+
+/* 동그란 화살표. 글자가 없어서 갈 곳은 aria-label 로만 알 수 있다 (App.tsx) */
+.slot-back {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  /* 본 앱은 40px 다 — 손가락으로 누르는 자리라 여기서만 44px 로 키웠다 */
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #f7f4f2;
+  color: #8d8d8d;
+  cursor: pointer;
+}
+
+.slot-back svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.slot-back:active {
+  background: #efe9e6;
+}
+
+/*
+ * 로고 그 자체 — 본 앱 `.nudy-logo` 의 글꼴·색·세로로 살짝 눌린 모양(scaleY)까지 같은 값이다.
+ * 동의 화면에서는 이 class 가 사진 위에 얹히는 로고로도 쓰인다 (`.intro-overlay-logo`).
+ */
+.brand {
+  align-self: center;
+  display: inline-flex;
+  align-items: flex-start;
+  padding: 0;
+  color: var(--pink-logo);
+  font-family: "Arial Rounded MT Bold", "Avenir Next Rounded", "Nunito", "Apple SD Gothic Neo", system-ui, sans-serif;
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.015em;
+  text-transform: lowercase;
+  transform: scaleY(0.84);
+}
+
+/*
+ * 로고 옆 하트. App.tsx 가 넣는 글자는 「♥」인데 본 앱은 **반달 둘을 붙여 그린 하트**다 —
+ * 글자는 기기마다 모양이 달라서 로고가 기기별로 달라 보인다. 글자는 숨기고(font-size:0)
+ * 본 앱 `.nudy-logo i` 와 같은 값으로 그린다.
+ */
+.heart {
+  position: relative;
+  display: inline-block;
+  width: 11px;
+  height: 10px;
+  margin: -0.08em 0 0 -0.03em;
+  font-size: 0;
+  transform: rotate(-14deg);
+}
+
+.heart::before,
+.heart::after {
+  content: "";
+  position: absolute;
+  width: 6.2px;
+  height: 10px;
+  border-radius: 999px 999px 0 0;
+  background: var(--pink-logo);
+  transform-origin: 50% 100%;
+}
+
+.heart::before {
+  left: 4.8px;
+  transform: rotate(-45deg);
+}
+
+.heart::after {
+  left: 0;
+  transform: rotate(45deg);
+}
+
+/* 화면 한 칸 — 본 앱 `.slot` 처럼 세로로 쌓고 남는 높이를 받는다 */
+.screen {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/*
+ * 제목 묶음 — 본 앱 `.slot-head h1` · `.slot-head p` 그대로.
+ * 제목 앞머리를 분홍으로 두는 것도 본 앱 방식이다 (본 앱 `title()` 이 첫 낱말을 `<em>` 로 감싼다).
+ */
+.title {
+  margin: 0 0 6px;
+  color: var(--ink-strong);
+  font-size: 25px;
+  font-weight: 760;
+  line-height: 1.14;
+}
+
+.title em {
+  color: var(--pink);
+  font-style: normal;
+}
+
+/* 설명 한 줄. 아래 32px 은 본 앱 `.slot-head` 의 margin-bottom 이다 (로고 → 말풍선 → 제목 → 내용이 모두 32px) */
+.sub {
+  max-width: 300px;
+  margin: 0 0 32px;
+  color: var(--ink-weak);
+  font-size: 14px;
+  font-weight: var(--weight-regular);
+  line-height: 1.35;
+}
+
+/*
+ * 코치 얼굴 + 말풍선 — 본 앱 `.slot-coach`. 본 앱은 거의 모든 화면에 이 줄이 있어서,
+ * 없으면 "다른 앱" 처럼 보인다. 위아래 32px 간격도 본 앱 값이다.
+ */
+.coach {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 32px 0;
+}
+
+.coach img {
+  flex: 0 0 auto;
+  width: 54px;
+  height: 54px;
+  object-fit: contain;
+  filter: drop-shadow(0 7px 15px rgb(96 57 67 / 12%));
+}
+
+.coach p {
+  position: relative;
+  flex: 1;
+  margin: 0;
+  padding: 10px 15px;
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: var(--weight-strong);
+  line-height: 1.25;
+  box-shadow:
+    inset 0 0 0 1px rgb(224 220 222 / 90%),
+    0 8px 18px rgb(62 45 50 / 5%);
+}
+
+/* 꼬리 — 네모를 45도 돌려 코치 쪽을 가리킨다 */
+.coach p::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 50%;
+  width: 13px;
+  height: 13px;
+  border-radius: 3px;
+  background: var(--card);
+  box-shadow: -1px 1px 0 rgb(224 220 222 / 90%);
+  transform: translateY(-50%) rotate(45deg);
+}
+
+/* 말풍선 오른쪽 위의 작은 하트 (본 앱 `.slot-coach i`) */
+.coach i {
+  position: absolute;
+  right: 7px;
+  top: -7px;
+  width: 11px;
+  height: 10px;
+  transform: rotate(-14deg);
+}
+
+.coach i::before,
+.coach i::after {
+  content: "";
+  position: absolute;
+  width: 7px;
+  height: 10px;
+  border-radius: 999px 999px 0 0;
+  background: var(--pink-logo);
+  transform-origin: 50% 100%;
+}
+
+.coach i::before {
+  left: 4px;
+  transform: rotate(-45deg);
+}
+
+.coach i::after {
+  left: 0;
+  transform: rotate(45deg);
+}
+
+/* 흰 카드 — 본 앱의 `.slot-answer-preview` · `.slot-save-card` 묶음이 쓰는 값 */
+.card {
+  padding: 17px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: 0 8px 18px rgb(38 39 43 / 3.5%);
+}
+
+/* 색을 불러오는 중 · 못 불러왔을 때 (App.tsx) — 본 앱 `.slot-status` 처럼 조용한 한 줄.
+   본 앱의 그 한 줄은 `.muted` 를 같이 달고 있어서 색이 --ink-dim 이다 (카드 안의 연한 글과 다른 색) */
+.notice {
+  margin: 24px 0;
+  color: var(--ink-dim);
+  font-size: 13px;
+  text-align: center;
+}
+
+.notice p {
+  margin: 0 0 14px;
+}
+
+/*
+ * 버튼 묶음 — 본 앱 `.row` 는 가로줄(gap 8px)인데, 이 버전의 `.row` 는 **아래로 쌓는다**.
+ *
+ * 2026-10-14 에 흐름 화면들의 아래 버튼이 하나로 줄면서(「이전」이 맨 위 화살표로 올라갔다)
+ * 이 class 가 남은 자리는 셋뿐이다 — 색을 못 불러왔을 때의 안내(App.tsx)·처리 안내 창·
+ * 이용 불가·끝. 안내는 버튼 둘이 375px 폭에 나란히 안 들어가서 쌓고, 나머지 셋은
+ * 본 앱처럼 가로줄로 되돌린다 (`.consent-sheet .row` · `.consent .row` · `.done .row`).
+ */
+/*
+ * 버튼 두 개를 세로로 쌓는 줄.
+ *
+ * **「이전」 같은 되돌아가는 버튼은 늘 아래**에 둔다 (2026-10-14, 전지원).
+ * 앞으로 가는 큰 버튼이 먼저 눈에 들어와야 하고, 되돌아가는 길은 그 아래가 자연스럽다.
+ * 코드에서는 「이전」을 먼저 쓰는 쪽이 읽기 좋으므로(없을 수도 있어 조건으로 감싼다),
+ * 자리만 `column-reverse` 로 뒤집는다 — 화면마다 순서를 바꿔 적지 않아도 된다.
+ *
+ * 탭 차례는 눈에 보이는 차례와 어긋나면 안 되지만, 여기서는 둘 다 같은 일 묶음이고
+ * 되돌아가기가 나중에 잡히는 편이 맞아 그대로 둔다.
+ */
+.row {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.row > .go {
+  margin-top: 0;
+}
+
+/* 화면 1 — 스플래시 */
+
+/*
+ * 본 앱 `.splash` 그대로 — 들어올 때 520ms, 나갈 때 280ms.
+ * 나가는 길이를 고치면 Splash.tsx 의 `LEAVE_MS` 도 같이 고쳐야 한다.
+ */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  /* 다른 화면과 같은 폰 폭 안에 가두고, 그 안에서 그림을 꽉 채운다 */
+  width: min(100vw, calc(100dvh * 0.554), 430px);
+  margin: 0 auto;
+  padding: 0;
+  border: 0;
+  background: #fff;
+  color: #eba0aa;
+  cursor: pointer;
+  animation: splash-in 520ms ease-out both;
+}
+
+.splash-frame {
+  position: relative;   /* 아래 .splash-tag 가 이 안에서 자리를 잡는다 */
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #fff;
+}
+
+.splash-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* 그림 안 로고 바로 아래에 얹는 한 줄.
+   그림이 `object-fit: cover` 라 폭에 따라 조금씩 잘리므로, 자리를 px 이 아니라
+   **그림 높이의 비율(%)** 로 잡아야 로고와 같이 움직인다 (글씨가 있던 자리가 37% 쯤이다) */
+.splash-tag {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 37.2%;
+  text-align: center;
+  color: #4a4a4a;
+  font-size: clamp(13px, 3.9vw, 17px);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  pointer-events: none;
+}
+
+.splash.leaving {
+  animation: splash-out 280ms ease-in both;
+}
+
+@keyframes splash-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes splash-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(1.03);
+  }
+}
+
+/* 움직임을 줄여 달라고 해 둔 사람에게는 움직이지 않는다 — 머무는 시간은 그대로다 */
+@media (prefers-reduced-motion: reduce) {
+  .splash,
+  .splash.leaving {
+    animation: none;
+  }
+}
+
+/* 화면 2 — 동의 (안내 바탕 + 그 위의 처리 안내 모달) */
+
+/*
+ * 본 앱은 이 사진이 **화면을 꽉 채운다** (`.screen:has(.intro-camera)`). 이 버전도 2026-10-14 에
+ * 그렇게 맞췄다 — 폰 틀의 여백을 이 화면에서만 지우고, 로고도 본 앱처럼 사진 위에 얹는다.
+ * 전에는 폰 폭 안에 모서리를 둥글려 넣었는데, 본 앱과 나란히 놓으니 다른 화면처럼 보였다.
+ */
+.app:has(.intro-camera) {
+  padding: 0;
+  background: #f7f7f7;
+}
+
+/*
+ * 맨 위 로고 줄을 가리는 화면 셋 — 본 앱도 이 셋에는 로고 줄이 없다.
+ *  - 동의: 사진 위에 `.intro-overlay-logo` 가 따로 얹힌다
+ *  - 이용 불가(거절 뒤) · 끝: 본 앱 `deniedScreen` · `done.ts` 가 로고를 안 그린다
+ * 그 둘은 흰 `.slot` 틀도 안 쓴다 — 본 앱 `.screen` 의 여백(14px 16px 20px)과 폰 틀 바탕색 그대로다
+ */
+.app:has(.intro-camera) > .slot-logo-row,
+.app:has(.consent) > .slot-logo-row,
+.app:has(.done) > .slot-logo-row {
+  display: none;
+}
+
+.app:has(.consent),
+.app:has(.done) {
+  padding: 14px 16px 20px;
+  background: var(--bg);
+}
+
+.screen:has(.intro-camera) {
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+.intro-camera {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 941 / 1672;
+  background: var(--line);
+  overflow: hidden;
+}
+
+/* 부위 이름(눈썹·아이라인·볼터치)이 적힌 윗부분이 남도록 **위를 기준으로** 자른다 */
+.intro-photo {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+
+/* 사진 위 왼쪽 위의 로고 — 본 앱 `.intro-overlay-logo` 와 같은 자리·그림자 */
+.intro-overlay-logo {
+  position: absolute;
+  left: 5.8%;
+  top: 1.8%;
+  z-index: 2;
+  display: inline-flex;
+  align-items: flex-start;
+  color: var(--pink-logo);
+  font-family: "Arial Rounded MT Bold", "Avenir Next Rounded", "Nunito", "Apple SD Gothic Neo", system-ui, sans-serif;
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.015em;
+  text-transform: lowercase;
+  transform: scaleY(0.84);
+  text-shadow:
+    0 1px 2px rgb(70 52 58 / 18%),
+    0 5px 18px rgb(70 52 58 / 20%);
+  filter: drop-shadow(0 0 8px rgb(255 255 255 / 40%));
+}
+
+/* 코치와 말풍선 — 자리·크기 모두 본 앱 값 */
+.nudy-coach-face {
+  position: absolute;
+  left: 23%;
+  bottom: 31.5%;
+  z-index: 6;
+  width: 62px;
+  height: 62px;
+  object-fit: contain;
+  filter: drop-shadow(0 7px 14px rgb(96 57 67 / 14%));
+}
+
+.nudy-coach-bubble {
+  position: absolute;
+  left: 40%;
+  bottom: 34%;
+  z-index: 6;
+  max-width: 46%;
+  margin: 0;
+  padding: 9px 15px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 94%);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+  box-shadow:
+    inset 0 0 0 1px rgb(224 220 222 / 72%),
+    0 6px 16px rgb(62 45 50 / 6%);
+}
+
+/* 말풍선 꼬리 — 네모를 45도 돌려 코치 쪽을 가리킨다 */
+.nudy-coach-bubble::before {
+  content: "";
+  position: absolute;
+  left: -7px;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: rgb(255 255 255 / 94%);
+  transform: translateY(-50%) rotate(45deg);
+}
+
+/* 말풍선 오른쪽 위의 작은 하트 (본 앱 `.nudy-coach-bubble i`) */
+.nudy-coach-bubble i {
+  position: absolute;
+  right: -1px;
+  top: -3px;
+  width: 13px;
+  height: 12px;
+  transform: rotate(-14deg);
+}
+
+.nudy-coach-bubble i::before,
+.nudy-coach-bubble i::after {
+  content: "";
+  position: absolute;
+  width: 8px;
+  height: 12px;
+  border-radius: 999px 999px 0 0;
+  background: var(--pink-logo);
+  transform-origin: 50% 100%;
+}
+
+.nudy-coach-bubble i::before {
+  left: 5px;
+  transform: rotate(-45deg);
+}
+
+.nudy-coach-bubble i::after {
+  left: 0;
+  transform: rotate(45deg);
+}
+
+/*
+ * 사진 위에 얹히는 바탕 시트. 본 앱은 높이를 30% 로 못 박아 두는데 여기서는 **적어도 30%** 로만
+ * 둔다 — 폰 폭이 좁아지면 확인할 것 셋과 버튼이 30% 안에 안 들어가 밖으로 비어져 나온다.
+ * (본 앱은 사진이 화면 전체라 30% 가 더 크다.) 나머지 값은 본 앱 그대로다.
+ */
+.intro-bottom-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  min-height: 30%;
+  padding: 6.5% 7% 4%;
+  border-radius: 34px 34px 0 0;
+  background: rgb(255 255 255 / 78%);
+  box-shadow: 0 -18px 38px rgb(38 39 43 / 8%);
+  backdrop-filter: blur(18px);
+}
+
+/* 확인할 것 셋 — 본 앱처럼 한 줄에 셋 */
+.intro-checks {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.intro-check {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 70px;
+  border-radius: 22px;
+  background: rgb(255 255 255 / 72%);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  font-weight: 520;
+  box-shadow:
+    inset 0 0 0 1px rgb(224 220 222 / 54%),
+    0 6px 14px rgb(38 39 43 / 3.5%);
+}
+
+/* 초록 동그라미 + 흰 체크 — 누르는 것이 아니라 "이것만 보면 된다" 는 표시다 */
+.intro-check i {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: #78dec4;
+}
+
+.intro-check i::after {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 3px;
+  width: 5px;
+  height: 10px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+/* 그림 파일(SVG)이라 CSS 로 색을 바꾸지 못한다 — 색은 파일 안에 있다 (본 앱 2026-10-12 주석) */
+.check-icon {
+  display: block;
+  width: 42px;
+  height: 42px;
+  object-fit: contain;
+}
+
+/* 앞머리 그림은 여백이 적어 같은 크기로 두면 혼자 커 보인다 (본 앱에서 가져온 보정) */
+.intro-check:first-child .check-icon {
+  width: 37px;
+  height: 37px;
+}
+
+/* 처리 안내를 여는 버튼 — 본 앱 `.intro-camera-start` 와 같은 값 (아이콘까지) */
+.intro-camera-start {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: min(76%, 320px);
+  min-height: 58px;
+  margin: 18px auto 0;
+  padding: 0 22px;
+  border: 1px solid rgb(255 255 255 / 90%);
+  border-radius: 999px;
+  background: var(--pink);
+  color: #fff;
+  font: inherit;
+  font-size: 19px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 12px 24px rgb(255 128 149 / 18%);
+}
+
+.intro-camera-start img {
+  width: 31px;
+  height: 31px;
+  object-fit: contain;
+}
+
+/* 처리 안내 모달 — 본 앱 `.consent-sheet`. 동의 화면 위에 가운데로 뜬다 */
+
+.consent-sheet-back {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  /* grid 가 아니라 flex 로 가운데 — grid 는 칸 높이를 글 길이에 맞춰 늘려서, 창의
+     `max-height: 100%` 가 **늘어난 칸**을 기준으로 잡혀 버튼이 화면 밖으로 밀린다 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 위아래 여백을 넉넉히 둬서 **뒤 화면이 비친다** — 창이 화면을 꽉 채우면 새 화면으로 넘어간
+     것처럼 보이고, 그러면 "읽고 닫으면 보던 자리" 라는 느낌이 사라진다 */
+  padding: 44px 20px;
+  /* 본 앱은 모달의 box-shadow 로 뒷배경을 덮는다 (`0 0 0 9999px rgba(24,24,28,.3)`) — 짙기를 같게 */
+  background: rgb(24 24 28 / 30%);
+  animation: modal-in 200ms ease-out both;
+}
+
+.consent-sheet {
+  display: flex;
+  flex-direction: column;
+  /*
+   * 본 앱은 `min(calc(100% - 48px), 340px)` 인데, 본 앱의 창은 `position: fixed` 라
+   * 그 100% 가 **화면 폭**이다. 이 버전은 여백 20px 을 가진 뒷배경 안에 들어 있어서 같은
+   * 식을 쓰면 100% 가 그만큼 좁아진다 (375px 에서 287px — 본 앱은 327px 이었다).
+   * 그래서 100% 가 아니라 **화면 폭(100vw)** 에서 뺀다 — 본 앱과 같은 327px 이 나온다
+   */
+  width: min(calc(100vw - 48px), 340px);
+  max-height: 100%;
+  padding: 26px 22px 22px;
+  border: 1px solid rgb(235 230 232 / 94%);
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: 0 18px 42px rgb(38 39 43 / 16%);
+}
+
+/* 창이 뜨면 포커스가 창 자체로 들어온다 (읽어 주는 기기가 제목부터 읽게). 눌러서 쓰는
+   것이 아니니 테두리는 지운다 — 그리면 글을 고르는 칸처럼 보인다 */
+.consent-sheet:focus {
+  outline: none;
+}
+
+.consent-sheet h2 {
+  margin: 0 0 10px;
+  color: var(--ink-strong);
+  font-size: 21px;
+  font-weight: 760;
+  line-height: 1.18;
+}
+
+/* 안내문 — 소제목 넷 + 문단, 핵심은 굵게. 길어서 **글만 따로 굴린다** (버튼은 늘 보인다).
+   본 앱은 높이를 `100dvh - 240px` 로 잡는데, 여기서는 창 자체가 모달 칸 안에서 늘고 줄어서
+   남는 높이를 그대로 받는다 (`flex: 1 1 auto`) — 보이는 결과는 같다 */
+.consent-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+}
+
+.consent-body h3 {
+  margin: 14px 0 4px;
+  color: var(--ink-strong);
+  font-size: 14px;
+  font-weight: 760;
+  line-height: 1.3;
+}
+
+.consent-body h3:first-child {
+  margin-top: 0;
+}
+
+.consent-body p {
+  margin: 0;
+  color: var(--ink-weak);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+/* 굵은 곳만 진한 색으로 — 연한 글 속에서 "무엇이 오가는지" 가 먼저 읽히게 */
+.consent-body strong {
+  color: var(--ink-strong);
+  font-weight: 760;
+}
+
+/* 「동의하고 시작」 바로 위의 요약 세 줄 — 전문보다 눈에 들어오되 제목보다 세면 안 된다 */
+.consent-points {
+  flex: none;
+  margin: 18px 0 0;
+  padding: 13px 14px;
+  border-radius: 10px;
+  background: #fff6f7;
+  list-style: none;
+}
+
+.consent-points li {
+  position: relative;
+  padding-left: 20px;
+  color: #8a5663;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.consent-points li + li {
+  margin-top: 7px;
+}
+
+/* 체크 표시는 꾸밈이라 읽어 주는 기계에는 안 들린다 — 글만 읽혀도 뜻이 통한다 */
+.consent-points li::before {
+  content: "✓";
+  position: absolute;
+  left: 2px;
+  color: var(--pink-ink);
+  font-weight: 700;
+}
+
+/* 창 안에서는 버튼 둘이 **나란히** 폭을 나눠 쓴다 — 한쪽이 안 줄면 다른 쪽이 창 밖으로
+   밀린다 (본 앱 주석). 글이 짧아 375px 에서도 한 줄에 들어간다 */
+.consent-sheet .row {
+  flex: none;
+  flex-direction: row;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+/*
+ * 글 길이를 먼저 세고 남는 폭만 나눈다 (`flex-basis: auto`). 본 앱은 2:1 로 못 박는데(basis 0),
+ * 이 버전은 두 번째 버튼이 「닫기」가 아니라 **「동의하지 않을래요」**라 글이 길다 —
+ * basis 0 으로 두면 짧은 「동의하고 시작」이 넓은 쪽을 차지하고 긴 글이 버튼 밖으로 삐져나온다.
+ * 그래도 안 들어가는 좁은 화면에서는 줄을 바꾼다 — `keep-all` 로 **낱말 사이에서만** 끊는다
+ * (한국어는 글자 사이를 끊으면 "동의하지 않을래/요" 처럼 읽기 어려워진다).
+ */
+.consent-sheet .row button {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 48px;
+  padding: 12px 10px;
+  /* 거절 쪽 버튼의 모양은 본 앱 `.row button:not(.primary)` 그대로 — 테두리 선 하나, 바탕 없음.
+     전에는 흰 바탕 + 분홍 글씨였는데, 본 앱과 나란히 놓으면 둘 다 "다음 걸음" 처럼 보였다 */
+  border: 1px solid var(--line-ui);
+  border-radius: 999px;
+  background: transparent;
+  color: #2b2b2b;
+  font: inherit;
+  font-size: 14px;
+  word-break: keep-all;
+  cursor: pointer;
+}
+
+/* 「동의하고 시작」이 더 넓다 — 둘이 같은 크기면 무엇이 다음 걸음인지 안 보인다.
+   남는 폭을 2배로 받는다 (글 길이만큼은 양쪽 다 먼저 받아 간다) */
+.consent-sheet .row button.primary {
+  flex: 2 1 auto;
+  border: 0;
+  background: var(--pink);
+  color: #fff;
+  /* 본 앱 공통 `button.primary` 의 굵기 (600). 700 으로 둬서 본 앱보다 굵었다 */
+  font-weight: var(--weight-strong);
+}
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* 움직임을 줄여 달라고 해 둔 사람에게는 번쩍이지 않게 */
+@media (prefers-reduced-motion: reduce) {
+  .consent-sheet-back {
+    animation: none;
+  }
+}
+
+/* 거절 뒤 — 돌아가는 길 하나만 있는 화면 (본 앱 `.consent`, padding-top 32px) */
+.consent {
+  padding-top: 32px;
+}
+
+/* (바탕색 · 여백 · 로고 줄 가리기는 위의 `.app:has(.consent)` 에서 한꺼번에 한다) */
+
+/* 본 앱은 이 제목을 `.screen h1`(18px · 650) 로 그린다 — 다른 화면의 큰 제목과 다르다.
+   색도 본 앱의 `--ink`(#2b2b2b) 다 — 흰 `.slot` 위의 본문색(#3b3c40)과 다른 자리다 */
+.consent h1 {
+  margin: 6px 0 4px;
+  color: #2b2b2b;
+  font-size: 18px;
+  font-weight: var(--weight-title);
+  line-height: 1.5;
+}
+
+/* 본 앱의 `.row button:not(.primary)` — 네모에 가까운 테두리 버튼 하나뿐이라 가로줄 그대로다.
+   폭도 글 길이에 맞춘다 (본 앱은 `flex` 를 안 줘서 글만큼만 넓다).
+   칸 사이는 본 앱 `.row` 의 8px (아래로 쌓는 이 버전의 `.row` 만 10px 다) */
+.consent .row {
+  flex-direction: row;
+  gap: 8px;
+}
+
+.consent .row button {
+  min-height: 48px;
+  padding: 12px;
+  /* 본 앱 `.row button:not(.primary)` 의 테두리는 카드 테두리가 아니라 --line-ui 다 */
+  border: 1px solid var(--line-ui);
+  border-radius: 10px;
+  background: transparent;
+  /* 본 앱 `--ink` — 흰 카드 위의 본문색(#3b3c40)과 다른 자리다 (제목과 같은 #2b2b2b) */
+  color: #2b2b2b;
+  font: inherit;
+  cursor: pointer;
+}
+
+/*
+ * 끝 — 본 앱 `.processing, .done` 묶음 그대로. 가운데 정렬 · 위 48px ·
+ * 작은 제목 22px · 가로줄 가운데의 네모 버튼. 다른 화면의 알약 버튼(`.go`)을 쓰지 않는 것도 본 앱과 같다
+ */
+.done {
+  padding-top: 48px;
+  text-align: center;
+}
+
+.done h1 {
+  margin: 0 0 8px;
+  color: #2b2b2b;
+  font-size: 22px;
+  font-weight: var(--weight-title);
+  line-height: 1.5;
+}
+
+/* 본 앱 `.muted` — 흰 카드 밖의 거드는 한 줄. 위아래 여백은 브라우저 기본값(1em)이 그대로 본 앱 값이다 */
+.done .muted {
+  margin: 1em 0;
+  color: var(--ink-dim);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* 본 앱 `.done .row` — 가운데로 모은 가로줄 */
+.done .row {
+  flex-direction: row;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* 본 앱 공통 `button.primary` + `.row button.primary { flex: 1 }` — 알약이 아니라 모서리 10px 네모다 */
+.done .row button {
+  flex: 1;
+  /* 높이를 따로 안 잡는다 — 여백 12px + 줄 높이 22.5px 로 46.5px 이 되어 본 앱과 같고, 44px 보다 크다 */
+  padding: 12px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--pink);
+  color: #fff;
+  font: inherit;
+  font-weight: var(--weight-strong);
+  cursor: pointer;
+}
+
+/* 화면 4 — 템플릿 고르기 (본 앱은 참고 사진 화면 안에서 펼친다) */
+
+.tpl-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 0;
+  padding: 2px;        /* 고른 카드의 안쪽 선이 잘리지 않게 (본 앱 주석) */
+  list-style: none;
+}
+
+.tpl-card {
+  display: block;
+  width: 100%;
+  padding: 0 0 12px;
+  border: 1.5px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+  font: inherit;
+  color: inherit;
+  text-align: center;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.tpl-card img {
+  display: block;
+  width: 100%;
+  margin-bottom: 9px;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+}
+
+.tpl-card strong {
+  display: block;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: var(--weight-title);
+}
+
+.tpl-card em {
+  display: block;
+  margin-top: 3px;
+  padding: 0 8px;
+  /* 본 앱 `.tpl-card em` 은 --muted 다 (흰 카드 안의 연한 글 #83858c 이 아니다) */
+  color: var(--ink-dim);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.45;
+}
+
+/* 화면 5 — 색조 팔레트 (본 앱 screens/color-palette.ts · app.css `.color-palette`) */
+
+/* 한 줄 = 질감 그림 + 색 이름 + 부위. 그림 색은 li 의 color 로 들어온다 */
+.color-palette {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 16px 20px;
+  border-radius: 22px;
+  background: var(--card);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 6%);
+}
+
+.color-palette-head h2 {
+  margin: 0;
+  color: #2b2b2b;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.color-palette-head h2 em {
+  color: var(--pink);
+  font-style: normal;
+}
+
+.color-palette-head p {
+  margin: 6px 0 0;
+  color: #8d8d8d;
+  font-size: 13px;
+}
+
+.color-palette-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.color-palette-list li {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 14px 2px;
+  border-bottom: 1px solid #f1eeec;
+}
+
+.color-palette-list li:last-child {
+  border-bottom: 0;
+}
+
+.palette-ink {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 104px;
+  height: 68px;
+}
+
+/* 질감 틀(흑백 PNG)의 모양만 오려 내고 바탕을 뽑은 색으로 칠한다.
+   그래야 사진 같은 질감과 자유로운 색을 둘 다 가져간다 (본 앱 주석 그대로) */
+.palette-ink i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: currentcolor;
+  mask: var(--sw) center / contain no-repeat;
+  -webkit-mask: var(--sw) center / contain no-repeat;
+}
+
+.palette-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.palette-text strong {
+  color: #2b2b2b;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.palette-text em {
+  color: #9a9a9a;
+  font-size: 12px;
+  font-style: normal;
+}
+
+/* 화면 6 — 부위 가이드 */
+
+/*
+ * 칩 다섯은 **한 줄**로 둔다.
+ *
+ * 꾸밈은 본 앱 `.chip` 값 그대로다. 다만 본 앱은 `.chips { display: none }` 이라 화면에
+ * 안 보인다 — 이 버전은 **부위를 건너뛰는 유일한 길**이라 보이게 뒀다 (보고에 적어 둠).
+ * 누르는 높이만 44px 로 키웠다 — 손가락으로 쓰는 화면이라 여기는 본 앱보다 크다.
+ */
+/*
+ * 부위 칩 — **본 앱과 같이 숨긴다** (본 앱 app.css 도 `.chips { display: none }`).
+ *
+ * 그리는 코드는 남겨 둔다. 본 앱도 `main.ts` 가 `#chips` 에 그리기는 하고 CSS 로만 가린다.
+ *
+ * 왜 가리나: 칩이 한 줄을 차지해 아래가 전부 68px 내려와, 같은 화면이 본 앱과 달라 보였다.
+ * 칩으로 부위를 건너뛰는 길이 사라지지만 **본 앱에도 없는 길**이다 — 본 앱은 순서대로만 간다.
+ * 다시 보이게 하려면 아래 `display: none` 한 줄만 지우면 된다 (2026-10-14, 전지원).
+ */
+.chips {
+  display: none;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 5px;
+  margin: 10px 0 14px;
+}
+
+.chip {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  min-width: 50px;
+  min-height: 44px;
+  /* 본 앱 `.chip` 과 같은 6px 10px. 9px 로 줄여 뒀는데 10px 로도 다섯 개가 한 줄에 들어간다 */
+  padding: 6px 10px;
+  border: 1px solid rgb(255 214 222 / 82%);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 72%);
+  color: #8c8f98;
+  font: inherit;
+  font-size: 11px;
+  font-weight: var(--weight-regular);
+  cursor: pointer;
+  box-shadow: 0 6px 16px rgb(255 137 155 / 8%);
+  backdrop-filter: blur(14px);
+}
+
+/* 지금 부위는 색으로만 가르지 않는다 — 글자 굵기까지 같이 바꾼다 (본 앱 `.chip.current`) */
+.chip[aria-current="true"] {
+  border-color: var(--pink-logo);
+  background: rgb(255 246 248 / 92%);
+  color: #ff8296;
+  font-weight: var(--weight-strong);
+}
+
+/* 가이드 묶음 — 그림 · 색 한 줄 · 제품 (본 앱 `.slot-guide-card`) */
+.slot-guide-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+  margin-bottom: 0;
+}
+
+/* 견본 그림. 본 앱과 같은 그러데이션 얼굴 + 점선 둘 + 점 하나다 —
+   내 얼굴로 만든 그림이 아니라 **견본**이라 왼쪽 위에 「예시」 딱지를 단다 */
+.slot-guide-photo {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: min(384px, 44dvh);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background:
+    radial-gradient(circle at 50% 36%, #f4d9d3 0 13%, transparent 14%),
+    radial-gradient(circle at 50% 51%, #f6e7e4 0 28%, transparent 29%),
+    linear-gradient(180deg, #faf4f4, #fff);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 72%),
+    0 12px 24px rgb(38 39 43 / 5%);
+}
+
+/* 진짜 가이드 그림이 들어온 자리 — 자리표시의 얼굴 바탕과 세로로 긴 칸을 걷어내고
+   자른 그림 크기 그대로 둔다 (본 앱이 `photo.style` 로 덮어쓰는 것과 같은 값) */
+.slot-guide-photo.is-real {
+  flex: 0 0 auto;
+  min-height: 0;
+  background: #000;
+}
+
+.slot-guide-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* 재료를 만드는 동안 — 자리표시 바탕 가운데에 한 줄 */
+.slot-guide-wait {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  margin: 0;
+  padding: 0 16px;
+  color: var(--ink-dim);
+  font-size: 14px;
+  text-align: center;
+  place-items: center;
+}
+
+/* 정답사진은 왔는데 그 부위의 화장만 못 찾았을 때 — 그림 바로 아래 한 줄 */
+.slot-guide-none {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.slot-guide-line {
+  position: absolute;
+  left: 29%;
+  width: 42%;
+  border-top: 3px dashed rgb(255 255 255 / 96%);
+  filter: drop-shadow(0 2px 3px rgb(80 52 60 / 14%));
+}
+
+.slot-guide-line.one {
+  top: 43%;
+  transform: rotate(-5deg);
+}
+
+.slot-guide-line.two {
+  top: 54%;
+  transform: rotate(6deg);
+}
+
+.slot-guide-dot {
+  position: absolute;
+  left: 65%;
+  top: 47%;
+  width: 14px;
+  height: 14px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: #ffd0d8;
+  box-shadow: 0 5px 14px rgb(82 58 64 / 12%);
+}
+
+/* 「예시」 딱지 — 지금 보이는 그림은 내 얼굴이 아니라 견본이다 (본 앱 `.slot-guide-sample`) */
+.slot-guide-sample {
+  position: absolute;
+  z-index: 2;
+  top: 10px;
+  left: 10px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgb(43 43 43 / 62%);
+  color: #fff;
+  font-size: 11px;
+  font-weight: var(--weight-title);
+  letter-spacing: 0.02em;
+  pointer-events: none;
+}
+
+/* 가이드 묶음 안의 버튼은 묶음의 gap(16px)이 간격을 준다 — 버튼 제 여백은 지운다.
+   높이도 본 앱 `.slot-guide-card > button.slot-live` 와 같은 48px 다 */
+.slot-guide-card > .go.ghost {
+  min-height: 48px;
+  margin-top: 0;
+}
+
+/* 색 한 줄 — 동그라미 + 색 이름 + 바르는 법 (본 앱 `.slot-color`) */
+.slot-color {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: 0 8px 18px rgb(38 39 43 / 3.5%);
+}
+
+.slot-color > span {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border: 3px solid rgb(255 255 255 / 90%);
+  border-radius: 50%;
+  background: var(--slot-color);
+  box-shadow: 0 5px 12px rgb(72 45 52 / 12%);
+}
+
+.slot-color strong {
+  display: block;
+  font-size: 14px;
+  font-weight: var(--weight-strong);
+}
+
+.slot-color p {
+  margin: 3px 0 0;
+  color: var(--ink-weak);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+/* 색 아래 제품 추천 (본 앱 `.slot-product`) */
+.slot-product {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: #faf7f5;
+}
+
+.slot-product > b {
+  display: block;
+  margin-bottom: 10px;
+  color: #a79b94;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.slot-product-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.slot-product-dot {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  margin-top: 2px;
+  border-radius: 10px;
+  background: var(--slot-color, #c9b7aa);
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 6%);
+}
+
+.slot-product-row strong {
+  display: block;
+  color: #2b2b2b;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.slot-product-row em {
+  display: block;
+  margin-top: 2px;
+  color: var(--pink);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.slot-product-row p {
+  margin: 4px 0 0;
+  color: #8d8d8d;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/*
+ * 계열이 부위 색과 다른 줄에만 붙는 한 줄. 본 앱에는 없는 줄이다 —
+ * 이 버전은 딱 맞는 계열이 모자라면 가까운 계열에서 채우기 때문에, 그 줄에만 까닭을
+ * **글자로** 밝힌다 (색만 달리 보여 주면 색을 구별하기 어려운 사람에게는 아무 말도 안 한 것과 같다)
+ */
+.slot-product-row .pick-near {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink);
+  font-size: 12px;
+}
+
+/* 제품 사진이 있으면 색 네모 대신 사진.
+   잘라내지 않고(contain) 통째로 보여 준다 — 제품 사진은 여러 자루가 모여 찍힌 것이
+   많아서 네모로 자르면 가운데 막대기만 남아 무슨 제품인지 알 수 없다 (본 앱 주석) */
+.slot-product-photo {
+  flex: 0 0 auto;
+  width: 64px;
+  height: 64px;
+  padding: 3px;
+  border-radius: 12px;
+  object-fit: contain;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 5%);
+}
+
+/* 제품 줄이 둘 이상일 때 사이 간격 */
+.slot-product-row + .slot-product-row {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #efe9e5;
+}
+
+/* 그 색에 맞는 제품이 아직 없을 때 — 말없이 사라지면 "왜 없지" 가 된다 (본 앱 `.slot-product.is-none`) */
+.slot-product.is-none p {
+  margin: 8px 0 0;
+  color: var(--ink-dim);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+/* 제품 사진의 권리는 각 브랜드에 있다 — 묶음 맨 아래 작게 (본 앱 `.slot-product-credit`) */
+.slot-product-credit {
+  display: block;
+  margin-top: 10px;
+  color: var(--ink-dim);
+  font-size: 12px;
+  text-align: right;
+}
+
+/* 화면 7 — 피드백 (본 앱 `.fb-*`) */
+
+.fb-photos {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+/* 본 앱은 「예상 메이크업」과 「내 화장」 두 장을 나란히 두는데, 이 버전은 내 화장 사진이
+   없어서 한 장뿐이다 — 한 장이면 폭을 다 쓴다 (빈 칸을 남기면 안 불러온 것처럼 보인다) */
+.fb-photos.one {
+  grid-template-columns: 1fr;
+}
+
+.fb-photos figure {
+  margin: 0;
+}
+
+.fb-photos img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.fb-photos figcaption {
+  margin-top: 7px;
+  color: var(--ink-dim);
+  font-size: 12px;
+  text-align: center;
+}
+
+.fb-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.fb-sum {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 11px 14px;
+  border-radius: 12px;
+  background: #f7f4f2;
+  font-size: 14px;
+}
+
+.fb-sum b {
+  flex: 0 0 auto;
+  font-weight: var(--weight-title);
+}
+
+.fb-sum span {
+  color: #5f5e5a;
+}
+
+.fb-sum.is-ok b {
+  color: #1d9e75;
+}
+
+.fb-sum.is-fix b {
+  color: var(--pink-ink);
+}
+
+.fb-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  /* 마지막 줄과 버튼 사이도 띄운다 — 부위 줄이 길어 손가락이 멈추는 자리에 버튼이 걸린다 (본 앱 #369) */
+  margin: 14px 0 8px;
+}
+
+.fb-line {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+}
+
+.fb-head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.fb-head strong {
+  font-size: 16px;
+  font-weight: var(--weight-title);
+}
+
+/* 종류를 색만으로 가르지 않는다 — 글자로도 적는다 (비슷해요 · 다시 볼 곳) */
+.fb-head em {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: var(--weight-title);
+}
+
+.fb-line.is-ok .fb-head em {
+  background: #e1f5ee;
+  color: #0f6e56;
+}
+
+.fb-line.is-fix .fb-head em {
+  background: #fff2f4;
+  color: #c2415c;
+}
+
+.fb-say {
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+/* 왜 못 보여 주는지 · 무엇이 더 있어야 하는지 한 줄 (본 앱 `.fb-note`) */
+.fb-note {
+  margin: 16px 0 0;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: #fff6f7;
+  color: #b4475c;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* 화면 8 — 저장 · 기록 */
+
+/* 본 앱 `.slot-save-card` — 글 묶음 왼쪽, 오른쪽에 네모 하나 */
+.slot-save-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 168px;
+  margin-top: 6px;
+  padding: 17px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: 0 8px 18px rgb(38 39 43 / 3.5%);
+}
+
+.slot-save-card strong {
+  display: block;
+  color: var(--ink-strong);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.slot-save-card p {
+  margin: 5px 0 0;
+  color: var(--ink-weak);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* 고른 화장의 썸네일. 본 앱은 이 자리에 색이 번지는 네모를 두는데, 이 버전은 **보여 줄
+   그림이 실제로 있다** (고른 템플릿) — 같은 크기·모서리로 사진을 넣는다 */
+.slot-save-card img {
+  flex: 0 0 auto;
+  width: 62px;
+  height: 62px;
+  border-radius: 18px;
+  object-fit: cover;
+  background: linear-gradient(135deg, #f27aa9, #ffd6de 56%, #bdeee3);
+  box-shadow: 0 12px 24px rgb(255 128 149 / 14%);
+}
+
+/* 부위 다섯 줄 — 색 동그라미 + 부위·색 이름 + 제품 */
+.save-list {
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.save-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.save-list li:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+/* 흰 테두리와 그림자를 두르는 까닭은 본 앱 `.slot-color span` 과 같다 —
+   연한 색은 흰 바탕 위에서 동그라미가 사라진다 */
+.save-list .dot {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border: 3px solid rgb(255 255 255 / 90%);
+  border-radius: 50%;
+  box-shadow: 0 5px 12px rgb(72 45 52 / 12%);
+}
+
+.save-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.save-text strong {
+  color: var(--ink-strong);
+  font-size: 14px;
+  font-weight: var(--weight-strong);
+}
+
+.save-text em {
+  margin-top: 3px;
+  color: var(--ink-weak);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.35;
+}
+
+/* 아래 버튼 */
+
+/*
+ * 큰 버튼 — 본 앱 `.slot > button.primary` 그대로 (알약 · 56px · 가운데 · 최대 320px).
+ * 폭을 화면 끝까지 늘리지 않는 것도 본 앱 방식이다.
+ */
+.go {
+  flex: 0 0 auto;
+  display: block;
+  width: min(100%, 320px);
+  min-height: 56px;
+  margin: 12px auto 0;
+  padding: 0 22px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--pink);
+  color: #fff;
+  font: inherit;
+  font-size: 16px;
+  font-weight: var(--weight-title);
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 12px 28px rgb(255 137 155 / 20%);
+}
+
+/* 덜 중요한 것 — 본 앱 `.slot-live` (테두리만, 52px · 안쪽 여백 18px) */
+.go.ghost {
+  width: 100%;
+  min-height: 52px;
+  padding: 0 18px;
+  border: 1.5px solid #ffc3cd;
+  background: var(--card);
+  color: var(--pink-ink);
+  box-shadow: none;
+}
+
+/* ───────── 참고 사진 올리기 · 정답사진 (Upload.tsx · Answer.tsx) ─────────
+   본 앱 `.slot-upload*` · `.slot-or` · `.slot-answer-*` 를 그대로 옮겼다. 색과 모서리만
+   이 버전의 토큰(--line · --card · --pink …)으로 바꿨다 — 본 앱은 같은 값을 그 자리에 적어 둔다. */
+
+/* 칸 전체가 label 이라 아무 데나 눌러도 사진 고르는 창이 열린다 */
+.slot-upload {
+  display: grid;
+  gap: 14px;
+  cursor: pointer;
+}
+
+.slot-upload-main {
+  display: grid;
+  place-items: center;
+  min-height: 268px;
+  padding: 34px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: 0 10px 22px rgb(38 39 43 / 4%);
+  text-align: center;
+}
+
+/* 분홍 바탕 — 아이콘(icon-camera-start.svg)의 몸통이 흰색이라 칸의 흰 바탕 위에서는
+   렌즈 고리만 남는다 (본 앱 #421 에서 같은 것을 고쳤다) */
+.slot-upload-main > span {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  margin-bottom: 12px;
+  border-radius: 16px;
+  background: #f27aa9;
+  box-shadow: 0 10px 18px rgb(255 128 149 / 16%);
+}
+
+.slot-upload-main > span img {
+  width: 37px;
+  height: 37px;
+  object-fit: contain;
+}
+
+.slot-upload-main strong {
+  display: block;
+  color: var(--ink-strong);
+  font-size: 18px;
+  font-weight: 730;
+}
+
+.slot-upload-main em {
+  display: block;
+  margin-top: 5px;
+  color: var(--ink-dim);
+  font-size: 12px;
+  font-style: normal;
+}
+
+/* 고른 사진이 칸을 꽉 채운다 — "다른 사진으로 바꾸기" 가 그 위에 뜬다 */
+.slot-upload-main.has-photo {
+  position: relative;
+  padding: 0;
+  overflow: hidden;
+  place-items: stretch;
+}
+
+.slot-upload-main.has-photo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 268px;
+  object-fit: cover;
+}
+
+.slot-upload-main.has-photo b {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgb(32 32 34 / 62%);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+/* 눈에 안 보이지만 label 이 눌리면 열린다 — display:none 이면 label 이 못 연다 */
+.slot-upload-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 못 읽었을 때 한 줄. 흐름을 막지 않으니 빨간 경고가 아니라 분홍 바탕의 안내다 */
+.slot-upload-warn {
+  margin: 10px 2px 0;
+  padding: 11px 14px;
+  border-radius: 12px;
+  background: #fff1f3;
+  color: #b4475c;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* 두 길 사이의 "또는" — 가로줄 가운데에 글자 (본 앱 `orLine`) */
+.slot-or {
+  position: relative;
+  margin: 18px 0 14px;
+  text-align: center;
+}
+
+.slot-or::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 0;
+  left: 0;
+  border-top: 1px solid #efe9ea;
+}
+
+.slot-or span {
+  position: relative;
+  padding: 0 12px;
+  background: var(--bg);
+  color: var(--ink-dim);
+  font-size: 12px;
+}
+
+/* 기다리는 동안 — 돌아가는 동그라미 하나와 지금 무엇을 하는지 두 줄 */
+.slot-answer-loading,
+.slot-answer-photo {
+  padding: 17px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: 0 8px 18px rgb(38 39 43 / 3.5%);
+}
+
+.slot-answer-loading {
+  display: grid;
+  place-items: center;
+  min-height: 390px;
+  padding: 46px 28px;
+  text-align: center;
+}
+
+.slot-answer-loading > span {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 18px;
+  border: 3px solid #f3dfe6;
+  border-top-color: var(--pink);
+  border-radius: 50%;
+  animation: slot-spin 900ms linear infinite;
+}
+
+.slot-answer-loading strong,
+.slot-answer-preview b {
+  display: block;
+  color: var(--ink-strong);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.slot-answer-loading p,
+.slot-answer-preview p {
+  margin: 5px 0 0;
+  color: var(--ink-weak);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* 돌아가는 동그라미를 멈춰 달라고 한 사람에게는 멈춰 준다 (본 앱도 같은 칸을 둔다) */
+@media (prefers-reduced-motion: reduce) {
+  .slot-answer-loading > span {
+    animation: none;
+  }
+}
+
+@keyframes slot-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 받은 그림(없으면 참고 사진)을 끼우는 틀 */
+.slot-answer-photo {
+  padding: 0;
+  overflow: hidden;
+}
+
+.slot-answer-photo-frame {
+  position: relative;
+  min-height: 390px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #f6f1ee, #fff);
+}
+
+.slot-answer-ref {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.slot-answer-preview {
+  padding: 17px 18px;
+  border-top: 1px solid var(--line);
+}
+
+/* 기다리는 시간 한 줄 — 본 앱 `.muted.slot-status` 와 같은 조용한 글 */
+.slot-status {
+  margin: 12px 0 0;
+  color: var(--ink-dim);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+/* 아직 누를 수 없는 큰 버튼 — 사진을 고르기 전의 「적용하기」 (Upload.tsx).
+   안 눌린다고만 하면 왜 안 되는지 알 수 없으니, 연하게 두어 "아직" 임을 보인다 */
+.go:disabled {
+  background: #f3dde2;
+  color: #fff;
+  cursor: default;
+  box-shadow: none;
+}
+
+/* 예상 메이크업이 아직 없을 때의 빈 자리 (2026-10-14).
+   참고 사진으로 채우면 "이미 만들어진 것" 으로 읽혀서, 자리를 비워 두고 무엇이 올지 적는다 */
+.slot-answer-photo-frame.is-empty {
+  display: grid;
+  place-items: center;
+  background: #faf7f8;
+  border: 1.5px dashed #ebe6e8;
+}
+.slot-answer-empty {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 24px 16px;
+  color: var(--ink-dim, #6b6b6b);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+}
+.slot-answer-empty img {
+  width: 44px;
+  opacity: 0.75;
+}
+
+/* 올린 참고 사진 — 정답사진 자리와 섞이지 않게 작게 둔다 */
+.slot-answer-src {
+  margin: 14px 0 0;
+  text-align: center;
+}
+.slot-answer-src img {
+  width: 96px;
+  border-radius: 10px;
+  border: 1px solid #ebe6e8;
+}
+.slot-answer-src figcaption {
+  margin-top: 6px;
+  color: var(--ink-dim, #6b6b6b);
+  font-size: 12px;
+}
+
+/*
+ * 고른 템플릿 표시와 안내 한 줄 — 배포본(nudy.shelldocs.cloud)에 있는데 이 버전에만 없던 것.
+ * 배포본은 카드를 눌러도 바로 안 넘어가고, 고른 것을 테두리로 보여 준 뒤 「적용하기」를
+ * 누르게 한다. 값은 배포본 app.css 그대로다 (2026-10-14).
+ */
+.tpl-card.is-on {
+  border-color: #ff8095;
+  box-shadow: inset 0 0 0 1.5px #ff8095;
+}
+
+.tpl-card.is-on strong {
+  color: #ef6b85;
+}
+
+.tpl-note {
+  margin: 16px 0 0;
+  padding: 13px 15px;
+  border-radius: 12px;
+  background: #fff6f7;
+  color: #b4475c;
+  font-size: 14px;
+  line-height: 1.55;
+}

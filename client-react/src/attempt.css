@@ -1,0 +1,77 @@
+/*
+ * 완성사진 화면 모양 — `src/screens/Attempt.tsx` 만 쓴다.
+ *
+ * 카메라 칸(.cam · .cam-video · .cam-oval · .cam-step · .cam-gate)은 `camera.css` 의 것을 **그대로**
+ * 가져다 쓴다. 맨얼굴 촬영과 완성사진이 다른 앱처럼 보이면 안 되고, 한곳만 고치면 둘이 같이 바뀌어야
+ * 한다 (본 앱 #344 ①). 여기에는 **완성사진에만 있는 것**(안내 말풍선 · 찍은 사진 확인)만 적는다.
+ *
+ * 색 · 둥근 모서리는 app.css 의 `:root` 값을 그대로 쓴다 (--pink · --ink-weak · --radius …) —
+ * 여기서 색을 다시 정하면 나중에 app.css 색이 바뀔 때 이 화면만 어긋난다. app.css 는 다른 사람이
+ * 고치는 중이라 손대지 않았다.
+ */
+
+.attempt {
+  width: 100%;
+}
+
+/* 안내 칸 말풍선 — 맨얼굴 확인 화면(.capture-coach)과 같은 모양 */
+.attempt-coach {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.attempt-coach img {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+}
+
+.attempt-coach span {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--ink-weak);
+  font-size: 14px;
+  box-shadow: 0 2px 10px rgb(47 42 43 / 6%);
+}
+
+/*
+ * 찍은 사진 확인 — **이 칸이 #344 ③ 이다.**
+ * 완성사진은 원본 크기(1080×1920 쯤)로 넘기기로 바뀌면서(#330) 본 앱 미리보기가 화면을 넘쳤다.
+ * 사진 폭만 100% 로 맞추면 세로가 1.8배라 폰에서는 사진만으로 화면이 다 차고 "다시 찍기 · 이대로
+ * 피드백 받기" 가 아래로 밀려 안 보인다.
+ *   → 폭은 칸(260px)에, **높이는 화면의 48%** 까지만. 둘 중 먼저 걸리는 쪽이 이기고,
+ *     남는 자리는 object-fit: contain 으로 비워 둔다 (잘라내면 입술이 사라진다).
+ * 48% 는 제일 작은 폰(375×667)에서 잰 값이다 — 52% 로 두면 그 화면에서 버튼이 10px 쯤 밀려났다.
+ */
+.attempt-preview {
+  margin: 0 auto 16px;
+  max-width: 260px;
+}
+
+.attempt-preview img {
+  display: block;
+  width: 100%;
+  max-height: 48dvh;
+  height: auto;
+  object-fit: contain;
+  border-radius: 12px;
+  background: var(--line);
+  /* 거울처럼 좌우를 뒤집는다 — 찍는 동안 본 화면이 거울이라(camera.css), 안 뒤집으면
+     방금 본 얼굴과 반대로 보여서 "어? 내가 저렇게 그렸나" 가 된다.
+     촬영 화면 썸네일도 같은 까닭으로 뒤집는다 (Capture.tsx 의 thumb) */
+  transform: scaleX(-1);
+}
+
+.attempt-preview figcaption {
+  margin-top: 8px;
+  /* 본 앱 `.attempt-preview figcaption` 그대로 — 12px · --muted (13px · #83858c 이었다) */
+  color: var(--ink-dim);
+  font-size: 12px;
+  text-align: center;
+}

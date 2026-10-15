@@ -1,0 +1,63 @@
+/*
+ * 인트로 사진 위의 「쉐딩」 안내 — 배포본(nudy.shelldocs.cloud)에 있는데 이 버전에만 없던 것.
+ *
+ * 사진(`/ui/intro-face-guides.webp`)에는 눈썹·아이라인·볼터치 라벨만 그려져 있다. 배포본은
+ * 거기에 **쉐딩만 SVG 로 따로 얹는다** (본 앱 consent.ts 의 `.shading-guide` + `.label-shading`).
+ * 사진을 다시 만들지 않고 같은 방식으로 얹어서 배포본과 그림이 같아지게 했다.
+ *
+ * 값은 본 앱 app.css 1054~1090 줄 그대로다. app.css 가 아니라 이 파일에 둔 까닭은 화면마다
+ * CSS 를 따로 두는 이 레포 방식(camera.css · live.css · attempt.css)을 따른 것이다.
+ */
+
+.shading-guide {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* 광대에서 턱으로 흐르는 점선 */
+.shading-guide path {
+  fill: none;
+  stroke: rgb(255 255 255 / 92%);
+  stroke-width: 3.2;
+  stroke-linecap: round;
+  stroke-dasharray: 11 9;
+}
+
+/* 라벨이 가리키는 자리의 점 */
+.shading-guide circle {
+  fill: #ffd0d8;
+  stroke: rgb(255 255 255 / 94%);
+  stroke-width: 3;
+}
+
+/* 점과 라벨을 잇는 짧은 선 */
+.shading-guide line {
+  stroke: rgb(255 255 255 / 95%);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+/* 알약 모양 라벨 — 사진에 그려진 다른 라벨 셋과 같은 모양이어야 섞여 보인다 */
+.makeup-label {
+  position: absolute;
+  z-index: 4;
+  min-width: 58px;
+  padding: 6px 13px;
+  border-radius: 999px;
+  color: var(--ink);
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  box-shadow: 0 5px 14px rgb(82 58 64 / 8%);
+}
+
+.label-shading {
+  left: 57.4%;
+  top: 52.4%;
+  background: rgb(255 226 232 / 94%);
+}

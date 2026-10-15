@@ -1,0 +1,129 @@
+/*
+ * 실시간 가이드 화면 모양 — `src/screens/Live.tsx` 만 쓴다.
+ * 본 앱 `support-yr-makeup/client/src/app.css` 의 `.live` · `.live-cam` · `.live-view` · `.live-src` ·
+ * `.live-sample` · `.live-jitter` · `.live-btn` 을 옮긴 것이다.
+ *
+ * `app.css` 는 다른 사람이 고치는 중이라 손대지 않는다 — 공통 값(--pink · --line · --radius …)만 가져다 쓴다.
+ *
+ * 본 앱과 **두 군데 다르다**:
+ *  1. 카메라 칸이 **화면을 꽉 채우지 않는다.** 본 앱 `.live` 는 100dvh · `.live-cam` 은 9/15.2 비율인데,
+ *     이 버전은 다른 화면들과 같은 `.app`(420px) 안에 들어가서 그렇게 잡으면 로고 줄과 겹치고 버튼이
+ *     화면 밖으로 밀린다. `camera.css` 의 `.cam`(3/4)과 같은 비율로 맞춰 촬영 · 완성사진과 한 몸으로 보이게 했다.
+ *  2. 조건 한 줄(`.cam-gate`)을 **숨기지 않는다.** 본 앱은 `.live .cam-gate { display: none }` 인데,
+ *     여기서는 보인다 — `camera.css` 머리글에 적은 것과 같은 까닭이다 (#344 ②: 영상 위 말풍선만 믿으면
+ *     밝은 얼굴 위에서 안내가 묻힌다). 실시간 가이드는 말풍선조차 없어서 이 줄이 유일한 안내다.
+ */
+
+.live {
+  width: 100%;
+}
+
+/* 카메라 칸 — `.cam` 위에 둥근 모서리와 그림자만 더한다 (본 앱 .live-cam 과 같은 모양) */
+.live-cam {
+  border-radius: 32px;
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 20%),
+    0 22px 48px rgb(42 31 36 / 16%);
+}
+
+/* 확대 창을 그리는 캔버스. 칸을 꽉 채운다 — 창 비율이 칸과 다르면 캔버스 안에서 여백을 둔다(contain) */
+.live-view {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* 영상은 보여 주지 않는다(재생만 한다) — 보이는 것은 확대 창을 그린 캔버스뿐이다 (#23) */
+.live-src {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 「예시」 딱지 (#334) — 지금 보이는 모양은 정답사진의 화장이 아니라 견본이다.
+   정답사진이 붙으면(Live 의 outline props) 이 딱지도 같이 사라진다 */
+.live-sample {
+  position: absolute;
+  z-index: 2;
+  top: 10px;
+  left: 10px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgb(43 43 43 / 62%);
+  color: #fff;
+  font-size: 11px;
+  /* 본 앱 `.live-sample` 은 --weight-title(650) 이다 — 700 으로 둬서 조금 굵었다 */
+  font-weight: var(--weight-title);
+  letter-spacing: 0.02em;
+  pointer-events: none;
+}
+
+/* 개발용 숫자 표시 (?jitter · ?gate · ?pose · ?jump · ?perf). 탭하면 0부터 다시 잰다.
+   여러 줄로 나오니 pre-line — 본 앱은 white-space 를 코드에서 넣었다 */
+.live-jitter {
+  position: absolute;
+  z-index: 3;
+  left: 8px;
+  top: 8px;
+  margin: 0;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgb(0 0 0 / 60%);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: pre-line;
+  cursor: pointer;
+}
+
+/* 「확인받기」 (옛 흐름). 보기만 하는 지금 흐름에서는 「이전」 하나만 뜬다 */
+/* 본 앱 `.live-btn` 그대로 — `.go`(16px · 650) 보다 한 단계 크고 덜 굵다 */
+.live-btn {
+  min-height: 54px;
+  border-radius: 999px;
+  font-size: 17px;
+  font-weight: var(--weight-strong);
+  box-shadow: 0 14px 30px rgb(255 137 155 / 19%);
+}
+
+/* 못 누를 때의 색도 본 앱 `.live-btn:disabled` 값 그대로 (공통 버튼의 흐린 색과 다른 자리다) */
+.live-btn:disabled {
+  background: #ece8eb;
+  color: #a9abb3;
+  box-shadow: none;
+  cursor: default;
+}
+
+/* 개발용 ?tune 슬라이더 칸 (lib/smooth-tune). 본 앱에는 CSS 가 없어 여기서 처음 모양을 준다 —
+   폰에서 손가락으로 움직이는 것이라 줄마다 한 칸씩 넉넉히 */
+.ar-tune {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 12px;
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px var(--line);
+  font-size: 13px;
+}
+
+.ar-tune label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--ink-weak);
+}
+
+.ar-tune input {
+  width: 100%;
+  min-height: 24px;
+}
+
+.ar-tune p {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 700;
+}

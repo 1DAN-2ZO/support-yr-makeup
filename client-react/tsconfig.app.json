@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023", "DOM"],
+    "module": "esnext",
+    "types": ["vite/client"],
+    "allowArbitraryExtensions": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    /* 본 앱 core 를 그대로 읽는다 (#454 D4) — vite.config.ts 의 alias 와 짝 */
+    "paths": {
+      "@core/*": ["../client/src/core/*"],
+      "@screens/*": ["../client/src/screens/*"],
+      /* 본 앱 core 가 쓰는 외부 패키지 — 이 폴더의 node_modules 에서 찾게 (client/ 에는 설치하지 않는다) */
+      "@mediapipe/tasks-vision": ["./node_modules/@mediapipe/tasks-vision"]
+    },
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+
+    /* Linting */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src"]
+}

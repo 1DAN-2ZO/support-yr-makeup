@@ -1,0 +1,59 @@
+/*
+ * 저장 화면에서 **「결과 저장」에만** 붙는 모양 — `src/screens/Save.tsx` 만 쓴다.
+ *
+ * 화면의 나머지(코치 말풍선 · 제목 · `.slot-save-card` · `.save-list` · 버튼 `.go` · `.go.ghost`)는
+ * 이미 `app.css` 에 있는 것을 그대로 쓴다. 새로 붙는 것은 **누른 뒤 무슨 일이 일어났는지 알려 주는
+ * 한 줄**과 **못 만드는 까닭 한 줄** 둘뿐이라, 그 둘만 여기 적는다.
+ * `app.css` 는 여러 사람이 같이 쓰는 파일이라 손대지 않았다 — `camera.css` · `live.css` · `attempt.css` ·
+ * `intro.css` · `survey.css` · `feedback.css` 가 이미 그렇게 하고 있어서 같은 방식으로 파일을 하나 더 뒀다.
+ *
+ * 색 · 둥근 모서리는 `app.css` 의 `:root` 값(--ink-dim · --line …)을 그대로 쓴다.
+ * 여기서 색을 다시 정하면 나중에 app.css 색이 바뀔 때 이 화면만 어긋난다.
+ */
+
+/*
+ * 버튼 위의 한 줄 — 무엇을 저장하는지 (배포본 글 그대로, 「시도사진」만 이 레포 말인 「완성사진」으로).
+ * 제목 밑의 `.sub` 를 쓰지 않는 까닭: `.sub` 는 위 여백이 없어서 바로 위 `.save-list` 의 마지막 줄에
+ * 달라붙어 **부위 목록의 한 칸처럼** 읽혔다. 버튼을 거드는 글이니 버튼 쪽에 붙여 둔다
+ */
+.save-ask {
+  margin: 24px 0 0;
+  color: var(--ink-weak);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+/*
+ * 눌린 뒤의 한 줄 — 배포본 `.save-msg` 자리다. 조용한 글이라 본 앱 `.slot-status` 와 같은 크기·색으로 둔다.
+ * `role="status"` 가 붙어 있어 화면을 읽어 주는 기기도 바뀐 순간 읽어 준다.
+ */
+.save-msg {
+  margin: 10px 0 0;
+  color: var(--ink-dim);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+/* 아직 아무 말도 없을 때 빈 줄만큼 벌어지지 않게 — 배포본 app.css 의 `.save-msg:empty` 그대로 */
+.save-msg:empty {
+  display: none;
+}
+
+/*
+ * 한 장으로 만들 수 없을 때의 까닭 한 줄. 버튼 자리를 **이 줄이 대신 차지한다** —
+ * 눌리지 않는 빈 버튼을 두지 않는 것이 이 레포 규칙이라(설문 · 부위 가이드), 버튼을 아예 안 그리고
+ * 왜 없는지만 적는다. 버튼 자리에 놓이는 글이라 `.save-msg` 보다 조금 더 또렷하게 둔다.
+ */
+.save-why {
+  margin: 14px 0 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--ink-weak);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
