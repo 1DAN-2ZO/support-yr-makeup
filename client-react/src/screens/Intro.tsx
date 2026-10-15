@@ -42,7 +42,14 @@ const CHECKS: readonly { name: string; icon: string }[] = [
 /** 본 앱 `CONSENT_TEXT` 와 같은 자리의 글 — 한곳에 모아 둬야 화면과 어긋나지 않는다 */
 const INTRO_TEXT = {
   start: "촬영 시작",
-  coachMessage: "찍기전에 확인해주세요",
+  /*
+   * 2026-10-15 (#469): 「찍기전에 확인해주세요」 → 반말체.
+   *
+   * 이슈는 이 글의 자리를 `core/flow.ts` 의 `CAPTURE_GUIDE.title` 로 짚었는데,
+   * **리액트판은 그것을 쓰지 않는다** (옛 화면의 `capture-probe.ts` 만 쓴다).
+   * 화면에 실제로 나오는 것은 여기다 — 배포본 번들에서 확인하고 찾았다
+   */
+  coachMessage: "촬영 전에 확인해줘!",
 } as const;
 
 export default function Intro({ onAgree }: { onAgree: () => void }) {
