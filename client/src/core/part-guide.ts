@@ -728,7 +728,6 @@ function splineClosed(p: readonly Pt[], k = 8): Pt[] {
   return out.filter((pt, i) => i === 0 || Math.hypot(pt.x - out[i - 1]!.x, pt.y - out[i - 1]!.y) > 1e-6);
 }
 
-/** 점들을 그대로 지나는 매끈한 열린 곡선 (캣멀-롬, 구간마다 k 칸) */
 /** 눈 좌표 꺾은선(s 순서)에서 s 자리의 v — 양 끝 밖은 끝 값 그대로 */
 function lerpSV(arr: readonly SV[], x: number): number {
   if (x <= arr[0]!.s) return arr[0]!.v;
@@ -736,6 +735,7 @@ function lerpSV(arr: readonly SV[], x: number): number {
   return arr[arr.length - 1]!.v;
 }
 
+/** 점들을 그대로 지나는 매끈한 열린 곡선 (캣멀-롬, 구간마다 k 칸) */
 function spline(p: readonly Pt[], k = 8): Pt[] {
   if (p.length < 3) return [...p];
   const q = (i: number) => p[Math.max(0, Math.min(p.length - 1, i))]!, out: Pt[] = [];
