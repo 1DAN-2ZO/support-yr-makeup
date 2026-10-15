@@ -12,6 +12,7 @@
  */
 
 import { useEffect, useRef } from "react";
+import { ops } from "../lib/ops";
 import "../survey.css";
 
 export default function Survey({ url, onClose }: { url: string; onClose: () => void }) {
@@ -21,7 +22,14 @@ export default function Survey({ url, onClose }: { url: string; onClose: () => v
   // 여기서는 링크라서 포커스가 가 있어도 엔터 없이는 안 눌린다
   useEffect(() => {
     go.current?.focus();
+    // 떴다고 적는다 — 본 앱 survey-modal 의 `survey_shown` (몇 명이 설문을 봤는지, #454 발견 2)
+    ops().log.log({ name: "button", button: "survey_shown" });
   }, []);
+  /** 닫히는 길마다 왜 닫혔는지 적는다 — 링크를 눌렀으면 survey_open, 그 밖은 survey_later (본 앱과 같은 이름) */
+  const close = (why: "survey_open" | "survey_later"): void => {
+    ops().log.log({ name: "button", button: why });
+    onClose();
+  };
 
   return (
     <div
@@ -29,19 +37,19 @@ export default function Survey({ url, onClose }: { url: string; onClose: () => v
       tabIndex={-1}
       onClick={(e) => {
         // 뒷배경을 눌렀을 때만 — 모달 안을 누른 것과 가른다
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) close("survey_later");
       }}
       onKeyDown={(e) => {
-        if (e.key === "Escape") onClose();
+        if (e.key === "Escape") close("survey_later");
       }}
     >
       <div className="done-modal" role="dialog" aria-modal="true" aria-labelledby="survey-modal-title">
         <h2 id="survey-modal-title">사용자 의견을 들려주세요</h2>
         <p>써 보니 어땠는지 알려 주시면 서비스를 고치는 데 쓸게요. 1분이면 끝나요.</p>
-        <a className="primary" href={url} target="_blank" rel="noopener noreferrer" ref={go} onClick={onClose}>
+        <a className="primary" href={url} target="_blank" rel="noopener noreferrer" ref={go} onClick={() => close("survey_open")}>
           후기 남기기
         </a>
-        <button type="button" className="done-modal-later" onClick={onClose}>
+        <button type="button" className="done-modal-later" onClick={() => close("survey_later")}>
           다음에 할게요
         </button>
       </div>

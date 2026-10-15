@@ -41,13 +41,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isTestClosed } from "@core/test-period";
 import { middleShot } from "@core/attempt";
-import { createPictureMaker, type MakeResult } from "@core/picture-maker";
+import { createPictureMaker } from "@core/picture-maker";
 import { requestTransfer } from "@core/transfer-client";
-import { within } from "@core/wait-limit";
 import { createHairMasker } from "@screens/hair-segmenter";
 import { ops } from "./lib/ops";
 import Closed from "./screens/Closed";
 import { armPhoneBack } from "./lib/phone-back";
+import { createMovedJob } from "./lib/moved";
 import RestartModal from "./screens/RestartModal";
 import { API_BASE, hasAnswerServer, refReadCount, refToPartColors, templateColors, templateNumber, type PartColors } from "./api";
 import type { PalettePart } from "@core/color-family";
@@ -319,19 +319,10 @@ function Running() {
     },
     request: (b, ref, kind) => requestTransfer(b, ref, { base: API_BASE, kind }),
   });
-  /** 시도사진을 찍을 때 시작해 둔 옮긴 그림 작업. 없으면 아직 안 찍었거나 서버가 없는 것 */
-  const movedJob = useRef<Promise<MakeResult> | null>(null);
-  /**
-   * 피드백이 옮긴 그림을 기다리는 한도 — 본 앱 `MOVED_WAIT_MS` 와 같다 (#415: 줄을 서면 60초까지 걸렸다).
-   * 넘기거나 실패하면 던진다 → `loadFeedback` 이 라이너만 「이번에는 볼 수 없었어요」로 두고 나머지는 그대로 보여 준다
-   */
-  const MOVED_WAIT_MS = 60_000;
-  const getMoved = useCallback(async (): Promise<Blob | null> => {
-    if (!movedJob.current) throw new Error("moved: not started");
-    const r = await within(movedJob.current, MOVED_WAIT_MS, null);
-    if (!r?.ok) throw new Error(`moved: ${r ? r.why : "late"}`);
-    return r.picture;
-  }, []);
+  /** 옮긴 그림 작업 — 시도사진을 찍으면 start, 피드백이 get 으로 기다린다 (`lib/moved`). 서버가 없으면 시작하지 않는다 */
+  const movedJob = useRef<ReturnType<typeof createMovedJob> | null>(null);
+  movedJob.current ??= createMovedJob({ maker: maker.current, enabled: () => hasAnswerServer });
+  const getMoved = useCallback((): Promise<Blob | null> => movedJob.current!.get(), []);
 
   /**
    * 머리카락 분할 (본 앱 `screens/hair-segmenter`, #454 B2) — 피드백이 맨얼굴 · 시도사진에서 머리카락 자리를 빼고 잰다.
@@ -454,8 +445,7 @@ function Running() {
     // 메모리에만 들고 있던 것이라 비우면 그대로 사라진다 (어디에도 저장하지 않는다)
     bare.current = null;
     attempt.current = null;
-    maker.current?.cancel();
-    movedJob.current = null;
+    movedJob.current!.cancel();
     setLive(null);
     // 새 세션 — 앞 세션의 보내기를 멈추고 세션 번호를 새로 (본 앱 `clearAll` + `restartSession` 의 이 버전 몫, #454 A6)
     ops().restart();
@@ -600,8 +590,7 @@ function Running() {
               onDone={(baseline, faceShapeFrames) => {
                 bare.current = { baseline, faceShapeFrames };
                 // 맨얼굴이 바뀌면 옛 맨얼굴로 만들던 옮긴 그림은 버린다 (본 앱 `setBaseline` → `maker.cancel`)
-                maker.current?.cancel();
-                movedJob.current = null;
+                movedJob.current!.cancel();
                 setStage(step("capture", 1));
               }}
               onBack={() => setStage(step("capture", -1))}
@@ -735,9 +724,7 @@ function Running() {
                 // 머리카락 분할 모델을 미리 받아 둔다 (#429) — 피드백이 쓸 때 기다리지 않게. 받는 동안 화면은 안 막는다
                 void hairMask.current!({ data: new Uint8ClampedArray(16 * 16 * 4), w: 16, h: 16 });
                 // 옛 시도사진으로 만들던 옮긴 그림은 못 쓴다 — 버리고 새로 시작한다 (본 앱 `setAttempt`). 서버가 없으면 시작하지 않는다
-                maker.current?.cancel("moved");
-                movedJob.current = hasAnswerServer ? maker.current!.makeMoved() : null;
-                movedJob.current?.catch(() => {}); // 실패는 getMoved 가 받는다 — 피드백 전에 끝난 실패가 경고로 새지 않게
+                movedJob.current!.start();
                 setStage(step("attempt", 1));
               }}
               onBack={() => setStage(step("attempt", -1))}

@@ -19,6 +19,7 @@
  * 배포본과 같다. 로고 줄도 없다 (배포본 끝 화면은 로고를 안 그린다 — app.css `.app:has(.done)`).
  */
 
+import { ops } from "../lib/ops";
 import { surveyLink } from "../survey-link";
 import "../survey.css";
 
@@ -36,7 +37,14 @@ export default function Done({ onRestart }: { onRestart: () => void }) {
       {survey && (
         <div className="done-survey">
           <p>써 보니 어땠는지 알려 주시면 서비스를 고치는 데 쓸게요.</p>
-          <a className="primary" href={survey} target="_blank" rel="noopener noreferrer">
+          {/* 끝 화면에서 설문으로 간 것도 센다 — 본 앱 done-survey 의 `survey_open` */}
+          <a
+            className="primary"
+            href={survey}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => ops().log.log({ name: "button", button: "survey_open" })}
+          >
             후기 남기기 (1분)
           </a>
         </div>
