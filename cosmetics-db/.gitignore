@@ -1,0 +1,5 @@
+# export.py 가 뽑는 것. 앱이 쓰는 복사본은 client/src/core/product-picks.data.ts 에 있다
+out/
+
+# 색을 눈으로 견줘 본 확인용 그림 (5MB). 작업 기록이라 레포에는 안 넣는다
+*.png
