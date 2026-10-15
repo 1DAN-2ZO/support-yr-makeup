@@ -134,36 +134,42 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
     {
       families: ["베이지", "밀크브라운", "브라운"],
       brand: "롬앤", name: "한올 아이팟 라이너 01 브라운 토프 팟",
+      group: "한올 아이팟 라이너",
       kind: "젤 팟 — 한 통에 칸 4개라 음영까지 같이 돼요",
     },
     // 호수 4개
     {
       families: ["브라운", "로즈"],
       brand: "롬앤", name: "한올 아이팟 라이너 02 더스티 로즈 팟",
+      group: "한올 아이팟 라이너",
       kind: "젤 팟 — 한 통에 칸 4개라 음영까지 같이 돼요",
     },
     // 호수 4개
     {
       families: ["베이지", "밀크브라운"],
       brand: "롬앤", name: "한올 아이팟 라이너 03 피오니 크림 팟",
+      group: "한올 아이팟 라이너",
       kind: "젤 팟 — 한 통에 칸 4개라 음영까지 같이 돼요",
     },
     // 호수 4개
     {
       families: ["베이지", "밀크브라운", "소프트블랙"],
       brand: "롬앤", name: "한올 아이팟 라이너 04 카라멜 브라운 팟",
+      group: "한올 아이팟 라이너",
       kind: "젤 팟 — 한 통에 칸 4개라 음영까지 같이 돼요",
     },
     // 호수 4개
     {
       families: ["브라운", "코랄", "로즈", "네이비"],
       brand: "롬앤", name: "한올 아이팟 라이너 05 그레이 핑크 팟",
+      group: "한올 아이팟 라이너",
       kind: "젤 팟 — 한 통에 칸 4개라 음영까지 같이 돼요",
     },
     // 호수 4개
     {
       families: ["베이지", "밀크브라운", "다크브라운"],
       brand: "롬앤", name: "한올 아이팟 라이너 06 번트 코랄 팟",
+      group: "한올 아이팟 라이너",
       kind: "젤 팟 — 한 통에 칸 4개라 음영까지 같이 돼요",
     },
     // 호수 4개
@@ -214,6 +220,7 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
     {
       families: ["브라운", "딥브라운", "코랄"],
       brand: "클리오", name: "프로 아이 팔레트 에어 1 코랄 스튜디오",
+      group: "프로 아이 팔레트 에어",
       kind: "팔레트 — 한 판에 12색이라 한 통으로 눈 화장이 끝나요",
       photo: "/products/clio-pro-eye-palette-air.jpg",
       checked: true,
@@ -222,6 +229,7 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
     {
       families: ["브라운", "코랄", "딥브라운", "누드핑크", "로즈"],
       brand: "클리오", name: "프로 아이 팔레트 에어 2 로즈 커넥트",
+      group: "프로 아이 팔레트 에어",
       kind: "팔레트 — 한 판에 12색이라 한 통으로 눈 화장이 끝나요",
       photo: "/products/clio-pro-eye-palette-air.jpg",
       checked: true,
@@ -230,6 +238,7 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
     {
       families: ["누드핑크", "핑크", "로즈", "모브", "브라운", "딥브라운"],
       brand: "클리오", name: "프로 아이 팔레트 에어 4 핑크 페어링",
+      group: "프로 아이 팔레트 에어",
       kind: "팔레트 — 한 판에 12색이라 한 통으로 눈 화장이 끝나요",
       photo: "/products/clio-pro-eye-palette-air.jpg",
       checked: true,
@@ -238,6 +247,7 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
     {
       families: ["핑크", "로즈"],
       brand: "모렛", name: "뷰파인더 섀도우 팔레트 와인클래스",
+      group: "뷰파인더 섀도우 팔레트",
       kind: "팔레트 — 뮤트한 중성 톤이라 과하지 않게 발려요",
       photo: "/products/molette-viewfinder-palette.jpg",
       checked: true,
@@ -246,6 +256,7 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
     {
       families: ["핑크", "플럼", "로즈"],
       brand: "모렛", name: "뷰파인더 섀도우 팔레트 퍼퓸클래스",
+      group: "뷰파인더 섀도우 팔레트",
       kind: "팔레트 — 뮤트한 중성 톤이라 과하지 않게 발려요",
       photo: "/products/molette-viewfinder-palette.jpg",
       checked: true,
@@ -254,6 +265,7 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
     {
       families: ["딥브라운", "베이지", "브라운"],
       brand: "모렛", name: "뷰파인더 섀도우 팔레트 티클래스",
+      group: "뷰파인더 섀도우 팔레트",
       kind: "팔레트 — 뮤트한 중성 톤이라 과하지 않게 발려요",
       photo: "/products/molette-viewfinder-palette.jpg",
       checked: true,
@@ -262,6 +274,7 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
     {
       families: ["플럼"],
       brand: "클리오", name: "프로 아이 팔레트 에어 10 플럼 플럼 인 시즌",
+      group: "프로 아이 팔레트 에어",
       kind: "팔레트 — 한 판에 12색이라 한 통으로 눈 화장이 끝나요",
       photo: "/products/clio-pro-eye-palette-air.jpg",
       checked: true,
@@ -270,6 +283,7 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
     {
       families: ["퍼플"],
       brand: "클리오", name: "프로 아이 팔레트 에어 5 오키드 클라우드",
+      group: "프로 아이 팔레트 에어",
       kind: "팔레트 — 한 판에 12색이라 한 통으로 눈 화장이 끝나요",
       photo: "/products/clio-pro-eye-palette-air.jpg",
       checked: true,
@@ -278,6 +292,7 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
     {
       families: ["퍼플"],
       brand: "클리오", name: "프로 아이 팔레트 에어 7 라벤더 뉴커머",
+      group: "프로 아이 팔레트 에어",
       kind: "팔레트 — 한 판에 12색이라 한 통으로 눈 화장이 끝나요",
       photo: "/products/clio-pro-eye-palette-air.jpg",
       checked: true,
@@ -286,6 +301,7 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
     {
       families: ["베이지"],
       brand: "클리오", name: "프로 아이 팔레트 에어 8 라떼 이즈 시니어",
+      group: "프로 아이 팔레트 에어",
       kind: "팔레트 — 한 판에 12색이라 한 통으로 눈 화장이 끝나요",
       photo: "/products/clio-pro-eye-palette-air.jpg",
       checked: true,
@@ -302,48 +318,56 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
     {
       families: ["브라운", "딥브라운"],
       brand: "페리페라", name: "올 테이크 무드 팔레트 001 봄바람이 부는걸 보니 봄이 왔나봄",
+      group: "올 테이크 무드 팔레트",
       kind: "팔레트 — 분홍·자주 계열",
     },
     // 호수 8개
     {
       families: ["브라운", "누드핑크", "로즈", "핑크", "모브"],
       brand: "페리페라", name: "올 테이크 무드 팔레트 002 봄과 여름의 서사",
+      group: "올 테이크 무드 팔레트",
       kind: "팔레트 — 분홍·자주 계열",
     },
     // 호수 8개
     {
       families: ["브라운", "코랄", "로즈", "딥브라운"],
       brand: "페리페라", name: "올 테이크 무드 팔레트 003 꽃이라고 불러도 돼?",
+      group: "올 테이크 무드 팔레트",
       kind: "팔레트 — 분홍·자주 계열",
     },
     // 호수 8개
     {
       families: ["누드핑크", "핑크", "로즈", "모브"],
       brand: "페리페라", name: "올 테이크 무드 팔레트 004 쿨톤이셔서 그런데 DM 확인 부탁드려요",
+      group: "올 테이크 무드 팔레트",
       kind: "팔레트 — 분홍·자주 계열",
     },
     // 호수 8개
     {
       families: ["브라운", "누드핑크", "로즈", "버건디"],
       brand: "페리페라", name: "올 테이크 무드 팔레트 005 나가을인데!나랑밤먹을래?",
+      group: "올 테이크 무드 팔레트",
       kind: "팔레트 — 분홍·자주 계열",
     },
     // 호수 8개
     {
       families: ["누드핑크", "핑크", "로즈", "버건디"],
       brand: "페리페라", name: "올 테이크 무드 팔레트 006 너는무슨뮤트하겠다는말을여름에하니",
+      group: "올 테이크 무드 팔레트",
       kind: "팔레트 — 분홍·자주 계열",
     },
     // 호수 없음 · 제품 단위 계열 2개(오렌지 · 코랄)
     {
       families: ["오렌지", "코랄"],
       brand: "릴리바이레드", name: "무드 잇 팔레트 01 프레쉬잇",
+      group: "무드 잇 팔레트",
       kind: "팔레트 — 따뜻한 계열",
     },
     // 호수 없음 · 제품 단위 계열 2개(퍼플 · 플럼)
     {
       families: ["퍼플", "플럼"],
       brand: "페리페라", name: "올 테이크 무드 팔레트 007 우리집에복숭아보러갈래?",
+      group: "올 테이크 무드 팔레트",
       kind: "팔레트 — 분홍·자주 계열",
     },
   ],
