@@ -104,7 +104,7 @@ export default function Upload({ onDone, onTemplates }: UploadProps) {
       <div className="coach">
         <img src="/ui/nudy-coach-simple.svg" alt="" aria-hidden="true" />
         <p>
-          따라 하고 싶은 화장 사진을 먼저 올려 주세요
+          따라 하고 싶은 화장 사진을 올려줘!
           <i aria-hidden="true" />
         </p>
       </div>

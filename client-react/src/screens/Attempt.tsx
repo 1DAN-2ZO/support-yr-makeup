@@ -80,7 +80,7 @@ export const ATTEMPT_TEXT = {
   retake: "다시 찍기",
   confirm: "이대로 피드백 받기",
   /** 얼굴을 못 찾았을 때 남겨 두는 말 — 빈 칸이면 왜 안 찍히는지 알 수 없다 */
-  aim: "얼굴을 맞춰 주세요",
+  aim: "원 안에 얼굴을 맞춰 줘!",
 } as const;
 
 export interface AttemptProps {

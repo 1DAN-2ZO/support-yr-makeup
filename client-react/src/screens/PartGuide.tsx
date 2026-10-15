@@ -47,12 +47,15 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { PartColors } from "../api";
 import type { PalettePart } from "@core/color-family";
-import { PART_NAME, PART_ORDER, PART_TIP } from "../parts";
+import { PART_COACH, PART_NAME, PART_ORDER, PART_TIP } from "../parts";
 import { pickProducts, pickShadeText } from "@core/product-picks";
 import { drawGuidePage, type GuideLoad, type GuideView } from "../lib/guide-source";
 
-/** 진짜 가이드 그림이 떴을 때의 말풍선 — 본 앱 flow-slots 의 `GUIDE_COACH` 그대로 */
-const GUIDE_COACH = "예상 메이크업에서 이 부위만 크게 잘라서 보여드릴게요";
+/*
+ * 진짜 가이드 그림이 떴을 때의 말풍선은 **부위마다 다르다** (2026-10-15, #469).
+ * 전에는 다섯 부위가 전부 같은 말이라 부위를 넘겨도 바뀌는 것이 없었다 —
+ * 이제 `parts.ts` 의 `PART_COACH` 에서 그 부위의 화장 팁을 가져온다.
+ */
 
 /** 자리표시일 때의 말풍선 — 내 얼굴이 아니라 견본이라는 것을 먼저 밝힌다 */
 const MOCK_COACH = "예시 그림이에요. 점과 선을 기준으로 따라 해 주세요";
@@ -173,7 +176,7 @@ export default function PartGuide({
         <img src="/ui/nudy-coach-simple.svg" alt="" aria-hidden="true" />
         {/* 진짜 그림이 뜨면 말이 바뀐다 — 「예시」 딱지가 빠지는 것과 같은 때다 (본 앱 #364) */}
         <p>
-          {real ? GUIDE_COACH : MOCK_COACH}
+          {real ? PART_COACH[part] : MOCK_COACH}
           <i aria-hidden="true" />
         </p>
       </div>

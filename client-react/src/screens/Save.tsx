@@ -183,7 +183,7 @@ export default function Save({
       <div className="coach">
         <img src="/ui/nudy-coach-simple.svg" alt="" aria-hidden="true" />
         <p>
-          오늘 고른 화장과 색을 한 장에 모아 뒀어요
+          오늘 한 화장과 추천하는 화장품이야!
           <i aria-hidden="true" />
         </p>
       </div>
