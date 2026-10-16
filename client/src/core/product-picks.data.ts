@@ -47,18 +47,21 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
       families: ["그레이브라운", "라이트브라운", "애쉬브라운", "레드브라운"],
       brand: "클리오", name: "킬브로우 오토 하드 브로우 펜슬",
       kind: "펜슬 — 심이 육각이라 눕히면 넓게, 세우면 가늘게 그려져요",
+      photo: "/products/clio-kill-brow-auto-hard-brow-pencil.jpg",
     },
     // 호수 6개 · 제품 단위 계열 1개(다크브라운)
     {
       families: ["레드브라운", "애쉬브라운", "브라운", "그레이브라운", "소프트블랙", "다크브라운"],
       brand: "에뛰드", name: "드로잉 아이 브라우",
       kind: "펜슬 — 무르고 부드러워 넓게 채우기 좋아요",
+      photo: "/products/etude-drawing-eye-brow.jpg",
     },
     // 호수 6개
     {
       families: ["밀크브라운", "라이트브라운", "레드브라운"],
       brand: "페리페라", name: "스피디 스키니 브로우 마스카라",
       kind: "브로우 마스카라 — 솔로 쓸어 눈썹 색을 통째로 바꿔요",
+      photo: "/products/peripera-speedy-skinny-brow-mascara.jpg",
     },
   ],
   liner: [
@@ -99,36 +102,42 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
       families: ["베이지", "브라운", "코랄", "로즈"],
       brand: "투쿨포스쿨", name: "아트클래스 스머징 트임 라이너",
       kind: "젤 펜슬 — 뭉개서 쓰는 트임·애교살 전용이라 색이 13가지예요",
+      photo: "/products/too-cool-for-school-artclass-smudging-under-liner.jpg",
     },
     // 호수 7개
     {
       families: ["다크브라운", "베이지", "브라운", "밀크브라운"],
       brand: "3CE", name: "소프트 뮤트 펜슬 라이너",
       kind: "펜슬 — 채도를 낮춘 7가지 뮤트 색이라 애교살·언더에 쓰기 좋아요",
+      photo: "/products/3ce-soft-mute-pencil-liner.jpg",
     },
     // 호수 7개
     {
       families: ["그레이", "밀크브라운", "브라운", "베이지"],
       brand: "롬앤", name: "한올 쉐이드 라이너",
       kind: "펜슬 — 그림자 같은 음영색이라 선이 세게 안 보여요",
+      photo: "/products/rom-nd-han-all-shade-liner.jpg",
     },
     // 호수 7개
     {
       families: ["소프트블랙", "브라운", "밀크브라운", "베이지", "코랄"],
       brand: "릴리바이레드", name: "스태리아이즈 나인투나인 슬림 젤 아이라이너",
       kind: "젤 펜슬 — 심이 2mm로 초슬림이라 점막에 쓰기 좋아요",
+      photo: "/products/lilybyred-starry-eyes-am9-to-pm9-slim-gel-eyeliner.jpg",
     },
     // 호수 5개
     {
       families: ["밀크브라운", "브라운", "로즈", "소프트블랙"],
       brand: "3CE", name: "마이 링 아이 라이너",
       kind: "붓펜 — 눈동자 색에 맞춰 고르라고 나온 컬러 라이너예요",
+      photo: "/products/3ce-my-ring-eye-liner.jpg",
     },
     // 호수 5개
     {
       families: ["그레이", "카키", "블랙", "다크브라운"],
       brand: "투쿨포스쿨", name: "아트클래스 무드 펜 라이너",
       kind: "펜 — 1mm 붓끝이라 선이 가늘고 또렷해요",
+      photo: "/products/too-cool-for-school-artclass-mood-pen-liner.jpg",
     },
     // 호수 4개
     {
@@ -136,6 +145,7 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
       brand: "롬앤", name: "한올 아이팟 라이너 01 브라운 토프 팟",
       group: "한올 아이팟 라이너",
       kind: "젤 팟 — 한 통에 칸 4개라 음영까지 같이 돼요",
+      photo: "/products/rom-nd-han-all-eye-pot-liner-01-brown-taupe.jpg",
     },
     // 호수 4개
     {
@@ -143,6 +153,7 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
       brand: "롬앤", name: "한올 아이팟 라이너 02 더스티 로즈 팟",
       group: "한올 아이팟 라이너",
       kind: "젤 팟 — 한 통에 칸 4개라 음영까지 같이 돼요",
+      photo: "/products/rom-nd-han-all-eye-pot-liner-02-dusty-rose.jpg",
     },
     // 호수 4개
     {
@@ -150,6 +161,7 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
       brand: "롬앤", name: "한올 아이팟 라이너 03 피오니 크림 팟",
       group: "한올 아이팟 라이너",
       kind: "젤 팟 — 한 통에 칸 4개라 음영까지 같이 돼요",
+      photo: "/products/rom-nd-han-all-eye-pot-liner-03-peony-cream.jpg",
     },
     // 호수 4개
     {
@@ -157,6 +169,7 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
       brand: "롬앤", name: "한올 아이팟 라이너 04 카라멜 브라운 팟",
       group: "한올 아이팟 라이너",
       kind: "젤 팟 — 한 통에 칸 4개라 음영까지 같이 돼요",
+      photo: "/products/rom-nd-han-all-eye-pot-liner-04-caramel-brown.jpg",
     },
     // 호수 4개
     {
@@ -164,6 +177,7 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
       brand: "롬앤", name: "한올 아이팟 라이너 05 그레이 핑크 팟",
       group: "한올 아이팟 라이너",
       kind: "젤 팟 — 한 통에 칸 4개라 음영까지 같이 돼요",
+      photo: "/products/rom-nd-han-all-eye-pot-liner-05-grey-pink.jpg",
     },
     // 호수 4개
     {
@@ -171,48 +185,56 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
       brand: "롬앤", name: "한올 아이팟 라이너 06 번트 코랄 팟",
       group: "한올 아이팟 라이너",
       kind: "젤 팟 — 한 통에 칸 4개라 음영까지 같이 돼요",
+      photo: "/products/rom-nd-han-all-eye-pot-liner-06-burnt-coral.jpg",
     },
     // 호수 4개
     {
       families: ["다크브라운", "브라운"],
       brand: "투쿨포스쿨", name: "아트클래스 스머징 엣지라이너",
       kind: "젤 펜슬 + 블렌딩 브러쉬 — 그어 놓고 문질러 음영처럼 쓸 수 있어요",
+      photo: "/products/too-cool-for-school-artclass-smudging-edge-liner.jpg",
     },
     // 호수 3개
     {
       families: ["그레이", "베이지"],
       brand: "에뛰드", name: "반짝 눈물 라이너",
       kind: "글리터 라이너 — 눈물 모양 반짝이를 얹는 용이에요",
+      photo: "/products/etude-tear-eye-liner.jpg",
     },
     // 호수 3개
     {
       families: ["블랙", "다크브라운", "밀크브라운"],
       brand: "투쿨포스쿨", name: "아트클래스 픽싱 젤 라이너",
       kind: "젤 펜슬 — 심이 2mm로 얇고 잘 안 번져요",
+      photo: "/products/too-cool-for-school-artclass-fixing-gel-liner.jpg",
     },
     // 호수 2개
     {
       families: ["밀크브라운", "베이지"],
       brand: "에뛰드", name: "2X 쌩얼 라이너",
       kind: "펜 라이너 — 묽게 비쳐서 그린 티가 덜 나요",
+      photo: "/products/etude-2x-bare-liner.jpg",
     },
     // 호수 2개
     {
       families: ["소프트블랙", "브라운"],
       brand: "에뛰드", name: "드로잉쇼 브러쉬 라이너",
       kind: "붓펜 — 획이 굵게도 가늘게도 나와요",
+      photo: "/products/etude-drawing-show-brush-liner.jpg",
     },
     // 호수 2개
     {
       families: ["브라운", "소프트블랙"],
       brand: "에뛰드", name: "라인 픽스 브러쉬 라이너",
       kind: "붓펜 — 잘 안 번지는 쪽이에요",
+      photo: "/products/etude-line-fix-brush-liner.jpg",
     },
     // 호수 2개
     {
       families: ["블랙", "다크브라운"],
       brand: "에스쁘아", name: "노머징 브러쉬 라이너",
       kind: "붓펜 — 0.07mm 붓이라 속눈썹 사이를 메우기 좋아요",
+      photo: "/products/espoir-nomudging-brush-liner.jpg",
     },
   ],
   shadow: [
@@ -320,6 +342,7 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
       brand: "페리페라", name: "올 테이크 무드 팔레트 001 봄바람이 부는걸 보니 봄이 왔나봄",
       group: "올 테이크 무드 팔레트",
       kind: "팔레트 — 분홍·자주 계열",
+      photo: "/products/peripera-all-take-mood-palette-001.jpg",
     },
     // 호수 8개
     {
@@ -327,6 +350,7 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
       brand: "페리페라", name: "올 테이크 무드 팔레트 002 봄과 여름의 서사",
       group: "올 테이크 무드 팔레트",
       kind: "팔레트 — 분홍·자주 계열",
+      photo: "/products/peripera-all-take-mood-palette-002.jpg",
     },
     // 호수 8개
     {
@@ -334,6 +358,7 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
       brand: "페리페라", name: "올 테이크 무드 팔레트 003 꽃이라고 불러도 돼?",
       group: "올 테이크 무드 팔레트",
       kind: "팔레트 — 분홍·자주 계열",
+      photo: "/products/peripera-all-take-mood-palette-003.jpg",
     },
     // 호수 8개
     {
@@ -341,6 +366,7 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
       brand: "페리페라", name: "올 테이크 무드 팔레트 004 쿨톤이셔서 그런데 DM 확인 부탁드려요",
       group: "올 테이크 무드 팔레트",
       kind: "팔레트 — 분홍·자주 계열",
+      photo: "/products/peripera-all-take-mood-palette-004.jpg",
     },
     // 호수 8개
     {
@@ -348,6 +374,7 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
       brand: "페리페라", name: "올 테이크 무드 팔레트 005 나가을인데!나랑밤먹을래?",
       group: "올 테이크 무드 팔레트",
       kind: "팔레트 — 분홍·자주 계열",
+      photo: "/products/peripera-all-take-mood-palette-005.jpg",
     },
     // 호수 8개
     {
@@ -355,6 +382,7 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
       brand: "페리페라", name: "올 테이크 무드 팔레트 006 너는무슨뮤트하겠다는말을여름에하니",
       group: "올 테이크 무드 팔레트",
       kind: "팔레트 — 분홍·자주 계열",
+      photo: "/products/peripera-all-take-mood-palette-006.jpg",
     },
     // 호수 없음 · 제품 단위 계열 2개(오렌지 · 코랄)
     {
@@ -362,6 +390,7 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
       brand: "릴리바이레드", name: "무드 잇 팔레트 01 프레쉬잇",
       group: "무드 잇 팔레트",
       kind: "팔레트 — 따뜻한 계열",
+      photo: "/products/lilybyred-mood-it-palette-01-fresh-it.jpg",
     },
     // 호수 없음 · 제품 단위 계열 2개(퍼플 · 플럼)
     {
@@ -369,6 +398,7 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
       brand: "페리페라", name: "올 테이크 무드 팔레트 007 우리집에복숭아보러갈래?",
       group: "올 테이크 무드 팔레트",
       kind: "팔레트 — 분홍·자주 계열",
+      photo: "/products/peripera-all-take-mood-palette-007.jpg",
     },
   ],
   cheek: [
@@ -393,12 +423,14 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
       families: ["코랄", "베이지핑크", "모브", "로즈", "핑크"],
       brand: "3CE", name: "페이스 블러쉬",
       kind: "파우더",
+      photo: "/products/3ce-face-blush.jpg",
     },
     // 호수 19개
     {
       families: ["코랄", "핑크", "모브", "로즈"],
       brand: "릴리바이레드", name: "러브빔 치크밤",
       kind: "밤 — 하트 모양 통에 담긴 크림 타입",
+      photo: "/products/lilybyred-love-beam-cheek-balm.jpg",
     },
     // 호수 11개 · 제품 단위 계열 2개(베이지핑크 · 피치)
     {
@@ -411,30 +443,35 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
       families: ["베이지핑크", "모브", "피치"],
       brand: "롬앤", name: "베러 댄 치크",
       kind: "파우더 블러셔",
+      photo: "/products/rom-nd-better-than-cheek.jpg",
     },
     // 호수 9개
     {
       families: ["코랄", "로즈"],
       brand: "힌스", name: "하프 문 치크",
       kind: "크림에서 파우더로 바뀌는 치크",
+      photo: "/products/hince-half-moon-cheek.jpg",
     },
     // 호수 8개
     {
       families: ["베이지핑크", "핑크", "모브", "코랄"],
       brand: "데이지크", name: "소프트 블러 치크",
       kind: "파우더 블러셔",
+      photo: "/products/dasique-soft-blur-cheek.jpg",
     },
     // 호수 8개
     {
       families: ["피치", "모브", "베이지핑크"],
       brand: "어뮤즈", name: "듀 세럼 리퀴드 블러쉬",
       kind: "리퀴드 — 세럼처럼 묽어 얇게 퍼져요",
+      photo: "/products/amuse-dew-serum-liquid-blusher.jpg",
     },
     // 호수 7개
     {
       families: ["모브", "핑크", "로즈", "코랄"],
       brand: "힌스", name: "허그 레이어 치크",
       kind: "파우더 — 한 통에 두 칸, 겹쳐 발라요",
+      photo: "/products/hince-hug-layer-cheek.jpg",
     },
   ],
   lip: [
@@ -459,18 +496,21 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
       families: ["코랄", "체리", "레드", "피치", "오렌지"],
       brand: "에스쁘아", name: "꾸뛰르 립 틴트 글레이즈",
       kind: "틴트 — 광이 돌아요",
+      photo: "/products/espoir-couture-lip-tint-glaze.jpg",
     },
     // 호수 4개 · 제품 단위 계열 6개(딥레드 · 로즈 · 버건디 · 체리 · 플럼 · 핑크)
     {
       families: ["피치", "레드", "딥레드", "로즈", "버건디", "체리", "플럼", "핑크"],
       brand: "3CE", name: "블러 워터 틴트",
       kind: "틴트 — 뿌옇게 번지는 느낌",
+      photo: "/products/3ce-blur-water-tint.jpg",
     },
     // 호수 4개
     {
       families: ["로즈", "레드"],
       brand: "얼터너티브스테레오", name: "립 포션",
       kind: "촉촉한 틴트 — 누드부터 로즈까지 음영이 옅게 깔려요",
+      photo: "/products/alternative-stereo-lip-potion.jpg",
     },
   ],
 };
