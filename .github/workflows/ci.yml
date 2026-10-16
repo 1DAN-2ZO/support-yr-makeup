@@ -45,7 +45,7 @@ jobs:
       - run: npm test
       - run: npm run lint
 
-  # 리액트판 (client-react/, #453) — 빌드(tsc 포함) · 린트. 시험은 아직 없다 (#454 D7)
+  # 리액트판 (client-react/, #453) — 빌드(tsc 포함) · 시험(vitest, #454 D7) · 린트
   client-react:
     runs-on: ubuntu-latest
     defaults:
@@ -60,4 +60,5 @@ jobs:
           cache-dependency-path: client-react/package-lock.json
       - run: npm ci
       - run: npm run build
+      - run: npm test
       - run: npm run lint
