@@ -162,7 +162,8 @@ def write_product_en(by_part: dict) -> int:
             body = ", ".join(f"{k}: {ts(v)}" for k, v in got.items())
             rows.append(f"  [{ts(key)}]: {{ {body} }},\n")
 
-    out = ["""/*
+    out = [
+        """/*
  * 제품 이름·설명의 영어판 — **nudy-db 의 export.py 가 만든다. 손으로 고치지 마라.**
  *
  * 고치려면 디비 쪽을 고친다:
@@ -184,7 +185,8 @@ export interface ProductEn {
 }
 
 export const PRODUCT_EN: Readonly<Record<string, ProductEn>> = {
-"""]
+"""
+    ]
     out.extend(rows)
     out.append("};\n")
     (OUT / "product-en.ts").write_text("".join(out), encoding="utf-8")
