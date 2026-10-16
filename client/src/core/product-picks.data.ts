@@ -432,12 +432,6 @@ export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
       kind: "밤 — 하트 모양 통에 담긴 크림 타입",
       photo: "/products/lilybyred-love-beam-cheek-balm.jpg",
     },
-    // 호수 11개 · 제품 단위 계열 2개(베이지핑크 · 피치)
-    {
-      families: ["코랄", "핑크", "로즈", "모브", "베이지핑크", "피치"],
-      brand: "페리페라", name: "퓨어 블러시드 선샤인 치크",
-      kind: "파우더 — 얇게 올라가 뭉치지 않아요",
-    },
     // 호수 9개
     {
       families: ["베이지핑크", "모브", "피치"],
