@@ -1,4 +1,6 @@
-/** 테스트 기간 마감 화면 (screens/Closed, core/test-period) — #454 A1 */
+/** 화면은 말(한국어·영어)을 LangProvider 에서 받으므로 시험도 감싼다 (tests/setup.ts 가 ko 로 고정).
+ * 테스트 기간 마감 화면 (screens/Closed, core/test-period) — #454 A1 */
+import { LangProvider } from "../src/i18n/useLang";
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { CLOSED_TEXT, TEST_ENDS_AT_MS, isTestClosed } from "@core/test-period";
@@ -18,7 +20,11 @@ describe("isTestClosed (본 앱 규칙 그대로)", () => {
 describe("Closed 화면", () => {
   it("본 앱과 같은 글을 보여 주고, 폰에 남은 세션 번호를 지운다", () => {
     window.localStorage.setItem(SID_KEY, JSON.stringify({ sid: "old", t: 0 }));
-    render(<Closed />);
+    render(
+      <LangProvider>
+        <Closed />
+      </LangProvider>,
+    );
     expect(screen.getByRole("heading", { name: CLOSED_TEXT.title })).toBeTruthy();
     expect(screen.getByText(CLOSED_TEXT.body)).toBeTruthy();
     expect(screen.getByRole("link", { name: CLOSED_TEXT.survey })).toBeTruthy();

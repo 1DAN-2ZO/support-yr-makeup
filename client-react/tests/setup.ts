@@ -2,6 +2,9 @@
 import { afterEach, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
 
+// 시험은 한국어 글로 견준다 — LangProvider 가 처음 말을 폰 설정(navigator.languages)에서 읽으므로 ko 로 고정한다 (i18n/index.ts detectLang)
+Object.defineProperty(window.navigator, "languages", { value: ["ko-KR"], configurable: true });
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
