@@ -1,0 +1,57 @@
+-- 제품 사진 (2026-10-16, 전지원 #454 후속).  화장품 DB 로 늘어난 제품에 사진이 없어서 부위 가이드의 화장품 칸이 비어 있었다.
+-- 사진 파일은 client/public/products/ (= client-react/public/products/) 에 있고 출처는 그 폴더의 SOURCES.md.
+-- id 가 아니라 브랜드 이름 + 제품 이름으로 맞춘다 — seed 순서가 바뀌어도 어긋나지 않게.
+
+UPDATE product SET photo='/products/alternative-stereo-lip-potion.jpg', source_url='https://alternativestereo.com/product/new-립-포션-카라멜-글레이즈-7-colors/236/category/56/display/1/' WHERE name='립 포션' AND brand_id=(SELECT id FROM brand WHERE name='얼터너티브스테레오');
+UPDATE product SET photo='/products/etude-drawing-eye-brow.jpg', source_url='https://www.etude.com/shop/category/eye/%eb%93%9c%eb%a1%9c%ec%9e%89-%ec%95%84%ec%9d%b4-%eb%b8%8c%eb%a1%9c%ec%9a%b0-0-25g/' WHERE name='드로잉 아이 브라우' AND brand_id=(SELECT id FROM brand WHERE name='에뛰드');
+UPDATE product SET photo='/products/3ce-blur-water-tint.jpg', source_url='https://www.3cecosmetics.com/all-products/lips/lip-tint/3ce-blur-water-tint' WHERE name='블러 워터 틴트' AND brand_id=(SELECT id FROM brand WHERE name='3CE');
+UPDATE product SET photo='/products/espoir-couture-lip-tint-glaze.jpg', source_url='https://www.espoir.com/ko/shop/LIP/shop_prd_list.do' WHERE name='꾸뛰르 립 틴트 글레이즈' AND brand_id=(SELECT id FROM brand WHERE name='에스쁘아');
+UPDATE product SET photo='/products/peripera-all-take-mood-palette-001.jpg', source_url='https://clubclio.co.kr/shop/goodsView/0000005300' WHERE name='올 테이크 무드 팔레트 001 봄바람이 부는걸 보니 봄이 왔나봄' AND brand_id=(SELECT id FROM brand WHERE name='페리페라');
+UPDATE product SET photo='/products/peripera-all-take-mood-palette-002.jpg', source_url='https://clubclio.co.kr/shop/goodsView/0000005300' WHERE name='올 테이크 무드 팔레트 002 봄과 여름의 서사' AND brand_id=(SELECT id FROM brand WHERE name='페리페라');
+UPDATE product SET photo='/products/peripera-all-take-mood-palette-003.jpg', source_url='https://clubclio.co.kr/shop/goodsView/0000005300' WHERE name='올 테이크 무드 팔레트 003 꽃이라고 불러도 돼?' AND brand_id=(SELECT id FROM brand WHERE name='페리페라');
+UPDATE product SET photo='/products/peripera-all-take-mood-palette-004.jpg', source_url='https://clubclio.co.kr/shop/goodsView/0000005300' WHERE name='올 테이크 무드 팔레트 004 쿨톤이셔서 그런데 DM 확인 부탁드려요' AND brand_id=(SELECT id FROM brand WHERE name='페리페라');
+UPDATE product SET photo='/products/peripera-all-take-mood-palette-005.jpg', source_url='https://clubclio.co.kr/shop/goodsView/0000005300' WHERE name='올 테이크 무드 팔레트 005 나가을인데!나랑밤먹을래?' AND brand_id=(SELECT id FROM brand WHERE name='페리페라');
+UPDATE product SET photo='/products/peripera-all-take-mood-palette-006.jpg', source_url='https://clubclio.co.kr/shop/goodsView/0000005300' WHERE name='올 테이크 무드 팔레트 006 너는무슨뮤트하겠다는말을여름에하니' AND brand_id=(SELECT id FROM brand WHERE name='페리페라');
+UPDATE product SET photo='/products/peripera-all-take-mood-palette-007.jpg', source_url='https://clubclio.co.kr/shop/goodsView/0000005300' WHERE name='올 테이크 무드 팔레트 007 우리집에복숭아보러갈래?' AND brand_id=(SELECT id FROM brand WHERE name='페리페라');
+UPDATE product SET photo='/products/peripera-all-take-mood-palette-008.jpg', source_url='https://clubclio.co.kr/shop/goodsView/0000005300' WHERE name='올 테이크 무드 팔레트 008 버건디근데이제도화를곁들인' AND brand_id=(SELECT id FROM brand WHERE name='페리페라');
+UPDATE product SET photo='/products/peripera-all-take-mood-palette-009.jpg', source_url='https://clubclio.co.kr/shop/goodsView/0000005300' WHERE name='올 테이크 무드 팔레트 009 야레야레못말리는복숭아' AND brand_id=(SELECT id FROM brand WHERE name='페리페라');
+UPDATE product SET photo='/products/peripera-all-take-mood-palette-010.jpg', source_url='https://clubclio.co.kr/shop/goodsView/0000005300' WHERE name='올 테이크 무드 팔레트 010 그린곳까지가제눈입니다만?' AND brand_id=(SELECT id FROM brand WHERE name='페리페라');
+UPDATE product SET photo='/products/peripera-all-take-mood-palette-011.jpg', source_url='https://clubclio.co.kr/shop/goodsView/0000005300' WHERE name='올 테이크 무드 팔레트 011 방구석청담샵미지근아티스트' AND brand_id=(SELECT id FROM brand WHERE name='페리페라');
+UPDATE product SET photo='/products/peripera-all-take-mood-palette-012.jpg', source_url='https://clubclio.co.kr/shop/goodsView/0000005300' WHERE name='올 테이크 무드 팔레트 012 애교통신 반짝임 감지 가속모드' AND brand_id=(SELECT id FROM brand WHERE name='페리페라');
+UPDATE product SET photo='/products/peripera-all-take-mood-palette-013.jpg', source_url='https://clubclio.co.kr/shop/goodsView/0000005300' WHERE name='올 테이크 무드 팔레트 013 나됐어요!도도폭스됐어요' AND brand_id=(SELECT id FROM brand WHERE name='페리페라');
+UPDATE product SET photo='/products/lilybyred-mood-it-palette-01-fresh-it.jpg', source_url='https://lilybyred.co.kr/product/오드라벤더-릴리바이레드-무드-잇-팔레트ad/343/category/25/display/1/' WHERE name='무드 잇 팔레트 01 프레쉬잇' AND brand_id=(SELECT id FROM brand WHERE name='릴리바이레드');
+UPDATE product SET photo='/products/lilybyred-mood-it-palette-02-like-it.jpg', source_url='https://lilybyred.co.kr/product/오드라벤더-릴리바이레드-무드-잇-팔레트ad/343/category/25/display/1/' WHERE name='무드 잇 팔레트 02 라이크잇' AND brand_id=(SELECT id FROM brand WHERE name='릴리바이레드');
+UPDATE product SET photo='/products/lilybyred-mood-it-palette-03-neutral-it.jpg', source_url='https://lilybyred.co.kr/product/오드라벤더-릴리바이레드-무드-잇-팔레트ad/343/category/25/display/1/' WHERE name='무드 잇 팔레트 03 뉴트럴잇' AND brand_id=(SELECT id FROM brand WHERE name='릴리바이레드');
+UPDATE product SET photo='/products/lilybyred-mood-it-palette-04-attention-it.jpg', source_url='https://lilybyred.co.kr/product/오드라벤더-릴리바이레드-무드-잇-팔레트ad/343/category/25/display/1/' WHERE name='무드 잇 팔레트 04 어텐션잇' AND brand_id=(SELECT id FROM brand WHERE name='릴리바이레드');
+UPDATE product SET photo='/products/lilybyred-mood-it-palette-05-cherish-it.jpg', source_url='https://lilybyred.co.kr/product/오드라벤더-릴리바이레드-무드-잇-팔레트ad/343/category/25/display/1/' WHERE name='무드 잇 팔레트 05 체리쉬잇' AND brand_id=(SELECT id FROM brand WHERE name='릴리바이레드');
+UPDATE product SET photo='/products/lilybyred-mood-it-palette-06-soft-it.jpg', source_url='https://lilybyred.co.kr/product/오드라벤더-릴리바이레드-무드-잇-팔레트ad/343/category/25/display/1/' WHERE name='무드 잇 팔레트 06 소프트잇' AND brand_id=(SELECT id FROM brand WHERE name='릴리바이레드');
+UPDATE product SET photo='/products/lilybyred-mood-it-palette-07-romantic-it.jpg', source_url='https://lilybyred.co.kr/product/오드라벤더-릴리바이레드-무드-잇-팔레트ad/343/category/25/display/1/' WHERE name='무드 잇 팔레트 07 로맨틱잇' AND brand_id=(SELECT id FROM brand WHERE name='릴리바이레드');
+UPDATE product SET photo='/products/lilybyred-mood-it-palette-08-strange-it.jpg', source_url='https://lilybyred.co.kr/product/오드라벤더-릴리바이레드-무드-잇-팔레트ad/343/category/25/display/1/' WHERE name='무드 잇 팔레트 08 스트레인지잇' AND brand_id=(SELECT id FROM brand WHERE name='릴리바이레드');
+UPDATE product SET photo='/products/clio-kill-brow-auto-hard-brow-pencil.jpg' WHERE name='킬브로우 오토 하드 브로우 펜슬' AND brand_id=(SELECT id FROM brand WHERE name='클리오');
+UPDATE product SET photo='/products/peripera-speedy-skinny-brow-mascara.jpg' WHERE name='스피디 스키니 브로우 마스카라' AND brand_id=(SELECT id FROM brand WHERE name='페리페라');
+UPDATE product SET photo='/products/rom-nd-better-than-cheek.jpg' WHERE name='베러 댄 치크' AND brand_id=(SELECT id FROM brand WHERE name='롬앤');
+UPDATE product SET photo='/products/dasique-soft-blur-cheek.jpg' WHERE name='소프트 블러 치크' AND brand_id=(SELECT id FROM brand WHERE name='데이지크');
+UPDATE product SET photo='/products/hince-half-moon-cheek.jpg' WHERE name='하프 문 치크' AND brand_id=(SELECT id FROM brand WHERE name='힌스');
+UPDATE product SET photo='/products/hince-hug-layer-cheek.jpg' WHERE name='허그 레이어 치크' AND brand_id=(SELECT id FROM brand WHERE name='힌스');
+UPDATE product SET photo='/products/lilybyred-love-beam-cheek-balm.jpg' WHERE name='러브빔 치크밤' AND brand_id=(SELECT id FROM brand WHERE name='릴리바이레드');
+UPDATE product SET photo='/products/3ce-face-blush.jpg' WHERE name='페이스 블러쉬' AND brand_id=(SELECT id FROM brand WHERE name='3CE');
+UPDATE product SET photo='/products/amuse-dew-serum-liquid-blusher.jpg' WHERE name='듀 세럼 리퀴드 블러쉬' AND brand_id=(SELECT id FROM brand WHERE name='어뮤즈');
+UPDATE product SET photo='/products/rom-nd-han-all-shade-liner.jpg' WHERE name='한올 쉐이드 라이너' AND brand_id=(SELECT id FROM brand WHERE name='롬앤');
+UPDATE product SET photo='/products/rom-nd-han-all-eye-pot-liner-01-brown-taupe.jpg' WHERE name='한올 아이팟 라이너 01 브라운 토프 팟' AND brand_id=(SELECT id FROM brand WHERE name='롬앤');
+UPDATE product SET photo='/products/rom-nd-han-all-eye-pot-liner-02-dusty-rose.jpg' WHERE name='한올 아이팟 라이너 02 더스티 로즈 팟' AND brand_id=(SELECT id FROM brand WHERE name='롬앤');
+UPDATE product SET photo='/products/rom-nd-han-all-eye-pot-liner-03-peony-cream.jpg' WHERE name='한올 아이팟 라이너 03 피오니 크림 팟' AND brand_id=(SELECT id FROM brand WHERE name='롬앤');
+UPDATE product SET photo='/products/rom-nd-han-all-eye-pot-liner-04-caramel-brown.jpg' WHERE name='한올 아이팟 라이너 04 카라멜 브라운 팟' AND brand_id=(SELECT id FROM brand WHERE name='롬앤');
+UPDATE product SET photo='/products/rom-nd-han-all-eye-pot-liner-05-grey-pink.jpg' WHERE name='한올 아이팟 라이너 05 그레이 핑크 팟' AND brand_id=(SELECT id FROM brand WHERE name='롬앤');
+UPDATE product SET photo='/products/rom-nd-han-all-eye-pot-liner-06-burnt-coral.jpg' WHERE name='한올 아이팟 라이너 06 번트 코랄 팟' AND brand_id=(SELECT id FROM brand WHERE name='롬앤');
+UPDATE product SET photo='/products/etude-2x-bare-liner.jpg' WHERE name='2X 쌩얼 라이너' AND brand_id=(SELECT id FROM brand WHERE name='에뛰드');
+UPDATE product SET photo='/products/etude-drawing-show-brush-liner.jpg' WHERE name='드로잉쇼 브러쉬 라이너' AND brand_id=(SELECT id FROM brand WHERE name='에뛰드');
+UPDATE product SET photo='/products/etude-line-fix-brush-liner.jpg' WHERE name='라인 픽스 브러쉬 라이너' AND brand_id=(SELECT id FROM brand WHERE name='에뛰드');
+UPDATE product SET photo='/products/etude-tear-eye-liner.jpg' WHERE name='반짝 눈물 라이너' AND brand_id=(SELECT id FROM brand WHERE name='에뛰드');
+UPDATE product SET photo='/products/too-cool-for-school-artclass-smudging-under-liner.jpg' WHERE name='아트클래스 스머징 트임 라이너' AND brand_id=(SELECT id FROM brand WHERE name='투쿨포스쿨');
+UPDATE product SET photo='/products/too-cool-for-school-artclass-mood-pen-liner.jpg' WHERE name='아트클래스 무드 펜 라이너' AND brand_id=(SELECT id FROM brand WHERE name='투쿨포스쿨');
+UPDATE product SET photo='/products/too-cool-for-school-artclass-smudging-edge-liner.jpg' WHERE name='아트클래스 스머징 엣지라이너' AND brand_id=(SELECT id FROM brand WHERE name='투쿨포스쿨');
+UPDATE product SET photo='/products/too-cool-for-school-artclass-fixing-gel-liner.jpg' WHERE name='아트클래스 픽싱 젤 라이너' AND brand_id=(SELECT id FROM brand WHERE name='투쿨포스쿨');
+UPDATE product SET photo='/products/3ce-my-ring-eye-liner.jpg' WHERE name='마이 링 아이 라이너' AND brand_id=(SELECT id FROM brand WHERE name='3CE');
+UPDATE product SET photo='/products/3ce-soft-mute-pencil-liner.jpg' WHERE name='소프트 뮤트 펜슬 라이너' AND brand_id=(SELECT id FROM brand WHERE name='3CE');
+UPDATE product SET photo='/products/lilybyred-starry-eyes-am9-to-pm9-slim-gel-eyeliner.jpg' WHERE name='스태리아이즈 나인투나인 슬림 젤 아이라이너' AND brand_id=(SELECT id FROM brand WHERE name='릴리바이레드');
+UPDATE product SET photo='/products/espoir-nomudging-brush-liner.jpg' WHERE name='노머징 브러쉬 라이너' AND brand_id=(SELECT id FROM brand WHERE name='에스쁘아');
