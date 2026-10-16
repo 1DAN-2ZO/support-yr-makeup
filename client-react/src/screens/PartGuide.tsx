@@ -51,7 +51,7 @@ import { PART_COACH, PART_NAME, PART_ORDER, PART_TIP } from "../parts";
 import { pickProducts } from "@core/product-picks";
 import { drawGuidePage, type GuideLoad, type GuideView } from "../lib/guide-source";
 import { useLang } from "../i18n/useLang";
-import { colorText, hueText } from "../lib/core-text";
+import { colorText, hueText, productText } from "../lib/core-text";
 
 /*
  * 진짜 가이드 그림이 떴을 때의 말풍선은 **부위마다 다르다** (2026-10-15, #469).
@@ -84,7 +84,7 @@ export default function PartGuide({
   /** 「실시간 가이드로 보기」 — 지금 보고 있는 부위를 들고 곁 화면으로. 안 주면 버튼을 안 그린다 */
   onLive?: (part: PalettePart) => void;
 }) {
-  const { t } = useLang();
+  const { lang, t } = useLang();
   // 처음 자리만 정한다 — 그 뒤 부위를 옮기는 일은 여전히 이 화면 안에서 끝난다
   const [at, setAt] = useState(() => {
     const i = startPart ? PART_ORDER.indexOf(startPart) : -1;
@@ -261,6 +261,8 @@ export default function PartGuide({
                * 색만 달리 보여 주면 색을 구별하기 어려운 사람에게는 아무 말도 안 한 것과 같다
                */
               const near = family !== color.name.base;
+              // 영어 화면이면 영어 이름으로 바꿔 쓴다 — 못 찾은 제품은 한국어 그대로 나온다
+              const show = productText(lang, pick);
               return (
                 <div className="slot-product-row" key={`${pick.brand} ${pick.name}`}>
                   {pick.photo ? (
@@ -271,12 +273,12 @@ export default function PartGuide({
                   )}
                   <div>
                     <strong>
-                      {pick.brand} {pick.name}
+                      {show.brand} {show.name}
                     </strong>
                     {/* 코어 `pickShadeText` 는 「○○ 계열」을 한국어로 만든다 — 계열 이름만 받아 우리 글로 적는다 */}
                     <em>{t("guide.family", { name: hueText(t, family) })}</em>
                     {near && <small className="pick-near">{t("guide.near")}</small>}
-                    <p>{pick.kind}</p>
+                    <p>{show.kind}</p>
                   </div>
                 </div>
               );

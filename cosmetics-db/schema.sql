@@ -9,9 +9,15 @@
 
 PRAGMA foreign_keys = ON;
 
+-- 브랜드.
+--
+-- `name_en` 은 **통에 적혀 있는 영문 표기**다 (2026-10-16, 영어 화면용). 번역이 아니라
+-- 브랜드가 스스로 쓰는 글자라 대소문자까지 그대로 적는다 — `rom&nd` 는 소문자에 `&` 가 맞고
+-- `CLIO` 는 대문자가 맞다. 모르면 **비워 둔다** (NULL). 지어내면 없는 브랜드가 된다.
 CREATE TABLE brand (
-  id    INTEGER PRIMARY KEY,
-  name  TEXT NOT NULL UNIQUE
+  id       INTEGER PRIMARY KEY,
+  name     TEXT NOT NULL UNIQUE,
+  name_en  TEXT
 );
 
 -- 제품 = **사람이 사는 한 단위**.
@@ -28,8 +34,14 @@ CREATE TABLE product (
   brand_id    INTEGER NOT NULL REFERENCES brand(id),
   part        TEXT NOT NULL CHECK (part IN ('brow','liner','shadow','lip','cheek')),
   name        TEXT NOT NULL,
+  -- 통·판매 페이지에 적힌 영문 제품명 (2026-10-16, 영어 화면용). 번역이 아니다.
+  -- 못 찾으면 **비워 둔다** — 화면은 그때 한글 이름을 그대로 쓴다
+  name_en     TEXT,
   -- 제형·도구. "왜 이것인지" 를 한눈에 — 펜슬인지 팔레트인지 틴트인지
   kind        TEXT NOT NULL,
+  -- 위 설명의 영어판 (2026-10-16). 이쪽은 **우리가 쓴 글**이라 옮겨 적는 것이 맞다
+  -- (제품 이름과 다르다 — 이름은 브랜드 것이라 지어내면 안 된다)
+  kind_en     TEXT,
   -- 화면에 띄울 제품 사진 (/products/*.jpg)
   photo       TEXT,
   -- 출처. SOURCES.md 가 하던 일을 여기로 가져온다 — 사진 권리가 브랜드에 있어서 꼭 남겨야 한다

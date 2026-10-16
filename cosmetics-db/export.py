@@ -138,6 +138,59 @@ export const FAMILY_REF: Record<PalettePart, Record<string, string>> = {
     print("  → client/src/core/product-picks.data.ts 로 복사하면 앱이 바로 쓴다")
 
 
+def write_product_en(by_part: dict) -> int:
+    """
+    제품 이름·설명의 **영어판만** 따로 뽑는다 → `out/product-en.ts`.
+
+    왜 `product-picks.data.ts` 에 같이 안 넣나:
+    그 파일은 `client/src/core/` 로 들어가는데, 코어는 **본 앱과 같이 쓰는 폴더**다.
+    영어는 리액트 화면에만 있는 기능이라, 코어를 건드리지 않고 리액트 쪽에만 두는 편이 낫다.
+    (`client-react/src/i18n/product-en.ts` 로 복사해서 쓴다.)
+
+    찾는 열쇠는 **"브랜드|제품이름"** 한국어 그대로다 — 앱이 들고 있는 값이 그것이라
+    따로 번호를 맞출 필요가 없다. 비어 있는 칸은 아예 안 적는다 (화면이 한국어로 떨어진다).
+    """
+    rows = []
+    for part in PARTS:
+        for p in sorted(by_part.get(part, []), key=lambda p: (p["brand"], p["name"])):
+            if not p["families"]:
+                continue  # 추천에 걸릴 길이 없는 제품은 화면에도 안 나온다
+            got = {k: p[f"{k}_en"] for k in ("brand", "name", "kind") if p.get(f"{k}_en")}
+            if not got:
+                continue
+            key = f"{p['brand']}|{p['name']}"
+            body = ", ".join(f"{k}: {ts(v)}" for k, v in got.items())
+            rows.append(f"  [{ts(key)}]: {{ {body} }},\n")
+
+    out = ["""/*
+ * 제품 이름·설명의 영어판 — **nudy-db 의 export.py 가 만든다. 손으로 고치지 마라.**
+ *
+ * 고치려면 디비 쪽을 고친다:
+ *   1. cosmetics-db/seed/ZZ5-brand-en.sql · ZZ6-product-en.sql · ZZ7-kind-en.sql
+ *   2. cd cosmetics-db && python3 build.py && python3 export.py
+ *   3. cosmetics-db/out/product-en.ts 를 이 자리로 복사한다
+ *
+ * 열쇠는 「브랜드|제품이름」 한국어 그대로다 — 앱(`core/product-picks.data.ts`)이 들고 있는
+ * 값이 그것이라 번호를 따로 맞출 필요가 없다.
+ *
+ * **여기 없는 제품은 한국어 이름이 그대로 나간다.** 영어 이름을 못 찾은 제품이 그렇다
+ * (없는 제품 이름을 지어내는 것보다 낫다 — ZZ6 머리글 참고).
+ */
+
+export interface ProductEn {
+  brand?: string;
+  name?: string;
+  kind?: string;
+}
+
+export const PRODUCT_EN: Readonly<Record<string, ProductEn>> = {
+"""]
+    out.extend(rows)
+    out.append("};\n")
+    (OUT / "product-en.ts").write_text("".join(out), encoding="utf-8")
+    return len(rows)
+
+
 def main() -> int:
     con = sqlite3.connect(HERE / "nudy.db")
     con.row_factory = sqlite3.Row
@@ -154,7 +207,8 @@ def main() -> int:
     #    화면에는 같은 제품이 한 번만 떠야 하므로 제품 단위로 모은다
     prods = {}
     for r in con.execute("""
-        SELECT p.id, p.part, b.name AS brand, p.name, p.kind, p.photo, p.source_url, p.checked, p.group_name,
+        SELECT p.id, p.part, b.name AS brand, b.name_en AS brand_en,
+               p.name, p.name_en, p.kind, p.kind_en, p.photo, p.source_url, p.checked, p.group_name,
                s.family, s.code, s.name AS shade, s.hex
         FROM product p
         JOIN brand b ON b.id = p.brand_id
@@ -169,6 +223,10 @@ def main() -> int:
                 brand=r["brand"],
                 name=r["name"],
                 kind=r["kind"],
+                # 영어 화면용. 못 찾아 비어 있을 수 있다 — 그때는 한국어를 그대로 쓴다 (seed ZZ5 · ZZ6)
+                brand_en=r["brand_en"],
+                name_en=r["name_en"],
+                kind_en=r["kind_en"],
                 photo=r["photo"],
                 source=r["source_url"],
                 checked=bool(r["checked"]),
@@ -208,6 +266,8 @@ def main() -> int:
     (OUT / "products.json").write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
 
     write_data_ts(fam, by_part)
+    n_en = write_product_en(by_part)
+    print(f"out/product-en.ts   제품 {n_en}개")
 
     n_sh = sum(len(p["shades"]) for v in by_part.values() for p in v)
     n_hex = sum(1 for v in by_part.values() for p in v for s in p["shades"] if "hex" in s)

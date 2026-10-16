@@ -23,6 +23,8 @@ import { SHOT_TEXT, SHOTS } from "@core/flow";
 import { SLOW_HINT, STEP_TEXT } from "@core/capture-run";
 import type { MakeupTemplate } from "@core/templates";
 import { hasKey, type Key } from "../i18n";
+import { PRODUCT_EN } from "../i18n/product-en";
+import type { Lang } from "../i18n";
 
 /**
  * 촬영 안내 — 코어 글자 → 열쇠.
@@ -180,5 +182,38 @@ export function colorText(t: (k: Key) => string, name: { text: string; base: str
   const base = HUE_KEY[name.base];
   if (!base) return name.text;
   const head = name.tone ? TONE_KEY[name.tone] : undefined;
-  return head ? `${t(head)} ${t(base)}` : t(base);
+  if (!head) return t(base);
+  /*
+   * 꾸밈말이 앞에 붙으면 바탕 이름의 첫 글자를 내린다 — "Muted Dark brown" 은 두 낱말이
+   * 따로 노는 것처럼 읽힌다. "Muted dark brown" 이 한 덩어리로 읽힌다.
+   * 「MLBB」처럼 **전부 대문자인 이름은 그대로 둔다** (약자라 내리면 다른 말이 된다).
+   */
+  const body = t(base);
+  const one = body === body.toUpperCase() ? body : body.charAt(0).toLowerCase() + body.slice(1);
+  return `${t(head)} ${one}`;
+}
+
+
+/*
+ * ── 제품 이름 · 설명 ──
+ *
+ * 영어 이름은 `i18n/product-en.ts` 에 있다 (디비에서 뽑은 것, 손으로 고치지 않는다).
+ * 찾는 열쇠는 「브랜드|제품이름」 한국어 그대로다 — 앱이 들고 있는 값이 그것이다.
+ *
+ * **없으면 한국어를 그대로 돌려준다.** 영어 이름을 못 찾은 제품이 그렇고, 지어내는 것보다 낫다.
+ * 브랜드만 있고 제품 이름이 없는 식으로 **칸마다 따로** 떨어질 수도 있다 (`rom&nd 쥬시 래스팅 틴트`
+ * 처럼 섞여 나온다) — 그래도 찾을 수는 있으니 그대로 둔다.
+ */
+export function productText(
+  lang: Lang,
+  pick: { brand: string; name: string; kind: string },
+): { brand: string; name: string; kind: string } {
+  if (lang === "ko") return pick;
+  const en = PRODUCT_EN[`${pick.brand}|${pick.name}`];
+  if (!en) return pick;
+  return {
+    brand: en.brand ?? pick.brand,
+    name: en.name ?? pick.name,
+    kind: en.kind ?? pick.kind,
+  };
 }

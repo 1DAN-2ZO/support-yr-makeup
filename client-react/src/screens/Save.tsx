@@ -58,7 +58,7 @@ import { useEffect, useRef, useState } from "react";
 import type { MakeupTemplate } from "@core/templates";
 import { prepareSave, SAVE_TEXT, SHARE_HINT, type SaveKit, type SaveSource } from "../lib/feedback-card";
 import { useLang } from "../i18n/useLang";
-import { colorText, hueText } from "../lib/core-text";
+import { colorText, hueText, productText } from "../lib/core-text";
 import type { Key } from "../i18n";
 import type { FeedbackLoad } from "../lib/feedback-source";
 import { surveyLink } from "../survey-link";
@@ -117,7 +117,7 @@ export default function Save({
    * 다시 읽어 봐야 같은 주소다. 주소가 없으면(설문을 꺼 뒀으면) 모달을 아예 안 띄우고
    * 곧바로 끝 화면으로 간다 — 눌리지 않는 빈 창을 보여 주지 않는다
    */
-  const { t } = useLang();
+  const { lang, t } = useLang();
   const [survey] = useState<string | null>(() => surveyLink());
   const [asking, setAsking] = useState(false);
 
@@ -228,7 +228,7 @@ export default function Save({
                 {/* 제품을 못 찾은 부위도 있다 — 줄을 비우면 "안 불러온 건가" 로 읽힌다 */}
                 <em>
                   {top
-                    ? `${top.pick.brand} ${top.pick.name} · ${t("guide.family", { name: hueText(t, top.family) })}`
+                    ? `${productText(lang, top.pick).brand} ${productText(lang, top.pick).name} · ${t("guide.family", { name: hueText(t, top.family) })}`
                     : t("save.noProduct")}
                 </em>
               </span>
