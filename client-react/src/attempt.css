@@ -50,14 +50,19 @@
  * 48% 는 제일 작은 폰(375×667)에서 잰 값이다 — 52% 로 두면 그 화면에서 버튼이 10px 쯤 밀려났다.
  */
 .attempt-preview {
-  margin: 0 auto 16px;
-  max-width: 260px;
+  /*
+   * 2026-10-15: 사진을 **더 크게** 보이게 (전지원 지시).
+   * 260px 은 폰 폭(390)의 3분의 2라 확인하기에 작았다. 칸 폭을 꽉 쓰고,
+   * 세로 한도도 48 → 56dvh 로 올려 실제 사진 면적을 넓힌다
+   */
+  margin: 0 auto 12px;
+  max-width: 100%;
 }
 
 .attempt-preview img {
   display: block;
   width: 100%;
-  max-height: 48dvh;
+  max-height: 56dvh;
   height: auto;
   object-fit: contain;
   border-radius: 12px;

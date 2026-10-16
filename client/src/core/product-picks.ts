@@ -14,12 +14,22 @@
  * "○○ 계열 호수로" 라고만 나간다 — 틀린 호수를 말하는 것보다 안 말하는 것이 낫다.
  *
  * 사진은 client/public/products/ 에 둔다 (320px, 15KB 안팎).
+ *
+ * **제품 목록은 이 파일에 없다** (2026-10-15). `product-picks.data.ts` 에 있고,
+ * 그 파일은 nudy-db 가 만든다 (`nudy-db/export.py`). 손으로 적던 제품 19개가 디비의
+ * 제품 62개로 바뀌었다 — 호수마다 색을 담을 자리가 코드 파일에는 없었기 때문이다
+ * (까닭은 nudy-db/schema.sql 머리글). 제품을 더하거나 고치려면 디비 쪽을 고친다.
+ * 위에 적은 규칙(계열 이름으로 고른다 · checked · 호수가 하나뿐일 때만 hex)은 그대로이고,
+ * export.py 가 그 규칙대로 뽑는다.
  */
 
 import { COLOR_FAMILY, PALETTE, hexToRgb } from "./color-family";
 import type { PalettePart } from "./color-family";
 import { deltaE, rgbToLab } from "./color";
 import type { Lab } from "./color";
+import { FAMILY_REF, PRODUCT_PICKS } from "./product-picks.data";
+
+export { PRODUCT_PICKS };
 
 export interface ProductPick {
   /** 이 제품을 권할 색 계열. color-name.ts 의 base 이름과 같은 말을 쓴다 */
@@ -29,6 +39,14 @@ export interface ProductPick {
   /** 제형·도구. "왜 이것인지" 를 한눈에 — 펜슬인지 팔레트인지 틴트인지 */
   kind: string;
   /** 호수(색상 이름). 확인되면 채운다. 비어 있으면 계열 이름만 안내한다 */
+  /**
+   * 한 제품을 통(팟·호수 묶음)마다 쪼개 넣었을 때, 그 묶음의 이름. 안 쪼갠 제품은 없다.
+   *
+   * 화면은 **한 묶음에서 하나만** 보여 준다 — 팔레트는 사람이 사는 단위가 통이라 통마다
+   * 한 줄로 두는데, 그러면 같은 팔레트가 여러 번 떠서 "왜 같은 게 두 개지" 가 된다.
+   * 어느 통인지는 `name` 으로 그대로 보여 준다 (통까지 알려 주는 편이 쓸모 있다).
+   */
+  group?: string;
   shade?: string;
   /**
    * 이 호수의 색 (소문자 #rrggbb, sRGB). **호수 하나당 한 줄**로 적는다 — 나중에 피부색·참고 사진 색과
@@ -45,250 +63,6 @@ export interface ProductPick {
   /** 전지원이 실물·판매 페이지로 확인한 것 */
   checked?: true;
 }
-
-/**
- * 부위별 후보. 한 부위에 여러 계열이 섞여 있고, 화면에는 그 색 계열에 맞는 것만 고른다.
- * 계열이 안 맞으면 그 부위의 첫 번째 것을 보여 준다 (아무것도 없는 것보다 낫다).
- */
-export const PRODUCT_PICKS: Record<PalettePart, readonly ProductPick[]> = {
-  brow: [
-    {
-      // 8색. 호수에 그레이브라운·다크브라운·내추럴브라운·베이지애쉬·토프애쉬·밀키토프가 있어
-      // 눈썹 계열 8개 중 6개가 이 하나로 덮인다. 호수가 여럿이라 shade 는 비운다
-      families: ["그레이브라운", "다크브라운", "브라운", "애쉬브라운", "라이트브라운", "밀크브라운"],
-      brand: "페리페라", name: "스피디 스키니 브로우",
-      kind: "펜슬 — 가늘어서 한 올씩 그리기 좋아요",
-      photo: "/products/peripera-speedy-skinny-brow.jpg",   // 사진 출처: 올리브영 A000000138671 (2026-10-08, public/products/SOURCES.md)
-      checked: true,
-    },
-    {
-      // 7색. 로즈브라운·블랙이 있어 페리페라가 못 덮는 레드브라운·소프트블랙을 채운다.
-      // 공식 페이지 색상: 로즈 브라운 · 블랙 · 그레이 · 애쉬 브라운 · 에스프레소 브라운 · 어반 브라운 · 허니 브라운
-      families: ["레드브라운", "소프트블랙", "그레이브라운", "애쉬브라운", "다크브라운", "브라운", "라이트브라운", "밀크브라운"],
-      // 포장에는 영문 AUTO EYEBROW PENCIL 로 적혀 있다. 같은 제품이라고 전지원이 확인했다
-      brand: "이니스프리", name: "납작 아이브로우 펜슬",
-      kind: "펜슬 — 납작해서 눕히면 넓게, 세우면 가늘게 그려져요",
-      photo: "/products/innisfree-auto-eyebrow-pencil.jpg",   // 사진 출처: 이니스프리 공식몰 35100 (2026-10-08, public/products/SOURCES.md)
-      checked: true,
-    },
-    { families: ["다크브라운", "브라운"], brand: "에뛰드", name: "드로잉 아이 브라우", kind: "펜슬 — 무르고 부드러워 넓게 채우기 좋아요" },
-  ],
-  liner: [
-    // 삐아 라스트 오토 젤 — 26색이라 계열을 여럿 덮는다. 호수 묶음별로 나눠 넣되
-    // 화면에는 같은 이름으로 한 번만 뜬다 (pickProducts 가 이름으로 걸러낸다)
-    {
-      // 11 리넨베이지 · 12 크림베이지 · 13 피넛베이지 · 14 아몬드베이지 · 16 쿨베이지 · 25 밀크 베이지 · 26 메이플 베이지
-      families: ["베이지"],
-      brand: "삐아", name: "라스트 오토 젤 아이라이너",
-      kind: "젤 펜슬 — 가늘고 부드러워 애교살·음영에 좋아요",
-      photo: "/products/bbia-last-auto-gel-liner.jpg",   // 사진 출처: 올리브영 A000000162672 (2026-10-12, public/products/SOURCES.md)
-      checked: true,
-    },
-    {
-      // 03 로즈브라운 · 07 로즈번 · 24 로지 파스텔
-      families: ["로즈"],
-      brand: "삐아", name: "라스트 오토 젤 아이라이너",
-      kind: "젤 펜슬 — 가늘고 부드러워 애교살·음영에 좋아요",
-      photo: "/products/bbia-last-auto-gel-liner.jpg",
-      checked: true,
-    },
-    {
-      // 15 살몬베이지 · 22 피치 파스텔
-      families: ["코랄"],
-      brand: "삐아", name: "라스트 오토 젤 아이라이너",
-      kind: "젤 펜슬 — 가늘고 부드러워 애교살·음영에 좋아요",
-      photo: "/products/bbia-last-auto-gel-liner.jpg",
-      checked: true,
-    },
-    {
-      // 20 모브번
-      families: ["플럼"],
-      brand: "삐아", name: "라스트 오토 젤 아이라이너",
-      kind: "젤 펜슬 — 가늘고 부드러워 애교살·음영에 좋아요",
-      photo: "/products/bbia-last-auto-gel-liner.jpg",
-      checked: true,
-    },
-    {
-      // 04 멜로우브라운 · 21 뮤트 브라운 · 05 소울브라운 · 06 초코무스 · 27 모카번 · 01 느와르 · 02 재즈
-      families: ["밀크브라운", "브라운", "다크브라운", "블랙", "소프트블랙"],
-      brand: "삐아", name: "라스트 오토 젤 아이라이너",
-      kind: "젤 펜슬 — 가늘고 부드러워 애교살·음영에 좋아요",
-      photo: "/products/bbia-last-auto-gel-liner.jpg",
-      checked: true,
-    },
-    // 머지 더 퍼스트 슬림 젤 — 7색. 삐아와 같이 호수 묶음별로 나눠 넣는다
-    {
-      // GS1 블랙 오닉스 · GS2 블랙 스피넬
-      families: ["블랙", "소프트블랙"],
-      brand: "머지", name: "더 퍼스트 슬림 젤 아이라이너",
-      kind: "젤 펜슬 — 심이 얇아 속눈썹 사이를 메우기 좋아요",
-      photo: "/products/merzy-the-first-slim-gel-liner.jpg",   // 사진 출처: 올리브영 A000000119523 (2026-10-12, public/products/SOURCES.md)
-      checked: true,
-    },
-    {
-      // GS3 브론즈 오팔 · GS4 브라운 쿼츠
-      families: ["밀크브라운", "브라운", "다크브라운"],
-      brand: "머지", name: "더 퍼스트 슬림 젤 아이라이너",
-      kind: "젤 펜슬 — 심이 얇아 속눈썹 사이를 메우기 좋아요",
-      photo: "/products/merzy-the-first-slim-gel-liner.jpg",
-      checked: true,
-    },
-    {
-      // GS5 버건디 베릴
-      families: ["버건디"],
-      brand: "머지", name: "더 퍼스트 슬림 젤 아이라이너",
-      kind: "젤 펜슬 — 심이 얇아 속눈썹 사이를 메우기 좋아요",
-      photo: "/products/merzy-the-first-slim-gel-liner.jpg",
-      checked: true,
-    },
-    {
-      // GS6 모브 로즈
-      families: ["로즈"],
-      brand: "머지", name: "더 퍼스트 슬림 젤 아이라이너",
-      kind: "젤 펜슬 — 심이 얇아 속눈썹 사이를 메우기 좋아요",
-      photo: "/products/merzy-the-first-slim-gel-liner.jpg",
-      checked: true,
-    },
-    {
-      // GS7 모브 팬시
-      families: ["플럼"],
-      brand: "머지", name: "더 퍼스트 슬림 젤 아이라이너",
-      kind: "젤 펜슬 — 심이 얇아 속눈썹 사이를 메우기 좋아요",
-      photo: "/products/merzy-the-first-slim-gel-liner.jpg",
-      checked: true,
-    },
-    {
-      // 3색: 01 블랙 · 02 브라운 · 03 다크브라운
-      families: ["블랙", "소프트블랙", "브라운", "다크브라운"],
-      brand: "웨이크메이크", name: "철벽 펜 아이라이너",
-      kind: "펜 — 선이 또렷하고 잘 안 번져요",
-      photo: "/products/wakemake-pen-eyeliner.jpg",   // 사진 출처: 올리브영 A000000136300 (2026-10-08, public/products/SOURCES.md)
-      checked: true,
-    },
-    {
-      // 13색. 001 블랙 · 002 브라운 · 003 블랙브라운 · 004 다크브라운 · 005 애쉬브라운
-      // · 006 바닐라베이지 · 007 크리미아이보리 · 008 코랄 · 009 로즈 · 010 코코아브라운 · 011 뮤트그레이
-      families: ["블랙", "소프트블랙", "그레이", "브라운", "다크브라운", "버건디"],
-      brand: "클리오", name: "샤프 쏘 심플 워터프루프 펜슬 라이너",
-      kind: "펜슬 — 부드럽게 그려지고 색이 13가지라 고르기 좋아요",
-      photo: "/products/clio-sharp-so-simple-pencil-liner.jpg",   // 사진 출처: 올리브영 A000000198343 (2026-10-08, public/products/SOURCES.md)
-      checked: true,
-    },
-  ],
-  shadow: [
-    {
-      // 팔레트 15종, 한 판에 12색. 호수 이름에 색이 들어 있다 —
-      // 1 코랄 스튜디오 · 2 로즈 커넥트 · 3 뮤트 라이브러리 · 4 핑크 페어링 · 5 오키드 클라우드
-      // · 7 라벤더 뉴커머 · 8 라떼 이즈 시니어 · 9 피치 프레스 · 10 플럼 플럼 인 시즌
-      // · 11 쇼핑 치즈캣 · 12 크리스탈 발바닥 · 13 힙합 when 슬픔 · 15 탄브라운
-      families: ["코랄", "로즈", "핑크", "퍼플", "베이지", "플럼", "브라운", "딥브라운"],
-      brand: "클리오", name: "프로 아이 팔레트 에어",
-      kind: "팔레트 — 한 판에 12색이라 한 통으로 눈 화장이 끝나요",
-      photo: "/products/clio-pro-eye-palette-air.jpg",   // 사진 출처: 올리브영 A000000188988 (2026-10-08, public/products/SOURCES.md)
-      checked: true,
-    },
-    {
-      // 낱개 섀도우 20색 + 젤테일·피스빔·피스밤. 호수 이름이 색을 안 알려 준다
-      // (클린솝 · 이너프 · 베이비타로 · 타로튜튜 · 퍼플릿 · 돌체그레이프 …).
-      // 아래 계열은 전지원이 보낸 사진에서 **눈으로 본 것**이다 — 사진 속 색을 자동으로
-      // 뽑아 봤지만 케이스가 투명하고 알이 작아 분홍 배경에 묻혀 쓸 수 없었다
-      families: ["로즈", "핑크", "코랄", "베이지"],
-      brand: "홀리카홀리카", name: "마이페이브 피스 아이섀도우",
-      kind: "낱개 — 필요한 색만 하나씩 골라 모을 수 있어요",
-      photo: "/products/holika-my-fave-piece-shadow.jpg",   // 사진 출처: 올리브영 A000000174309 (2026-10-08, public/products/SOURCES.md)
-      checked: true,
-    },
-    { families: ["로즈", "핑크", "플럼", "퍼플"], brand: "페리페라", name: "올 테이크 무드 팔레트", kind: "팔레트 — 분홍·자주 계열" },
-    {
-      // 팔레트 5종(각 6색): 01 퍼퓸 클래스 · 02 와인 클래스 · 03 티 클래스 · 04 쿠킹 클래스 · 05 포엠 클래스.
-      // 퍼스널컬러 전문가가 만든 브랜드라 뮤트한 중성 톤 위주.
-      // 팔레트 5종(퍼퓸·와인·티·쿠킹·포엠)이 **클래스마다 색이 완전히 다르다.**
-      // 전지원이 보낸 사진 두 장을 실제로 재 보았다.
-      //   ① 분홍~모브 한 줄기 : 색상각 338~360°, 채도 10~16, 밝기 44~83  → 플럼·로즈
-      //   ② 베이지~갈색 한 줄기: 색상각 15~48°,  채도 10~16, 밝기 40~82  → 로즈·브라운·딥브라운
-      // 이름으로 짐작한 "와인 = 버건디" 는 둘 다 아니었다. 지금은 한 줄에 묶어 두었고,
-      // 클래스별로 쪼개는 것은 호수마다 색을 넣는 작업과 함께 한다
-      families: ["플럼", "로즈", "브라운", "딥브라운", "베이지"],
-      brand: "모렛", name: "뷰파인더 섀도우 팔레트",
-      kind: "팔레트 — 뮤트한 중성 톤이라 과하지 않게 발려요",
-      photo: "/products/molette-viewfinder-palette.jpg",   // 사진 출처: 올리브영 A000000249560 (2026-10-08, public/products/SOURCES.md)
-      checked: true,
-    },
-    { families: ["코랄", "오렌지"], brand: "릴리바이레드", name: "무드 잇 팔레트", kind: "팔레트 — 따뜻한 계열" },
-  ],
-  cheek: [
-    {
-      // 15색 × 3제형(파우더칩·베이크드칩·크림칩). 전지원이 보낸 발색 사진의 4색을 실제로 쟀다
-      // (팔에 바른 발색이라 피부가 섞인 값 — 우리가 참고 사진에서 뽑는 것과 같은 조건이다).
-      //   #without     #cabcbb  L77.3 C5.4  h21.8  → 그레이베이지
-      //   #vanilla     #d1bfbc  L78.8 C7.2  h33.7  → 그레이베이지
-      //   #bunny       #d6b6af  L76.5 C12.8 h38.7  → 베이지핑크
-      //   #buttercream #d5afa2  L74.5 C17.0 h45.0  → 베이지핑크
-      // 나머지 11색은 아직 못 봤다
-      families: ["그레이베이지", "베이지핑크", "코랄", "피치"],
-      brand: "퓌", name: "치크칩",
-      kind: "파우더·베이크드·크림 세 가지라 원하는 느낌으로 고를 수 있어요",
-      photo: "/products/fwee-cheek-chip.jpg",   // 사진 출처: 올리브영 A000001001750 (2026-10-08, public/products/SOURCES.md)
-      checked: true,
-    },
-    // ── 투에이엔 듀얼 치크 (19색) ──
-    // 호수마다 색이 완전히 달라서 **묶음별로 나눠 넣는다.** 그래야 추천된 계열에 맞는
-    // 사진이 뜬다. 한 줄로 두면 라벤더를 권하면서 코랄 사진을 보여 주게 된다.
-    // 전체 호수: 코튼캔디 바이올렛 · 러브 로지 · 코코 코랄 · 핫 리빙 코랄 · 무드 인 치크
-    // · 핑크 페탈 · 피치 피즈 · 누드 헤이즈 · 하트 벌룬 · 러브 포션 · 쥬시 피치
-    // · 오렌지 플레어 · 베리 큐피드 · 러브 큐피드 · 망고 베리 · 핑크 텐션 · 버블 하트
-    // · 디어 로즈 · 크리미 로지
-    {
-      // 사진으로 확인: 오른쪽 칸 색상각 328.6° — 라벤더 구간에 들어온다
-      families: ["라벤더"], brand: "투에이엔", name: "듀얼 치크",
-      shade: "코튼캔디 바이올렛",
-      kind: "한 통에 두 색 — 따로 써도, 섞어 써도 돼요",
-      photo: "/products/2an-dual-cheek-violet.jpg",   // 사진 출처: 올리브영 A000000181230 (2026-10-08, public/products/SOURCES.md)
-      checked: true,
-    },
-    {
-      // 사진으로 확인: 오른쪽 칸 #fda6a2 (L76.5 C35.3 h25.1)
-      families: ["코랄", "피치"], brand: "투에이엔", name: "듀얼 치크",
-      kind: "한 통에 두 색 — 코코 코랄 · 핫 리빙 코랄 · 피치 피즈 · 쥬시 피치 호수",
-      photo: "/products/2an-dual-cheek.jpg",   // 사진 출처: 올리브영 A000000181230 (2026-10-08, public/products/SOURCES.md)
-      checked: true,
-    },
-    {
-      families: ["로즈", "모브"], brand: "투에이엔", name: "듀얼 치크",
-      kind: "한 통에 두 색 — 러브 로지 · 디어 로즈 · 크리미 로지 호수",
-    },
-    {
-      families: ["핑크", "베이지핑크"], brand: "투에이엔", name: "듀얼 치크",
-      kind: "한 통에 두 색 — 핑크 페탈 · 핑크 텐션 · 버블 하트 · 누드 헤이즈 호수",
-    },
-    {
-      families: ["레드", "브릭"], brand: "투에이엔", name: "듀얼 치크",
-      kind: "한 통에 두 색 — 베리 큐피드 · 망고 베리 · 러브 포션 호수",
-    },
-    { families: ["베이지핑크", "코랄", "피치"], brand: "페리페라", name: "퓨어 블러시드 선샤인 치크", kind: "파우더 — 얇게 올라가 뭉치지 않아요" },
-  ],
-  lip: [
-    {
-      // 12색. 확인된 호수: 901 트루 피치 · 902 비지 코랄 · 904 시티 핑크 · 905 로지 하이
-      // · 906 솔티 피그(무화과) · 907 젠틀 로즈 · 908 인 카페인(커피빛) · 909 길티 모브 · 910 보스 체리
-      families: ["피치", "코랄", "핑크", "로즈", "플럼", "브릭", "MLBB", "체리"],
-      brand: "라카", name: "퍼펙트 트윈 립",
-      kind: "틴트 + 글로스 — 매트로도, 광으로도 쓸 수 있어요",
-      photo: "/products/laka-perfect-twin-lip.jpg",   // 사진 출처: 올리브영 A000000255256 (2026-10-08, public/products/SOURCES.md)
-      checked: true,
-    },
-    {
-      // 색이 아주 많다(30색 가까이). 사진에 보이는 것만으로도 자주·분홍·코랄·오렌지·누드가 있다
-      families: ["MLBB", "브릭", "누드베이지", "로즈", "핑크", "코랄", "오렌지", "플럼"],
-      brand: "롬앤", name: "쥬시 래스팅 틴트",
-      kind: "틴트 — 촉촉하고 오래가요",
-      photo: "/products/romand-juicy-lasting-tint.jpg",   // 사진 출처: 올리브영 A000000241210 (2026-10-08, public/products/SOURCES.md)
-      checked: true,
-    },
-    { families: ["코랄", "피치", "오렌지"], brand: "에스쁘아", name: "꾸뛰르 립 틴트 글레이즈", kind: "틴트 — 광이 돌아요" },
-    { families: ["로즈", "핑크", "플럼", "버건디", "레드", "딥레드", "체리"], brand: "3CE", name: "블러 워터 틴트", kind: "틴트 — 뿌옇게 번지는 느낌" },
-  ],
-};
 
 const HEX_RE = /^#[0-9a-f]{6}$/;
 
@@ -348,11 +122,15 @@ export function pickProducts(part: PalettePart, families: readonly string[], max
   const out: Picked[] = [];
   const seen = new Set<ProductPick>();
   // 같은 제품은 한 번만. 호수 묶음별로 나눠 넣은 제품(투에이엔·모렛)은 여러 줄이지만
-  // 화면에는 같은 이름으로 보이므로, 두 번 뜨면 "왜 같은 게 두 개지" 가 된다
+  // 화면에는 같은 이름으로 보이므로, 두 번 뜨면 "왜 같은 게 두 개지" 가 된다.
+  //
+  // 2026-10-15: 이름이 아니라 **묶음 이름(group)** 으로 거른다. 제품 목록을 디비에서
+  // 뽑게 되면서 팔레트가 통마다 다른 이름을 갖게 됐고(「2 로즈 커넥트」·「4 핑크 페어링」),
+  // 이름으로 걸러서는 같은 팔레트가 나란히 떴다 — 전지원이 폰에서 보고 알렸다
   const shown = new Set<string>();
 
   const add = (pick: ProductPick, family: string): void => {
-    const key = `${pick.brand} ${pick.name}`;
+    const key = `${pick.brand} ${pick.group ?? pick.name}`;
     if (seen.has(pick) || shown.has(key) || out.length >= max) return;
     seen.add(pick);
     shown.add(key);
@@ -398,8 +176,34 @@ export function pickProducts(part: PalettePart, families: readonly string[], max
  */
 const NEAR_MAX = 18;
 
-/** 그 계열 이름을 가진 48색들의 평균. 팔레트에 없는 이름이면 null */
+/**
+ * 그 계열의 기준색(Lab). **디비 기준색을 먼저 보고, 없으면 48색 팔레트**를 본다 (2026-10-15).
+ *
+ * 디비를 먼저 보는 까닭 둘.
+ *   ① **범위가 다르다.** 48색 팔레트는 통 안(팬) 색이고, 앱이 사진에서 읽는 것은
+ *      피부 위에 올라간 색이다. 볼터치로 재 보니 통 안 밝기 60~75 vs 피부 위 74~86 으로
+ *      거의 안 겹쳤다. 통 안 색을 기준으로 거리를 재면 "가까운 색 채우기" 가 엉뚱하게 돈다.
+ *      디비 기준색은 호수가 모인 계열이면 그 호수들의 **피부 위 발색**에서 뽑은 값이라
+ *      조건이 같다 (nudy-db/seed/ZZ1 · ZZ2).
+ *   ② **팔레트에 없는 계열 이름이 많다.** color-name.ts 가 짓는 이름 70개 중 팔레트에
+ *      기준색이 있는 것은 일부여서, 나머지는 여기서 null 이 되어 채우기에 아예 안 걸렸다.
+ *      디비 계열 이름은 그 함수가 짓는 이름으로 맞춰 두었다.
+ *
+ * 디비에도 없으면 전처럼 팔레트 평균을 쓴다. 둘 다 없으면 null — 그 계열은 채우기에서 빠진다.
+ *
+ * **아직 두 자리가 섞여 있다** (2026-10-15 측정). 디비 기준색이 없는 계열 14개는 팔레트로
+ * 떨어지는데, 그 계열을 기준으로 거리를 재면 상대는 디비 기준색이라 자리가 달라 ΔE 가 커진다.
+ * 그래서 섀도우 올리브(2→0) · 섀도우 오렌지(2→1) · 입술 버건디(2→1) · 볼터치 레드(2→1) 는
+ * 채우기가 전보다 덜 걸린다. 그 14개 계열의 호수 색을 디비에 모으면 사라지는 문제다 —
+ * 여기서 억지로 맞추지 않는다 (맞추려면 "같은 자리끼리만 비교" 를 넣어야 하고, 그것은
+ * 가까운 색 채우기의 규칙을 바꾸는 일이라 전지원이 정할 몫이다).
+ */
 function familyLab(part: PalettePart, family: string): Lab | null {
+  const ref = FAMILY_REF[part][family];
+  if (ref) {
+    const [r, g, b] = hexToRgb(ref);
+    return rgbToLab(r, g, b);
+  }
   const hits = PALETTE[part].filter((hex) => COLOR_FAMILY[hex] === family);
   if (!hits.length) return null;
   const labs = hits.map((hex) => { const [r, g, b] = hexToRgb(hex); return rgbToLab(r, g, b); });

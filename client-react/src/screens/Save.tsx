@@ -53,10 +53,13 @@
 
 import type { PartColors } from "../api";
 import { PART_NAME, PART_ORDER } from "../parts";
-import { pickProducts, pickShadeText } from "@core/product-picks";
+import { pickProducts } from "@core/product-picks";
 import { useEffect, useRef, useState } from "react";
 import type { MakeupTemplate } from "@core/templates";
 import { prepareSave, SAVE_TEXT, SHARE_HINT, type SaveKit, type SaveSource } from "../lib/feedback-card";
+import { useLang } from "../i18n/useLang";
+import { colorText, hueText, productText } from "../lib/core-text";
+import type { Key } from "../i18n";
 import type { FeedbackLoad } from "../lib/feedback-source";
 import { surveyLink } from "../survey-link";
 import Survey from "./Survey";
@@ -70,16 +73,16 @@ import "../save.css";
  * 여기는 **무엇이 없어서인지**까지 적는다 — 피드백 화면이 같은 방식으로 까닭을 밝히고 있어서
  * (`Feedback.tsx` 의 `MISSING_TEXT`) 두 화면이 같은 말을 하게 둔다
  */
-const WHY_TEXT: Record<string, string> = {
-  bare: "맨얼굴 사진이 없어서 한 장으로 만들 수 없어요",
-  answer: "예상 메이크업이 없어서 한 장으로 만들 수 없어요",
-  answer_size: "예상 메이크업이 맨얼굴과 크기가 달라서 한 장으로 만들 수 없어요",
-  attempt: "완성사진이 없어서 한 장으로 만들 수 없어요",
+const WHY_TEXT: Record<string, Key> = {
+  bare: "save.why.bare",
+  answer: "save.why.answer",
+  answer_size: "save.why.answer_size",
+  attempt: "save.why.attempt",
   /* 판정이 막힌 것(본 앱 blocked) — 문장이 없으니 한 장에 넣을 것도 없다 */
-  blocked: "사진 조건이 많이 달라 피드백을 내지 못했어요. 완성사진을 다시 찍으면 저장할 수 있어요",
-  empty: "피드백 문장이 없어서 한 장으로 만들 수 없어요",
-  none: "피드백을 거치지 않아서 한 장으로 만들 수 없어요",
-  error: "사진을 견주다가 멈춰서 한 장으로 만들 수 없어요",
+  blocked: "save.why.blocked",
+  empty: "save.why.empty",
+  none: "save.why.none",
+  error: "save.why.error",
 };
 
 /** 「결과 저장」을 그릴 수 있는지 — 들어설 때 한 번 가린다 (여기서 그리지는 않는다) */
@@ -114,6 +117,7 @@ export default function Save({
    * 다시 읽어 봐야 같은 주소다. 주소가 없으면(설문을 꺼 뒀으면) 모달을 아예 안 띄우고
    * 곧바로 끝 화면으로 간다 — 눌리지 않는 빈 창을 보여 주지 않는다
    */
+  const { lang, t } = useLang();
   const [survey] = useState<string | null>(() => surveyLink());
   const [asking, setAsking] = useState(false);
 
@@ -164,17 +168,17 @@ export default function Save({
     if (busy) return;
     setBusy(true);
     // 몇 초 걸릴 수 있다 — 아무 말이 없으면 안 눌린 줄 안다
-    setMsg("한 장으로 만들고 있어요…");
+    setMsg(t("save.making"));
     made.current ??= prepareSave(src);
     void made.current
       .then((kit) => {
         // 캔버스를 못 쓰는 브라우저. 지어내지 않고 못 만들었다고 적는다
-        if (!kit?.card) return setMsg(SAVE_TEXT.unavailable);
+        if (!kit?.card) return setMsg(t(SAVE_TEXT.unavailable));
         // 공유 창이 열리는 기기에서는 거기서 "이미지 저장" 을 눌러야 사진에 들어간다 — 열리기 직전에 알린다
-        if (kit.usesShareSheet) setMsg(SHARE_HINT);
-        return kit.save().then((outcome) => setMsg(SAVE_TEXT[outcome]));
+        if (kit.usesShareSheet) setMsg(t(SHARE_HINT));
+        return kit.save().then((outcome) => setMsg(t(SAVE_TEXT[outcome])));
       })
-      .catch(() => setMsg(SAVE_TEXT.unavailable))
+      .catch(() => setMsg(t(SAVE_TEXT.unavailable)))
       .finally(() => setBusy(false));
   };
 
@@ -183,15 +187,16 @@ export default function Save({
       <div className="coach">
         <img src="/ui/nudy-coach-simple.svg" alt="" aria-hidden="true" />
         <p>
-          오늘 고른 화장과 색을 한 장에 모아 뒀어요
+          {t("save.coach")}
           <i aria-hidden="true" />
         </p>
       </div>
 
       <h1 className="title">
-        <em>오늘의</em> 화장 기록
+        <em>{t("save.titleEm")}</em>
+        {t("save.titleRest")}
       </h1>
-      <p className="sub">고른 화장과 부위별 색, 추천 제품을 한 장에 모았어요</p>
+      <p className="sub">{t("save.sub")}</p>
 
       <div className="slot-save-card">
         <div>
@@ -218,13 +223,13 @@ export default function Save({
               <span className="dot" style={{ background: color.hex }} aria-hidden="true" />
               <span className="save-text">
                 <strong>
-                  {PART_NAME[part]} · {color.name.text}
+                  {t(PART_NAME[part])} · {colorText(t, color.name)}
                 </strong>
                 {/* 제품을 못 찾은 부위도 있다 — 줄을 비우면 "안 불러온 건가" 로 읽힌다 */}
                 <em>
                   {top
-                    ? `${top.pick.brand} ${top.pick.name} · ${pickShadeText(top.pick, top.family)}`
-                    : "맞는 제품은 아직 못 찾았어요"}
+                    ? `${productText(lang, top.pick).brand} ${productText(lang, top.pick).name} · ${t("guide.family", { name: hueText(t, top.family) })}`
+                    : t("save.noProduct")}
                 </em>
               </span>
             </li>
@@ -239,13 +244,13 @@ export default function Save({
       */}
       {ready.k === "can" && (
         <>
-          <p className="save-ask">예상 메이크업, 완성사진, 피드백을 한 장으로 저장해요.</p>
+          <p className="save-ask">{t("save.ask")}</p>
           <button type="button" className="go ghost" onClick={() => makeAndSave(ready.src)} disabled={busy}>
-            결과 저장
+            {t("save.do")}
           </button>
         </>
       )}
-      {ready.k === "no" && <p className="save-why">{WHY_TEXT[ready.why] ?? "지금은 한 장으로 만들 수 없어요"}</p>}
+      {ready.k === "no" && <p className="save-why">{t(WHY_TEXT[ready.why] ?? "save.why.unknown")}</p>}
 
       {/* 눌린 뒤에만 글이 찬다 — 빈 동안에는 `.save-msg:empty` 가 줄을 접는다 */}
       <p className="save-msg" role="status">
@@ -257,7 +262,7 @@ export default function Save({
         뒤로 가는 길은 맨 위 로고 줄의 화살표(→ 피드백)이고, 처음으로 돌아가는 길은 다음 화면(끝)에 둔다
       */}
       <button type="button" className="go" onClick={() => (survey ? setAsking(true) : onDone())}>
-        끝내기
+        {t("save.finish")}
       </button>
 
       {/* 어느 버튼으로 닫았든 끝 화면으로 한 번만 간다 — 이 화면에 갇히면 안 된다 */}

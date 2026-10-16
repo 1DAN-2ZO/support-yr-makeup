@@ -90,7 +90,7 @@ export const SHOTS: readonly ShotSpec[] = [
  * 머리카락·안경이 가리면 그 값이 틀어지므로 찍기 전에 한 번 알려 준다 (안경은 처음부터 쓰고 있어 이마 급변으로 못 잡는다). 숫자 없이.
  */
 export const CAPTURE_GUIDE = {
-  title: "찍기 전에 확인해 주세요",
+  title: "촬영 전에 확인해줘!",
   lines: [
     "앞머리를 넘겨서 이마가 다 보이게 해 주세요",
     "머리카락을 귀 뒤로 넘겨서 양쪽 귀가 다 보이게 해 주세요",
@@ -129,10 +129,10 @@ export const CAPTURE_LIMITS: CaptureLimits = { pitch: 10, sharpMin: 150, brightT
 /** 촬영 조건 문구. 숫자 없이 한 줄 (기능 정의서 F-01) */
 export const SHOT_TEXT = {
   none: "",
-  cut: "얼굴이 잘려요. 얼굴 전체가 보이게 해 주세요",
+  cut: "잘 안 보여… 좀 더 원 안으로!",
   occluded: "얼굴을 가리지 말아 주세요",
   bangs: "앞머리를 넘겨서 이마가 보이게 해 주세요",
-  front: "조금만 정면으로",
+  front: "고개를 조금만 돌려줘!",
   open: "눈을 떠 주세요",
   near: "조금 더 가까이",
   far: "조금 멀리",
@@ -140,8 +140,8 @@ export const SHOT_TEXT = {
   bright_low: "조금 더 밝은 곳으로",
   bright_high: "너무 밝아요. 조금 어두운 곳으로",
   color: "조명 색이 바뀌었어요. 처음 자리에서 찍어 주세요",
-  stable: "잠시만 그대로",
-  ready: "찍을게요",
+  stable: "그대로 Stop!",
+  ready: "그대로 Stop!",
 } as const;
 type ShotTextKey = keyof typeof SHOT_TEXT;
 

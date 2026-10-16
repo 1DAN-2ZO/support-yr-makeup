@@ -41,6 +41,8 @@ import type { FeedbackLine } from "@core/feedback-whole";
 import type { MakeupTemplate } from "@core/templates";
 import type { FeedbackLoad, FeedbackView } from "../lib/feedback-source";
 import "../feedback.css";
+import { useLang } from "../i18n/useLang";
+import type { Key } from "../i18n";
 
 /*
  * 색 이름 **뒤에 조사를 붙이지 않는다** — "코랄이/코랄가" 는 받침에 따라 갈리는데, 색 이름은
@@ -49,29 +51,29 @@ import "../feedback.css";
  */
 
 /** 잘 따라간 부위 — 색 이름을 넣어 "무엇이 비슷한지" 까지 말한다 (못 견뎠을 때만 쓴다) */
-const SAME: readonly { part: PalettePart; say: (color: string) => string }[] = [
-  { part: "brow", say: (c) => `${c}, 결을 살려 빈 곳까지 채웠어요` },
-  { part: "lip", say: (c) => `${c}, 안쪽부터 자연스럽게 번졌어요` },
-  { part: "cheek", say: (c) => `${c}, 웃는 자리에 동그랗게 올라갔어요` },
+const SAME: readonly { part: PalettePart; key: Key }[] = [
+  { part: "brow", key: "fb.same.brow" },
+  { part: "lip", key: "fb.same.lip" },
+  { part: "cheek", key: "fb.same.cheek" },
 ];
 
 /** 다시 볼 부위 — 뭐가 아쉬운지가 아니라 **무엇을 해 보라는 것**으로 적는다 (못 견뎠을 때만 쓴다) */
-const AGAIN: readonly { part: PalettePart; say: (color: string) => string }[] = [
-  { part: "liner", say: (c) => `${c} 라인이 눈 끝에서 끊겼어요. 속눈썹 쪽으로 더 붙여 보세요` },
-  { part: "shadow", say: (c) => `${c}, 눈두덩 가운데에 몰렸어요. 끝 쪽으로 더 펴 주세요` },
+const AGAIN: readonly { part: PalettePart; key: Key }[] = [
+  { part: "liner", key: "fb.again.liner" },
+  { part: "shadow", key: "fb.again.shadow" },
 ];
 
 /** 묶음 이름 — 본 앱 `TONE_LABEL` 그대로. info 는 "견줄 것이 없거나 볼 수 없었다" 는 줄이다 */
-const TONE_LABEL: Record<string, string> = { ok: "비슷해요", fix: "다시 볼 곳", info: "알림" };
+const TONE_LABEL: Record<string, Key> = { ok: "fb.tone.ok", fix: "fb.tone.fix", info: "fb.tone.info" };
 
 /** 못 그리는 까닭 — 왜 아직 피드백을 못 주는지 사람 말로 (본 앱 `FEEDBACK_MISSING`, `core/feedback-run` 의 FeedbackMissing) */
-const MISSING_TEXT: Record<string, string> = {
-  bare: "맨얼굴 사진이 없어요. 처음 촬영부터 다시 해 주세요",
-  answer: "예상 메이크업이 아직 없어요. 참고 사진을 올리는 화면부터 다시 해 주세요",
-  attempt: "화장한 사진이 없어요. 완성사진을 먼저 찍어 주세요",
-  answer_size: "예상 메이크업이 맨얼굴과 크기가 달라요. 참고 사진을 다시 올려 주세요",
+const MISSING_TEXT: Record<string, Key> = {
+  bare: "fb.miss.bare",
+  answer: "fb.miss.answer",
+  attempt: "fb.miss.attempt",
+  answer_size: "fb.miss.answer_size",
   /* 사진을 못 풀었거나 얼굴 점이 모자라 재다가 터진 것 — 까닭을 가릴 수 없으니 할 수 있는 일만 말한다 */
-  error: "사진을 견주다가 멈췄어요. 완성사진을 다시 찍으면 한 번 더 해 볼게요",
+  error: "fb.miss.error",
 };
 
 /** 지금 그릴 것 */
@@ -82,11 +84,12 @@ type Phase =
 
 /** 부위별 줄 — 순서·문장은 `core/feedback-whole` 이 정한 그대로 그린다. 종류를 색만으로 가르지 않고 딱지에 글자로도 적는다 */
 function Line({ p }: { p: FeedbackLine }) {
+  const { t } = useLang();
   return (
     <div className={`fb-line is-${p.tone}`}>
       <div className="fb-head">
         <strong>{p.name}</strong>
-        <em>{TONE_LABEL[p.tone] ?? ""}</em>
+        <em>{p.tone in TONE_LABEL ? t(TONE_LABEL[p.tone]!) : ""}</em>
       </div>
       <p className="fb-say">{p.line}</p>
       {p.more && <p className="fb-more">{p.more}</p>}
@@ -122,6 +125,7 @@ export default function Feedback({
   /** 완성사진을 다시 찍으러. 사진 조건이 달라 판정이 막혔을 때만 쓴다. 안 주면 그 버튼을 안 그린다 */
   onRetake?: () => void;
 }) {
+  const { t } = useLang();
   const [phase, setPhase] = useState<Phase>(() => (getFeedback ? { k: "wait" } : { k: "cannot", why: "answer" }));
 
   /*
@@ -147,7 +151,7 @@ export default function Feedback({
 
   const next = (
     <button type="button" className="go" onClick={onNext}>
-      다음 · 저장하러 가기
+      {t("fb.next")}
     </button>
   );
 
@@ -158,19 +162,19 @@ export default function Feedback({
         <div className="coach">
           <img src="/ui/nudy-coach-simple.svg" alt="" aria-hidden="true" />
           <p>
-            예상 메이크업과 견줘서 어디를 다시 보면 좋을지 알려드릴게요
+            {t("fb.coach")}
             <i aria-hidden="true" />
           </p>
         </div>
         <h1 className="title">
-          <em>피드백</em>
+          <em>{t("fb.title")}</em>
         </h1>
-        <p className="sub">점수 없이, 어디가 잘 맞고 어디를 다듬으면 되는지만 보여줘요</p>
+        <p className="sub">{t("fb.sub")}</p>
 
         <div className="slot-answer-loading">
           <span aria-hidden="true" />
-          <strong>찍은 사진을 보고 있어요</strong>
-          <p>예상 메이크업과 견주는 중이에요. 잠시만 기다려 주세요.</p>
+          <strong>{t("fb.waitHead")}</strong>
+          <p>{t("fb.waitBody")}</p>
         </div>
       </section>
     );
@@ -183,48 +187,47 @@ export default function Feedback({
         <div className="coach">
           <img src="/ui/nudy-coach-simple.svg" alt="" aria-hidden="true" />
           <p>
-            아직 견줄 것이 없어요
+            {t("fb.cannotCoach")}
             <i aria-hidden="true" />
           </p>
         </div>
         <h1 className="title">
-          <em>피드백</em>
+          <em>{t("fb.title")}</em>
         </h1>
-        <p className="sub">조금만 더 준비하면 바로 보여드릴게요</p>
+        <p className="sub">{t("fb.cannotSub")}</p>
 
         {/* 견준 사진이 없으니 고른 화장 한 장만 — 빈 칸을 남기면 안 불러온 것으로 보인다 */}
         <div className="fb-photos one">
           <figure>
-            <img src={template.thumb} alt={`${template.name} 화장 참고 사진`} />
-            <figcaption>고른 화장</figcaption>
+            <img src={template.thumb} alt={t("fb.tplAlt", { name: template.name })} />
+            <figcaption>{t("fb.tplCap")}</figcaption>
           </figure>
         </div>
 
         <div className="fb-lines">
-          {SAME.map(({ part, say }) => (
+          {SAME.map(({ part, key }) => (
             <div className="fb-line is-ok" key={part}>
               <div className="fb-head">
-                <strong>{PART_NAME[part]}</strong>
-                <em>{TONE_LABEL.ok}</em>
+                <strong>{t(PART_NAME[part])}</strong>
+                <em>{t("fb.tone.ok")}</em>
               </div>
-              <p className="fb-say">{say(colors[part].name.text)}</p>
+              <p className="fb-say">{t(key, { color: colors[part].name.text })}</p>
             </div>
           ))}
-          {AGAIN.map(({ part, say }) => (
+          {AGAIN.map(({ part, key }) => (
             <div className="fb-line is-fix" key={part}>
               <div className="fb-head">
-                <strong>{PART_NAME[part]}</strong>
-                <em>{TONE_LABEL.fix}</em>
+                <strong>{t(PART_NAME[part])}</strong>
+                <em>{t("fb.tone.fix")}</em>
               </div>
-              <p className="fb-say">{say(colors[part].name.text)}</p>
+              <p className="fb-say">{t(key, { color: colors[part].name.text })}</p>
             </div>
           ))}
         </div>
 
         {/* 견준 적이 없다는 것을 밝힌다 — 안 적으면 내 화장을 보고 쓴 말로 읽힌다 */}
         <p className="fb-note">
-          {MISSING_TEXT[phase.why] ?? "지금은 피드백을 만들 수 없어요"}. 그래서 위 이야기는 고른 화장을
-          기준으로 미리 적어 둔 본보기예요 — 찍은 사진과 견준 결과가 아니에요.
+          {t("fb.note", { why: t(MISSING_TEXT[phase.why] ?? "fb.miss.unknown") })}
         </p>
 
         {next}
@@ -241,14 +244,14 @@ export default function Feedback({
         <div className="coach">
           <img src="/ui/nudy-coach-simple.svg" alt="" aria-hidden="true" />
           <p>
-            사진을 한 번만 다시 찍어 주세요
+            {t("fb.blockedCoach")}
             <i aria-hidden="true" />
           </p>
         </div>
         <h1 className="title">
-          <em>다시 찍기</em>
+          <em>{t("fb.blockedTitle")}</em>
         </h1>
-        <p className="sub">처음 찍은 사진과 조건이 많이 달라서 견주기 어려워요</p>
+        <p className="sub">{t("fb.blockedSub")}</p>
 
         <Photos view={v} />
 
@@ -257,7 +260,7 @@ export default function Feedback({
         {/* 본 앱은 이 버튼 하나뿐이다. 다음으로 가는 길을 같이 두는 까닭은 머리글에 적어 뒀다 */}
         {onRetake && (
           <button type="button" className="go ghost" onClick={onRetake}>
-            완성사진 다시 찍기
+            {t("fb.retake")}
           </button>
         )}
         {next}
@@ -271,16 +274,16 @@ export default function Feedback({
       <div className="coach">
         <img src="/ui/nudy-coach-simple.svg" alt="" aria-hidden="true" />
         <p>
-          예상 메이크업과 견줘서 어디를 다시 보면 좋을지 알려드릴게요
+          {t("fb.coach")}
           <i aria-hidden="true" />
         </p>
       </div>
 
       {/* 제목·설명은 본 앱 `feedbackSlot` 의 글 그대로다 */}
       <h1 className="title">
-        <em>피드백</em>
+        <em>{t("fb.title")}</em>
       </h1>
-      <p className="sub">점수 없이, 어디가 잘 맞고 어디를 다듬으면 되는지만 보여줘요</p>
+      <p className="sub">{t("fb.sub")}</p>
 
       <Photos view={v} />
 
@@ -289,13 +292,13 @@ export default function Feedback({
         <div className="fb-summary">
           {fb.ok.length > 0 && (
             <div className="fb-sum is-ok">
-              <b>비슷한 곳</b>
+              <b>{t("fb.sumOk")}</b>
               <span>{fb.ok.join(" · ")}</span>
             </div>
           )}
           {fb.fix.length > 0 && (
             <div className="fb-sum is-fix">
-              <b>다시 볼 곳</b>
+              <b>{t("fb.sumFix")}</b>
               <span>{fb.fix.join(" · ")}</span>
             </div>
           )}
@@ -315,8 +318,7 @@ export default function Feedback({
       */}
       {v.movedFailed && (
         <p className="fb-side">
-          라이너는 이번에 못 쟀어요. 서버가 만드는 「옮긴 그림」이 늦었거나 만들어지지 않았어요 —
-          「이번에는 볼 수 없었어요」라고 적힌 줄은 견준 결과가 아니에요.
+          {t("fb.movedFailed")}
         </p>
       )}
 
@@ -330,15 +332,16 @@ export default function Feedback({
  * 왼쪽이 예상 메이크업, 오른쪽이 방금 찍은 내 화장 — 이 두 장을 견줘서 위 문장이 나온 것이다
  */
 function Photos({ view }: { view: FeedbackView }) {
+  const { t } = useLang();
   return (
     <div className="fb-photos">
       <figure>
-        <img src={view.answerUrl} alt="예상 메이크업" />
-        <figcaption>예상 메이크업</figcaption>
+        <img src={view.answerUrl} alt={t("fb.answerCap")} />
+        <figcaption>{t("fb.answerCap")}</figcaption>
       </figure>
       <figure>
-        <img src={view.attemptUrl} alt="내 화장" />
-        <figcaption>내 화장</figcaption>
+        <img src={view.attemptUrl} alt={t("fb.attemptCap")} />
+        <figcaption>{t("fb.attemptCap")}</figcaption>
       </figure>
     </div>
   );

@@ -159,11 +159,11 @@ describe("evaluateGate", () => {
     expect(evaluateGate("liner", good({ foreheadAb: { a: 12, b: 30 }, stableCount: 1 })).firstFail).toBe("stable");
   });
 
-  it("V13 안정 2프레임 전에는 '잠시만 그대로' (#235: 5 에서 완화 — 확인받기 뒤 여러 장을 모아서 누르는 순간 완벽할 필요 없음)", () => {
+  it("V13 안정 2프레임 전에는 '그대로 Stop!' (#235: 5 에서 완화 — 확인받기 뒤 여러 장을 모아서 누르는 순간 완벽할 필요 없음)", () => {
     expect(LIVE_LIMITS.stableFrames).toBe(2);
     const r = evaluateGate("liner", good({ stableCount: 1 }));
     expect(r.firstFail).toBe("stable");
-    expect(r.text).toBe("잠시만 그대로");
+    expect(r.text).toBe("그대로 Stop!");
     expect(r.stableCount).toBe(1);
     expect(evaluateGate("liner", good({ stableCount: 2 })).ok).toBe(true);
   });

@@ -30,6 +30,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { hasAnswerServer, makeAnswerPicture } from "../api";
 import type { TransferRef } from "@core/transfer-client";
 import { MAKE_WAIT_TEXT, makeFailText, shrinkForUpload } from "../lib/answer-make";
+import { useLang } from "../i18n/useLang";
+import type { Key } from "../i18n";
 
 /** 지금 어느 칸인가 — 위 머리글의 네 가지 */
 type Phase = "sending" | "making" | "done" | "failed";
@@ -55,12 +57,14 @@ export interface AnswerProps {
 }
 
 export default function Answer({ source, preview, read, bare, made, onMade, onNext }: AnswerProps) {
+  const { t } = useLang();
   /**
    * 들어올 때 설 칸 — 이미 그림이 있거나 서버 주소가 비어 있으면 부르지 않고 바로 "완성" 이다
    * (주소가 없을 때 참고 사진을 그대로 보여 주는 것은 본 앱과 같다)
    */
   const [phase, setPhase] = useState<Phase>(made || !hasAnswerServer ? "done" : "sending");
-  const [failText, setFailText] = useState<string | null>(null);
+  // 글자가 아니라 **열쇠**를 담는다 — 말을 바꾸면 떠 있던 까닭도 같이 바뀐다
+  const [failText, setFailText] = useState<Key | null>(null);
 
   /** 보내는 사이에 화면을 떠났으면 결과를 쓰지 않는다 (본 앱 `alive`) */
   const alive = useRef(true);
@@ -114,23 +118,22 @@ export default function Answer({ source, preview, read, bare, made, onMade, onNe
           본 앱도 같은 모양이지만 본 앱은 이 화면에 로고 줄이 없다 — 이 버전은 App 이 늘 그린다.
         */}
         <h1 className="title">
-          <em>AI</em>가 예상 메이크업을 만들고 있어요
+          <em>{t("ans.makingEm")}</em>
+          {t("ans.makingRest")}
         </h1>
-        <p className="sub">참고 사진의 색감과 위치를 확인하고 있어요</p>
+        <p className="sub">{t("ans.makingSub")}</p>
         <div className="slot-answer-loading">
           <span aria-hidden="true" />
           <strong>
-            {phase === "sending" ? "참고 사진을 보내고 있어요" : "예상 메이크업을 만들고 있어요"}
+            {t(phase === "sending" ? "ans.sending" : "ans.making")}
           </strong>
           <p>
-            {phase === "sending"
-              ? "올릴 크기로 사진을 줄이는 중이에요."
-              : "참고 사진의 화장을 맨얼굴 사진에 맞춰 정리하는 중이에요."}
+            {t(phase === "sending" ? "ans.sendingBody" : "ans.makingBody")}
           </p>
         </div>
         {/* 얼마나 기다려야 하는지 — 안 적으면 멈춘 줄 알고 화면을 닫는다 (본 앱과 같은 자리) */}
         <p className="slot-status" role="status">
-          {MAKE_WAIT_TEXT}
+          {t(MAKE_WAIT_TEXT)}
         </p>
       </section>
     );
@@ -142,20 +145,21 @@ export default function Answer({ source, preview, read, bare, made, onMade, onNe
         <div className="coach">
           <img src="/ui/nudy-coach-simple.svg" alt="" aria-hidden="true" />
           <p>
-            예상 메이크업은 못 만들었지만 색은 읽었어요
+            {t("ans.failCoach")}
             <i aria-hidden="true" />
           </p>
         </div>
 
         <h1 className="title">
-          <em>예상 메이크업</em>을 못 만들었어요
+          <em>{t("ans.failEm")}</em>
+          {t("ans.failRest")}
         </h1>
-        <p className="sub">읽은 색으로 부위별 가이드는 그대로 볼 수 있어요</p>
+        <p className="sub">{t("ans.failSub")}</p>
 
         {/* 까닭 — 사람이 할 수 있는 일로 적는다 (본 앱 `makeFailText`) */}
         {failText && (
           <p className="slot-upload-warn" role="status">
-            {failText}
+            {t(failText)}
           </p>
         )}
 
@@ -164,10 +168,10 @@ export default function Answer({ source, preview, read, bare, made, onMade, onNe
           색은 이 폰에서 이미 읽어 뒀으니 가이드는 그림 없이도 돈다
         */}
         <button type="button" className="go ghost" onClick={() => void send()}>
-          다시 시도
+          {t("ans.retry")}
         </button>
         <button type="button" className="go" onClick={onNext}>
-          그냥 화장 가이드 보기
+          {t("ans.skip")}
         </button>
       </section>
     );
@@ -178,9 +182,7 @@ export default function Answer({ source, preview, read, bare, made, onMade, onNe
       <div className="coach">
         <img src="/ui/nudy-coach-simple.svg" alt="" aria-hidden="true" />
         <p>
-          {made
-            ? "예상 메이크업이 완성됐어요. 이제 부위별로 따라 해볼게요"
-            : "사진에서 색을 읽었어요. 이제 부위별로 따라 해볼게요"}
+          {t(made ? "ans.coachMade" : "ans.coachRead")}
           <i aria-hidden="true" />
         </p>
       </div>
@@ -188,16 +190,18 @@ export default function Answer({ source, preview, read, bare, made, onMade, onNe
       <h1 className="title">
         {made ? (
           <>
-            <em>예상 메이크업</em> 완성
+            <em>{t("ans.doneEm")}</em>
+            {t("ans.doneRest")}
           </>
         ) : (
           <>
-            <em>참고 사진</em>에서 색을 읽었어요
+            <em>{t("ans.readEm")}</em>
+            {t("ans.readRest")}
           </>
         )}
       </h1>
       <p className="sub">
-        {made ? "이 사진을 기준으로 화장 가이드가 만들어져요" : "읽은 색을 기준으로 화장 가이드가 만들어져요"}
+        {t(made ? "ans.subMade" : "ans.subRead")}
       </p>
 
       {/*
@@ -209,20 +213,18 @@ export default function Answer({ source, preview, read, bare, made, onMade, onNe
       <div className="slot-answer-photo">
         <div className={made ? "slot-answer-photo-frame has-ref" : "slot-answer-photo-frame is-empty"}>
           {made ? (
-            <img className="slot-answer-ref" src={made} alt="예상 메이크업" />
+            <img className="slot-answer-ref" src={made} alt={t("ans.madeAlt")} />
           ) : (
             <span className="slot-answer-empty">
               <img src="/ui/nudy-coach-simple.svg" alt="" aria-hidden="true" />
-              여기에 예상 메이크업이 나와요
+              {t("ans.empty")}
             </span>
           )}
         </div>
         <div className="slot-answer-preview">
-          <b>{made ? "예상 메이크업 완성" : "예상 메이크업 자리"}</b>
+          <b>{t(made ? "ans.cardMade" : "ans.cardEmpty")}</b>
           <p>
-            {read === 5
-              ? "다섯 부위의 색을 모두 읽었어요."
-              : `다섯 부위 가운데 ${read}개 부위의 색을 읽었어요. 못 읽은 곳은 비슷한 견본 색으로 안내해요.`}
+            {read === 5 ? t("ans.readAll") : t("ans.readSome", { n: read })}
           </p>
         </div>
       </div>
@@ -230,8 +232,8 @@ export default function Answer({ source, preview, read, bare, made, onMade, onNe
       {/* 올린 참고 사진은 작게 따로 — 정답사진 자리와 섞이지 않게 */}
       {!made && preview && (
         <figure className="slot-answer-src">
-          <img src={preview} alt="올린 참고 사진" />
-          <figcaption>이 사진에서 색을 읽었어요</figcaption>
+          <img src={preview} alt={t("up.refAlt")} />
+          <figcaption>{t("ans.srcCap")}</figcaption>
         </figure>
       )}
 
@@ -241,12 +243,12 @@ export default function Answer({ source, preview, read, bare, made, onMade, onNe
       */}
       {!hasAnswerServer && (
         <p className="slot-upload-warn" role="status">
-          예상 메이크업을 만드는 서버가 아직 안 붙었어요. 지금은 읽은 색으로만 안내해 드려요.
+          {t("ans.noServer")}
         </p>
       )}
 
       <button type="button" className="go" onClick={onNext}>
-        다음 · 화장 가이드 보기
+        {t("ans.next")}
       </button>
     </section>
   );

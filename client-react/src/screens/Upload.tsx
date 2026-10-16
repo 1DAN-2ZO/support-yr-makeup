@@ -24,6 +24,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { analyzeRefPhoto, REF_FAIL_TEXT, type RefAnalysis } from "../lib/ref-analyze";
+import { useLang } from "../i18n/useLang";
+import type { Key } from "../i18n";
 
 export interface UploadProps {
   /** 색을 다 읽었을 때 — 읽은 것과 보낼 사진을 넘긴다 (보내는 일은 다음 화면이 한다) */
@@ -33,12 +35,14 @@ export interface UploadProps {
 }
 
 export default function Upload({ onDone, onTemplates }: UploadProps) {
+  const { t } = useLang();
   const [picked, setPicked] = useState<File | null>(null);
   /** 고른 사진의 미리보기 주소. 바꿀 때마다 앞의 것을 놓는다 (안 놓으면 고를수록 쌓인다) */
   const [preview, setPreview] = useState<string | null>(null);
   const [reading, setReading] = useState(false);
   /** 못 읽은 까닭 한 줄 — 비어 있으면 안 그린다 */
-  const [warn, setWarn] = useState<string | null>(null);
+  // 글자가 아니라 **열쇠**를 담는다 — 말을 바꾸면 떠 있던 안내도 같이 바뀐다
+  const [warn, setWarn] = useState<Key | null>(null);
 
   /** 색 읽기는 1~2초 걸린다. 그 사이에 화면을 떠났으면 결과를 쓰지 않는다 (본 앱 `alive`) */
   const alive = useRef(true);
@@ -87,13 +91,14 @@ export default function Upload({ onDone, onTemplates }: UploadProps) {
     return (
       <section className="screen">
         <h1 className="title">
-          <em>사진에서 화장 색</em>을 읽고 있어요
+          <em>{t("up.readEm")}</em>
+          {t("up.readRest")}
         </h1>
-        <p className="sub">얼굴 자리를 찾아 부위별로 어떤 색을 썼는지 재는 중이에요</p>
+        <p className="sub">{t("up.readSub")}</p>
         <div className="slot-answer-loading">
           <span aria-hidden="true" />
-          <strong>사진을 읽고 있어요</strong>
-          <p>올린 사진은 이 폰에서만 봐요. 아직 아무 데도 보내지 않았어요.</p>
+          <strong>{t("up.readHead")}</strong>
+          <p>{t("up.readBody")}</p>
         </div>
       </section>
     );
@@ -104,15 +109,16 @@ export default function Upload({ onDone, onTemplates }: UploadProps) {
       <div className="coach">
         <img src="/ui/nudy-coach-simple.svg" alt="" aria-hidden="true" />
         <p>
-          따라 하고 싶은 화장 사진을 먼저 올려 주세요
+          {t("up.coach")}
           <i aria-hidden="true" />
         </p>
       </div>
 
       <h1 className="title">
-        <em>참고 사진</em> · 예상 메이크업
+        <em>{t("up.titleEm")}</em>
+        {t("up.titleRest")}
       </h1>
-      <p className="sub">참고 사진을 올리면 예상 메이크업을 만들어드릴게요</p>
+      <p className="sub">{t("up.sub")}</p>
 
       {/*
         칸 전체가 label 이라 아무 데나 눌러도 사진 고르는 창이 열린다 (본 앱 `uploadCard`).
@@ -122,16 +128,16 @@ export default function Upload({ onDone, onTemplates }: UploadProps) {
         <div className={`slot-upload-main${preview ? " has-photo" : ""}`}>
           {preview ? (
             <>
-              <img src={preview} alt="올린 참고 사진" />
-              <b>다른 사진으로 바꾸기</b>
+              <img src={preview} alt={t("up.refAlt")} />
+              <b>{t("up.change")}</b>
             </>
           ) : (
             <>
               <span aria-hidden="true">
                 <img src="/ui/icon-camera-start.svg" alt="" />
               </span>
-              <strong>참고 사진 업로드</strong>
-              <em>정면 사진이면 가장 좋아요</em>
+              <strong>{t("up.pick")}</strong>
+              <em>{t("up.pickHint")}</em>
             </>
           )}
         </div>
@@ -150,21 +156,21 @@ export default function Upload({ onDone, onTemplates }: UploadProps) {
 
       {/* 사진이 없어도 시작할 수 있는 다른 길 (본 앱 #420) — 고르는 화면은 따로 있다 */}
       <div className="slot-or">
-        <span>또는</span>
+        <span>{t("up.or")}</span>
       </div>
       <button type="button" className="go ghost" onClick={onTemplates}>
-        템플릿 선택
+        {t("up.toTemplates")}
       </button>
 
       {/* 못 읽은 까닭 — 흐름을 막지 않는다. 다른 사진을 고르거나 템플릿으로 갈 수 있다 */}
       {warn && (
         <p className="slot-upload-warn" role="status">
-          {warn}
+          {t(warn)}
         </p>
       )}
 
       <button type="button" className="go" disabled={!picked} onClick={() => void apply()}>
-        적용하기
+        {t("up.apply")}
       </button>
     </section>
   );

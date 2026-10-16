@@ -21,7 +21,7 @@ export const PART_NAME: Record<PartId, string> = {
   liner: "아이라이너",
   shadow: "섀도우",
   lip: "입술",
-  cheek: "볼터치",
+  cheek: "블러셔",
   contour: "쉐딩·하이라이트",
 };
 /** 화면 4·5 에서 부위를 볼 때 폰 방향 */

@@ -47,21 +47,22 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { PartColors } from "../api";
 import type { PalettePart } from "@core/color-family";
-import { PART_NAME, PART_ORDER, PART_TIP } from "../parts";
-import { pickProducts, pickShadeText } from "@core/product-picks";
+import { PART_COACH, PART_NAME, PART_ORDER, PART_TIP } from "../parts";
+import { pickProducts } from "@core/product-picks";
 import { drawGuidePage, type GuideLoad, type GuideView } from "../lib/guide-source";
+import { useLang } from "../i18n/useLang";
+import { colorText, hueText, productText } from "../lib/core-text";
 
-/** 진짜 가이드 그림이 떴을 때의 말풍선 — 본 앱 flow-slots 의 `GUIDE_COACH` 그대로 */
-const GUIDE_COACH = "예상 메이크업에서 이 부위만 크게 잘라서 보여드릴게요";
+/*
+ * 진짜 가이드 그림이 떴을 때의 말풍선은 **부위마다 다르다** (2026-10-15, #469).
+ * 전에는 다섯 부위가 전부 같은 말이라 부위를 넘겨도 바뀌는 것이 없었다 —
+ * 이제 `parts.ts` 의 `PART_COACH` 에서 그 부위의 화장 팁을 가져온다.
+ */
 
-/** 자리표시일 때의 말풍선 — 내 얼굴이 아니라 견본이라는 것을 먼저 밝힌다 */
-const MOCK_COACH = "예시 그림이에요. 점과 선을 기준으로 따라 해 주세요";
-
-/** 재료를 만드는 동안 그림 자리에 띄우는 한 줄 (본 앱과 같은 말) */
-const WAIT_TEXT = "가이드를 준비하고 있어요…";
-
-/** 정답사진은 왔는데 그 부위의 화장만 못 찾았을 때 (본 앱과 같은 말) */
-const NOT_FOUND_TEXT = "예상 메이크업에서 이 부위의 화장은 찾지 못했어요. 사진을 보고 따라 해 주세요.";
+/*
+ * 화면 글은 `i18n/ko.ts` · `en.ts` 로 옮겼다 (2026-10-16) — 열쇠는 `guide.*` 다.
+ * 말풍선은 두 갈래다: 진짜 그림이면 부위마다 다른 `part.coach.*`, 자리표시면 `guide.mockCoach`.
+ */
 
 export default function PartGuide({
   colors,
@@ -83,6 +84,7 @@ export default function PartGuide({
   /** 「실시간 가이드로 보기」 — 지금 보고 있는 부위를 들고 곁 화면으로. 안 주면 버튼을 안 그린다 */
   onLive?: (part: PalettePart) => void;
 }) {
+  const { lang, t } = useLang();
   // 처음 자리만 정한다 — 그 뒤 부위를 옮기는 일은 여전히 이 화면 안에서 끝난다
   const [at, setAt] = useState(() => {
     const i = startPart ? PART_ORDER.indexOf(startPart) : -1;
@@ -155,7 +157,7 @@ export default function PartGuide({
     // 부위 색은 가이드 묶음이 통째로 쓴다 (색 동그라미 · 제품 네모) — 본 앱도 `--slot-color` 하나로 내린다
     <section className="screen" style={{ "--slot-color": color.hex } as CSSProperties}>
       {/* 칩은 차례를 보여 주는 동시에 건너뛰는 길이다 — 입술만 다시 보고 싶은 사람이 다섯 번 누를 이유가 없다 */}
-      <nav className="chips" aria-label="부위 고르기">
+      <nav className="chips" aria-label={t("guide.parts")}>
         {PART_ORDER.map((p, i) => (
           <button
             key={p}
@@ -164,7 +166,7 @@ export default function PartGuide({
             aria-current={i === at ? "true" : undefined}
             onClick={() => setAt(i)}
           >
-            {PART_NAME[p]}
+            {t(PART_NAME[p])}
           </button>
         ))}
       </nav>
@@ -173,15 +175,15 @@ export default function PartGuide({
         <img src="/ui/nudy-coach-simple.svg" alt="" aria-hidden="true" />
         {/* 진짜 그림이 뜨면 말이 바뀐다 — 「예시」 딱지가 빠지는 것과 같은 때다 (본 앱 #364) */}
         <p>
-          {real ? GUIDE_COACH : MOCK_COACH}
+          {t(real ? PART_COACH[part] : "guide.mockCoach")}
           <i aria-hidden="true" />
         </p>
       </div>
 
       <h1 className="title">
-        <em>{PART_NAME[part]}</em>
+        <em>{t(PART_NAME[part])}</em>
       </h1>
-      <p className="sub">점과 선을 기준으로 거울 앞에서 천천히 따라 해 주세요</p>
+      <p className="sub">{t("guide.sub")}</p>
 
       <div className="slot-guide-card">
         {/*
@@ -192,14 +194,14 @@ export default function PartGuide({
         */}
         <div className={real ? "slot-guide-photo is-real" : "slot-guide-photo"}>
           {real ? (
-            <canvas className="slot-guide-canvas" ref={canvas} aria-label={`${PART_NAME[part]} 가이드 그림`} role="img" />
+            <canvas className="slot-guide-canvas" ref={canvas} aria-label={t("guide.canvasAlt", { part: t(PART_NAME[part]) })} role="img" />
           ) : waiting ? (
             <p className="slot-guide-wait" role="status">
-              {WAIT_TEXT}
+              {t("guide.wait")}
             </p>
           ) : (
             <>
-              <span className="slot-guide-sample">예시</span>
+              <span className="slot-guide-sample">{t("guide.sample")}</span>
               <span className="slot-guide-line one" />
               <span className="slot-guide-line two" />
               <span className="slot-guide-dot" />
@@ -212,7 +214,7 @@ export default function PartGuide({
           본 앱은 이때 「실시간 가이드로 보기」까지 빼지만 여기서는 두었다 (이 작업의 범위 밖) —
           실시간 가이드는 테두리가 없으면 옛 표준 틀을 「예시」 딱지와 함께 그리니 흐름은 막히지 않는다
         */}
-        {missing && <p className="slot-guide-none">{NOT_FOUND_TEXT}</p>}
+        {missing && <p className="slot-guide-none">{t("guide.notFound")}</p>}
 
         {/*
           곁 화면으로 가는 길 — 본 앱과 같은 자리(그림 바로 아래 · 색 칸 위)에 테두리 버튼으로 둔다.
@@ -221,7 +223,7 @@ export default function PartGuide({
         */}
         {onLive && (
           <button type="button" className="go ghost" onClick={() => onLive(part)}>
-            실시간 가이드로 보기
+            {t("guide.live")}
           </button>
         )}
 
@@ -237,20 +239,20 @@ export default function PartGuide({
               같은 화면이 다르게 읽혔다. "계열" 이 늘 붙어야 "이 호수" 가 아니라
               "이런 색 무리" 라는 뜻이 전해진다 — 우리는 호수를 집어 주지 않는다
             */}
-            <strong>{color.name.text} 계열</strong>
-            <p>{PART_TIP[part]}</p>
+            <strong>{t("guide.family", { name: colorText(t, color.name) })}</strong>
+            <p>{t(PART_TIP[part])}</p>
           </div>
         </div>
 
         {picks.length === 0 ? (
           /* 비워 두면 "안 불러온 건가" 로 읽힌다 — 못 찾았다는 것을 말로 밝히고 다음 할 일을 알려 준다 */
           <div className="slot-product is-none">
-            <b>이런 제품이면 돼요</b>
-            <p>이 색에 맞는 제품은 아직 못 찾았어요. 비슷한 색으로 골라 주세요.</p>
+            <b>{t("guide.productHead")}</b>
+            <p>{t("guide.productNone")}</p>
           </div>
         ) : (
           <div className="slot-product">
-            <b>이런 제품이면 돼요</b>
+            <b>{t("guide.productHead")}</b>
             {picks.map(({ pick, family }) => {
               /*
                * `pickProducts` 는 딱 맞는 계열이 모자라면 **색이 가까운 계열**에서 채운다.
@@ -259,6 +261,8 @@ export default function PartGuide({
                * 색만 달리 보여 주면 색을 구별하기 어려운 사람에게는 아무 말도 안 한 것과 같다
                */
               const near = family !== color.name.base;
+              // 영어 화면이면 영어 이름으로 바꿔 쓴다 — 못 찾은 제품은 한국어 그대로 나온다
+              const show = productText(lang, pick);
               return (
                 <div className="slot-product-row" key={`${pick.brand} ${pick.name}`}>
                   {pick.photo ? (
@@ -269,16 +273,17 @@ export default function PartGuide({
                   )}
                   <div>
                     <strong>
-                      {pick.brand} {pick.name}
+                      {show.brand} {show.name}
                     </strong>
-                    <em>{pickShadeText(pick, family)}</em>
-                    {near && <small className="pick-near">부위 색과 가까운 계열이에요</small>}
-                    <p>{pick.kind}</p>
+                    {/* 코어 `pickShadeText` 는 「○○ 계열」을 한국어로 만든다 — 계열 이름만 받아 우리 글로 적는다 */}
+                    <em>{t("guide.family", { name: hueText(t, family) })}</em>
+                    {near && <small className="pick-near">{t("guide.near")}</small>}
+                    <p>{show.kind}</p>
                   </div>
                 </div>
               );
             })}
-            {hasPhoto && <small className="slot-product-credit">제품 사진: 각 브랜드</small>}
+            {hasPhoto && <small className="slot-product-credit">{t("guide.credit")}</small>}
           </div>
         )}
       </div>
@@ -293,7 +298,7 @@ export default function PartGuide({
         (App.tsx 의 `FLOW`: partguide → attempt → feedback). 배포본 글로 고쳤다 (2026-10-14)
       */}
       <button type="button" className="go" onClick={() => (last ? onDone() : setAt(at + 1))}>
-        {last ? "다음 · 완성사진 찍기" : `다음 — ${PART_NAME[PART_ORDER[at + 1]!]}`}
+        {last ? t("guide.nextLast") : t("guide.next", { part: t(PART_NAME[PART_ORDER[at + 1]!]) })}
       </button>
     </section>
   );

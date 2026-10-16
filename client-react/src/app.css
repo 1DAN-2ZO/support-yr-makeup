@@ -80,20 +80,33 @@ img {
   display: flex;
   flex-direction: column;
   /*
-   * 폭을 **화면 높이에도 맞춘다** — 본 앱 `#app` 과 같은 식이다.
-   *   min(100vw, 100dvh × 941/1672, 430px)
+   * **화면 폭을 꽉 채운다.** 높이로 폭을 막던 `100dvh × 941/1672` 를 뺐다 (2026-10-15).
    *
-   * 941:1672 은 안내 화면 바탕 사진의 비율이다. 세로로 긴 폰에서 폭만 꽉 채우면
-   * 그 사진이 잘리고, 글자·로고가 화면에 견줘 작아 보인다. 실제로 폰에서 보니
-   * 본 앱보다 전체가 작게 보였다 (2026-10-14).
+   * 그 항이 있으면 **세로가 짧은 화면에서 앱이 화면보다 좁아진다** — 카카오톡 안 브라우저처럼
+   * 위아래 띠가 큰 곳이다. 390×640 에서 앱 폭이 360 이 되어 양옆이 29.8px 비었고,
+   * 전지원이 아이폰에서 "좌우가 잘린다" 고 알렸다. 안드로이드도 같다.
    *
-   * `max-width: 430px` 만 두었던 것이 원인이었다 — 높이를 안 봤다.
+   * 본 앱(client)은 아직 그 항을 두고 있다. 거기서 뺀 까닭은 "세로로 긴 폰에서 폭만 꽉 채우면
+   * 안내 화면 사진이 잘리고 글자·로고가 작아 보인다" 였는데, **실제 폰에서는 양옆이 비는 쪽이
+   * 더 거슬린다**는 것이 확인됐다 (2026-10-15 전지원). 사진이 세로로 길어지는 것은
+   * `.intro-camera` 가 제 비율을 지키며 넘치는 만큼만 잘린다
    */
-  width: min(100vw, calc(100dvh * 941 / 1672), 430px);
+  width: min(100vw, 430px);
   min-height: 100dvh;
   margin: 0 auto;
   padding: calc(24px + env(safe-area-inset-top)) 26px calc(64px + env(safe-area-inset-bottom));
-  background: var(--card);
+  /*
+   * 바탕을 **바깥(body)과 같은 색**으로 둔다 — 본 앱 `#app` 그대로다 (2026-10-15).
+   *
+   * 전에는 `--card`(순백)였다. 그런데 위 `width` 가 세로 길이에도 걸려 있어서, 세로가
+   * 짧은 화면(카카오톡 안 브라우저처럼 위아래 띠가 큰 곳)에서는 **앱이 화면보다 좁아진다.**
+   * 390×640 에서 양옆이 29.8px 빈다. 그 자리에 바깥 색(#f7f5f1)이 드러나는데, 앱이
+   * 순백이라 **색이 갈려 좌우가 잘린 것처럼 보였다.** 전지원이 아이폰에서 보고 알렸다.
+   *
+   * 본 앱은 둘을 같은 색으로 둬서 경계가 아예 안 보인다. 같은 식으로 맞춘다 —
+   * 폭 계산을 건드리지 않아도 띠가 사라진다
+   */
+  background: var(--bg);
 }
 
 /*
@@ -227,9 +240,10 @@ img {
 .title {
   margin: 0 0 6px;
   color: var(--ink-strong);
+  /* 2026-10-15: 두께·행간을 조금 가볍게 — 760 → 700, 1.14 → 1.25 (전지원 지시) */
   font-size: 25px;
-  font-weight: 760;
-  line-height: 1.14;
+  font-weight: 700;
+  line-height: 1.25;
 }
 
 .title em {
@@ -244,7 +258,7 @@ img {
   color: var(--ink-weak);
   font-size: 14px;
   font-weight: var(--weight-regular);
-  line-height: 1.35;
+  line-height: 1.5;
 }
 
 /*
@@ -391,8 +405,18 @@ img {
   z-index: 100;
   display: grid;
   place-items: center;
-  /* 다른 화면과 같은 폰 폭 안에 가두고, 그 안에서 그림을 꽉 채운다 */
-  width: min(100vw, calc(100dvh * 0.554), 430px);
+  /*
+   * **가로를 꽉 채운다.** 높이로 폭을 막던 `100dvh × 0.554` 를 뺐다 (2026-10-15).
+   *
+   * 그 항이 있으면 세로가 짧은 화면(카카오톡 안 브라우저처럼 위아래 띠가 큰 곳)에서
+   * 폭이 화면보다 좁아져 **좌우에 흰 띠**가 생긴다. 전지원이 아이폰에서 보고 알렸다.
+   *
+   * 뺀 뒤에는 그림이 폭에 맞춰 커지고, 화면보다 길어진 만큼 위아래가 조금 잘린다.
+   * 그림 위아래는 거의 흰 바탕이라 잘려도 티가 안 난다 — 좌우가 잘리는 것(분홍 결이
+   * 통째로 사라진다)보다 훨씬 낫다. 잘라 내는 것은 아래 `overflow: hidden` 이 한다
+   */
+  width: min(100vw, 430px);
+  overflow: hidden;
   margin: 0 auto;
   padding: 0;
   border: 0;
@@ -402,11 +426,29 @@ img {
   animation: splash-in 520ms ease-out both;
 }
 
+/*
+ * 그림 틀은 **그림과 같은 비율(1125:2030)로 둔다.**
+ *
+ * 전에는 `height: 100%` 라 틀이 화면 높이를 꽉 채웠는데, 폭은 `.splash` 에서 막혀 있다.
+ * 그래서 폰에서 **틀이 그림보다 홀쭉해지고**, `object-fit: cover` 가 모자란 폭을
+ * 메우려고 **좌우를 잘라냈다.** 실제로 잘린 양 — 갤럭시 360×800 에서 18.8%,
+ * 아이폰 390×844 에서 16.6% (2026-10-15, 전지원이 폰에서 보고 알림).
+ *
+ * `100dvh` 가 폭을 정하는 화면(세로가 짧은 쪽)에서는 전부터 비율이 맞아 안 잘렸다 —
+ * 그래서 PC 미리보기에서는 멀쩡해 보였고 못 잡았다.
+ *
+ * 비율을 박아 두면 틀이 그림 모양 그대로라 **어느 폰에서도 안 잘린다.** 남는 위아래는
+ * 흰 바탕이 메운다. 세로가 모자랄 때를 대비해 폭에 `100dvh × 비율` 한도를 같이 건다.
+ *
+ * 세로 매핑은 전과 같다 — 전에도 `cover` 가 **높이에 맞춰** 그림을 키웠으므로 그림 높이
+ * 전체가 틀 높이에 들어와 있었다. 그래서 아래 `.splash-tag` 의 37.2% 는 그대로 맞는다
+ */
 .splash-frame {
   position: relative;   /* 아래 .splash-tag 가 이 안에서 자리를 잡는다 */
   display: block;
   width: 100%;
-  height: 100%;
+  height: auto;
+  aspect-ratio: 1125 / 2030;
   overflow: hidden;
   background: #fff;
 }
@@ -511,6 +553,18 @@ img {
   position: relative;
   width: 100%;
   aspect-ratio: 941 / 1672;
+  /*
+   * **화면 높이를 넘지 않게 막는다** (2026-10-15).
+   *
+   * 앱 폭이 화면을 꽉 채우게 되면서(위 `.app`) 이 사진 틀도 같이 넓어졌고,
+   * 비율대로라면 390px 폭에서 높이가 693px 이 된다. 세로가 짧은 화면(390×640)에서는
+   * 틀이 화면보다 길어져 **「촬영 시작」 버튼이 화면 밖(657 > 640)으로 밀려났다** —
+   * 첫 화면의 중심 버튼이 스크롤해야 보이면 안 된다.
+   *
+   * 한도를 걸면 사진은 아래 `object-position: top` 대로 **위를 남기고 잘리고**,
+   * 아래 시트(확인 세 칸 + 버튼)는 보이는 바닥에 붙는다. 390×640 에서 버튼 바닥 620 < 640
+   */
+  max-height: 100dvh;
   background: var(--line);
   overflow: hidden;
 }
@@ -634,19 +688,70 @@ img {
   right: 0;
   bottom: 0;
   z-index: 5;
-  min-height: 30%;
-  padding: 6.5% 7% 4%;
-  border-radius: 34px 34px 0 0;
-  background: rgb(255 255 255 / 78%);
-  box-shadow: 0 -18px 38px rgb(38 39 43 / 8%);
+  /*
+   * 2026-10-15: 앱다운 바텀 시트로 다시 잡았다 (전지원 지시).
+   * 높이를 30% → 24% 로 줄여 사진이 더 보이고, 맨 위에 **끌어올리는 손잡이**를 둔다 —
+   * 바텀 시트라는 것이 한눈에 읽힌다. 바탕도 더 불투명하게 해 카드와 글이 또렷해진다
+   */
+  min-height: 24%;
+  padding: 18px 18px 16px;
+  border-radius: 24px 24px 0 0;
+  background: rgb(255 255 255 / 92%);
+  box-shadow: 0 -14px 34px rgb(38 39 43 / 10%);
   backdrop-filter: blur(18px);
+}
+
+/* 시트 맨 위의 손잡이 — 끌어올릴 수 있어 보이게 하는 표시다 (실제로 끌지는 않는다) */
+.intro-bottom-sheet::before {
+  content: "";
+  display: block;
+  width: 38px;
+  height: 4px;
+  margin: 0 auto 14px;
+  border-radius: 999px;
+  background: rgb(38 39 43 / 14%);
+}
+
+/*
+ * 말 고르기 (한국어 / English) — 사진 위 **오른쪽 위**, 로고 맞은편 (2026-10-16, 전지원이 자리를 정했다).
+ * 로고(`.intro-overlay-logo`)와 같은 높이에 둬서 한 줄로 읽히게 한다.
+ * 사진 위에 얹히니 바탕을 반쯤 깔아 준다 — 밝은 사진에서는 글자만으로 안 읽힌다.
+ */
+.lang-pick {
+  position: absolute;
+  right: 5.8%;
+  top: 1.8%;
+  z-index: 3;
+  display: flex;
+  gap: 4px;
+}
+
+.lang-btn {
+  min-height: 28px;
+  padding: 0 11px;
+  border: 1px solid rgb(255 255 255 / 60%);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 62%);
+  color: rgb(38 39 43 / 62%);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+}
+
+/* 지금 고른 쪽 — 글자만 진하게 하면 어느 쪽인지 안 읽힌다. 바탕까지 바꾼다 */
+.lang-btn.is-on {
+  border-color: #ffc3cd;
+  background: #fff;
+  color: var(--ink);
 }
 
 /* 확인할 것 셋 — 본 앱처럼 한 줄에 셋 */
 .intro-checks {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
+  gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -658,9 +763,10 @@ img {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  min-height: 70px;
-  border-radius: 22px;
+  /* 2026-10-15: 카드를 작고 균일하게 — 70 → 60px, 모서리도 22 → 14px (전지원 지시) */
+  gap: 4px;
+  min-height: 60px;
+  border-radius: 14px;
   background: rgb(255 255 255 / 72%);
   color: var(--ink);
   font-family: var(--font-ui);
@@ -674,10 +780,10 @@ img {
 /* 초록 동그라미 + 흰 체크 — 누르는 것이 아니라 "이것만 보면 된다" 는 표시다 */
 .intro-check i {
   position: absolute;
-  right: 12px;
-  top: 12px;
-  width: 19px;
-  height: 19px;
+  right: 8px;
+  top: 8px;
+  width: 15px;
+  height: 15px;
   border-radius: 50%;
   background: #78dec4;
 }
@@ -697,8 +803,9 @@ img {
 /* 그림 파일(SVG)이라 CSS 로 색을 바꾸지 못한다 — 색은 파일 안에 있다 (본 앱 2026-10-12 주석) */
 .check-icon {
   display: block;
-  width: 42px;
-  height: 42px;
+  /* 2026-10-15: 42 → 32px (전지원 지시). 카드가 작아져 그림도 같이 줄인다 */
+  width: 32px;
+  height: 32px;
   object-fit: contain;
 }
 
@@ -715,12 +822,17 @@ img {
   align-items: center;
   justify-content: center;
   gap: 12px;
-  width: min(76%, 320px);
-  min-height: 58px;
-  margin: 18px auto 0;
+  /*
+   * 2026-10-15: **패널 폭을 꽉 채우는 핑크 CTA** 로 (전지원 지시).
+   * 전에는 76% 라 양옆이 떠 보였고, 둥근 알약이라 아래 카드들과 모양이 따로 놀았다.
+   * 폭을 100% 로, 모서리를 14px 로 맞춰 확인 카드 셋과 한 묶음으로 읽히게 한다
+   */
+  width: 100%;
+  min-height: 52px;
+  margin: 14px 0 0;
   padding: 0 22px;
-  border: 1px solid rgb(255 255 255 / 90%);
-  border-radius: 999px;
+  border: 0;
+  border-radius: 14px;
   background: var(--pink);
   color: #fff;
   font: inherit;
@@ -878,7 +990,8 @@ img {
   /* 거절 쪽 버튼의 모양은 본 앱 `.row button:not(.primary)` 그대로 — 테두리 선 하나, 바탕 없음.
      전에는 흰 바탕 + 분홍 글씨였는데, 본 앱과 나란히 놓으면 둘 다 "다음 걸음" 처럼 보였다 */
   border: 1px solid var(--line-ui);
-  border-radius: 999px;
+  /* 2026-10-15: 알약 → 14px (전지원 지시). 화면의 다른 버튼·카드와 모양을 맞춘다 */
+  border-radius: 14px;
   background: transparent;
   color: #2b2b2b;
   font: inherit;
@@ -1694,7 +1807,8 @@ img {
   margin: 12px auto 0;
   padding: 0 22px;
   border: 0;
-  border-radius: 999px;
+  /* 2026-10-15: 알약(999px) → 14px 라운드 카드형 (전지원 지시). 화면 곳곳의 카드와 모양을 맞춘다 */
+  border-radius: 14px;
   background: var(--pink);
   color: #fff;
   font: inherit;
@@ -1707,8 +1821,12 @@ img {
 
 /* 덜 중요한 것 — 본 앱 `.slot-live` (테두리만, 52px · 안쪽 여백 18px) */
 .go.ghost {
-  width: 100%;
-  min-height: 52px;
+  /*
+   * 2026-10-15: 크기를 `.go` 와 **똑같이** 맞춘다 (전지원 지시).
+   * 전에는 폭 100%·높이 52px 이라, 위의 핑크 버튼(320px·56px)과 나란히 놓이면
+   * 「이전」이 더 넓고 더 납작해 보여 두 버튼이 짝으로 안 읽혔다.
+   * 폭·높이는 `.go` 에서 그대로 물려받고 여기서는 색만 바꾼다
+   */
   padding: 0 18px;
   border: 1.5px solid #ffc3cd;
   background: var(--card);

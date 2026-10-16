@@ -62,22 +62,16 @@ import { useFrameLoop } from "../hooks/useFrameLoop";
 import { useLandmarker } from "../hooks/useLandmarker";
 import "../camera.css";
 import "../live.css";
+import { useLang } from "../i18n/useLang";
+import { shotText } from "../lib/core-text";
 
-export const LIVE_TEXT = {
-  loading: "카메라를 준비하고 있어요…",
-  cameraFail: "카메라를 열 수 없어요. 브라우저 설정에서 카메라를 허용해 주세요",
-  noPart: "부위가 정해지지 않았어요",
-  noBaseline: "맨얼굴 사진이 없어요. 처음 촬영부터 다시 해 주세요",
-  toCapture: "촬영하러 가기",
-  button: "확인받기",
-  back: "이전",
-  capturing: "찍고 있어요. 그대로 있어 주세요",
-  failed: "움직여서 못 찍었어요. 다시 눌러 주세요",
-  /** 카메라 칸 꼬리표 — 어느 화면에 들어와 있는지 늘 보이게 (촬영 · 완성사진과 같은 자리) */
-  title: "실시간 가이드",
-  /** 「예시」 딱지 — 지금 보이는 모양은 정답사진의 화장이 아니라 견본이다 (#334) */
-  sample: "예시",
-} as const;
+/*
+ * 화면 글은 `i18n/ko.ts` · `en.ts` 로 옮겼다 (2026-10-16) — 열쇠는 `live.*` 다.
+ *
+ * 안내 줄(`line`)만은 **글자 그대로** 담는다. 코어가 주는 안내(`r.gate.text`)와 섞여 들어오기
+ * 때문이다. 그래서 "못 찍었어요" 인지 보는 자리도 글자끼리 견준다 — 말을 고르는 단추는 첫 안내
+ * 화면에만 있어서 이 화면을 보는 동안 말이 바뀔 일은 없다.
+ */
 
 export interface LiveProps {
   /** 어느 부위의 가이드를 볼까. 부위 가이드에서 보고 있던 그 부위 */
@@ -168,6 +162,7 @@ function drawView(
 }
 
 export default function Live({ part, baseline, baseAb = null, outline = null, lookParts, onBack, onToCapture, onDone, logger }: LiveProps) {
+  const { t } = useLang();
   // 로그는 안 받았으면 한 번만 만든다. 그릴 때마다 새로 만들면 지금까지의 기록이 끊긴다
   const log = useMemo(
     () => logger ?? createLogger({ sid: "live-react", screen: "live", part, ver: { app: "dev", score: "dev", look: "dev", faceshape: "dev", transfer: "dev" } }),
@@ -193,7 +188,7 @@ export default function Live({ part, baseline, baseAb = null, outline = null, lo
   const ready = !!baseline && baseline.lm.length > 0;
 
   // ---------- 화면에 보이는 글 ----------
-  const [line, setLine] = useState<string>(LIVE_TEXT.loading);
+  const [line, setLine] = useState<string>(t("live.loading"));
   const [gateOk, setGateOk] = useState(false);
   const [pressable, setPressable] = useState(false);
   const [collecting, setCollecting] = useState(false);
@@ -236,7 +231,7 @@ export default function Live({ part, baseline, baseAb = null, outline = null, lo
   const lastShapeRef = useRef<Pt[]>([]);
   const collectingRef = useRef(false);
   /** 지금 보이는 안내 줄 — 본 앱이 `line.textContent` 를 되읽던 자리 (실패 문구를 바로 덮지 않으려고) */
-  const lineRef = useRef<string>(LIVE_TEXT.loading);
+  const lineRef = useRef<string>(t("live.loading"));
   /** 떠난 뒤에 비트맵 바꾸기가 끝나는 일이 있다 — 그때 넘기지 않으려고 둔다 */
   const aliveRef = useRef(true);
   useEffect(() => {
@@ -314,15 +309,15 @@ export default function Live({ part, baseline, baseAb = null, outline = null, lo
     lastShapeRef.current = [];
     collectingRef.current = false;
     setCollecting(false);
-    lineRef.current = LIVE_TEXT.loading;
-    setLine(LIVE_TEXT.loading);
+    lineRef.current = t("live.loading");
+    setLine(t("live.loading"));
     setGateOk(false);
     setPressable(false);
     return () => {
       runRef.current = null;
       setSmoother(null);
     };
-  }, [ready, baseline, part, baseAb, outline, stab, viewOnly, fadeQ, gQ, gen]);
+  }, [ready, baseline, part, baseAb, outline, stab, viewOnly, fadeQ, gQ, gen, t]);
 
   const loopOn = ready && !sent && !!camera.stream && model.ready;
 
@@ -449,7 +444,7 @@ export default function Live({ part, baseline, baseAb = null, outline = null, lo
     if (r.bundle?.status === "failed") {
       collectingRef.current = false;
       setCollecting(false);
-      say(LIVE_TEXT.failed);
+      say(t("live.failed"));
       if (!viewOnly) setPressable(false);
       return;
     }
@@ -458,11 +453,11 @@ export default function Live({ part, baseline, baseAb = null, outline = null, lo
     eventsRef.current?.face(!!lm, now);
     eventsRef.current?.gate(r.gate.ok ? null : r.gate.firstFail, now);
     // 실패 문구는 다시 누를 수 있을 때까지 그대로 둔다 — 게이트 문구가 바로 덮으면 왜 안 찍혔는지 못 본다
-    if (lineRef.current === LIVE_TEXT.failed && !r.pressable) return;
-    say(r.gate.text, r.gate.ok);
+    if (lineRef.current === t("live.failed") && !r.pressable) return;
+    say(shotText(t, r.gate.text), r.gate.ok);
     // 각도 · 안정에 3초 넘게 막히면 문구는 안내 그대로 두고 버튼만 켠다 — 판단은 채점에 (#235)
     if (!viewOnly) setPressable(r.pressable);
-  }, [deliver, model.ref, part, say, stab, viewOnly, wantDots]);
+  }, [deliver, model.ref, part, say, stab, viewOnly, wantDots, t]);
 
   useFrameLoop({
     video,
@@ -495,7 +490,7 @@ export default function Live({ part, baseline, baseAb = null, outline = null, lo
       log.log({ name: "button", button: "live_back" });
       onBack();
     }}>
-      {LIVE_TEXT.back}
+      {t("live.back")}
     </button>
   );
 
@@ -503,12 +498,12 @@ export default function Live({ part, baseline, baseAb = null, outline = null, lo
   if (!ready) {
     return (
       <section className="screen live">
-        <p className="sub">{LIVE_TEXT.noBaseline}</p>
+        <p className="sub">{t("live.noBaseline")}</p>
         <div className="row">
           {back}
           {onToCapture && (
             <button type="button" className="go" onClick={onToCapture}>
-              {LIVE_TEXT.toCapture}
+              {t("live.toCapture")}
             </button>
           )}
         </div>
@@ -519,18 +514,18 @@ export default function Live({ part, baseline, baseAb = null, outline = null, lo
   const showReadout = wantJitter || wantPose || wantGate || wantJump || wantPerf;
   // 보이는 한 줄 — 카메라를 못 열었으면 그 말이 먼저고, 묶음을 모으는 동안은 "그대로 있어 주세요",
   // 아니면 게이트가 준 안내다 (본 앱과 같은 우선순위)
-  const text = camera.error !== null ? LIVE_TEXT.cameraFail : collecting ? LIVE_TEXT.capturing : line;
+  const text = camera.error !== null ? t("live.cameraFail") : collecting ? t("live.capturing") : line;
 
   return (
     <section className="screen live">
-      <p className="capture-title">{LIVE_TEXT.title}</p>
+      <p className="capture-title">{t("live.title")}</p>
 
       <div className="cam live-cam">
         {/* 영상은 숨겨 두고(재생은 계속) 확대 창만 캔버스에 그린다 */}
         <video className="live-src" ref={video} playsInline muted autoPlay />
         <canvas className="live-view" ref={canvas} />
         {/* 지금 보이는 모양은 정답사진의 화장이 아니라 견본이다 (#334) */}
-        {!outline && <span className="live-sample">{LIVE_TEXT.sample}</span>}
+        {!outline && <span className="live-sample">{t("live.sample")}</span>}
         {showReadout && (
           <p
             className="live-jitter"
@@ -569,7 +564,7 @@ export default function Live({ part, baseline, baseAb = null, outline = null, lo
               setPressable(false);
             }}
           >
-            {LIVE_TEXT.button}
+            {t("live.button")}
           </button>
         )}
       </div>

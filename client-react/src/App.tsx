@@ -71,6 +71,8 @@ import { createGuideKeeper, liveOutlineOf, type GuideLoad } from "./lib/guide-so
 import { createFeedbackKeeper, type FeedbackLoad } from "./lib/feedback-source";
 import type { Outline } from "@core/overlay";
 import "./app.css";
+import { useLang } from "./i18n/useLang";
+import type { Key } from "./i18n";
 
 /** 흐름 순서 — 위 표 그대로. 앞뒤로 한 칸 움직이는 길이 이 줄에서 나온다 */
 const FLOW = [
@@ -119,7 +121,8 @@ const NOT_READY: readonly Stage[] = [];
  *
  * 화살표에는 글자가 없다 — 어디로 가는지는 `aria-label` 로만 알 수 있어서, 본 앱처럼 **갈 곳을 적는다**.
  */
-function LogoRow({ back, onHome }: { back?: { label: string; onBack: () => void }; onHome?: () => void }) {
+function LogoRow({ back, onHome }: { back?: { label: Key; onBack: () => void }; onHome?: () => void }) {
+  const { t } = useLang();
   const brand = (
     <span className="brand" aria-label="nudy">
       nudy
@@ -131,7 +134,7 @@ function LogoRow({ back, onHome }: { back?: { label: string; onBack: () => void 
   return (
     <header className="slot-logo-row">
       {back && (
-        <button type="button" className="slot-back" aria-label={back.label} onClick={back.onBack}>
+        <button type="button" className="slot-back" aria-label={t(back.label)} onClick={back.onBack}>
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M15 5 8 12l7 7" />
           </svg>
@@ -142,7 +145,7 @@ function LogoRow({ back, onHome }: { back?: { label: string; onBack: () => void 
         어느 화면에서든 처음으로 돌아갈 길이 하나는 있어야 한다 (#369). 지울 것이 없는 화면(동의 · 끝)은 로고만 그린다
       */}
       {onHome ? (
-        <button type="button" className="slot-home" aria-label="처음 안내 화면으로" onClick={onHome}>
+        <button type="button" className="slot-home" aria-label={t("nav.home")} onClick={onHome}>
           {brand}
         </button>
       ) : (
@@ -174,6 +177,7 @@ export default function App() {
 }
 
 function Running() {
+  const { t } = useLang();
   const [stage, setStage] = useState<Stage>("splash");
   /** 로고를 눌러 "처음부터 다시 할까요?" 를 묻는 중 */
   const [askingRestart, setAskingRestart] = useState(false);
@@ -391,7 +395,7 @@ function Running() {
    * (본 앱 `template-store` 주석의 "템플릿 사진을 올린 사진과 똑같이 다룬다" 를 반대 방향으로 한 셈이다)
    */
   const picked = (colors: PartColors, preview: string, photo: File, read: number): void => {
-    setTemplate({ id: "ref", name: "올린 사진", about: "올려 주신 참고 사진의 화장", thumb: preview });
+    setTemplate({ id: "ref", name: t("app.refName"), about: t("app.refAbout"), thumb: preview });
     setColors(colors);
     setAnswer({ source: { photo }, preview, read, bareImage: bareImage() });
     setFailed(false);
@@ -493,16 +497,16 @@ function Running() {
    * 템플릿 고르기는 순서 밖이라 `step()` 을 쓰지 않고 **참고 사진으로 곧바로** 돌아간다
    * (본 앱 `backTarget("templates") → "answer"`). 실시간 가이드와 같은 짜임이다
    */
-  const back = ((): { label: string; onBack: () => void } | undefined => {
-    if (stage === "upload") return { label: "사진 촬영으로 돌아가기", onBack: () => clear(step("upload", -1)) };
-    if (stage === "templates") return { label: "참고 사진으로 돌아가기", onBack: () => clear("upload") };
-    if (stage === "answer") return { label: "참고 사진으로 돌아가기", onBack: () => clear(step("answer", -1)) };
-    if (stage === "palette") return { label: "예상 메이크업으로 돌아가기", onBack: () => setStage(step("palette", -1)) };
-    if (stage === "partguide") return { label: "색조 팔레트로 돌아가기", onBack: () => setStage(step("partguide", -1)) };
+  const back = ((): { label: Key; onBack: () => void } | undefined => {
+    if (stage === "upload") return { label: "nav.back.upload", onBack: () => clear(step("upload", -1)) };
+    if (stage === "templates") return { label: "nav.back.templates", onBack: () => clear("upload") };
+    if (stage === "answer") return { label: "nav.back.answer", onBack: () => clear(step("answer", -1)) };
+    if (stage === "palette") return { label: "nav.back.palette", onBack: () => setStage(step("palette", -1)) };
+    if (stage === "partguide") return { label: "nav.back.partguide", onBack: () => setStage(step("partguide", -1)) };
     // 피드백의 한 칸 뒤는 **완성사진**이다 (FLOW: partguide → attempt → feedback).
     // 전에는 "부위 가이드로 돌아가기" 라고 적혀 있어서, 화면을 읽어 주는 기기가 엉뚱한 곳을 알려 줬다
-    if (stage === "feedback") return { label: "완성사진으로 돌아가기", onBack: () => setStage(step("feedback", -1)) };
-    if (stage === "save") return { label: "피드백으로 돌아가기", onBack: () => setStage(step("save", -1)) };
+    if (stage === "feedback") return { label: "nav.back.feedback", onBack: () => setStage(step("feedback", -1)) };
+    if (stage === "save") return { label: "nav.back.save", onBack: () => setStage(step("save", -1)) };
     return undefined;
   })();
 
@@ -538,20 +542,20 @@ function Running() {
 
       {loading && (
         <p className="notice" role="status">
-          색을 불러오고 있어요…
+          {t("app.loading")}
         </p>
       )}
 
       {/* 실패해도 흐름을 막지 않는다 — "다시 시도" 와 "다른 화장 고르기" 를 둘 다 열어 둔다 */}
       {!loading && failed && (
         <div className="notice card">
-          <p>색을 불러오지 못했어요. 잠깐 뒤에 다시 눌러 주세요.</p>
+          <p>{t("app.loadFail")}</p>
           <div className="row">
             <button type="button" className="go ghost" onClick={() => clear("upload")}>
-              다른 화장 고르기
+              {t("app.pickOther")}
             </button>
             <button type="button" className="go" onClick={() => template && void load(template)}>
-              다시 시도
+              {t("app.retry")}
             </button>
           </div>
         </div>

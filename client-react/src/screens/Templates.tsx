@@ -20,19 +20,34 @@
 
 import { useState } from "react";
 import { TEMPLATES, type MakeupTemplate } from "@core/templates";
+import { useLang } from "../i18n/useLang";
+import { templateText } from "../lib/core-text";
 
 /**
  * 받침이 있으면 "을", 없으면 "를" — 본 앱 flow-slots 의 `eul` 그대로.
  * "을(를)" 로 적으면 화면 읽어 주는 기기가 괄호째 읽어 어색하다.
+ *
+ * 영어에는 이런 조사가 없다. 그래서 **한국어일 때만** 글자를 돌려주고 영어면 빈 글자를 준다 —
+ * 글(`tpl.note`)은 두 벌 다 `{eul}` 자리를 그대로 두니 문장 하나로 둘 다 맞는다.
  */
-function eul(word: string): string {
+function eul(word: string, lang: string): string {
+  if (lang !== "ko") return "";
   const c = word.charCodeAt(word.length - 1) - 0xac00;
   if (c < 0 || c > 11171) return "를";
   return c % 28 === 0 ? "를" : "을";
 }
 
 export default function Templates({ onPick }: { onPick: (t: MakeupTemplate) => void }) {
+  const { lang, t } = useLang();
   const [chosen, setChosen] = useState<MakeupTemplate | null>(null);
+
+  /*
+   * 템플릿 이름·설명은 코어(`@core/templates`)에서 한국어로 온다. 코어는 본 앱과 같이 쓰는
+   * 폴더라 고치지 않고, **여기서 화면 말로 싸서** 쓴다 (`lib/core-text` 의 `templateText`).
+   * 싼 것을 그대로 `onPick` 으로 넘기니 뒤 화면(팔레트 · 저장 · 피드백)도 같은 말로 나온다 —
+   * 번호(`id`)와 사진(`thumb`)은 건드리지 않아서 서버로 가는 것은 전과 같다.
+   */
+  const list = TEMPLATES.map((tpl) => templateText(t, tpl));
 
   return (
     <section className="screen">
@@ -40,30 +55,31 @@ export default function Templates({ onPick }: { onPick: (t: MakeupTemplate) => v
       <div className="coach">
         <img src="/ui/nudy-coach-simple.svg" alt="" aria-hidden="true" />
         <p>
-          따라 하고 싶은 화장을 골라 주세요
+          {t("tpl.coach")}
           <i aria-hidden="true" />
         </p>
       </div>
 
       {/* 제목 앞머리를 분홍으로 두는 것은 배포본 방식이다 (본 앱 `title()`) */}
       <h1 className="title">
-        <em>화장</em> 템플릿
+        <em>{t("tpl.titleEm")}</em>
+        {t("tpl.titleRest")}
       </h1>
-      <p className="sub">사진을 올리지 않아도 여기서 고를 수 있어요</p>
+      <p className="sub">{t("tpl.sub")}</p>
 
       <ul className="tpl-grid">
-        {TEMPLATES.map((t) => (
-          <li key={t.id}>
+        {list.map((tpl) => (
+          <li key={tpl.id}>
             {/* 카드 전체가 버튼이다 — 손가락으로 누르는 화면에서 글자만 누르게 하면 자꾸 빗나간다 */}
             <button
               type="button"
-              className={chosen?.id === t.id ? "tpl-card is-on" : "tpl-card"}
-              aria-pressed={chosen?.id === t.id}
-              onClick={() => setChosen(t)}
+              className={chosen?.id === tpl.id ? "tpl-card is-on" : "tpl-card"}
+              aria-pressed={chosen?.id === tpl.id}
+              onClick={() => setChosen(tpl)}
             >
-              <img src={t.thumb} alt="" aria-hidden="true" loading="lazy" />
-              <strong>{t.name}</strong>
-              <em>{t.about}</em>
+              <img src={tpl.thumb} alt="" aria-hidden="true" loading="lazy" />
+              <strong>{tpl.name}</strong>
+              <em>{tpl.about}</em>
             </button>
           </li>
         ))}
@@ -72,8 +88,7 @@ export default function Templates({ onPick }: { onPick: (t: MakeupTemplate) => v
       {/* 무엇을 골랐는지 글로도 한 번 — 테두리만으로는 색을 못 가리는 사람이 알 수 없다 */}
       {chosen && (
         <p className="tpl-note" role="status">
-          {chosen.name}
-          {eul(chosen.name)} 골랐어요. 적용하기를 누르면 내 얼굴에 맞춰 만들어드릴게요.
+          {t("tpl.note", { name: chosen.name, eul: eul(chosen.name, lang) })}
         </p>
       )}
 
@@ -85,7 +100,7 @@ export default function Templates({ onPick }: { onPick: (t: MakeupTemplate) => v
           if (chosen) onPick(chosen);
         }}
       >
-        적용하기
+        {t("tpl.apply")}
       </button>
     </section>
   );

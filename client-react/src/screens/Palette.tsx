@@ -34,6 +34,8 @@ import type { CSSProperties } from "react";
 import type { PartColors } from "../api";
 import { PART_NAME, PART_ORDER } from "../parts";
 import type { MakeupTemplate } from "@core/templates";
+import { useLang } from "../i18n/useLang";
+import { colorText } from "../lib/core-text";
 
 /** 부위별 질감 틀. 알파만 있는 흑백 PNG — CSS mask 로 모양만 오려 쓴다 (본 앱 `SWATCH`) */
 const SWATCH: Record<(typeof PART_ORDER)[number], string> = {
@@ -53,28 +55,30 @@ export default function Palette({
   colors: PartColors;
   onNext: () => void;
 }) {
+  const { t } = useLang();
   return (
     <section className="screen">
       <div className="coach">
         <img src="/ui/nudy-coach-simple.svg" alt="" aria-hidden="true" />
         <p>
-          고른 화장의 색이에요. 이제 부위별로 따라 해볼게요
+          {t("pal.coach")}
           <i aria-hidden="true" />
         </p>
       </div>
 
       <h1 className="title">
-        <em>{template.name}</em> 화장의 색
+        <em>{template.name}</em>
+        {t("pal.titleRest")}
       </h1>
-      <p className="sub">부위마다 이런 색을 써요</p>
+      <p className="sub">{t("pal.sub")}</p>
 
       <section className="color-palette">
         <div className="color-palette-head">
           {/* 차례 번호를 분홍으로 두는 것은 본 앱 방식이다 (본 앱은 "2." 를 붙인다) */}
           <h2>
-            <em>2.</em> 참고 사진의 색조 팔레트
+            <em>2.</em> {t("pal.head")}
           </h2>
-          <p>참고 사진에서 읽은 색이에요</p>
+          <p>{t("pal.headSub")}</p>
         </div>
 
         <ul className="color-palette-list">
@@ -87,8 +91,8 @@ export default function Palette({
                   <i style={{ "--sw": `url('/swatch/${SWATCH[part]}.png')` } as CSSProperties} />
                 </span>
                 <span className="palette-text">
-                  <strong>{color.name.text}</strong>
-                  <em>{PART_NAME[part]}</em>
+                  <strong>{colorText(t, color.name)}</strong>
+                  <em>{t(PART_NAME[part])}</em>
                 </span>
               </li>
             );
@@ -98,7 +102,7 @@ export default function Palette({
 
       {/* 아래에는 큰 버튼 하나만 — 뒤로 가는 길은 맨 위 로고 줄의 화살표다 (본 앱과 같은 자리) */}
       <button type="button" className="go" onClick={onNext}>
-        부위별로 보기
+        {t("pal.next")}
       </button>
     </section>
   );

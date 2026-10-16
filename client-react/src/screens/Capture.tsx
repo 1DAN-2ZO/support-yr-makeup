@@ -25,7 +25,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FaceLandmarkerResult } from "@mediapipe/tasks-vision";
-import { cameraFailKind, cameraFailText } from "@core/camera-fail";
+import { cameraFailKind, type CameraFailKind } from "@core/camera-fail";
 import { createCaptureEvents, type CaptureEvents } from "@core/capture-events";
 import { STEP_TEXT, runStep, startRun, type RunState } from "@core/capture-run";
 import { buildBaseline, retakeFront } from "@core/baseline";
@@ -41,6 +41,9 @@ import { BARE_MAX_SIDE, encodeForStore } from "../lib/image-encode";
 import { smoothSkinCanvas } from "../lib/skin-canvas";
 import { shutterCue } from "../lib/shutter-cue";
 import { useCamera, lockModeFromSearch } from "../hooks/useCamera";
+import { useLang } from "../i18n/useLang";
+import { shotName, shotText } from "../lib/core-text";
+import type { Key } from "../i18n";
 import { useFrameLoop } from "../hooks/useFrameLoop";
 import { useLandmarker } from "../hooks/useLandmarker";
 import "../camera.css";
@@ -60,19 +63,12 @@ export interface ShotData {
 /** ⑤ 얼굴형 분류가 오기 전 자리값 — 쉐딩·하이라이트 멘트는 confidence 0 이면 안 쓴다 */
 export const PENDING_FACE_SHAPE: FaceShape = { label: "oval", confidence: 0, method: "rule", version: "faceshape-pending" };
 
-export const CAPTURE_TEXT = {
-  loading: "카메라를 준비하고 있어요…",
-  /** 카메라를 못 열었을 때 누르는 버튼 — 안내 문장은 까닭마다 다르다 (core/camera-fail) */
-  cameraRetry: "다시 시도",
-  title: "사진 촬영",
-  doneTitle: "사진 확인",
-  doneSub: "찍힌 사진을 확인해 주세요",
-  doneCoach: "이상한 사진이 있으면 그 사진만 다시 찍을 수 있어요",
-  retake: "다시 찍기",
-  go: "화장 고르러 가기",
-  /** 얼굴을 못 찾았을 때 말풍선에 남겨 두는 말 — 빈 칸이면 왜 안 찍히는지 알 수 없다 */
-  aim: "얼굴을 맞춰 주세요",
-} as const;
+/*
+ * 화면 글은 `i18n/ko.ts` · `en.ts` 로 옮겼다 (2026-10-16) — 열쇠는 `capture.*` 다.
+ *
+ * `capture.aim` 만 쓰임이 다르다: 얼굴을 못 찾았을 때 **말풍선에 남겨 두는 말**이라,
+ * 코어가 주는 안내(`r.gate?.text`)가 없을 때만 나온다. 비워 두면 왜 안 찍히는지 알 수 없다.
+ */
 
 export interface CaptureProps {
   /**
@@ -118,7 +114,19 @@ function Thumb({ cv }: { cv: HTMLCanvasElement | null }) {
   return <span className="shot-thumb-slot" ref={slot} />;
 }
 
+/**
+ * 카메라를 못 열었을 때의 글 — **코어를 고치지 않고** 까닭만 받아 와 우리 말로 바꾼다.
+ * `@core/camera-fail` 은 본 앱(`client/`)과 함께 쓰는 파일이라 건드리지 않는다.
+ */
+const CAMERA_FAIL_KEY: Record<CameraFailKind, Key> = {
+  denied: "cam.fail.denied",
+  busy: "cam.fail.busy",
+  none: "cam.fail.none",
+  other: "cam.fail.other",
+};
+
 export default function Capture({ onDone, onBack, logger, events, saveBare }: CaptureProps) {
+  const { t } = useLang();
   // ---------- 찍은 장 · 기준: ref 가 진짜, 상태는 그리기용 사본 ----------
   const shotRef = useRef<ShotData | null>(null);
   const [shotUi, setShotUi] = useState<ShotData | null>(null);
@@ -127,8 +135,8 @@ export default function Capture({ onDone, onBack, logger, events, saveBare }: Ca
 
   // ---------- 화면에 보이는 글 ----------
   const [step, setStep] = useState("");
-  // 글자 하나로 굳지 않게 string 으로 적어 둔다 (CAPTURE_TEXT 가 as const 라서)
-  const [gate, setGate] = useState<string>(CAPTURE_TEXT.loading);
+  // 글자 하나로 굳지 않게 string 으로 적어 둔다 — 코어가 주는 안내(`shotGate`)도 여기 들어온다
+  const [gate, setGate] = useState<string>(t("capture.loading"));
   const [ready, setReady] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
   const [flash, setFlash] = useState(false);
@@ -174,8 +182,8 @@ export default function Capture({ onDone, onBack, logger, events, saveBare }: Ca
   const showStep = useCallback((run: RunState): void => {
     if (!run.shot) { setStep(""); return; }
     const order = SHOTS.length > 1 ? `${SHOTS.findIndex((s) => s.id === run.shot) + 1}/${SHOTS.length} · ` : "";
-    setStep(`${order}${STEP_TEXT[run.shot]}`);
-  }, []);
+    setStep(`${order}${shotText(t, STEP_TEXT[run.shot])}`);
+  }, [t]);
 
   // 카메라·모델이 준비되면 그 장을 처음부터 — 본 앱 start() 의 마지막 줄과 같은 자리다
   useEffect(() => {
@@ -188,7 +196,7 @@ export default function Capture({ onDone, onBack, logger, events, saveBare }: Ca
     burstFramesRef.current = [];
     burstWaitRef.current = false;
     showStep(runRef.current);
-    setGate(CAPTURE_TEXT.loading);
+    setGate(t("capture.loading"));
     setReady(false);
     setHint(null);
   }, [loopOn, showStep]);
@@ -315,9 +323,9 @@ export default function Capture({ onDone, onBack, logger, events, saveBare }: Ca
     runRef.current = r.state;
     if (r.gate) ev.blocked(shot, r.gate.ok ? null : r.gate.firstFail, now);
     // 같은 글자를 다시 넣어도 React 가 알아서 넘긴다 — 프레임마다 불러도 다시 그리지 않는다
-    setGate(r.gate?.text || CAPTURE_TEXT.aim);
+    setGate(r.gate ? shotText(t, r.gate.text) : t("capture.aim"));
     setReady(!!r.gate?.ok);
-    setHint(r.hint);
+    setHint(r.hint === null ? null : shotText(t, r.hint));
     if (r.take) take(shot, el, lm, sw, sh, lab ?? null, expr);
   }, [ev, finishBurst, model.ref, take]);
 
@@ -350,13 +358,13 @@ export default function Capture({ onDone, onBack, logger, events, saveBare }: Ca
   if (done) {
     return (
       <section className="screen capture capture-done">
-        <h1 className="title">{CAPTURE_TEXT.doneTitle}</h1>
-        <p className="sub">{CAPTURE_TEXT.doneSub}</p>
+        <h1 className="title">{t("capture.doneTitle")}</h1>
+        <p className="sub">{t("capture.doneSub")}</p>
         {/* 말풍선은 다른 화면과 같은 모양을 쓴다 (app.css `.coach`) — 본 앱 `.capture-done-coach` 자리 */}
         <div className="coach">
           <img src="/ui/nudy-coach-simple.svg" alt="" aria-hidden="true" />
           <p>
-            {CAPTURE_TEXT.doneCoach}
+            {t("capture.doneCoach")}
             <i aria-hidden="true" />
           </p>
         </div>
@@ -364,9 +372,9 @@ export default function Capture({ onDone, onBack, logger, events, saveBare }: Ca
           {SHOTS.map((s) => (
             <li className="shot-cell" key={s.id}>
               <Thumb cv={s.id === "front_open" ? shotUi?.cv ?? null : null} />
-              <span className="shot-name">{s.name}</span>
+              <span className="shot-name">{shotName(t, s.id, s.name)}</span>
               <button type="button" className="shot-retake" onClick={() => retake(s.id)}>
-                {CAPTURE_TEXT.retake}
+                {t("capture.retake")}
               </button>
             </li>
           ))}
@@ -374,7 +382,7 @@ export default function Capture({ onDone, onBack, logger, events, saveBare }: Ca
         <div className="row">
           {onBack && (
             <button type="button" className="go ghost" onClick={onBack}>
-              이전
+              {t("capture.back")}
             </button>
           )}
           <button
@@ -385,7 +393,7 @@ export default function Capture({ onDone, onBack, logger, events, saveBare }: Ca
               if (baseRef.current) onDone(baseRef.current, framesRef.current);
             }}
           >
-            {CAPTURE_TEXT.go}
+            {t("capture.go")}
           </button>
         </div>
       </section>
@@ -396,7 +404,7 @@ export default function Capture({ onDone, onBack, logger, events, saveBare }: Ca
   // 까닭에 맞는 말 + 다시 시도 (본 앱 #422) — 무슨 오류든 "허용해 주세요" 뿐이던 때는 다시 해 볼 길이 없었다.
   // 흐름을 막지 않는다: 안내와 "다시 시도" 를 띄우고 "이전" 도 그대로 둔다
   const failed = camera.error !== null;
-  const line = failed ? cameraFailText(camera.error) : gate;
+  const line = failed ? t(CAMERA_FAIL_KEY[cameraFailKind(camera.error)]) : gate;
 
   return (
     <section className="screen capture">
@@ -406,7 +414,7 @@ export default function Capture({ onDone, onBack, logger, events, saveBare }: Ca
         (2026-10-14, 폰에서 확인). 단계 안내는 카메라 아래로 내렸다 — 찍는 동안 보는 글이라
         영상 가까이 있으면 되고, 꼬리표는 "여기가 촬영 칸" 이라는 딱지라 칸에 붙어야 한다
       */}
-      <p className="capture-title">{CAPTURE_TEXT.title}</p>
+      <p className="capture-title">{t("capture.title")}</p>
 
       <div className="cam">
         <video className="cam-video" ref={video} playsInline muted autoPlay />
@@ -455,7 +463,7 @@ export default function Capture({ onDone, onBack, logger, events, saveBare }: Ca
             camera.retry();
           }}
         >
-          {CAPTURE_TEXT.cameraRetry}
+          {t("capture.retry")}
         </button>
       )}
 
@@ -468,7 +476,7 @@ export default function Capture({ onDone, onBack, logger, events, saveBare }: Ca
 
       {onBack && (
         <button type="button" className="go ghost" onClick={onBack}>
-          이전
+          {t("capture.back")}
         </button>
       )}
     </section>
