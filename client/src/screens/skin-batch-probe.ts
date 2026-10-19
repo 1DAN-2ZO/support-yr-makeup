@@ -12,6 +12,9 @@ import type { FaceLandmarker } from "@mediapipe/tasks-vision";
 import type { Lab } from "@core/color";
 import { csvCell, csvSplit } from "@core/csv-lite";
 import type { Rgb } from "@core/skin-color";
+import { BG_LIMITS, backgroundGain, isWhiteBackground, sampleBackground } from "@core/skin-bg-wb";
+import type { BgSample } from "@core/skin-bg-wb";
+import { rgbToLab } from "@core/color";
 import { ROI_DEFAULT, TONE_DEFAULT, measureFrame, toneFromCheeks } from "@core/skin-measure";
 import type { Merge, RoiParams, ToneParams } from "@core/skin-measure";
 import { AXES, auc, evaluate, fitThreshold } from "@core/skin-threshold";
@@ -39,6 +42,8 @@ interface Rec {
   R: Rgb | null;
   L: Rgb | null;
   gain: Rgb | null;
+  /** 얼굴 둘레 배경 색 (core/skin-bg-wb). 옛 측정 CSV 에는 없다 */
+  bg: BgSample | null;
   nR: number;
   nL: number;
 }
@@ -51,6 +56,7 @@ const prog = $<HTMLProgressElement>("prog"), runMsg = $("runMsg"), countsEl = $(
 const scheme = $<HTMLSelectElement>("scheme"), origin = $<HTMLSelectElement>("origin");
 const wbOn = $<HTMLInputElement>("wbOn"), wbLin = $<HTMLInputElement>("wbLin"), wbDrop = $<HTMLInputElement>("wbDrop");
 const wbStr = $<HTMLInputElement>("wbStr"), mergeSel = $<HTMLSelectElement>("merge");
+const wbSrc = $<HTMLSelectElement>("wbSrc"), bgOnly = $<HTMLInputElement>("bgOnly");
 const axesEl = $("axes"), axisSel = $<HTMLSelectElement>("axis");
 const tIn = $<HTMLInputElement>("T"), dir2 = $<HTMLSelectElement>("dir2"), marginIn = $<HTMLInputElement>("margin"), autoBtn = $<HTMLButtonElement>("auto");
 const hist = $<HTMLCanvasElement>("hist"), evalOut = $("evalOut"), jsonOut = $("json"), copyBtn = $<HTMLButtonElement>("copy");
@@ -160,11 +166,12 @@ async function measureOne(e: Entry, lmk: FaceLandmarker, roi: RoiParams): Promis
   const face = lmk.detect(c).faceLandmarks[0];
   if (!face || face.length < 478) return "noface";
   const id = g.getImageData(0, 0, w, h);
-  const fr = measureFrame({ data: id.data, w, h }, face.map((p) => ({ x: p.x * w, y: p.y * h })), roi);
+  const im = { data: id.data, w, h }, lm = face.map((p) => ({ x: p.x * w, y: p.y * h }));
+  const fr = measureFrame(im, lm, roi);
   if (!fr.R && !fr.L) return "nocheek";
   return {
     id: e.key, partition: e.partition, season: e.season, sub: e.sub, celeba: celebaMap.get(e.key) ?? null,
-    R: fr.R?.rgb ?? null, L: fr.L?.rgb ?? null, gain: fr.gain, nR: fr.R?.n ?? 0, nL: fr.L?.n ?? 0,
+    R: fr.R?.rgb ?? null, L: fr.L?.rgb ?? null, gain: fr.gain, bg: sampleBackground(im, lm), nR: fr.R?.n ?? 0, nL: fr.L?.n ?? 0,
   };
 }
 
@@ -206,11 +213,13 @@ stopBtn.addEventListener("click", () => { stopFlag = true; });
 // ---------- 측정 CSV ----------
 
 const COLS = ["id", "partition", "season", "sub", "celeba", "rR", "rG", "rB", "lR", "lG", "lB", "gR", "gG", "gB", "nR", "nL"];
+/** 배경 색 열 — 나중에 늘어난 열이라 불러올 때는 없어도 된다 */
+const BG_COLS = ["bR", "bG", "bB", "bN"];
 const cell = (v: number | null): string => (v === null ? "" : String(Math.round(v * 100) / 100));
 
 function toCsv(): string {
   const tp = readTone();
-  const lines = [[...COLS, "L", "a", "b", "h", "C", "D"].join(",")];
+  const lines = [[...COLS, ...BG_COLS, "L", "a", "b", "h", "C", "D"].join(",")];
   for (const r of recs) {
     const t = toneOf(r, tp);
     const lab = t?.lab;
@@ -218,7 +227,7 @@ function toCsv(): string {
     lines.push([
       csvCell(r.id), r.partition, r.season, r.sub, r.celeba === null ? "" : String(r.celeba),
       ...(r.R ?? [null, null, null]).map(cell), ...(r.L ?? [null, null, null]).map(cell), ...(r.gain ?? [null, null, null]).map((v) => (v === null ? "" : String(Math.round(v * 1000) / 1000))),
-      r.nR, r.nL, ...derived,
+      r.nR, r.nL, ...(r.bg?.rgb ?? [null, null, null]).map(cell), r.bg?.n ?? "", ...derived,
     ].join(","));
   }
   return lines.join("\n");
@@ -254,7 +263,7 @@ loadCsvIn.addEventListener("change", async () => {
     recs.push({
       id: c[ix("id")]!, partition: c[ix("partition")] === "test" ? "test" : "train", season, sub: c[ix("sub")]!,
       celeba: cel === "true" ? true : cel === "false" ? false : null,
-      R: rgb(c, "rR", "rG", "rB"), L: rgb(c, "lR", "lG", "lB"), gain: rgb(c, "gR", "gG", "gB"), nR: num(c, "nR") ?? 0, nL: num(c, "nL") ?? 0,
+      R: rgb(c, "rR", "rG", "rB"), L: rgb(c, "lR", "lG", "lB"), gain: rgb(c, "gR", "gG", "gB"), bg: bgOf(rgb(c, "bR", "bG", "bB"), num(c, "bN")), nR: num(c, "nR") ?? 0, nL: num(c, "nL") ?? 0,
     });
   }
   runRoi = null;
@@ -265,7 +274,16 @@ loadCsvIn.addEventListener("change", async () => {
 
 // ---------- 분석 ----------
 
-const toneOf = (r: Rec, tp: ToneParams): ReturnType<typeof toneFromCheeks> => toneFromCheeks({ R: r.R, L: r.L }, r.gain, tp);
+/** 보정 배수 — 흰자 기준이면 측정 때 구한 것, 배경 기준이면 배경 색에서 */
+const gainOf = (r: Rec): Rgb | null => (wbSrc.value === "bg" ? backgroundGain(r.bg) : r.gain);
+const toneOf = (r: Rec, tp: ToneParams): ReturnType<typeof toneFromCheeks> => toneFromCheeks({ R: r.R, L: r.L }, gainOf(r), tp);
+
+/** 측정 CSV 의 배경 색 열 → BgSample (L* · C* 는 색에서 다시 계산) */
+function bgOf(rgb: Rgb | null, n: number | null): BgSample | null {
+  if (!rgb) return null;
+  const lab = rgbToLab(rgb[0], rgb[1], rgb[2]);
+  return { rgb, n: n ?? 0, L: lab.L, chroma: Math.hypot(lab.a, lab.b) };
+}
 
 function labelOf(r: Rec): boolean | null {
   if (scheme.value === "season") return SEASON_WARM[r.season];
@@ -273,11 +291,11 @@ function labelOf(r: Rec): boolean | null {
 }
 
 interface Row { rec: Rec; lab: Lab; warm: boolean }
-interface Selection { rows: Row[]; skipped: { noLabel: number; origin: number; wb: number; noCheek: number } }
+interface Selection { rows: Row[]; skipped: { noLabel: number; origin: number; wb: number; noCheek: number; notWhite: number } }
 
 function select(): Selection {
   const tp = readTone();
-  const skipped = { noLabel: 0, origin: 0, wb: 0, noCheek: 0 };
+  const skipped = { noLabel: 0, origin: 0, wb: 0, noCheek: 0, notWhite: 0 };
   const rows: Row[] = [];
   for (const rec of recs) {
     const warm = labelOf(rec);
@@ -285,7 +303,8 @@ function select(): Selection {
     if (origin.value === "web" && rec.celeba !== false) { skipped.origin++; continue; }
     if (origin.value === "celeba" && rec.celeba !== true) { skipped.origin++; continue; }
     // 보정을 꺼도 같은 사진만 남긴다 — 켬/끔을 같은 사진끼리 견주려고
-    if (wbDrop.checked && rec.gain === null) { skipped.wb++; continue; }
+    if (bgOnly.checked && !isWhiteBackground(rec.bg)) { skipped.notWhite++; continue; }
+    if (wbDrop.checked && gainOf(rec) === null) { skipped.wb++; continue; }
     const t = toneOf(rec, tp);
     if (!t) { skipped.noCheek++; continue; }
     rows.push({ rec, lab: t.lab, warm });
@@ -297,11 +316,21 @@ const itemsOf = (rows: readonly Row[], axis: AxisId, part?: "train" | "test"): I
   rows.filter((r) => !part || r.rec.partition === part).map((r) => ({ v: AXES[axis].of(r.lab), warm: r.warm }));
 const split = (items: readonly Item[]): string => `<span class="w">웜 ${items.filter((i) => i.warm).length}</span> / <span class="c">쿨 ${items.filter((i) => !i.warm).length}</span>`;
 
+/** 배경이 흰 사진이 얼마나 되는지 — 흰 배경 사진만 남기기 전에 얼마나 남는지 보려고 */
+function bgSummary(): string {
+  const have = recs.filter((r) => r.bg);
+  if (!have.length) return "배경 색: 이 측정에는 없어요 (다시 측정하세요)";
+  const white = have.filter((r) => isWhiteBackground(r.bg)).length;
+  const Ls = have.map((r) => r.bg!.L).sort((p, q) => p - q), Cs = have.map((r) => r.bg!.chroma).sort((p, q) => p - q);
+  const q = (v: number[], p: number): string => v[Math.min(v.length - 1, Math.floor(v.length * p))]!.toFixed(0);
+  return `배경 색: ${have.length}장 중 흰 배경(L* ≥ ${BG_LIMITS.minL} · C* ≤ ${BG_LIMITS.maxChroma}) ${white}장 (${((white / have.length) * 100).toFixed(1)}%) · 배경 L* 중앙 ${q(Ls, 0.5)} (하위10% ${q(Ls, 0.1)}) · C* 중앙 ${q(Cs, 0.5)} (상위10% ${q(Cs, 0.9)})`;
+}
+
 function refresh(): void {
   if (!recs.length) { countsEl.textContent = ""; axesEl.textContent = "측정한 사진이 아직 없어요."; evalOut.textContent = ""; jsonOut.textContent = ""; drawHist([], 0, 1, 0); return; }
   const { rows, skipped } = select();
   const tr = itemsOf(rows, "h", "train"), te = itemsOf(rows, "h", "test");
-  countsEl.innerHTML = `쓰는 사진 ${rows.length}장 — train ${split(tr)} · test ${split(te)}<br>빠진 사진: 라벨 없음 ${skipped.noLabel} · 출처 필터 ${skipped.origin} · 흰자 보정 안 됨 ${skipped.wb} · 볼 못 잼 ${skipped.noCheek}`;
+  countsEl.innerHTML = `쓰는 사진 ${rows.length}장 — train ${split(tr)} · test ${split(te)}<br>빠진 사진: 라벨 없음 ${skipped.noLabel} · 출처 필터 ${skipped.origin} · 보정 안 됨 ${skipped.wb} · 흰 배경 아님 ${skipped.notWhite} · 볼 못 잼 ${skipped.noCheek}<br>${bgSummary()}`;
 
   // 축별 표
   let html = "<table><tr><th>축</th><th>분리도</th><th>방향</th><th>train 최적 T</th><th>train 균형정확도</th><th>test 균형정확도</th></tr>";
@@ -403,7 +432,7 @@ function drawHist(items: readonly Item[], T: number, dir: number, margin: number
 // ---------- 연결 ----------
 
 for (const el of [qLo, qHi, area, aCut]) el.addEventListener("input", showSliders);
-for (const el of [scheme, origin, wbOn, wbLin, wbDrop, wbStr, mergeSel]) el.addEventListener("input", () => { showSliders(); tAuto = true; refresh(); });
+for (const el of [scheme, origin, wbOn, wbLin, wbDrop, wbStr, mergeSel, wbSrc, bgOnly]) el.addEventListener("input", () => { showSliders(); tAuto = true; refresh(); });
 for (const el of [tIn, dir2]) el.addEventListener("input", () => { tAuto = false; renderEval(); });
 marginIn.addEventListener("input", () => renderEval());
 autoBtn.addEventListener("click", () => { tAuto = true; refresh(); });

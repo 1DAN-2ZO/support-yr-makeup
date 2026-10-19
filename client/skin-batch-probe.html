@@ -86,9 +86,11 @@
         <label>사진 출처 <select id="origin"><option value="all">전체</option><option value="web">웹 사진만</option><option value="celeba">CelebA만</option></select></label>
       </div>
       <div class="bar">
-        <label><input id="wbOn" type="checkbox" checked /> 흰자로 조명 보정</label>
+        <label>보정 기준 <select id="wbSrc"><option value="sclera">눈 흰자</option><option value="bg">얼굴 둘레 흰 배경</option></select></label>
+        <label><input id="wbOn" type="checkbox" checked /> 조명 보정 켬</label>
+        <label title="배경이 밝고 색이 거의 없는 사진만 — 흰 벽 앞에서 찍은 사진 흉내"><input id="bgOnly" type="checkbox" /> 흰 배경 사진만</label>
         <label><input id="wbLin" type="checkbox" /> 선형 RGB에서 곱하기</label>
-        <label title="보정을 꺼도 똑같이 뺀다 — 켬/끔을 같은 사진끼리 견주려고"><input id="wbDrop" type="checkbox" checked /> 흰자 보정이 안 된 사진은 뺌 (보정을 꺼도)</label>
+        <label title="보정을 꺼도 똑같이 뺀다 — 켬/끔을 같은 사진끼리 견주려고"><input id="wbDrop" type="checkbox" checked /> 보정이 안 된 사진은 뺌 (보정을 꺼도)</label>
         <label>강도 <input id="wbStr" type="range" min="0" max="100" step="5" value="100" /> <output id="wbStrV"></output></label>
         <label>좌우 볼 합치기 <select id="merge"><option value="mean">평균</option><option value="dark">어두운 쪽</option><option value="bright">밝은 쪽</option></select></label>
       </div>

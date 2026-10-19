@@ -7,7 +7,7 @@
     <title>피부색 측정 POC — nudy</title>
     <!--
       [dev 전용 스파이크] 피부색 측정 POC (2026-10-09) — 맨얼굴 한 장(웹캠 5프레임 또는 파일) → 얼굴 점 위 볼 영역 → 평균 피부색.
-      슬라이더로 볼 영역 고르기·흰자 보정·좌우 합치기를 바꿔 가며 값이 얼마나 움직이는지 본다. 웜/쿨 판정은 아직 없음(기준 T 는 다른 라인).
+      조명 보정은 얼굴 둘레 흰 배경 기준(core/skin-bg-wb). 웜/쿨 경향은 core/skin-verdict.
       사진은 이 컴퓨터 안에서만 쓰고 저장소에 남기지 않는다.
     -->
     <style>
@@ -41,7 +41,7 @@
   </head>
   <body>
     <h1>피부색 측정 POC</h1>
-    <p class="note">맨얼굴 정면 → 볼 영역 → 평균 피부색. 웹캠은 3초 센 뒤 0.2초 간격으로 5프레임을 잡아 프레임마다 재고 중앙값을 씁니다. 파일은 한 장을 그대로 재요.</p>
+    <p class="note"><b>흰 벽 · 흰 종이 앞에서</b> 맨얼굴 정면 → 볼 영역 → 평균 피부색. 배경이 흰색이 아니면 조명 보정을 못 해요. 웹캠은 3초 센 뒤 0.2초 간격으로 5프레임을 잡아 프레임마다 재고 중앙값을 씁니다. 파일은 한 장을 그대로 재요.</p>
 
     <div class="layout">
       <div class="left">
@@ -60,7 +60,7 @@
           <h2>② 얼굴 점 위에 올린 영역</h2>
           <div class="bar">
             <label><input id="showPts" type="checkbox" checked /> 얼굴 점 468개</label>
-            <label><input id="showEye" type="checkbox" checked /> 흰자 보정에 쓴 눈 영역</label>
+            <label><input id="showBg" type="checkbox" checked /> 흰 배경으로 읽은 영역</label>
             <span class="legend">
               <i style="background:rgba(0,200,0,.55)"></i>평균에 쓴 픽셀
               <i style="background:rgba(255,40,40,.55)"></i>걸러낸 픽셀
@@ -71,7 +71,7 @@
 
         <div class="box">
           <h2>②-2 보정을 걸어 본 사진</h2>
-          <div id="corrNote" class="msg">흰자 보정 배수를 사진 전체에 곱한 것 — 원본(위)과 나란히 보고 어느 쪽이 거울 속 내 얼굴에 가까운지 눈으로 견주세요.</div>
+          <div id="corrNote" class="msg">흰 배경 보정 배수를 사진 전체에 곱한 것 — 원본(위)과 나란히 보고 어느 쪽이 거울 속 내 얼굴에 가까운지 눈으로 견주세요.</div>
           <canvas id="cvCorrected" width="640" height="480"></canvas>
         </div>
       </div>
@@ -84,17 +84,7 @@
           <div class="slider"><label for="qHi">밝기 상한 분위수</label><input id="qHi" type="range" min="60" max="100" step="1" value="90" /><output id="qHiV"></output></div>
           <div class="slider"><label for="area">볼 영역 크기</label><input id="area" type="range" min="30" max="100" step="5" value="100" /><output id="areaV"></output></div>
           <div class="slider"><label for="aCut">a* 위 꼬리 버리기</label><input id="aCut" type="range" min="0" max="40" step="1" value="0" /><output id="aCutV"></output></div>
-          <div class="sub" style="margin-top:12px">조명 보정·합치기 (바로 반영)</div>
-          <div class="bar"><label><input id="wbOn" type="checkbox" checked /> 흰자로 조명 보정</label>
-            <label><input id="wbLin" type="checkbox" /> 선형 RGB에서 곱하기</label></div>
-          <div class="bar"><label>흰자 판정 방식
-            <select id="wbMode">
-              <option value="relative">상대 기준 (이마와 색이 다른 밝은 픽셀)</option>
-              <option value="legacy">기존 (이마보다 밝아야 함)</option>
-            </select></label></div>
-          <div class="slider"><label for="wbTop">흰자로 볼 상위 비율</label><input id="wbTop" type="range" min="5" max="60" step="5" value="25" /><output id="wbTopV"></output></div>
-          <div class="slider"><label for="wbDist">흰자 최소 색 거리</label><input id="wbDist" type="range" min="0" max="40" step="1" value="15" /><output id="wbDistV"></output></div>
-          <div class="slider"><label for="wbStr">보정 강도</label><input id="wbStr" type="range" min="0" max="100" step="5" value="100" /><output id="wbStrV"></output></div>
+          <div class="sub" style="margin-top:12px">합치기 (바로 반영)</div>
           <div class="bar"><label>좌우 볼 합치기
             <select id="merge"><option value="mean">평균</option><option value="dark">어두운 쪽</option><option value="bright">밝은 쪽</option></select></label>
             <button id="reset" type="button">처음값</button></div>

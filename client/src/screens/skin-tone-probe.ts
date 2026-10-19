@@ -1,22 +1,26 @@
 /**
  * [dev 전용 스파이크] 피부색 측정 POC (skin-tone-probe.html, 2026-10-09)
  *  ① 촬영: 웹캠 3초 뒤 0.2초 간격 5프레임(프레임마다 얼굴 점 + 픽셀 읽기) 또는 파일 한 장 — makeup-extract-probe 와 같은 카메라 방식
- *  ② 얼굴 점 위에 볼 영역·걸러낸 픽셀·흰자 보정에 쓴 눈 영역을 올려 보기
+ *     조명 보정: 얼굴 둘레 배경이 흰색이면 그 색을 중립으로 맞춘다 (core/skin-bg-wb). 눈 흰자 기준은 뺐다 — 데이터셋에서 효과가 없었다
+ *  ② 얼굴 점 위에 볼 영역·걸러낸 픽셀·흰 배경으로 읽은 영역을 올려 보기
  *  ③ 평균 피부색: 보정 전/후 · 좌우 볼 · 프레임 흔들림 (ΔE2000 · ΔE76 같이)
- *  ④ 슬라이더: 볼 영역(밝기 분위수 · 크기 · a* 꼬리)은 픽셀부터 다시, 조명 보정 · 좌우 합치기는 숫자만 다시
- * 웜/쿨 판정은 없다 — 기준 T 는 다른 라인에서 정한다. 계산은 core/skin-measure · skin-color (순수 함수, tests/skin-*.test.ts).
+ *  ④ 슬라이더: 볼 영역(밝기 분위수 · 크기 · a* 꼬리)은 픽셀부터 다시, 좌우 합치기는 숫자만 다시
+ * ⑤ 웜/쿨 경향: **보정 전** 볼 b* 를 core/skin-verdict 의 기준(T ± 애매 폭)과 견준다. 조명 보정(흰 배경 기준)과 무관하다 —
+ *    데이터셋 실험에서 보정(흰자 · 배경 둘 다)이 오히려 덜 갈랐다. 계산은 core/skin-measure · skin-color · skin-verdict (순수 함수, tests/skin-*.test.ts).
  * 사진은 이 컴퓨터 안에서만 쓰고 저장하지 않는다.
  */
 
 import type { FaceLandmarker } from "@mediapipe/tasks-vision";
-import { EYE_A, EYE_B, deltaE } from "@core/color";
+import { deltaE } from "@core/color";
 import type { RgbaImage } from "@core/color";
+import { BG_LIMITS, backgroundBounds, backgroundGain, isWhiteBackground, sampleBackground } from "@core/skin-bg-wb";
+import type { BgSample } from "@core/skin-bg-wb";
 import { deltaE2000, describeRgb, rgbHex } from "@core/skin-color";
 import type { Rgb } from "@core/skin-color";
-import { ROI_DEFAULT, SIDES, TONE_DEFAULT, applyGain, combineTones, measureFrame, skinTone } from "@core/skin-measure";
+import { ROI_DEFAULT, SIDES, TONE_DEFAULT, applyGain, combineTones, measureCheek, skinTone } from "@core/skin-measure";
 import type { Merge, RoiParams, Side, SkinFrame, SkinTone, ToneParams } from "@core/skin-measure";
-import { WB_REASON_TEXT, WB_RELATIVE, diagnoseWhiteBalance } from "@core/skin-wb-diagnose";
-import type { WbDiagnosis, WbOptions } from "@core/skin-wb-diagnose";
+import { VERDICT_VERSION, warmCoolVerdict } from "@core/skin-verdict";
+import type { Verdict } from "@core/skin-verdict";
 import type { Pt } from "@core/types";
 import { startFrameLoop } from "./camera-loop";
 import { createLandmarker } from "./landmarker";
@@ -33,11 +37,9 @@ const video = $<HTMLVideoElement>("v");
 const shotView = $<HTMLCanvasElement>("shotView"), cvOverlay = $<HTMLCanvasElement>("cvOverlay");
 const camBtn = $<HTMLButtonElement>("camBtn"), snapBtn = $<HTMLButtonElement>("snapBtn"), fileIn = $<HTMLInputElement>("file");
 const msgEl = $("msg"), resultEl = $("result");
-const showPts = $<HTMLInputElement>("showPts"), showEye = $<HTMLInputElement>("showEye");
+const showPts = $<HTMLInputElement>("showPts"), showBg = $<HTMLInputElement>("showBg");
 const qLo = $<HTMLInputElement>("qLo"), qHi = $<HTMLInputElement>("qHi"), area = $<HTMLInputElement>("area"), aCut = $<HTMLInputElement>("aCut");
-const wbOn = $<HTMLInputElement>("wbOn"), wbLin = $<HTMLInputElement>("wbLin"), wbStr = $<HTMLInputElement>("wbStr");
 const mergeSel = $<HTMLSelectElement>("merge"), resetBtn = $<HTMLButtonElement>("reset");
-const wbMode = $<HTMLSelectElement>("wbMode"), wbTop = $<HTMLInputElement>("wbTop"), wbDist = $<HTMLInputElement>("wbDist");
 const cvCorrected = $<HTMLCanvasElement>("cvCorrected"), corrNote = $("corrNote");
 
 const setMsg = (text: string, warn = false): void => { msgEl.innerHTML = warn ? `<span class="warn">${text}</span>` : text; };
@@ -51,31 +53,24 @@ let shownCanvas: HTMLCanvasElement | null = null;
 let shownIdx = 0;
 /** 슬라이더로 바뀌는 픽셀 단계 결과 — shots 와 같은 순서 */
 let frames: SkinFrame[] = [];
-/** 프레임마다 흰자 보정이 왜 되고 안 되는지 (shots 와 같은 순서) */
-let diags: WbDiagnosis[] = [];
+/** 프레임마다 얼굴 둘레 배경 색 (core/skin-bg-wb) */
+let bgs: (BgSample | null)[] = [];
 
 // ---------- 파라미터 읽기 ----------
 
 const pct = (el: HTMLInputElement): number => Number(el.value) / 100;
 const readRoi = (): RoiParams => ({ qLo: pct(qLo), qHi: pct(qHi), area: pct(area), aCut: pct(aCut) });
-const readTone = (): ToneParams => ({ wb: wbOn.checked, strength: pct(wbStr), linear: wbLin.checked, merge: mergeSel.value as Merge });
-
-/** 흰자 판정 방식 (측정할 때 배수를 구하므로 바꾸면 다시 잼) */
-const readWb = (): WbOptions => ({ mode: wbMode.value === "legacy" ? "legacy" : "relative", topFrac: pct(wbTop), minDist: Number(wbDist.value) / 100 });
+/** 조명 보정은 늘 흰 배경 기준 (흰자 기준은 뺐다) */
+const readTone = (): ToneParams => ({ wb: true, strength: 1, linear: false, merge: mergeSel.value as Merge });
 
 function showSliderValues(): void {
-  for (const el of [qLo, qHi, area, aCut, wbStr, wbTop]) $(`${el.id}V`).textContent = `${el.value}%`;
-  $("wbDistV").textContent = (Number(wbDist.value) / 100).toFixed(2);
-  const rel = wbMode.value !== "legacy";
-  wbTop.disabled = wbDist.disabled = !rel;
+  for (const el of [qLo, qHi, area, aCut]) $(`${el.id}V`).textContent = `${el.value}%`;
 }
 
 function resetParams(): void {
   qLo.value = String(ROI_DEFAULT.qLo * 100); qHi.value = String(ROI_DEFAULT.qHi * 100);
   area.value = String(ROI_DEFAULT.area * 100); aCut.value = String(ROI_DEFAULT.aCut * 100);
-  wbOn.checked = TONE_DEFAULT.wb; wbLin.checked = TONE_DEFAULT.linear; wbStr.value = String(TONE_DEFAULT.strength * 100);
   mergeSel.value = TONE_DEFAULT.merge;
-  wbMode.value = "relative"; wbTop.value = String(WB_RELATIVE.topFrac * 100); wbDist.value = String(WB_RELATIVE.minDist * 100);
 }
 
 // ---------- 그림 다루기 ----------
@@ -186,7 +181,7 @@ camBtn.addEventListener("click", async () => {
     stopLoop = startFrameLoop(video, camFrame, { onError: (e) => setMsg(String(e), true) });
     camBtn.textContent = "카메라 끄기";
     snapBtn.disabled = false;
-    setMsg('맨얼굴로 정면을 보고 "찍기"');
+    setMsg('흰 벽 · 흰 종이 앞에서, 맨얼굴로 정면을 보고 "찍기"');
   } catch (e) {
     setMsg(`카메라를 못 열었어요: ${e instanceof Error ? e.message : String(e)}`, true);
   } finally {
@@ -233,29 +228,9 @@ function finishShots(info: string): void {
 
 function measureAll(): void {
   const roi = readRoi();
-  const wb = readWb();
-  frames = shots.map((s) => measureFrame(s.im, s.lm, roi, wb));
-  diags = shots.map((s) => diagnoseWhiteBalance(s.im, s.lm, 2, wb));
-}
-
-/** 흰자 보정 진단 한 덩어리: 이유별 프레임 수 + 보여 주는 프레임의 수치 */
-function wbDiagnosisHtml(): string {
-  if (!diags.length) return "";
-  const byReason = new Map<string, number>();
-  diags.forEach((d, i) => {
-    // 배수는 구했지만 보정 후 피부가 사람 피부색 범위를 벗어나 취소한 프레임은 따로 센다
-    const key = frames[i]?.wbRejected ? "rejected" : d.reason;
-    byReason.set(key, (byReason.get(key) ?? 0) + 1);
-  });
-  const reasonText = (r: string): string => (r === "rejected" ? "배수는 구했지만 보정 후 피부색이 사람 피부색 범위(색상각 25~85° · 변화 ΔE00 18 이하)를 벗어나 취소" : WB_REASON_TEXT[r as WbDiagnosis["reason"]]);
-  const reasons = [...byReason].map(([r, n]) => `${reasonText(r)} ${n}장`).join(" · ");
-  const d = diags[shownIdx] ?? diags[0]!;
-  const num = (v: number | null): string => (v === null ? "—" : v.toFixed(0));
-  const rgbText = (c: Rgb | null): string => (c ? `(${c.map((v) => v.toFixed(0)).join(", ")})` : "—");
-  const ign = d.gainIgnoringSkin ? `이마 검사만 건너뛰면 배수 R ${f2(d.gainIgnoringSkin[0])} G ${f2(d.gainIgnoringSkin[1])} B ${f2(d.gainIgnoringSkin[2])}` : "";
-  return `<br>흰자 진단: ${reasons}<br>` +
-    `<span style="opacity:.85">보여 주는 사진 — 눈 안 표본 ${d.nEye} · 밝은 30% ${d.nBright} · 흰자 후보 ${rgbText(d.sclera)} 밝기 ${num(d.scleraLum)} · 이마 피부 ${rgbText(d.skin)} 밝기 ${num(d.skinLum)}` +
-    `${ign ? ` · ${ign}` : ""}</span>`;
+  bgs = shots.map((s) => sampleBackground(s.im, s.lm));
+  // 조명 보정 배수는 배경에서 (흰 배경이 아니면 null → 보정 안 함)
+  frames = shots.map((s, i) => ({ R: measureCheek(s.im, s.lm, "R", roi), L: measureCheek(s.im, s.lm, "L", roi), gain: backgroundGain(bgs[i] ?? null) }));
 }
 
 const f1 = (v: number): string => v.toFixed(1);
@@ -268,6 +243,38 @@ const labText = (t: SkinTone | null): string => (t ? `${f1(t.lab.L)} / ${f1(t.la
 function screenLeftSide(fr: SkinFrame): Side {
   const cx = (c: SkinFrame["R"]): number => (c ? c.poly.reduce((s, p) => s + p.x, 0) / c.poly.length : Infinity);
   return cx(fr.R) <= cx(fr.L) ? "R" : "L";
+}
+
+const TENDENCY_TEXT: Record<Verdict["tendency"], string> = {
+  warm: "웜 쪽에 가까워 보여요",
+  cool: "쿨 쪽에 가까워 보여요",
+  ambiguous: "웜/쿨 어느 쪽이라고 말하기 애매해요",
+};
+
+/** 보정 전 볼 b* 로 말하는 웜/쿨 경향 — 판단 근거(값 · 기준 · 애매 폭)를 같이 보여 준다 */
+function verdictHtml(rawLab: { b: number }): string {
+  const v = warmCoolVerdict(rawLab);
+  const shown = (n: number): string => n.toFixed(1);
+  const side = v.tendency === "ambiguous" ? `기준 ${shown(v.threshold)} ± ${shown(v.margin)} 안`
+    : `기준 ${shown(v.threshold)}보다 ${shown(Math.abs(v.diff))} ${v.diff > 0 ? "높음" : "낮음"}`;
+  return `<div style="font-size:1.15em;font-weight:600;margin-bottom:4px">${TENDENCY_TEXT[v.tendency]}</div>
+    <div class="sub" style="margin-bottom:12px;line-height:1.7">
+      보정 전 볼 b*(노란기) ${shown(v.value)} — ${side}<br>
+      데이터셋(4,910장)에서 이 기준의 정확도는 약 70% 안팎이라, 단정이 아니라 경향이에요 · 기준 ${VERDICT_VERSION}
+    </div>`;
+}
+
+/** 흰 배경 기준 보정 결과: 배경 색 · 흰 배경 여부 · 보정 전 → 후 b* · 보정 후 값으로 본 판정 (비교용) */
+function backgroundHtml(rawLab: { b: number }, fixed: SkinTone): string {
+  const have = bgs.filter((b): b is BgSample => b !== null);
+  if (!have.length) return '<div class="sub" style="margin-bottom:12px">흰 배경: 얼굴 둘레 배경을 못 쟀어요 (얼굴이 화면을 거의 다 채움) — 조금 떨어져서 찍어 주세요</div>';
+  const med = (v: number[]): number => [...v].sort((a, b) => a - b)[v.length >> 1]!;
+  const rgb = [0, 1, 2].map((k) => med(have.map((b) => b.rgb[k]!))) as Rgb;
+  const white = have.filter((b) => isWhiteBackground(b)).length;
+  const head = `배경 색 ${swatch(rgb)} · L* ${f1(med(have.map((b) => b.L)))} · C* ${f1(med(have.map((b) => b.chroma)))} — 흰 배경 ${white}/${have.length}장 (기준 L* ≥ ${BG_LIMITS.minL} · C* ≤ ${BG_LIMITS.maxChroma})`;
+  if (!fixed.wbApplied) return `<div class="sub" style="margin-bottom:12px;line-height:1.7"><span class="warn">흰 배경이 아니라 조명 보정을 못 했어요</span> — 흰 벽 · 흰 종이 앞에서 다시 찍어 주세요<br>${head}</div>`;
+  const v2 = warmCoolVerdict(fixed.lab);
+  return `<div class="sub" style="margin-bottom:12px;line-height:1.7">흰 배경 기준 보정: 볼 b* ${f1(rawLab.b)} → ${f1(fixed.lab.b)} · 보정 후 값으로 봐도 같은 기준이면 ${TENDENCY_TEXT[v2.tendency]} <span style="opacity:.8">(비교용 — 위 판정은 보정 전 값)</span><br>${head}</div>`;
 }
 
 function render(): void {
@@ -286,11 +293,10 @@ function render(): void {
     return `<tr><td>${name}</td><td>${swatch(R.cheeks[s])}</td><td>${swatch(C.cheeks[s])}</td><td>${c ? `${c.n}/${c.total}` : "—"}</td></tr>`;
   };
 
-  // 조명 보정
+  // 조명 보정 (흰 배경 기준)
   const gains = frames.map((f) => f.gain).filter((g): g is Rgb => g !== null);
   const gainMed = gains.length ? ([0, 1, 2].map((k) => [...gains.map((g) => g[k]!)].sort((a, b) => a - b)[gains.length >> 1]!) as Rgb) : null;
-  const wbLine = !tp.wb ? "꺼짐"
-    : !gainMed ? '<span class="warn">흰자를 못 찾아 보정 못 함 — 보정 전 값 그대로</span>'
+  const wbLine = !gainMed ? '<span class="warn">흰 배경이 아니라 보정 못 함 — 보정 전 값 그대로</span>'
     : `${gains.length}/${frames.length}장 성공 · 배수 R ${f2(gainMed[0])} G ${f2(gainMed[1])} B ${f2(gainMed[2])}`;
 
   // 프레임 흔들림 (보정 후 합친 값 기준)
@@ -306,10 +312,7 @@ function render(): void {
     return `ΔE00 ${f2(deltaE2000(la, lb))} · ΔE76 ${f2(deltaE(la, lb))}`;
   })() : "—";
 
-  const notApplied = tp.wb && !C.wbApplied
-    ? '<div class="warn" style="margin-bottom:8px">⚠ 흰자 보정이 걸리지 않아서 "보정 후"는 웹캠 원본 색 그대로예요 (아래 흰자 진단 참고)</div>'
-    : "";
-  resultEl.innerHTML = `${notApplied}
+  resultEl.innerHTML = `${verdictHtml(R.lab)}${backgroundHtml(R.lab, C)}
     <table>
       <tr><th></th><th>보정 전</th><th>보정 후</th></tr>
       <tr><td>합친 볼 색</td><td>${swatch(R.rgb)}</td><td>${swatch(C.rgb)}</td></tr>
@@ -323,7 +326,7 @@ function render(): void {
       ${cheekRow(order[1]!, "화면 오른쪽")}
     </table>
     <div class="sub" style="margin-top:10px;line-height:1.7">
-      조명 보정: ${wbLine}${wbDiagnosisHtml()}<br>
+      조명 보정(흰 배경 기준): ${wbLine}<br>
       보정 전 → 후 색 차이: ΔE00 ${f2(deltaE2000(R.lab, C.lab))} · ΔE76 ${f2(deltaE(R.lab, C.lab))}<br>
       좌우 볼 차이 (보정 후): ${lr}<br>
       프레임 흔들림: ${spread}
@@ -361,19 +364,14 @@ function drawOverlay(): void {
   g.strokeStyle = "#fff";
   for (const s of SIDES) if (fr[s]) path(fr[s]!.poly);
 
-  if (showEye.checked) {
-    g.strokeStyle = "#4dd0ff";
-    g.lineWidth = 1.5 * k;
-    for (const eye of [EYE_A, EYE_B]) {
-      path(eye.ring.map((i) => shot.lm[i]!));
-      path(eye.iris.slice(1).map((i) => shot.lm[i]!));
+  if (showBg.checked) {
+    // 배경 표본을 뽑는 곳 (얼굴 상자 바깥 — 옆 · 이마 위). 흰 벽이 아닌 것(머리카락 · 어깨 · 물건)이 보이면 여기서 확인
+    const b = backgroundBounds(shot.lm);
+    if (b) {
+      const mark = (x: number, y: number, w: number, h: number): void => { g.fillRect(Math.max(0, x), Math.max(0, y), Math.max(0, w), Math.max(0, h)); };
+      g.fillStyle = "rgba(77,208,255,.28)";
+      mark(0, 0, b.left, src.height); mark(b.right, 0, src.width - b.right, src.height); mark(b.left, 0, b.right - b.left, b.top);
     }
-    // 흰자 후보로 뽑힌 밝은 30% 표본 — 눈 안 흰자가 아니라 눈꺼풀·속눈썹에 찍히면 여기서 보인다
-    const xy = diags[shownIdx]?.brightXY ?? [];
-    g.fillStyle = "rgba(77,208,255,.75)";
-    g.beginPath();
-    for (let i = 0; i < xy.length; i += 2) g.rect(xy[i]!, xy[i + 1]!, 2, 2);
-    g.fill();
   }
   if (showPts.checked) {
     g.fillStyle = "rgba(255,235,59,.85)";
@@ -443,9 +441,8 @@ function schedule(level: "render" | "measure"): void {
 }
 
 for (const el of [qLo, qHi, area, aCut]) el.addEventListener("input", () => schedule("measure"));
-for (const el of [wbOn, wbLin, wbStr, mergeSel]) el.addEventListener("input", () => schedule("render"));
-for (const el of [wbMode, wbTop, wbDist]) el.addEventListener("input", () => schedule("measure"));
-for (const el of [showPts, showEye]) el.addEventListener("input", () => schedule("render"));
+for (const el of [mergeSel]) el.addEventListener("input", () => schedule("render"));
+for (const el of [showPts, showBg]) el.addEventListener("input", () => schedule("render"));
 resetBtn.addEventListener("click", () => { resetParams(); schedule("measure"); });
 
 resetParams();
