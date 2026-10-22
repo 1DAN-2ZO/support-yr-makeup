@@ -3,7 +3,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createLogger, memorySink } from "@core/log";
 import type { Versions } from "@core/types";
-import { CONSENT_TEXT, consentScreen, deniedScreen } from "@screens/consent";
+import { CONSENT_POINTS, CONSENT_SECTIONS, CONSENT_TEXT, consentScreen, deniedScreen } from "@screens/consent";
 import type { ScreenContext } from "@screens/shell";
 
 const ver: Versions = { app: "test", score: "s", look: "l", faceshape: "f", transfer: "t" };
@@ -98,6 +98,34 @@ describe("동의 화면", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  describe("누르기 직전의 요약 세 줄 (2026-10-13)", () => {
+    it("C4 「동의하고 시작」 **위**에 나온다 — 전문을 끝까지 안 읽어도 보여야 한다", () => {
+      const { root, ctx } = setup();
+      consentScreen<null>({ setConsent: vi.fn(), onConsent: vi.fn() }).mount(ctx);
+      root.querySelector<HTMLButtonElement>(".intro-camera-start")!.click();
+      const lines = [...root.querySelectorAll(".consent-points li")].map((e) => e.textContent);
+      expect(lines).toEqual([...CONSENT_POINTS]);
+      const sheet = root.querySelector(".consent-sheet")!;
+      const kids = [...sheet.children];
+      expect(kids.findIndex((e) => e.classList.contains("consent-points")))
+        .toBeLessThan(kids.findIndex((e) => e.classList.contains("row")));
+    });
+
+    it("C5 새 약속을 만들지 않는다 — 세 줄이 말하는 것은 전문에도 있어야 한다", () => {
+      // 짧게 쓰려다 사실을 흐리면 전문과 어긋나 거짓말이 된다.
+      // 전문만 고치고 여기를 안 고치면 이 시험이 막는다
+      const body = CONSENT_SECTIONS.map((x) => x.text.replaceAll("**", "")).join(" ");
+      expect(body).toContain("참고 사진은 보관하지 않고");
+      expect(body).toContain("10월 19일 오후 5시에 모두 지우고");
+      expect(body).toContain("사진과 얼굴 위치는 보내지 않아요");
+      // 세 줄에 날짜가 나오면 전문의 날짜와 같아야 한다
+      for (const line of CONSENT_POINTS) {
+        const d = line.match(/\d+월 \d+일( 오[전후] \d+시)?/);
+        if (d) expect(body).toContain(d[0]);
+      }
+    });
   });
 
   it("C3 이용 불가 화면은 정의서 문구 그대로, 다시 동의 화면으로만 갈 수 있다", () => {

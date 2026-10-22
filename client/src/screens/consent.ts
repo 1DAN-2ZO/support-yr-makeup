@@ -39,6 +39,23 @@ export const CONSENT_SECTIONS = [
   },
 ] as const;
 
+/**
+ * 「동의하고 시작」 바로 위의 요약 세 줄 (2026-10-13).
+ *
+ * 얼굴 · 카메라 · 사진을 쓰는 앱이라 사용자가 망설인다. 전문은 소제목 넷에 긴 글이라
+ * 끝까지 읽지 않는 사람이 많다 — 누르기 직전에 **언제 지우는지**만 짧게 다시 말한다.
+ *
+ * **새 약속을 만들지 않는다.** 세 줄 다 위 CONSENT_SECTIONS 에 이미 있는 말이고,
+ * 전문이 바뀌면 여기도 같이 고친다. "임시 저장" 같은 두루뭉술한 말 대신 날짜를 적는 것은,
+ * 지금 사진을 **서버에 10월 19일까지 보관하기 때문**이다 (#385). 짧게 쓰려고 사실을
+ * 흐리면 전문과 어긋나 거짓말이 된다.
+ */
+export const CONSENT_POINTS = [
+  "참고 사진은 예상 메이크업을 만든 뒤 바로 지워요",
+  "나머지 사진은 10월 19일 오후 5시에 모두 지워요",
+  "얼굴 위치·사진은 사용 기록에 담기지 않아요",
+] as const;
+
 export const CONSENT_TEXT = {
   start: "촬영 시작",
   notice: "처리 안내",
@@ -148,10 +165,18 @@ export function consentScreen<S>(deps: ConsentDeps): Screen<S> {
         });
         sheetBody.append(head, p);
       }
+      // 누르기 직전에 한 번 더 — 전문을 끝까지 안 읽어도 언제 지우는지는 보이게
+      const points = document.createElement("ul");
+      points.className = "consent-points";
+      for (const t of CONSENT_POINTS) {
+        const li = document.createElement("li");
+        li.textContent = t;
+        points.append(li);
+      }
       const row = document.createElement("div");
       row.className = "row";
       row.append(button(CONSENT_TEXT.agree, "primary", choose(true)), button(CONSENT_TEXT.deny, "", closeSheet));
-      sheet.append(sheetTitle, sheetBody, row);
+      sheet.append(sheetTitle, sheetBody, points, row);
       bottom.append(start);
       wrap.append(sheet);
       ctx.root.append(wrap);

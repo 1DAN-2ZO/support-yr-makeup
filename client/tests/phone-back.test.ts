@@ -18,10 +18,6 @@ describe("backTarget — 뒤로 가면 설 자리 (화면 안의 뒤로 버튼�
     expect(backTarget("save", null)).toEqual({ screen: "feedback" });
   });
 
-  it("PB2-1 템플릿 고르기 → 참고 사진 화면 (#433) — 화면의 뒤로 버튼과 같다. 빠지면 폰의 뒤로가 사이트를 나간다", () => {
-    expect(backTarget("templates", null)).toEqual({ screen: "answer" });
-  });
-
   it("PB3 앞 화면이 없는 곳은 null — 동의 · 촬영 · 예상 메이크업 · 끝 (화면에도 뒤로 버튼이 없다)", () => {
     for (const s of ["consent", "denied", "capture", "answer", "done"] as const) expect(backTarget(s, null)).toBeNull();
   });

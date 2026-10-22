@@ -12,7 +12,7 @@ import type { MakeResult } from "@core/picture-maker";
 import { PART_NAME } from "@core/score";
 import { loadTemplateManifest, templateAnalysis, templateNumber } from "@core/template-prep";
 import type { TemplateManifest } from "@core/template-prep";
-import { TEMPLATES } from "@core/templates";
+import { TEMPLATES, type MakeupTemplate } from "@core/templates";
 import type { TransferRef } from "@core/transfer-client";
 import type { PartId } from "@core/types";
 import { MAKE_WAIT_TEXT, makeFailText, shrinkForUpload } from "./answer-make";
@@ -23,7 +23,6 @@ import { analyzeRefPhoto, REF_FAIL_TEXT } from "./ref-analyze";
 import type { RefAnalysis } from "./ref-analyze";
 import { DEMO_REF_COLORS } from "./ref-demo";
 import { restartModal } from "./restart-modal";
-import { setPickedTemplate, takePickedTemplate } from "./template-store";
 import { surveyModal } from "./survey-modal";
 import { getRefColors, setRefColors } from "./ref-store";
 import type { RefFailure } from "./ref-analyze";
@@ -484,6 +483,41 @@ function saveCard(): HTMLElement {
   return card;
 }
 
+/**
+ * 참고 사진 화면 **안에서** 펼치는 템플릿 10종 (#447).
+ *
+ * 전에는 따로 화면이 있었는데, 거기에도 "적용하기" 가 있어서 **같은 이름의 버튼이 두 곳에서
+ * 다른 일을 했다** — 템플릿 쪽 것은 만들기를 시작하지 않고 돌아가기만 했다. 게다가 사진을 올린 채
+ * 템플릿 화면에 갔다 오면 올린 사진이 사라졌다. 그래서 화면을 합치고 버튼을 하나로 뒀다.
+ *
+ * 격자는 **높이를 정해 두고 그 안에서만 스크롤한다**(app.css `.tpl-scroll`). 10종이 길어서
+ * 그냥 두면 "적용하기" 와 "다시 고르기" 가 화면 밖으로 밀린다 — 고르고 나서 누를 것이 안 보이면 안 된다.
+ */
+function templateGrid(chosenId: string | null, onPick: (t: MakeupTemplate) => void): HTMLElement {
+  const box = document.createElement("div");
+  box.className = "tpl-scroll";
+  const grid = document.createElement("ul");
+  grid.className = "tpl-grid";
+  for (const t of TEMPLATES) {
+    const li = document.createElement("li");
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = `tpl-card${t.id === chosenId ? " is-on" : ""}`;
+    // 고른 것을 테두리 색으로만 알리지 않는다 — 읽어 주는 기계도 알아야 한다
+    b.setAttribute("aria-pressed", t.id === chosenId ? "true" : "false");
+    b.innerHTML = `
+      <img src="${t.thumb}" alt="" aria-hidden="true" loading="lazy" />
+      <strong>${t.name}</strong>
+      <em>${t.about}</em>
+    `;
+    b.addEventListener("click", () => { onPick(t); });
+    li.append(b);
+    grid.append(li);
+  }
+  box.append(grid);
+  return box;
+}
+
 export function slotScreen<S>(spec: SlotSpec, deps: SlotDeps = {}): Screen<S> {
   const analyze = deps.analyze ?? analyzeRefPhoto;
   const shrink = deps.shrink ?? shrinkForUpload;
@@ -495,37 +529,81 @@ export function slotScreen<S>(spec: SlotSpec, deps: SlotDeps = {}): Screen<S> {
       /** 받은 정답사진을 보여 주는 주소 — 화면을 떠날 때 놓는다 */
       let madeUrl: string | null = null;
       if (spec.next === "partguide") {
+        // 고를 수 있는 것은 **둘 중 하나**다 — 사진이거나 템플릿이거나 (#447).
+        // 둘 다 고른 상태는 없다: 하나를 고르면 다른 쪽은 비운다
         let picked: File | null = null;
+        let pickedTpl: MakeupTemplate | null = null;
+        /** 템플릿 10종을 펼쳐 둔 상태인가 */
+        let openTpl = false;
         const dropPreview = () => {
           if (previewUrl) URL.revokeObjectURL(previewUrl);
           previewUrl = null;
         };
+        /** 고른 것을 다 버리고 처음 모양으로 (#447 "다시 고르기") */
+        const clearPick = () => {
+          dropPreview();
+          picked = null;
+          pickedTpl = null;
+          openTpl = false;
+        };
         const renderUpload = (warn?: string) => {
           resetPage(root);
+          const has = !!picked || !!pickedTpl;
           const apply = button("적용하기", () => {
-            if (!picked) return;
             ctx.log.log({ name: "button", button: "answer_apply" });
-            void run(picked);
+            if (picked) void run(picked);
+            else if (pickedTpl) void runTemplate(pickedTpl.id, pickedTpl.thumb);
           });
-          apply.disabled = !picked;
+          // 고르기 전에는 누를 수 없다 — 그리고 꺼진 것이 눈에 보여야 한다 (app.css)
+          apply.disabled = !has;
           root.append(
             testMeta(spec.title, spec.owner, spec.todo),
-            coach("따라 하고 싶은 화장 사진을 먼저 올려 주세요"),
-            title("참고 사진 · 예상 메이크업", "참고 사진을 올리면 예상 메이크업을 만들어드릴게요"),
-            uploadCard(previewUrl, (f) => {
-              dropPreview();
+            coach("따라 하고 싶은 화장 사진을 올리거나, 템플릿에서 골라 주세요"),
+            title("참고 사진 · 예상 메이크업", "하나를 고르면 예상 메이크업을 만들어드릴게요"),
+          );
+          // 템플릿을 고른 동안에는 업로드 칸을 안 보여 준다 — 둘 중 하나만 고른 상태라는 것이 화면으로 보여야 한다
+          if (!pickedTpl) {
+            root.append(uploadCard(previewUrl, (f) => {
+              clearPick();
               picked = f;
               previewUrl = URL.createObjectURL(f);
               renderUpload();
-            }),
-            // 사진이 없어도 시작할 수 있는 다른 길 (#420). 고르는 화면은 따로 있다
-            orLine("또는"),
-            liveButton("템플릿 선택", () => {
-              ctx.log.log({ name: "button", button: "go:templates" });
-              ctx.go("templates");
-            }),
-          );
+            }));
+          }
+          // 사진이 없어도 시작할 수 있는 다른 길 (#420). 화면을 옮기지 않고 **같은 자리에서** 펼친다 (#447)
+          if (!picked) {
+            // "또는" 은 두 길이 다 보일 때만 — 템플릿을 고른 뒤에는 위에 업로드 칸이 없어 혼자 남는다
+            if (!pickedTpl) root.append(orLine("또는"));
+            if (openTpl || pickedTpl) {
+              root.append(templateGrid(pickedTpl?.id ?? null, (t) => {
+                clearPick();
+                pickedTpl = t;
+                ctx.log.log({ name: "button", button: `template:${t.id}` });
+                renderUpload();
+              }));
+              if (pickedTpl) {
+                const note = document.createElement("p");
+                note.className = "tpl-note";
+                note.textContent = `${pickedTpl.name}${eul(pickedTpl.name)} 골랐어요. 적용하기를 누르면 내 얼굴에 맞춰 만들어드릴게요.`;
+                root.append(note);
+              }
+            } else {
+              root.append(liveButton("템플릿 고르기", () => {
+                ctx.log.log({ name: "button", button: "open:templates" });
+                openTpl = true;
+                renderUpload();
+              }));
+            }
+          }
           if (warn) root.append(uploadWarn(warn));
+          // 고른 것이 있으면 언제든 되돌릴 수 있다 — 격자를 펼쳐 둔 동안에도 보인다
+          if (has) {
+            root.append(liveButton("다시 고르기", () => {
+              ctx.log.log({ name: "button", button: "answer_repick" });
+              clearPick();
+              renderUpload();
+            }));
+          }
           root.append(apply);
         };
         const renderLoading = () => {
@@ -574,9 +652,8 @@ export function slotScreen<S>(spec: SlotSpec, deps: SlotDeps = {}): Screen<S> {
             }
             ctx.log.log({ name: "button", button: "answer_make_ok" });
             made = r.picture;
-            // 다른 사람 사진(참고 사진)은 정답사진을 만든 뒤 바로 놓는다 (서비스 정의서 원칙)
-            picked = null;
-            dropPreview();
+            // 다른 사람 사진(참고 사진)은 예상 메이크업을 만든 뒤 바로 놓는다 (서비스 정의서 원칙)
+            clearPick();
           }
           setRefColors(res.colors);
           renderAnswer(res, made);
@@ -598,6 +675,14 @@ export function slotScreen<S>(spec: SlotSpec, deps: SlotDeps = {}): Screen<S> {
             }),
             action(ctx as ScreenContext<unknown>, "다음 · 화장 가이드 보기", spec.next),
           );
+          // 만들고 나서도 마음이 바뀔 수 있다 (#447) — 누르는 것만으로는 서버를 부르지 않는다.
+          // 처음 모양으로 돌아가고, 다시 "적용하기" 를 눌렀을 때만 새로 만든다
+          root.append(liveButton("다시 고르기", () => {
+            ctx.log.log({ name: "button", button: "answer_repick_after" });
+            if (madeUrl) { URL.revokeObjectURL(madeUrl); madeUrl = null; }
+            clearPick();
+            renderUpload();
+          }));
         };
         /**
          * 템플릿을 골랐을 때 (#420) — 사진을 올리지도, 분석하지도, 줄이지도 않는다.
@@ -613,6 +698,7 @@ export function slotScreen<S>(spec: SlotSpec, deps: SlotDeps = {}): Screen<S> {
           if (!alive) return;
           if (!res) {
             ctx.log.log({ name: "button", button: `template_fail:${id}` });
+            clearPick();
             renderUpload("템플릿 정보를 불러오지 못했어요. 다시 골라 주세요");
             return;
           }
@@ -627,18 +713,13 @@ export function slotScreen<S>(spec: SlotSpec, deps: SlotDeps = {}): Screen<S> {
             }
             ctx.log.log({ name: "button", button: "answer_make_ok" });
             made = r.picture;
+            // 만든 뒤에는 고른 것을 놓는다 — 올린 사진 길(run)과 같다
+            clearPick();
           }
           setRefColors(res.colors);
           renderAnswer(res, made);
         };
-        // 템플릿을 고르고 왔으면 바로 예상 메이크업을 만든다.
-        // take 라서 한 번만 — 안 그러면 내 사진을 올리려 해도 템플릿으로 덮인다
-        const fromTemplate = takePickedTemplate();
-        if (fromTemplate) {
-          void runTemplate(fromTemplate.id, fromTemplate.thumb);
-        } else {
-          renderUpload();
-        }
+        renderUpload();
       } else if (spec.next === "feedback") {
         root.append(
           testMeta(spec.title, spec.owner, spec.todo),
@@ -889,75 +970,6 @@ export function feedbackSlot<S>(deps: FeedbackSlotDeps): Screen<S> {
  *
  * 고르고 "적용하기" 를 누르면 고른 템플릿을 넘기고 참고 사진 화면으로 돌아간다 — 거기서 올린 사진처럼 다룬다 (#433).
  */
-export function templatesSlot<S>(deps: PartGuideSlotDeps): Screen<S> {
-  return {
-    mount(ctx: ScreenContext<S>) {
-      const root = page("slot-templates", {
-        label: "참고 사진 올리기로 돌아가기",
-        onBack: () => {
-          ctx.log.log({ name: "button", button: "back:answer" });
-          ctx.go("answer");
-        },
-      }, home(ctx as ScreenContext<unknown>, deps.startOver ?? deps.clearAll));
-
-      const grid = document.createElement("ul");
-      grid.className = "tpl-grid";
-      let chosen: string | null = null;
-      const note = document.createElement("p");
-      note.className = "tpl-note";
-      note.hidden = true;
-
-      for (const t of TEMPLATES) {
-        const li = document.createElement("li");
-        const b = document.createElement("button");
-        b.type = "button";
-        b.className = "tpl-card";
-        b.setAttribute("aria-pressed", "false");
-        b.innerHTML = `
-          <img src="${t.thumb}" alt="" aria-hidden="true" loading="lazy" />
-          <strong>${t.name}</strong>
-          <em>${t.about}</em>
-        `;
-        b.addEventListener("click", () => {
-          chosen = t.id;
-          ctx.log.log({ name: "button", button: `template:${t.id}` });
-          for (const other of grid.querySelectorAll<HTMLButtonElement>(".tpl-card")) {
-            other.classList.remove("is-on");
-            other.setAttribute("aria-pressed", "false");
-          }
-          b.classList.add("is-on");
-          b.setAttribute("aria-pressed", "true");
-          note.hidden = false;
-          note.textContent = `${t.name}${eul(t.name)} 골랐어요. 적용하기를 누르면 내 얼굴에 맞춰 만들어드릴게요.`;
-          apply.disabled = false;
-        });
-        li.append(b);
-        grid.append(li);
-      }
-
-      // 고른 템플릿을 참고 사진 화면으로 넘긴다 — 거기서 올린 사진과 똑같이 다뤄 예상 메이크업을 만든다
-      const apply = button("적용하기", () => {
-        const t = chosen ? TEMPLATES.find((x) => x.id === chosen) : null;
-        if (!t) return;
-        ctx.log.log({ name: "button", button: `template_apply:${t.id}` });
-        setPickedTemplate(t);
-        ctx.go("answer");
-      });
-      apply.disabled = true;
-
-      root.append(
-        coach("따라 하고 싶은 화장을 골라 주세요"),
-        title("화장 템플릿", "사진을 올리지 않아도 여기서 고를 수 있어요"),
-        grid,
-        note,
-        apply,
-      );
-      ctx.root.append(root);
-      return () => { chosen = null; void chosen; };
-    },
-  };
-}
-
 export function saveSlot<S>(deps: SaveSlotDeps): Screen<S> {
   return {
     mount(ctx: ScreenContext<S>) {
